@@ -1,0 +1,648 @@
+<title>Quay Shell Look</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* PROTOTYPE for map ticket #625 "Whether the shell's look changes beyond the pie menu". Throwaway.
+   Layout: a guided walkthrough card, then one live Quay window (module bar, Projects panel, stage with two
+   terminals, companion with a pull request) in four switchable looks: A today, B neon accents, C full
+   wireframe, D islands. The two-ring pie opens over the terminal in every look. Below: a live readout,
+   a part-by-part table, the recommendation, and a decision form with one Copy button.
+   Page chrome is a single dark look, Quay's palette, same as the other shell-redesign prototypes. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --sel: #132339; --guide: #f0b72f;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 90px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--q-panel); display: flex; flex-direction: column; gap: 1px; flex: 1 1 220px; min-width: 0; position: relative; }
+.seg label b { color: var(--hi); font: 600 14px var(--display); }
+.seg label small { color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--blue); background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.seg label.seen b::after { content: " ✓"; color: var(--green); font-size: 12px; }
+.seg.sm label { flex: 0 1 auto; padding: 5px 10px; flex-direction: row; align-items: center; gap: 8px; font-size: 12.5px; }
+.seg.sm label i { width: 26px; height: 10px; border-radius: 3px; display: block; }
+.rec-mark { font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; }
+
+/* walkthrough */
+.walk { border: 1px solid rgba(240,183,47,.55); background: linear-gradient(180deg, rgba(240,183,47,.08), rgba(240,183,47,.02)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.walk .wtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.walk .wstep { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.walk h2 { margin: 0; font-size: 19px; }
+.walk .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.wdots { display: flex; gap: 6px; }
+.wdots i { width: 22px; height: 4px; border-radius: 2px; background: var(--q-line); }
+.wdots i.on { background: var(--guide); } .wdots i.ok { background: var(--green); }
+.wnav { display: flex; gap: 8px; margin-left: auto; }
+
+/* ============ mock window: every colour comes from tokens the script sets per look ============ */
+.shell { --bg: #0d1117; --panel: #161b22; --raise: #21262d; --line: #30363d; --sfg: #c9d1d9; --smuted: #8b949e; --shi: #f0f6fc;
+  --acc: #58a6ff; --acc2: #ffffff; --g: 0; --ok: #3fb950; --warn: #d29922; --go: #238636; --go-line: #2ea043;
+  --glow: 0 0 calc(var(--g) * 3px) var(--acc), 0 0 calc(var(--g) * 9px) color-mix(in srgb, var(--acc) 55%, transparent);
+  position: relative; display: flex; width: 1200px; height: 600px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--sfg);
+  transition: background .2s; }
+.shell svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.shell button { background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; }
+.abar { width: 48px; flex: none; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+.ib { height: 44px; display: grid !important; place-items: center; position: relative; color: var(--smuted) !important; }
+.ib svg.i { width: 20px; height: 20px; }
+.ib:hover { color: var(--shi) !important; background: var(--raise) !important; }
+.ib.on { color: var(--shi) !important; box-shadow: inset 2px 0 0 var(--acc); }
+.tdots { display: flex; flex-direction: column; padding: 2px 0 6px; border-bottom: 1px solid var(--line); }
+.tdot { height: 24px; display: grid !important; place-items: center; position: relative; }
+.tdot.sel::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; background: var(--shi); }
+.td { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.td.w { background: var(--ok); } .td.a { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
+.td.i { background: var(--smuted); }
+.badge { position: absolute; top: 5px; right: 5px; min-width: 14px; height: 14px; border-radius: 7px; font: 600 9px/14px var(--mono); text-align: center; background: var(--acc); color: var(--bg); padding: 0 3px; }
+.grow { flex: 1; }
+
+.panel { width: 236px; flex: none; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.phead { padding: 9px 12px 7px; font: 600 13px var(--display); color: var(--shi); display: flex; align-items: center; gap: 8px; }
+.phead small { font: 10px var(--mono); color: var(--smuted); margin-left: auto; font-weight: 400; }
+.pscroll { flex: 1; overflow: hidden; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.grp { display: flex; gap: 6px; align-items: center; padding: 8px 4px 4px; font: 600 12px var(--display); color: var(--shi); }
+.grp small { margin-left: auto; font: 10px var(--mono); color: var(--smuted); font-weight: 400; }
+.prow { width: 100%; display: flex !important; gap: 8px; align-items: center; padding: 6px 8px !important; border-radius: 6px; border: 1px solid transparent !important; min-width: 0; box-sizing: border-box; }
+.prow:hover { background: var(--raise) !important; }
+.prow.sel { background: var(--raise) !important; border-color: var(--line) !important; }
+.ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ttl b { color: var(--shi); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ttl small { color: var(--smuted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.chip { font: 600 9.5px var(--mono); border-radius: 4px; padding: 0 5px; border: 1px solid var(--line); color: var(--smuted); white-space: nowrap; }
+.chip.y { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; background: var(--bg); }
+.stabs { height: 34px; flex: none; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--panel); }
+.stab { padding: 5px 10px !important; border-radius: 6px; color: var(--smuted) !important; font: 11.5px var(--mono) !important; display: inline-flex !important; gap: 6px; align-items: center; white-space: nowrap; }
+.stab[aria-current=true] { background: var(--raise) !important; color: var(--shi) !important; }
+.lsw { margin-left: auto; display: flex; gap: 2px; }
+.lsw button { width: 26px; height: 24px; display: grid !important; place-items: center; border-radius: 5px; color: var(--smuted) !important; }
+.lsw button[aria-pressed=true] { background: var(--raise) !important; color: var(--shi) !important; }
+.panes { flex: 1; display: flex; min-height: 0; }
+.pane { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid transparent; position: relative; }
+.pane + .pane { border-left-color: var(--line); }
+.pane.sel { border-color: color-mix(in srgb, var(--acc) 45%, transparent); }
+.ph { height: 26px; flex: none; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--smuted); }
+.ph b { color: var(--shi); font-weight: 600; }
+.ph .grow { flex: 1; }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; color: var(--smuted); cursor: context-menu; }
+.out b { color: var(--shi); font-weight: 500; } .out .g { color: var(--ok); } .out .y { color: var(--warn); } .out .c { color: var(--acc); }
+
+.comp { width: 330px; flex: none; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.chead { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line); background: var(--panel); align-items: center; }
+.cseg { padding: 5px 9px !important; border-radius: 6px; color: var(--smuted) !important; font-size: 11.5px; }
+.cseg.on { background: var(--raise) !important; color: var(--shi) !important; }
+.cscroll { flex: 1; overflow: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--panel); display: flex; flex-direction: column; gap: 7px; position: relative; }
+.card h3 { margin: 0; font: 600 13px var(--display); color: var(--shi); }
+.kind { font: 600 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--smuted); display: flex; gap: 6px; align-items: center; }
+.state { font: 600 10.5px var(--mono); color: var(--ok); display: flex; gap: 6px; align-items: center; }
+.cells { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cell { border: 1px solid var(--line) !important; border-radius: 6px; padding: 5px 7px !important; font-size: 11px; color: var(--smuted) !important; }
+.cell b { display: block; color: var(--shi); font-size: 13px; }
+.cell:hover { border-color: var(--smuted) !important; }
+.mergerow { display: flex; gap: 6px; align-items: center; }
+.btn { border: 1px solid var(--line) !important; background: var(--raise) !important; border-radius: 6px; padding: 4px 10px !important; font-weight: 600; font-size: 11.5px; white-space: nowrap; color: var(--sfg) !important; }
+.btn.go { background: var(--go) !important; border-color: var(--go-line) !important; color: #fff !important; }
+.tl { display: flex; flex-direction: column; gap: 6px; padding: 2px 2px; }
+.tl div { display: flex; gap: 8px; align-items: baseline; font-size: 11.5px; color: var(--smuted); }
+.tl div b { color: var(--sfg); font-weight: 600; }
+.tl div i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); flex: none; transform: translateY(-1px); }
+.tl div i.g { background: var(--ok); }
+
+/* ---- B: neon accents. Today's surfaces; neon only where something is live: selection, status, focus, ready ---- */
+.lk-b .ib.on { color: var(--mh, var(--acc)) !important; box-shadow: inset 2px 0 0 var(--mh, var(--acc)), inset 10px 0 14px -10px var(--mh, var(--acc)); }
+.lk-b .ib.on svg.i { filter: drop-shadow(0 0 calc(var(--g) * 4px) var(--mh, var(--acc))); }
+.lk-b .td.w, .lk-b .td.a { box-shadow: 0 0 calc(var(--g) * 6px) currentColor; }
+.lk-b .td.w { color: var(--ok); } .lk-b .td.a { color: var(--warn); }
+.lk-b .prow.sel { border-color: color-mix(in srgb, var(--acc) 55%, transparent) !important; box-shadow: var(--glow); }
+.lk-b .stab[aria-current=true] { box-shadow: inset 0 -2px 0 var(--acc), 0 6px 12px -8px var(--acc); }
+.lk-b .pane.sel { border-color: var(--acc); box-shadow: inset 0 0 calc(var(--g) * 14px) color-mix(in srgb, var(--acc) 22%, transparent); }
+.lk-b .pane.sel .ph b { color: var(--acc); text-shadow: 0 0 calc(var(--g) * 6px) var(--acc); }
+.lk-b .card.ready { border-color: color-mix(in srgb, var(--ok) 60%, transparent); box-shadow: 0 0 calc(var(--g) * 12px) color-mix(in srgb, var(--ok) 30%, transparent); }
+.lk-b .state { text-shadow: 0 0 calc(var(--g) * 6px) var(--ok); }
+.lk-b .cseg.on { box-shadow: inset 0 -2px 0 var(--acc); }
+.lk-b :focus-visible { outline-color: var(--acc); box-shadow: var(--glow); }
+
+/* ---- C: full wireframe. Every surface is see-through; every edge a thin neon line; HUD type ---- */
+.lk-c .abar, .lk-c .panel, .lk-c .stabs, .lk-c .chead, .lk-c .card { background: transparent; }
+.lk-c .abar, .lk-c .panel, .lk-c .stabs, .lk-c .chead, .lk-c .ph, .lk-c .comp, .lk-c .tdots { border-color: color-mix(in srgb, var(--acc) 40%, transparent); }
+.lk-c .pane + .pane { border-left-color: color-mix(in srgb, var(--acc) 40%, transparent); }
+.lk-c.shell { border-color: color-mix(in srgb, var(--acc) 60%, transparent); box-shadow: inset 0 0 calc(var(--g) * 30px) color-mix(in srgb, var(--acc) 10%, transparent);
+  background-image: linear-gradient(color-mix(in srgb, var(--acc) 5%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--acc) 5%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px; }
+.lk-c .ib { color: color-mix(in srgb, var(--mh, var(--acc)) 65%, var(--smuted)) !important; }
+.lk-c .ib svg.i { filter: drop-shadow(0 0 calc(var(--g) * 2px) var(--mh, var(--acc))); }
+.lk-c .ib.on { color: var(--mh, var(--acc)) !important; box-shadow: inset 2px 0 0 var(--mh, var(--acc)); }
+.lk-c .ib:hover, .lk-c .prow:hover { background: color-mix(in srgb, var(--acc) 8%, transparent) !important; }
+.lk-c .phead, .lk-c .grp, .lk-c .card h3 { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--acc); text-shadow: 0 0 calc(var(--g) * 5px) var(--acc); }
+.lk-c .prow { border-color: color-mix(in srgb, var(--acc) 22%, transparent) !important; border-radius: 0; }
+.lk-c .prow.sel { background: color-mix(in srgb, var(--acc) 10%, transparent) !important; border-color: var(--acc) !important; box-shadow: var(--glow); }
+.lk-c .stab, .lk-c .cseg { border-radius: 0; text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px !important; }
+.lk-c .stab[aria-current=true], .lk-c .cseg.on, .lk-c .lsw button[aria-pressed=true] { background: transparent !important; color: var(--acc) !important; box-shadow: inset 0 0 0 1px var(--acc), var(--glow); }
+.lk-c .pane.sel { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc), inset 0 0 calc(var(--g) * 18px) color-mix(in srgb, var(--acc) 18%, transparent); }
+.lk-c .ph { text-transform: uppercase; letter-spacing: .08em; font: 10.5px var(--mono); }
+.lk-c .ph b { color: var(--acc); }
+.lk-c .card { border-radius: 0; border-color: color-mix(in srgb, var(--acc) 45%, transparent); }
+.lk-c .card::before, .lk-c .card::after { content: ""; position: absolute; width: 10px; height: 10px; border: 2px solid var(--acc2); filter: drop-shadow(0 0 calc(var(--g) * 4px) var(--acc2)); }
+.lk-c .card::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+.lk-c .card::after { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+.lk-c .cell { border-radius: 0; border-color: color-mix(in srgb, var(--acc) 35%, transparent) !important; }
+.lk-c .cell b { color: var(--acc); font-family: var(--mono); }
+.lk-c .btn { background: transparent !important; border-radius: 0; border-color: var(--acc) !important; color: var(--acc) !important; text-transform: uppercase; letter-spacing: .08em; font: 600 10.5px var(--mono); }
+.lk-c .btn.go { background: transparent !important; border-color: var(--ok) !important; color: var(--ok) !important; box-shadow: 0 0 calc(var(--g) * 8px) color-mix(in srgb, var(--ok) 60%, transparent); }
+.lk-c .td.w, .lk-c .td.a { box-shadow: 0 0 calc(var(--g) * 6px) currentColor; }
+.lk-c .td.w { color: var(--ok); } .lk-c .td.a { color: var(--warn); }
+.lk-c .badge { background: transparent; color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); }
+.lk-c .chip { border-radius: 0; }
+
+/* ---- D: islands. A new calm style: floating rounded surfaces with gaps, no hairlines, neon left to the pie ---- */
+.lk-d.shell { gap: 6px; padding: 6px; border: 0; background: radial-gradient(120% 90% at 0% 0%, #141a24 0%, var(--bg) 60%); }
+.lk-d .abar, .lk-d .panel, .lk-d .stage, .lk-d .comp { border: 0; border-radius: 12px; background: var(--panel); overflow: hidden; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 8px 24px rgba(0,0,0,.35); }
+.lk-d .abar { width: 48px; padding: 4px 0; gap: 2px; }
+.lk-d .ib { margin: 0 6px; border-radius: 9px; height: 36px; }
+.lk-d .ib.on { background: var(--raise) !important; box-shadow: none; color: var(--acc) !important; }
+.lk-d .tdots { border: 0; margin: 0 6px; }
+.lk-d .tdot.sel::before { left: -6px; border-radius: 2px; }
+.lk-d .phead { font-size: 14px; padding: 12px 14px 8px; }
+.lk-d .prow { border-radius: 9px; }
+.lk-d .prow.sel { border-color: transparent !important; background: var(--raise) !important; }
+.lk-d .stabs { border: 0; background: transparent; padding: 0 8px; height: 38px; }
+.lk-d .stab { border-radius: 999px; font: 500 12px var(--body) !important; }
+.lk-d .stab[aria-current=true] { background: var(--raise) !important; }
+.lk-d .lsw button { border-radius: 999px; }
+.lk-d .panes { gap: 6px; padding: 0 6px 6px; background: var(--panel); }
+.lk-d .pane { border: 0; border-radius: 9px; background: var(--bg); overflow: hidden; }
+.lk-d .pane + .pane { border: 0; }
+.lk-d .pane.sel { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--acc) 70%, transparent); }
+.lk-d .ph { border: 0; background: var(--raise); }
+.lk-d .chead { border: 0; background: transparent; padding: 8px; }
+.lk-d .cseg { border-radius: 999px; }
+.lk-d .cscroll { padding: 4px 10px 10px; }
+.lk-d .card { border: 0; background: var(--raise); border-radius: 10px; }
+.lk-d .cell { border: 0 !important; background: var(--panel) !important; border-radius: 8px; }
+.lk-d .btn { border-radius: 999px; border: 0 !important; background: var(--panel) !important; }
+.lk-d .btn.go { background: var(--go) !important; }
+.lk-d .chip { border-radius: 999px; border: 0; background: var(--panel); }
+
+/* ---- pie overlay: always the neon wireframe, as decided ---- */
+.pie { position: absolute; z-index: 8; width: 300px; height: 300px; margin: -150px 0 0 -150px; pointer-events: auto; }
+.pie svg { width: 300px; height: 300px; display: block; overflow: visible; font-family: var(--mono); }
+.pie .w { fill: none; stroke-width: 1.1; cursor: pointer; filter: drop-shadow(0 0 3px var(--wc)); stroke: var(--wc); }
+.pie .w.on { stroke: var(--pb); stroke-width: 2.2; fill: color-mix(in srgb, var(--pb) 14%, transparent); filter: drop-shadow(0 0 3px var(--pb)) drop-shadow(0 0 10px var(--pb)); }
+.pie .tabarc { fill: none; stroke: var(--wc); stroke-width: 2; filter: drop-shadow(0 0 3px var(--wc)); }
+.pie text { font-size: 9.5px; letter-spacing: .1em; text-anchor: middle; dominant-baseline: middle; fill: var(--wc); paint-order: stroke; stroke: #05070a; stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.pie text.on { fill: #fff; font-weight: 700; }
+.pie .hub { fill: none; stroke: var(--pa); stroke-width: 1; filter: drop-shadow(0 0 4px var(--pa)); }
+.pie .big { font-size: 11px; font-weight: 700; fill: #fff; letter-spacing: .08em; }
+.pie .sm { font-size: 8px; fill: var(--pb); }
+
+.guide { outline: 2px solid var(--guide) !important; outline-offset: -2px; animation: pulse 1.1s ease-in-out infinite; }
+.seg .guide, .form.guide { outline-offset: 3px; }
+@keyframes pulse { 50% { outline-color: rgba(240,183,47,.25); } }
+@media (prefers-reduced-motion: reduce) { .guide { animation: none; } .shell { transition: none; } }
+.hint { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); background: rgba(10,13,18,.85); border: 1px dashed var(--guide); color: var(--guide); border-radius: 8px; padding: 8px 14px; font: 600 12px var(--body); pointer-events: none; z-index: 3; text-align: center; max-width: 80%; }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; min-height: 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.recbox { border: 1px solid rgba(240,183,47,.45); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.recbox h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.recbox ul { margin: 0; padding-left: 18px; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--q-line); font-size: 13px; }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td:first-child { color: var(--hi); font-weight: 500; white-space: nowrap; }
+td.cur, th.cur { background: rgba(88,166,255,.07); }
+.ok { color: var(--green); } .wn { color: var(--amber); }
+.form { border: 1px solid var(--q-line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; background: #0d1117; }
+.form textarea { background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 6px; padding: 8px 10px; min-height: 56px; resize: vertical; width: 100%; box-sizing: border-box; }
+.form label.t { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 6px; }
+.copyrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.copy { background: #238636; border: 1px solid #2ea043; color: #fff; border-radius: 6px; padding: 7px 16px; font-weight: 600; }
+#outText { font: 12px/1.5 var(--mono); color: var(--fg); background: var(--q-panel); min-height: 120px; }
+
+/* floating variant switcher (not part of the design under test) */
+.switch { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 20;
+  display: flex; align-items: center; gap: 4px; background: #f0f6fc; color: #0d1117; border-radius: 999px; padding: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.55); font: 600 12.5px var(--body); max-width: calc(100vw - 32px); }
+.switch button { width: 30px; height: 30px; border-radius: 50%; border: 0; background: #d0d7de; color: #0d1117; font: 700 14px var(--mono); }
+.switch button:hover { background: #afb8c1; }
+.switch span { padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.switch :focus-visible { outline-color: #0969da; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Prototype · map ticket 625 · throwaway</div>
+    <h1>Does the shell take on the pie menu's neon look?</h1>
+    <p class="lede">The pie menu is a neon wireframe. This page puts four looks for the rest of Quay on the real layout: today's look, neon accents only, a full wireframe, and a new calm style. The pie opens over the terminal in each one, so you can judge whether it belongs. Example data only; nothing is wired to Quay.</p>
+  </header>
+
+  <section class="walk" id="walk" aria-live="polite">
+    <div class="wtop">
+      <span class="wstep" id="wStep">Step 1 of 6</span>
+      <div class="wdots" id="wDots"></div>
+    </div>
+    <h2 id="wTitle">…</h2>
+    <p id="wBody"></p>
+    <div class="row">
+      <span class="toast" id="wToast"></span>
+      <div class="wnav"><button class="ghost" id="wBack" type="button">Back</button><button class="ghost" id="wSkip" type="button">Skip step</button></div>
+    </div>
+  </section>
+
+  <fieldset class="seg" id="lookSeg">
+    <legend>Look for the shell (← → also switch)</legend>
+    <input type="radio" name="look" id="lk-A" value="A"><label for="lk-A"><b>A · Today's look</b><small>Filled GitHub-dark surfaces, one fixed blue. Pie is the only neon.</small></label>
+    <input type="radio" name="look" id="lk-B" value="B"><label for="lk-B"><b>B · Neon accents<span class="rec-mark">Recommended</span></b><small>Today's surfaces. Neon marks only what is live: selection, status, focus, ready.</small></label>
+    <input type="radio" name="look" id="lk-C" value="C"><label for="lk-C"><b>C · Full wireframe</b><small>See-through surfaces, neon edges everywhere, HUD type. The pie's world, shell-wide.</small></label>
+    <input type="radio" name="look" id="lk-D" value="D"><label for="lk-D"><b>D · Islands</b><small>A new calm style: floating rounded surfaces, no hairlines. Neon stays in the pie.</small></label>
+  </fieldset>
+
+  <div class="controls">
+    <fieldset class="seg sm" id="palSeg"><legend>Pie palette (B and C follow it)</legend></fieldset>
+    <fieldset class="seg sm" id="glowSeg"><legend>Glow (B and C)</legend>
+      <input type="radio" name="glow" id="gl-off" value="0"><label for="gl-off">Off</label>
+      <input type="radio" name="glow" id="gl-soft" value="1" checked><label for="gl-soft">Soft</label>
+      <input type="radio" name="glow" id="gl-full" value="2"><label for="gl-full">Full</label>
+    </fieldset>
+    <button class="ghost" id="openPie" type="button">Open the pie on the terminal</button>
+  </div>
+
+  <div class="scroll">
+    <div class="shell" id="shell">
+      <nav class="abar" aria-label="Module bar">
+        <button class="ib on" data-h="0" aria-label="Projects" aria-pressed="true"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+        <div class="tdots">
+          <button class="tdot sel" aria-label="Terminal: implement 575, waiting on you"><i class="td a"></i></button>
+          <button class="tdot" aria-label="Terminal: tests, working"><i class="td w"></i></button>
+          <button class="tdot" aria-label="Terminal: AI-WS-SDK, idle"><i class="td i"></i></button>
+        </div>
+        <button class="ib" data-h="1" aria-label="Source control" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11.2 7.3"/></svg><span class="badge">2</span></button>
+        <button class="ib" data-h="2" aria-label="Agents" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M3 13h2M19 13h2"/></svg><span class="badge">1</span></button>
+        <button class="ib" data-h="3" aria-label="Workflows" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="9" y="15" width="6" height="5" rx="1"/><path d="M6 9v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9M12 13v2"/></svg></button>
+        <div class="grow"></div>
+        <button class="ib" data-h="4" aria-label="Project" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+      </nav>
+
+      <aside class="panel" aria-label="Projects panel">
+        <div class="phead">Projects <small>3 terminals</small></div>
+        <div class="pscroll">
+          <div class="grp">Quay-2 <small>master</small></div>
+          <button class="prow sel"><i class="td a"></i><span class="ttl"><b>implement 575</b><small>Claude · waiting on you · 2 m</small></span><span class="chip y">PR 576</span></button>
+          <button class="prow"><i class="td w"></i><span class="ttl"><b>tests</b><small>pwsh · pnpm test --watch</small></span></button>
+          <div class="grp">AI-WS-SDK <small>main</small></div>
+          <button class="prow"><i class="td i"></i><span class="ttl"><b>engine</b><small>Codex · idle · 41 m</small></span><span class="chip">issue 252</span></button>
+        </div>
+      </aside>
+
+      <main class="stage" id="stage">
+        <div class="stabs" aria-label="Stage tabs">
+          <button class="stab" aria-current="true">Terminals</button>
+          <button class="stab" aria-current="false">Praxis Builder</button>
+          <div class="lsw">
+            <button aria-label="Single" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/></svg></button>
+            <button aria-label="Split" aria-pressed="true"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M12 5v14"/></svg></button>
+            <button aria-label="Grid" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M12 5v14M4 12h16"/></svg></button>
+          </div>
+        </div>
+        <div class="panes">
+          <section class="pane sel" id="pane1" tabindex="0" aria-label="Terminal implement 575. Press Enter to open the pie menu.">
+            <div class="ph"><i class="td a"></i><b>implement 575</b><span>Claude</span><span class="grow"></span><span>Quay-2</span></div>
+<pre class="out" id="out1"><b>● implement ticket 575: run canvas edge labels</b>
+  Edit src/slices/praxis-builder/runCanvas.ts <span class="g">+38</span> <span class="y">-4</span>
+  Bash pnpm test runCanvas
+  <span class="g">✓ 17 passed</span> (2.1 s)
+  Bash gh pr create
+  Opened pull request <span class="c">576</span>
+
+recap: edge labels show each node's phase.
+Checks are green. Merge when you've looked it over.
+
+Reply: [ Yes ] [ Go with your recommendation ] [ No ]
+&gt; _</pre>
+          </section>
+          <section class="pane" aria-label="Terminal tests">
+            <div class="ph"><i class="td w"></i><b>tests</b><span>pwsh</span><span class="grow"></span><span>Quay-2</span></div>
+<pre class="out"> <b>RERUN</b>  src/slices/praxis-builder/runCanvas.test.ts
+
+ <span class="g">✓</span> runCanvas › phases (6)
+ <span class="g">✓</span> runCanvas › edge labels (5)
+ <span class="g">✓</span> runCanvas › replay (6)
+
+ <b>Test Files</b>  <span class="g">1 passed</span> (1)
+      <b>Tests</b>  <span class="g">17 passed</span> (17)
+   <b>Duration</b>  2.14 s
+
+ <span class="y">PASS</span>  Waiting for file changes...</pre>
+          </section>
+        </div>
+      </main>
+
+      <aside class="comp" aria-label="Companion">
+        <div class="chead">
+          <button class="cseg on">Pull request</button><button class="cseg">Issue</button><button class="cseg">Activity</button>
+        </div>
+        <div class="cscroll">
+          <div class="card ready">
+            <div class="kind">Pull request 576 · Quay-2</div>
+            <h3>Run canvas: edge labels for a graph run</h3>
+            <div class="state"><i class="td w"></i>Ready to merge</div>
+            <div class="cells">
+              <button class="cell">Checks<b>9 / 9 passed</b></button>
+              <button class="cell">Comments<b>2 · 0 open</b></button>
+              <button class="cell">Files<b>6 · +212 −38</b></button>
+              <button class="cell">Commits<b>3</b></button>
+            </div>
+            <div class="mergerow"><button class="btn">Squash ▾</button><button class="btn go">Merge</button><span class="grow"></span><button class="btn">Delete branch</button></div>
+          </div>
+          <div class="tl">
+            <div><i class="g"></i><span><b>CI</b> passed all 9 checks · 4 m</span></div>
+            <div><i></i><span><b>Copilot</b> reviewed · 2 comments, resolved</span></div>
+            <div><i></i><span><b>Claude</b> opened from implement 575</span></div>
+            <div><i></i><span><b>Closes</b> issue 575 on merge</span></div>
+          </div>
+        </div>
+      </aside>
+      <div class="hint" id="hint" hidden></div>
+    </div>
+  </div>
+
+  <div class="readout" id="readout"></div>
+
+  <h2>Part by part</h2>
+  <div class="scroll">
+    <table id="tbl">
+      <thead><tr><th>Part</th><th data-k="A">A · Today</th><th data-k="B">B · Neon accents</th><th data-k="C">C · Full wireframe</th><th data-k="D">D · Islands</th></tr></thead>
+      <tbody>
+        <tr><td>Surfaces</td><td>Filled, flat, hairline borders</td><td>Same as today</td><td>See-through over a faint grid</td><td>Rounded floating islands with 6 px gaps</td></tr>
+        <tr><td>Module bar</td><td>Blue edge on the open module</td><td>Open module's edge glows in its pie colour</td><td>Every icon tinted and glowing</td><td>Open module is a filled pill</td></tr>
+        <tr><td>Terminal status dots</td><td>Flat green and amber</td><td>Dots glow</td><td>Dots glow</td><td>Flat</td></tr>
+        <tr><td>Selected terminal</td><td>Faint blue border</td><td>Neon border and inner glow, title lit</td><td>Neon box and inner glow</td><td>Soft ring</td></tr>
+        <tr><td>Stage tabs</td><td>Filled tab</td><td>Filled tab with a neon underline</td><td>Outlined neon tab, uppercase</td><td>Pills</td></tr>
+        <tr><td>Companion card</td><td>Plain card</td><td>Ready card glows green</td><td>Corner brackets, outlined buttons</td><td>Borderless raised card</td></tr>
+        <tr><td>Type</td><td>Unchanged</td><td>Unchanged</td><td>Uppercase mono headings and buttons</td><td>Larger headings, pill controls</td></tr>
+        <tr><td>Accent colour</td><td>Fixed blue</td><td>Follows the pie palette</td><td>Follows the pie palette</td><td>Fixed soft blue</td></tr>
+        <tr><td>Body text contrast on panel</td><td id="cr-A"></td><td id="cr-B"></td><td id="cr-C"></td><td id="cr-D"></td></tr>
+        <tr><td>Muted text contrast on panel</td><td id="cm-A"></td><td id="cm-B"></td><td id="cm-C"></td><td id="cm-D"></td></tr>
+        <tr><td>Build cost</td><td>None</td><td>Swap the one blue accent for a token, add glow to five parts</td><td>Move every colour class to tokens, restyle every control and icon</td><td>Move every colour class to tokens, change layout spacing and radii</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="notes">
+    <div><h3>What today's code holds</h3><p>Quay is dark-only. Colours are written straight into Tailwind classes: about 4,000 hex colour classes across 111 files in <code>src</code> on master today. The blue accent alone is about 370 of them.</p></div>
+    <div><h3>Why the cost differs</h3><p>B only needs the accent to become one token the pie palette can set, plus glow on five parts. C and D change every surface, so every colour class has to move to tokens first.</p></div>
+    <div><h3>Reading dense text</h3><p>Every look clears 4.5:1 for muted text on its panel. C is the darkest, so its ratios are the highest on paper. What the ratios miss is the glow and grid lines C puts around every list, diff and terminal.</p></div>
+  </div>
+
+  <div class="recbox">
+    <h3>My recommendation: B · Neon accents</h3>
+    <ul>
+      <li>The pie stops looking like a visitor: the same colours mark the open module, the selected terminal, status and focus.</li>
+      <li>Dense text stays on today's surfaces, so terminals, diffs and lists read exactly as they do now.</li>
+      <li>Smallest build: one accent token and glow on five parts, against moving about 4,000 colour classes for C or D.</li>
+    </ul>
+    <p class="lede">Your call. Pick below.</p>
+  </div>
+
+  <form class="form" id="form">
+    <fieldset class="seg" id="pickSeg">
+      <legend>Your pick</legend>
+      <input type="radio" name="pick" id="pk-A" value="A"><label for="pk-A"><b>A · Today's look</b><small>Keep the shell as it is.</small></label>
+      <input type="radio" name="pick" id="pk-B" value="B"><label for="pk-B"><b>B · Neon accents<span class="rec-mark">Recommended</span></b><small>Neon only on live state.</small></label>
+      <input type="radio" name="pick" id="pk-C" value="C"><label for="pk-C"><b>C · Full wireframe</b><small>Neon everywhere.</small></label>
+      <input type="radio" name="pick" id="pk-D" value="D"><label for="pk-D"><b>D · Islands</b><small>A new calm style.</small></label>
+    </fieldset>
+    <fieldset class="seg sm" id="accSeg">
+      <legend>Accent colour (B and C)</legend>
+      <input type="radio" name="acc" id="ac-pal" value="pal" checked><label for="ac-pal">Follows the pie palette</label>
+      <input type="radio" name="acc" id="ac-fix" value="fix"><label for="ac-fix">Fixed blue, pie keeps its own</label>
+    </fieldset>
+    <div><label class="t" for="note">Anything to steal from another look, or change (optional)</label><textarea id="note" placeholder="For example: B, but with D's pill stage tabs"></textarea></div>
+    <div class="copyrow"><button class="copy" id="copyBtn" type="button">Copy my answer</button><span class="toast" id="copyToast"></span></div>
+    <div><label class="t" for="outText">What Copy puts on the clipboard (paste it back to Claude)</label><textarea id="outText" readonly></textarea></div>
+  </form>
+</div>
+
+<div class="switch" role="group" aria-label="Variant switcher">
+  <button type="button" id="swPrev" aria-label="Previous look">←</button>
+  <span id="swLabel">B (Neon accents)</span>
+  <button type="button" id="swNext" aria-label="Next look">→</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const PAL = {
+  cyber: { name: "Cyan + magenta", a: "#00f0ff", b: "#ff2bd6" },
+  tron: { name: "Cyan + orange", a: "#18e0ff", b: "#ff9a1f" },
+  acid: { name: "Lime + cyan", a: "#b6ff1a", b: "#00e5ff" },
+  sunset: { name: "Pink + yellow", a: "#ff3d81", b: "#ffd60a" },
+  spectrum: { name: "Spectrum", a: "#7df9ff", b: "#ffffff", spec: true },
+  ice: { name: "Ice white + green", a: "#dfe9ff", b: "#39ff88" },
+};
+const TODAY = { bg: "#0d1117", panel: "#161b22", raise: "#21262d", line: "#30363d", fg: "#c9d1d9", muted: "#8b949e", hi: "#f0f6fc" };
+const LOOKS = {
+  A: { name: "Today's look", t: TODAY, acc: "fixed", fixed: "#58a6ff", glow: false },
+  B: { name: "Neon accents", t: TODAY, acc: "pal", fixed: "#58a6ff", glow: true },
+  C: { name: "Full wireframe", t: { bg: "#04060a", panel: "#04060a", raise: "#0a1018", line: "#1c2a33", fg: "#cfdde6", muted: "#8ea3b3", hi: "#f2fbff" }, acc: "pal", fixed: "#58a6ff", glow: true },
+  D: { name: "Islands", t: { bg: "#0b0e13", panel: "#171b22", raise: "#222833", line: "#262c36", fg: "#d4d9e1", muted: "#959dab", hi: "#f6f8fb" }, acc: "fixed", fixed: "#9db4ff", glow: false },
+};
+const KEYS = ["A", "B", "C", "D"];
+// Terminal context of the decided ring (fixed axes, family diagonals). Parents have a second ring.
+const RING = [
+  { l: "NEXT WAIT", p: 1 }, { l: "MERGE", p: 1 }, { l: "SPLIT", p: 1 }, { l: "ZOOM" },
+  { l: "PALETTE", p: 1 }, { l: "RENAME" }, { l: "NEW TERM", p: 1 }, { l: "FIND" },
+];
+const S = { look: "A", pal: "spectrum", glow: 1, accMode: "pal", pie: null, hover: null, seen: new Set(), palTried: new Set(["spectrum"]), step: 0, stepDone: [], pieOpenedInStep: false };
+
+// ---------- colour maths for the readout ----------
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+const lum = (h) => { const [r, g, b] = rgb(h).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const cr = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const fmt = (n) => n.toFixed(1) + ":1";
+
+function accentFor(k) {
+  const L = LOOKS[k];
+  if (L.acc === "pal" && S.accMode === "pal") return PAL[S.pal].a;
+  return L.fixed;
+}
+function apply() {
+  const L = LOOKS[S.look], sh = $("shell"), t = L.t;
+  sh.className = "shell lk-" + S.look.toLowerCase();
+  const v = { "--bg": t.bg, "--panel": t.panel, "--raise": t.raise, "--line": t.line, "--sfg": t.fg, "--smuted": t.muted, "--shi": t.hi,
+    "--acc": accentFor(S.look), "--acc2": L.acc === "pal" && S.accMode === "pal" ? PAL[S.pal].b : "#ffffff", "--g": L.glow ? S.glow : 0 };
+  for (const [k, x] of Object.entries(v)) sh.style.setProperty(k, x);
+  // Spectrum: each module icon takes its own hue in the looks that follow the palette
+  const spec = PAL[S.pal].spec && L.acc === "pal" && S.accMode === "pal";
+  sh.querySelectorAll(".ib[data-h]").forEach((b) => b.style.setProperty("--mh", spec ? `hsl(${+b.dataset.h * 45 + 170} 100% 62%)` : ""));
+  $("lk-" + S.look).checked = true;
+  $("swLabel").textContent = `${S.look} (${L.name})`;
+  S.seen.add(S.look);
+  document.querySelectorAll("#lookSeg label").forEach((lb) => lb.classList.toggle("seen", S.seen.has(lb.htmlFor.slice(3))));
+  document.querySelectorAll("#tbl [data-k]").forEach((th) => th.classList.toggle("cur", th.dataset.k === S.look));
+  const col = KEYS.indexOf(S.look) + 2;
+  document.querySelectorAll("#tbl tbody tr").forEach((tr) => tr.querySelectorAll("td").forEach((td, i) => td.classList.toggle("cur", i + 1 === col)));
+  const glowing = L.glow && S.glow ? (S.look === "B" ? "5 parts" : "every edge") : "none";
+  $("readout").innerHTML = `<span>Look <b>${S.look} · ${L.name}</b></span><span>Accent <b>${accentFor(S.look)}</b></span>` +
+    `<span>Pie palette <b>${PAL[S.pal].name}</b></span><span>Glow outside the pie <b>${glowing}</b></span>` +
+    `<span>Body text on panel <b>${fmt(cr(t.fg, t.panel))}</b></span><span>Muted text on panel <b>${fmt(cr(t.muted, t.panel))}</b></span>` +
+    `<span>Pie <b>${S.pie ? "open" : "closed"}</b></span>`;
+  if (S.pie) drawPie();
+  out();
+}
+for (const k of KEYS) { const t = LOOKS[k].t; $("cr-" + k).textContent = fmt(cr(t.fg, t.panel)); $("cm-" + k).textContent = fmt(cr(t.muted, t.panel)); }
+
+// ---------- pie ----------
+const P = (r, deg) => { const a = ((deg - 90) * Math.PI) / 180; return [r * Math.cos(a), r * Math.sin(a)]; };
+const f = (n) => Math.round(n * 10) / 10;
+const pt = (r, d) => P(r, d).map(f).join(" ");
+const arc = (r0, r1, a0, a1) => `M${pt(r1, a0)}A${r1} ${r1} 0 0 1 ${pt(r1, a1)}L${pt(r0, a1)}A${r0} ${r0} 0 0 0 ${pt(r0, a0)}Z`;
+function wc(i) { const p = PAL[S.pal]; return p.spec ? `hsl(${i * 45 + 170} 100% 62%)` : p.a; }
+function drawPie() {
+  const p = PAL[S.pal], box = S.pie.el;
+  box.style.setProperty("--pa", p.a); box.style.setProperty("--pb", p.b);
+  let s = `<svg viewBox="-150 -150 300 300" aria-hidden="true"><circle r="130" fill="none" stroke="${p.a}" stroke-width=".6" stroke-dasharray="2 8" opacity=".7"/>`;
+  RING.forEach((it, i) => {
+    const a = i * 45, on = S.hover === i ? " on" : "";
+    s += `<path class="w${on}" data-i="${i}" style="--wc:${wc(i)}" d="${arc(38, 112, a - 21, a + 21)}"/>`;
+    if (it.p) s += `<path class="tabarc" style="--wc:${wc(i)}" d="M${pt(118, a - 12)}A118 118 0 0 1 ${pt(118, a + 12)}"/>`;
+    const [x, y] = P(76, a);
+    s += `<text x="${f(x)}" y="${f(y)}" class="${on.trim()}" style="--wc:${wc(i)}">${it.l}</text>`;
+  });
+  const h = S.hover;
+  s += `<circle class="hub" r="32"/><text y="-5" class="big">${h == null ? "QUAY" : RING[h].l}</text><text y="10" class="sm">${h == null ? "STROKE OR CLICK" : (RING[h].p ? "PUSH OUT · 2ND RING" : "RELEASE")}</text></svg>`;
+  box.innerHTML = s;
+}
+function openPie(x, y) {
+  closePie(true);
+  const sh = $("shell"), el = document.createElement("div");
+  el.className = "pie"; el.style.left = x + "px"; el.style.top = y + "px";
+  sh.appendChild(el); S.pie = { el }; S.hover = null; drawPie();
+  el.addEventListener("pointermove", (e) => { const w = e.target.closest(".w"); const h = w ? +w.dataset.i : null; if (h !== S.hover) { S.hover = h; drawPie(); } });
+  el.addEventListener("click", (e) => { e.stopPropagation(); const w = e.target.closest(".w"); if (w) { $("wToast").textContent = `${RING[+w.dataset.i].l.toLowerCase()} chosen (prototype: no effect)`; } closePie(); });
+  S.pieOpenedInStep = true;
+  stepEvent("pieOpen");
+  apply();
+}
+function closePie(silent) {
+  if (!S.pie) return;
+  S.pie.el.remove(); S.pie = null; S.hover = null;
+  if (!silent) { stepEvent("pieClose"); apply(); }
+}
+function openAtPane() { const sh = $("shell").getBoundingClientRect(), r = $("out1").getBoundingClientRect(); openPie(r.left - sh.left + r.width / 2, r.top - sh.top + r.height / 2); }
+$("out1").addEventListener("contextmenu", (e) => { e.preventDefault(); const sh = $("shell").getBoundingClientRect(); openPie(e.clientX - sh.left, e.clientY - sh.top); });
+$("pane1").addEventListener("keydown", (e) => { if (e.key === "Enter" || (e.shiftKey && e.key === "F10")) { e.preventDefault(); openAtPane(); } });
+$("openPie").addEventListener("click", (e) => { e.stopPropagation(); openAtPane(); });
+document.addEventListener("click", (e) => { if (S.pie && !e.target.closest(".pie")) closePie(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.pie) closePie(); });
+
+// ---------- controls ----------
+const pals = $("palSeg");
+for (const [k, p] of Object.entries(PAL)) {
+  const sw = p.spec ? "linear-gradient(90deg,#7df9ff,#7dff9e,#f9ff7d,#ff7d9e,#c77dff)" : `linear-gradient(90deg,${p.a} 50%,${p.b} 50%)`;
+  pals.insertAdjacentHTML("beforeend", `<input type="radio" name="pal" id="pl-${k}" value="${k}"${k === S.pal ? " checked" : ""}><label for="pl-${k}"><i style="background:${sw}"></i>${p.name}</label>`);
+}
+pals.addEventListener("change", (e) => { S.pal = e.target.value; S.palTried.add(S.pal); apply(); if (S.pal !== "spectrum") stepEvent("pal"); });
+$("glowSeg").addEventListener("change", (e) => { S.glow = +e.target.value; apply(); });
+$("lookSeg").addEventListener("change", (e) => { S.look = e.target.value; apply(); });
+$("accSeg").addEventListener("change", (e) => { S.accMode = e.target.value; apply(); });
+$("pickSeg").addEventListener("change", (e) => { S.look = e.target.value; apply(); });
+$("note").addEventListener("input", out);
+const cycle = (d) => { S.look = KEYS[(KEYS.indexOf(S.look) + d + 4) % 4]; apply(); };
+$("swPrev").addEventListener("click", () => cycle(-1));
+$("swNext").addEventListener("click", () => cycle(1));
+document.addEventListener("keydown", (e) => {
+  const t = e.target; if (t.closest && t.closest("input, textarea, [contenteditable]")) return;
+  if (e.key === "ArrowLeft") cycle(-1); else if (e.key === "ArrowRight") cycle(1);
+});
+
+function out() {
+  const pk = document.querySelector('input[name="pick"]:checked');
+  const k = pk ? pk.value : null, L = k ? LOOKS[k] : null;
+  const acc = !L ? "—" : L.acc === "pal" ? (S.accMode === "pal" ? "follows the pie palette" : "fixed blue, pie keeps its own") : "fixed (" + L.fixed + ")";
+  const glow = !L ? "—" : L.glow ? ["Off", "Soft", "Full"][S.glow] : "none outside the pie";
+  $("outText").value = [
+    "Map ticket 625, shell look beyond the pie menu",
+    "Pick: " + (k ? `${k} · ${L.name}` : "(none picked yet)"),
+    "Accent: " + acc,
+    "Glow: " + glow,
+    "Looks seen: " + KEYS.filter((x) => S.seen.has(x)).join(", "),
+    "Palettes tried: " + [...S.palTried].map((x) => PAL[x].name).join(", "),
+    "Note: " + ($("note").value.trim() || "none"),
+  ].join("\n");
+}
+$("copyBtn").addEventListener("click", () => {
+  out();
+  const txt = $("outText").value;
+  const done = () => { $("copyToast").textContent = "Copied. Paste it back to Claude."; stepEvent("copy"); };
+  const fallback = () => { $("outText").select(); $("copyToast").textContent = "Copy is blocked here. The text is selected; press Ctrl+C."; stepEvent("copy"); };
+  try { navigator.clipboard.writeText(txt).then(done, fallback); } catch (err) { fallback(); }
+});
+
+// ---------- walkthrough ----------
+const pieStep = (k, what) => ({ look: k, title: `Look ${k}: ${LOOKS[k].name}`, body: `${what} Right-click the left terminal to open the pie over it (or press the button above the window). Then click anywhere or press Esc to close it.`, target: () => $("pane1"), hint: "Right-click here", on: "pieClose" });
+const STEPS = [
+  pieStep("A", "This is Quay today. The pie is the only neon on screen."),
+  pieStep("B", "Same surfaces as today. The open module, the selected terminal, the status dots, the active tab and the ready card now glow in the pie's colours."),
+  pieStep("C", "The pie's world everywhere: see-through panels, neon edges, uppercase HUD labels."),
+  pieStep("D", "A new calm style: rounded islands with gaps and no hairlines. The pie stays neon and stands apart."),
+  { look: "B", title: "Try another pie palette", body: "Pick any palette other than Spectrum. B and C take the palette's colours; A and D keep their own. Switch looks with the bar at the bottom if you want to compare.", target: () => document.querySelector('label[for="pl-tron"]'), on: "pal" },
+  { look: null, title: "Pick a look and copy your answer", body: "Choose a look in the form, set the accent if you picked B or C, add a note if you want to steal a part from another look, then press Copy my answer.", target: () => $("form"), on: "copy" },
+];
+function renderStep() {
+  document.querySelectorAll(".guide").forEach((x) => x.classList.remove("guide"));
+  const st = STEPS[S.step];
+  $("wStep").textContent = st ? `Step ${S.step + 1} of ${STEPS.length}` : "Done";
+  $("wDots").innerHTML = STEPS.map((_, i) => `<i class="${S.stepDone[i] ? "ok" : i === S.step ? "on" : ""}"></i>`).join("");
+  const hint = $("hint");
+  if (!st) { $("wTitle").textContent = "All done. Paste your answer back to Claude."; $("wBody").textContent = "You can keep flipping looks; press Copy again if you change your pick."; hint.hidden = true; return; }
+  $("wTitle").textContent = st.title; $("wBody").textContent = st.body;
+  if (st.look) { S.look = st.look; apply(); }
+  const tg = st.target(); if (tg) tg.classList.add("guide");
+  if (st.hint && !S.pie) {
+    const sh = $("shell").getBoundingClientRect(), r = $("out1").getBoundingClientRect();
+    hint.hidden = false; hint.textContent = st.hint; hint.style.left = (r.left - sh.left + r.width / 2) + "px"; hint.style.top = (r.top - sh.top + r.height * 0.72) + "px";
+  } else if (st.hint && S.pie) { hint.hidden = false; hint.textContent = "Now click anywhere or press Esc to close the pie"; }
+  else hint.hidden = true;
+}
+function stepEvent(ev) {
+  const st = STEPS[S.step]; if (!st) return;
+  if (ev === "pieOpen" && st.on === "pieClose") { renderStep(); return; }
+  if (ev === st.on && (st.on !== "pieClose" || S.pieOpenedInStep)) {
+    S.stepDone[S.step] = true; S.step++; S.pieOpenedInStep = false;
+    $("wToast").textContent = "Done. Next step.";
+    renderStep();
+  }
+}
+$("wBack").addEventListener("click", () => { if (S.step > 0) { S.step--; S.pieOpenedInStep = false; closePie(true); renderStep(); apply(); } });
+$("wSkip").addEventListener("click", () => { if (S.step < STEPS.length) { S.step++; S.pieOpenedInStep = false; closePie(true); renderStep(); apply(); } });
+
+apply();
+renderStep();
+</script>

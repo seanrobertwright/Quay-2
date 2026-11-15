@@ -59,3 +59,14 @@ with example data; nothing is wired to Quay.
   in place on the pie and companion, with a guided five-step job, a click
   counter, and a table of where each one lives. Chosen: A, a Quay group
   in the Project panel.
+- `quay-shell-look.html`: four looks for the rest of the shell beside the
+  neon pie menu (today's look, neon accents on live state only, a full
+  wireframe, and islands, a new calm style), with the pie opening over the
+  terminal in each, a pie palette and glow switch, live contrast readouts,
+  a part-by-part table, and a guided six-step walkthrough. Chosen: B, neon
+  accents, following the pie palette, with soft glow.
+- `quay-ticket-pipeline.html`: four answers to whether the Projects module
+  shows each ticket's way from ticket to terminal to pull request to merged
+  (no pipeline, a lane on each terminal row, a strip over the stage, and a
+  board stage tab), with a guided four-step job, a click counter, and a
+  table of what each one shows and where.

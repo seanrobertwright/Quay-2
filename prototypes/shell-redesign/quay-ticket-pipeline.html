@@ -1,0 +1,706 @@
+<title>Quay Ticket Pipeline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a guided walkthrough card, then one live Quay window (module bar, panel, stage, companion)
+   with four ways to show tickets moving through the loop (none, a lane on each terminal row, a strip
+   over the stage, a board tab), a live click and travel counter for one four-step job, a "what each
+   one shows" table, and a decision form with one Copy button.
+   Single dark look, Quay's palette, with the approved neon accents on live state only. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --go: #238636; --go-line: #2ea043; --sel: #132339; --guide: #f0b72f;
+  --neon: #39d0ff;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--q-panel); display: flex; flex-direction: column; gap: 1px; flex: 1 1 230px; min-width: 0; position: relative; }
+.seg label b { color: var(--hi); font: 600 14px var(--display); }
+.seg label small { color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--blue); background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.rec-mark { font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+.seg label.seen b::after { content: " ✓"; color: var(--green); font-size: 12px; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+
+/* walkthrough */
+.walk { border: 1px solid rgba(240,183,47,.55); background: linear-gradient(180deg, rgba(240,183,47,.08), rgba(240,183,47,.02)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.walk .wtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.walk .wstep { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.walk h2 { margin: 0; font-size: 19px; }
+.walk .wprog { font: 12px var(--mono); color: var(--hi); margin-left: auto; }
+.walk .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdots { display: flex; gap: 6px; }
+.wdots i { width: 22px; height: 4px; border-radius: 2px; background: var(--q-line); }
+.wdots i.on { background: var(--guide); } .wdots i.ok { background: var(--green); }
+.wnav { display: flex; gap: 8px; }
+
+/* job strip */
+.job { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.job ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.job li { border: 1px solid var(--q-line); border-radius: 14px; padding: 3px 10px 3px 8px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; background: var(--q-panel); font-size: 13px; }
+.job li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--q-line); box-sizing: border-box; }
+.job li.done { color: #e6edf3; border-color: rgba(63,185,80,.5); }
+.job li.done::before { background: var(--green); border-color: var(--green); }
+.job li.now { color: var(--hi); border-color: var(--guide); }
+.job .lead { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* mock window */
+.shell { position: relative; display: flex; width: 1200px; height: 640px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+.shell svg { width: 16px; height: 16px; flex: none; }
+.shell button { background: none; border: 0; padding: 0; text-align: left; color: inherit; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: stretch; }
+.ib { height: 44px; display: grid !important; place-items: center; position: relative; color: var(--muted) !important; }
+.ib svg { width: 20px; height: 20px; }
+.ib:hover { color: var(--hi) !important; background: var(--q-raise) !important; }
+.ib.on { color: #fff !important; box-shadow: inset 2px 0 0 var(--neon), inset 6px 0 10px -6px var(--neon); }
+.ib.on svg { filter: drop-shadow(0 0 3px rgba(57,208,255,.55)); }
+.tdots { display: flex; flex-direction: column; padding: 2px 0 6px; border-bottom: 1px solid var(--q-line); }
+.tdot { height: 24px; display: grid !important; place-items: center; position: relative; }
+.tdot:hover { background: var(--q-raise) !important; }
+.tdot.sel::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; background: var(--hi); box-shadow: 0 0 6px var(--neon); }
+.td { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.td.w { background: var(--green); box-shadow: 0 0 6px rgba(63,185,80,.7); } .td.a { background: var(--amber); box-shadow: 0 0 0 3px rgba(210,153,34,.25); } .td.i { border: 2px solid var(--muted); width: 6px; height: 6px; }
+.td.x { border-radius: 2px; background: var(--red); }
+.badge { position: absolute; top: 5px; right: 5px; min-width: 14px; height: 14px; border-radius: 7px; font: 600 9px/14px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.badge.blue { background: var(--blue); }
+.grow { flex: 1; }
+.spend { font: 10px var(--mono); color: var(--muted); text-align: center; padding: 6px 0; }
+
+.panel { flex: none; border-right: 1px solid var(--q-line); background: var(--q-panel); display: flex; flex-direction: column; min-height: 0; }
+.phead { padding: 9px 12px 7px; font: 600 13px var(--display); color: var(--hi); display: flex; align-items: center; gap: 8px; }
+.phead small { font: 10px var(--mono); color: var(--muted); margin-left: auto; }
+.pscroll { flex: 1; overflow: auto; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.sh { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 4px 3px; display: flex; gap: 6px; align-items: center; }
+.sh .n { color: var(--hi); }
+.sh .cap { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.proj { display: flex; gap: 6px; align-items: center; padding: 6px 4px 2px; font: 600 12px var(--display); color: var(--hi); }
+.proj small { margin-left: auto; font: 10px var(--mono); color: var(--muted); }
+
+/* rows */
+.trow { width: 100%; display: flex !important; flex-direction: column; gap: 3px; padding: 6px 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; min-width: 0; box-sizing: border-box; cursor: pointer; }
+.trow:hover { border-color: #484f58 !important; }
+.trow.cur { border-color: var(--neon) !important; background: var(--sel) !important; box-shadow: 0 0 0 1px rgba(57,208,255,.25), 0 0 10px rgba(57,208,255,.18); }
+.trow .l1 { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.trow .l1 b { flex: 1; min-width: 0; color: #e6edf3; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow .l2 { display: flex; gap: 6px; align-items: center; font-size: 11px; min-width: 0; color: var(--muted); }
+.trow .l2 .stx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num { font: 10.5px var(--mono); color: var(--muted); flex: none; }
+.ago { font: 10px var(--mono); color: var(--muted); white-space: nowrap; }
+.chip { font: 600 9px var(--mono); letter-spacing: .04em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+.c-need { color: var(--amber); } .c-fail { color: var(--red); } .c-run { color: var(--blue); } .c-done { color: var(--green); } .c-off { color: var(--muted); } .c-mrg { color: var(--purple); }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.steps i { height: 4px; border-radius: 2px; background: var(--q-line); }
+.steps i.ok { background: var(--green); } .steps i.run { background: var(--blue); box-shadow: 0 0 5px rgba(88,166,255,.6); }
+.steps i.hold { background: var(--amber); box-shadow: 0 0 5px rgba(210,153,34,.6); } .steps i.fail { background: var(--red); } .steps i.mrg { background: var(--purple); }
+.steplab { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; font: 8.5px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.btn { border: 1px solid var(--q-line) !important; background: var(--q-raise) !important; border-radius: 6px; padding: 4px 10px !important; font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+.btn.go { background: var(--go) !important; border-color: var(--go-line) !important; color: #fff !important; }
+.btn.mg { background: #8957e5 !important; border-color: #a371f7 !important; color: #fff !important; }
+.btn.sm { padding: 2px 8px !important; font-size: 11px; }
+.link { color: var(--blue) !important; font-size: 11.5px; padding: 4px 6px !important; }
+.m { color: var(--muted); }
+.empty { color: var(--muted); padding: 6px 8px; font-size: 11.5px; }
+.launch { width: 100%; display: flex !important; gap: 10px; align-items: center; padding: 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; box-sizing: border-box; }
+.launch:hover { border-color: #484f58 !important; }
+.ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ttl b { color: #e6edf3; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ttl small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.stabs { height: 34px; flex: none; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--q-panel); overflow: hidden; }
+.stab { padding: 5px 10px !important; border-radius: 6px; color: var(--muted) !important; font: 11.5px var(--mono); display: inline-flex !important; gap: 6px; align-items: center; white-space: nowrap; }
+.stab[aria-selected=true] { background: var(--q-raise) !important; color: #fff !important; box-shadow: inset 0 -2px 0 var(--neon); }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; color: #8b949e; }
+.out b { color: #e6edf3; font-weight: 500; } .out .g { color: var(--green); } .out .y { color: var(--amber); } .out .p { color: var(--purple); } .out .bl { color: var(--blue); }
+
+/* C: strip over the stage */
+.strip { flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 6px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); height: 86px; box-sizing: border-box; }
+.scol { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow: hidden; }
+.scol h5 { margin: 0; font: 600 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 4px; }
+.scol h5 .n { color: var(--hi); }
+.scard { display: flex !important; gap: 5px; align-items: center; border: 1px solid var(--q-line) !important; border-radius: 5px; padding: 2px 5px !important; background: var(--q-bg) !important; min-width: 0; font-size: 11px; }
+.scard b { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #e6edf3; font-weight: 500; }
+.scard.cur { border-color: var(--neon) !important; box-shadow: 0 0 8px rgba(57,208,255,.2); }
+.scard .go-mini { font: 600 9px var(--mono); background: var(--go); color: #fff; border-radius: 3px; padding: 0 4px; }
+
+/* D: board tab */
+.board { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 10px; overflow: auto; min-height: 0; }
+.bcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 8px; padding: 8px; }
+.bcol h5 { margin: 0; font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 6px; }
+.bcol h5 .n { color: var(--hi); }
+
+.comp { width: 330px; flex: none; border-left: 1px solid var(--q-line); display: flex; flex-direction: column; min-height: 0; }
+.chead { display: flex; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); align-items: center; font-size: 11px; color: var(--muted); }
+.chead b { color: var(--hi); }
+.cscroll { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.ghh { display: flex; flex-direction: column; gap: 4px; }
+.ghh h3 { margin: 0; font: 600 14px var(--display); color: var(--hi); }
+.ghh h3 span { color: var(--muted); font-weight: 400; }
+.pill { font: 600 10.5px var(--body); border-radius: 12px; padding: 1px 8px; color: #fff; display: inline-block; }
+.pill.open { background: var(--go); } .pill.mrg { background: #8957e5; } .pill.done { background: #8957e5; }
+.card { border: 1px solid var(--q-line); border-radius: 8px; padding: 10px; background: var(--q-panel); display: flex; flex-direction: column; gap: 8px; }
+.card.ready { border-color: rgba(63,185,80,.7); box-shadow: 0 0 10px rgba(63,185,80,.15); }
+.card.block { border-color: rgba(210,153,34,.7); }
+.card h4 { margin: 0; font: 600 13px var(--display); color: var(--hi); }
+.cells { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cell { border: 1px solid var(--q-line); border-radius: 6px; padding: 5px 7px; font-size: 11px; }
+.cell b { display: block; color: var(--hi); font-size: 12.5px; }
+.desc { font-size: 11.5px; color: var(--muted); }
+
+/* the guide */
+.guide { outline: 2px solid var(--guide) !important; outline-offset: 2px; animation: pulse 1.1s ease-in-out infinite; position: relative; z-index: 1; }
+@keyframes pulse { 50% { outline-color: rgba(240,183,47,.25); } }
+@media (prefers-reduced-motion: reduce) { .guide { animation: none; } }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; min-height: 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+.recbox { border: 1px solid rgba(240,183,47,.45); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.recbox h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.recbox ul { margin: 0; padding-left: 18px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); vertical-align: top; }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: var(--hi); white-space: nowrap; }
+th.cur, td.cur { background: var(--sel); }
+tr.cur td { background: var(--sel); }
+.where { font: 600 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.w-panel { background: rgba(88,166,255,.15); color: var(--blue); } .w-comp { background: rgba(163,113,247,.15); color: var(--purple); }
+.w-tab { background: rgba(63,185,80,.15); color: var(--green); } .w-strip { background: rgba(57,208,255,.12); color: var(--neon); } .w-none { background: var(--q-raise); color: var(--muted); }
+
+/* decision form */
+form.ask { display: flex; flex-direction: column; gap: 18px; border: 1px solid var(--q-line); border-radius: 10px; padding: 16px; background: var(--q-panel); }
+form.ask.lit { border-color: var(--guide); }
+.q { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.q legend { color: var(--hi); font-weight: 600; padding: 0; margin-bottom: 4px; }
+.q legend small { color: var(--muted); font-weight: 400; display: block; }
+.opt { display: flex; gap: 8px; align-items: flex-start; }
+.opt input { margin-top: 4px; accent-color: var(--blue); }
+.opt em { font-style: normal; font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+form.ask textarea { background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 7px 9px; min-height: 60px; color: var(--hi); }
+.copyrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.copybtn { background: var(--go); border: 1px solid var(--go-line); color: #fff; font-weight: 600; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+pre.answer { margin: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 10px 12px; font: 12px/1.6 var(--mono); white-space: pre-wrap; color: var(--fg); max-height: 260px; overflow: auto; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15V9a3 3 0 0 0-3-3h-3"/></symbol>
+  <symbol id="i-issue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click everything</div>
+    <h1>Quay Ticket Pipeline</h1>
+    <p class="lede">The window concepts sketched a lane that follows each ticket from ticket to terminal to pull request to merged. Should the Projects module show that, and if so where and what can you do from it? Here are four answers, from "no, the companion is enough" to a full board. The card below walks you through it.</p>
+  </header>
+
+  <section class="walk" id="walk" aria-live="polite"></section>
+
+  <fieldset class="seg" id="seg">
+    <legend>Pipeline</legend>
+    <input type="radio" name="v" id="v-A" value="A"><label for="v-A"><b>A · No pipeline</b><small>Projects lists terminals only; tickets live in Source control and the companion</small></label>
+    <input type="radio" name="v" id="v-B" value="B" checked><label for="v-B"><b>B · Lane on each terminal row<span class="rec-mark">Recommended</span></b><small>Each terminal row carries its ticket and a four-step lane; ready and blocked tickets listed under the terminals</small></label>
+    <input type="radio" name="v" id="v-C" value="C"><label for="v-C"><b>C · Strip over the stage</b><small>Five stage columns across the top of the stage, always on; costs about 86 px of terminal</small></label>
+    <input type="radio" name="v" id="v-D" value="D"><label for="v-D"><b>D · Ticket board tab</b><small>A launcher in Projects opens a full-width board as a stage tab</small></label>
+  </fieldset>
+
+  <div class="job" aria-live="polite">
+    <span class="lead">The job</span>
+    <ol id="job"></ol>
+    <button class="ghost" id="reset" type="button">Reset run</button>
+  </div>
+
+  <div class="scroll"><div class="shell" id="shell"></div></div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>What each one shows and where</h2>
+  <p class="lede">The column for the pipeline you are looking at is highlighted.</p>
+  <div class="scroll"><table id="where"></table></div>
+
+  <h2>Your runs of the job</h2>
+  <p class="lede">Counted live in the mock: every press inside the window is a click, and pointer travel is the straight-line distance between presses. The table keeps your best run per pipeline and resets when the page reloads. Switching pipeline starts a fresh run.</p>
+  <div class="scroll"><table id="bench"></table></div>
+
+  <h2>My recommendation</h2>
+  <div class="recbox">
+    <h3>B · Lane on each terminal row</h3>
+    <ul>
+      <li>Yes, the Projects module gets the pipeline, but not as a new place. A ticket that is being worked has a terminal, and the Projects panel already lists terminals. So each terminal row grows a second line: its ticket (from the ticket and pull request slots you approved) and a four-step lane, Ticket · Terminal · Pull request · Merged, coloured by state.</li>
+      <li>Tickets with no terminal yet sit under the terminals in two short lists: <b>Ready to start</b>, each row with an Implement button, and <b>Blocked</b>, each naming its blocker. Each list shows three, then a "+N more" link into Source control.</li>
+      <li>A merged ticket's terminal keeps showing Merged until a new signal arrives (the rule you approved), so the lane ends in place. Tickets merged today with no terminal show in a folded <b>Merged today</b> count.</li>
+      <li>From a lane you can: pick the terminal (the companion follows), Implement a ready ticket, and open a ticket without a terminal in the companion. Merge, comment and close stay in the companion, where the readiness card is.</li>
+      <li>Nothing covers the terminal, plain shells keep their one-line row, and the module bar and its status dots do not move.</li>
+    </ul>
+    <p>The cost: terminal rows double in height, so about 12 fit in the panel instead of about 20, and the Projects panel scrolls sooner. In my own run of the job, following the outline, B and C took 5 clicks, A and D 7. C ties on clicks but takes 86 px off every terminal, all the time.</p>
+    <p>This is only my pick. Nothing is decided until you approve below.</p>
+  </div>
+
+  <h2>Your decision</h2>
+  <form class="ask" id="ask">
+    <fieldset class="q">
+      <legend>1. Which pipeline do you approve?</legend>
+      <label class="opt"><input type="radio" name="fav" value="A"> A · No pipeline</label>
+      <label class="opt"><input type="radio" name="fav" value="B"> <span>B · Lane on each terminal row<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="fav" value="C"> C · Strip over the stage</label>
+      <label class="opt"><input type="radio" name="fav" value="D"> D · Ticket board tab</label>
+      <label class="opt"><input type="radio" name="fav" value="none"> None of these; see my notes</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>2. What does a lane show?<small>Tick every part you want. My pick is ticked to start; untick what you do not want.</small></legend>
+      <label class="opt"><input type="checkbox" name="show" value="num" checked> Ticket number and title</label>
+      <label class="opt"><input type="checkbox" name="show" value="steps" checked> The four-step bar (Ticket · Terminal · Pull request · Merged)</label>
+      <label class="opt"><input type="checkbox" name="show" value="steplab"> Labels under the four steps</label>
+      <label class="opt"><input type="checkbox" name="show" value="state" checked> One line of state ("PR #574 · checks passing · ready to merge")</label>
+      <label class="opt"><input type="checkbox" name="show" value="chip" checked> A chip for what needs you (Waiting, Merge, Failing)</label>
+      <label class="opt"><input type="checkbox" name="show" value="blocker" checked> The blocker's number on a blocked ticket</label>
+      <label class="opt"><input type="checkbox" name="show" value="who"> Assignee avatar</label>
+      <label class="opt"><input type="checkbox" name="show" value="age"> Age (time in this step)</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>3. Which tickets without a terminal are listed?</legend>
+      <label class="opt"><input type="radio" name="scope" value="mine"> <span>Open and unblocked or blocked tickets assigned to me or unassigned, three per list, then +N into Source control<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="scope" value="map"> Only the open sub-issues of a parent I pin (a map or a spec)</label>
+      <label class="opt"><input type="radio" name="scope" value="none"> None; only tickets that already have a terminal or a pull request</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>4. What can you do from a lane, besides picking it?<small>Tick every action you want on the lane itself.</small></legend>
+      <label class="opt"><input type="checkbox" name="do" value="impl" checked> Implement a ready ticket (same split button as the issue view: Implement, Triage, New worktree)</label>
+      <label class="opt"><input type="checkbox" name="do" value="merge"> Merge a ready pull request straight from the lane (with the 5 s undo)</label>
+      <label class="opt"><input type="checkbox" name="do" value="blocker"> Jump to the blocker</label>
+      <label class="opt"><input type="checkbox" name="do" value="close"> Close a ticket</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>5. Anything else? (optional)</legend>
+      <textarea id="notes" aria-label="Your notes"></textarea>
+    </fieldset>
+    <div class="copyrow">
+      <button class="copybtn" type="submit" id="copy">Copy my answers</button>
+      <span class="toast" id="copied" aria-live="polite"></span>
+    </div>
+    <pre class="answer" id="answer" tabindex="0" aria-label="Your answers as text"></pre>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const NAMES = { A: "A · No pipeline", B: "B · Lane on each terminal row", C: "C · Strip over the stage", D: "D · Ticket board tab" };
+const PANEL_W = { A: 250, B: 290, C: 250, D: 250 };
+
+/* ---------- example data ---------- */
+const TERMS0 = {
+  p1: { name: "claude · ticket-571", dot: "i", status: "idle", ticket: 571,
+    out: `<b>●</b> Opened pull request <span class="bl">#574</span> Run canvas: node phases for a graph run\n  Closes #571 · 6 files · 3 commits\n\n<b>●</b> Checks are green. Ready for you to review and merge.\n\n<span class="g">&gt;</span> ` },
+  p3: { name: "claude · ticket-588", dot: "a", status: "waiting on you", ticket: 588,
+    out: `<b>●</b> Import host template: the catalog transition is written.\n\n<span class="y">?</span> The template list has 14 entries and two share a name.\n  Keep both and suffix the second, or ask on import?\n\n  <b>1.</b> Suffix the second\n  <b>2.</b> Ask on import\n\n<span class="y">Waiting for your answer</span>` },
+  p4: { name: "archon · fix-issue-590", dot: "w", status: "working", ticket: 590,
+    out: `<span class="p">archon</span> fix-issue-590 · node <b>code</b>\n  edited src-tauri/src/updater/retry.rs\n  edited src-tauri/src/updater/mod.rs\n  running cargo test updater ...` },
+  p6: { name: "pwsh · Quay2", dot: "i", status: "idle", ticket: null,
+    out: `PS E:\\Projects\\Quay2&gt; git log --oneline -1\nfeb8bc6e Run canvas: node phases for a graph run (#574)\nPS E:\\Projects\\Quay2&gt; ` },
+};
+const TICKETS0 = {
+  571: { title: "Run canvas: node phases", stage: "review", pr: 574, checks: "passing", term: "p1" },
+  588: { title: "Import host template", stage: "work", need: true, term: "p3" },
+  590: { title: "Updater: retry on 503", stage: "work", term: "p4" },
+  592: { title: "Crash log: module base line", stage: "ready" },
+  595: { title: "Glossary: module bar terms", stage: "ready" },
+  596: { title: "Pie palette preview swatch", stage: "ready" },
+  593: { title: "Crash log viewer", stage: "blocked", blocker: 592 },
+  585: { title: "Host list import button", stage: "merged", pr: 567, ago: "2h" },
+};
+const fresh = () => ({ mod: "projects", sel: "p3", stage: "term", board: false, comp: null,
+  terms: JSON.parse(JSON.stringify(TERMS0)), tk: JSON.parse(JSON.stringify(TICKETS0)), undo: false, toast: "" });
+let v = "B";
+let st = fresh();
+let J;
+const resetJob = () => { J = { impl: false, merged: false, seen593: false, clicks: 0, travel: 0, last: null, finished: false }; };
+resetJob();
+const bench = {};
+const W = { step: 0, seen: new Set(["B"]) };
+const T = (n) => st.tk[n];
+
+const JOB = [
+  { label: "Start Implement on ticket #592, which is ready", done: () => J.impl, keys: ["impl-592", "comp-implement", "tk-592", "issue-592", "board-open", "mod-source"] },
+  { label: "Merge #571's pull request, whose checks passed", done: () => J.merged, keys: ["comp-merge", "tk-571", "term-p1", "board-open"] },
+  { label: "See what blocks ticket #593", done: () => J.seen593, keys: ["tk-593", "issue-593", "board-open", "mod-source"] },
+  { label: "End on #588's terminal, which waits on you", done: () => st.sel === "p3" && st.stage === "term", keys: ["tk-588", "stage-term", "term-p3"] },
+];
+const jobStep = () => JOB.findIndex((j) => !j.done());
+
+/* the companion follows the selected terminal unless something was opened in it */
+function compTarget() {
+  if (st.comp) return st.comp;
+  const t = st.terms[st.sel];
+  if (!t.ticket) return { kind: "repo" };
+  const tk = T(t.ticket);
+  return { kind: tk.pr ? "pr" : "issue", n: t.ticket };
+}
+function markSeen() { const c = compTarget(); if (c.kind === "issue" && c.n === 593) J.seen593 = true; }
+
+/* ---------- actions ---------- */
+function pickTicket(n) {
+  const tk = T(n);
+  if (tk.term) { st.sel = tk.term; st.comp = null; if (v !== "D") st.stage = "term"; }
+  else st.comp = { kind: "issue", n };
+}
+function implement(n) {
+  const tk = T(n);
+  const id = "p" + n;
+  st.terms[id] = { name: `claude · ticket-${n}`, dot: "w", status: "working", ticket: n,
+    out: `<b>●</b> Implementing #${n} ${esc(tk.title)}\n  git worktree add .wt/ticket-${n} -b ticket-${n}\n  reading the ticket and its parent ...` };
+  Object.assign(tk, { stage: "work", term: id });
+  st.sel = id; st.comp = null; if (v !== "D") st.stage = "term";
+  if (n === 592) { J.impl = true; const b = T(593); b.blockerNote = "blocker in progress"; }
+  st.toast = `Started claude · ticket-${n} in a new worktree.`;
+}
+function merge(n) {
+  const tk = T(n);
+  Object.assign(tk, { stage: "merged", ago: "now" });
+  const t = st.terms[tk.term]; if (t) { t.dot = "i"; t.status = "idle · merged"; }
+  st.undo = true; J.merged = n === 571 || J.merged;
+  st.toast = "Squash-merged #574 into master. Undo for 5 s.";
+}
+function act(a, arg) {
+  st.toast = "";
+  switch (a) {
+    case "mod": st.mod = st.mod === arg ? null : arg; break;
+    case "sel": st.sel = arg; st.comp = null; st.stage = "term"; break;
+    case "stage": st.stage = arg; break;
+    case "tk": pickTicket(Number(arg)); break;
+    case "issue": st.comp = { kind: "issue", n: Number(arg) }; break;
+    case "pr": st.comp = { kind: "pr", n: Number(arg) }; break;
+    case "impl": implement(Number(arg)); break;
+    case "merge": merge(Number(arg)); break;
+    case "blocker": st.comp = { kind: "issue", n: Number(arg) }; break;
+    case "board": st.board = true; st.stage = "board"; break;
+    case "noop": st.toast = "Stand-in only."; break;
+  }
+  markSeen();
+  if (!J.finished && jobStep() === -1) {
+    J.finished = true;
+    const b = bench[v];
+    const run = { clicks: J.clicks, travel: Math.round(J.travel) };
+    bench[v] = !b || run.clicks < b.clicks || (run.clicks === b.clicks && run.travel < b.travel) ? { ...run, runs: (b ? b.runs : 0) + 1 } : { ...b, runs: b.runs + 1 };
+  }
+}
+
+/* ---------- lane pieces ---------- */
+const g = (key, on = true) => (on ? ` data-guide="${key}"` : "");
+function lane(n) {
+  const tk = T(n), t = tk.term ? st.terms[tk.term] : null;
+  const s0 = tk.stage === "blocked" ? "hold" : "ok";
+  const s1 = !t ? "" : tk.stage === "merged" || tk.stage === "review" ? "ok" : tk.need ? "hold" : "run";
+  const s2 = !tk.pr ? "" : tk.stage === "merged" ? "ok" : tk.checks === "failing" ? "fail" : "ok";
+  const s3 = tk.stage === "merged" ? "mrg" : "";
+  return [s0, s1, s2, s3];
+}
+const stepBar = (n, labels) => `<span class="steps" aria-hidden="true">${lane(n).map((s) => `<i class="${s}"></i>`).join("")}</span>${labels ? `<span class="steplab" aria-hidden="true"><span>Ticket</span><span>Term</span><span>PR</span><span>Merged</span></span>` : ""}`;
+function stateText(n) {
+  const tk = T(n);
+  if (tk.stage === "merged") return [`PR #${tk.pr} · merged ${tk.ago === "now" ? "just now" : tk.ago + " ago"}`, "c-mrg", "Merged"];
+  if (tk.stage === "review") return [`PR #${tk.pr} · checks ${tk.checks} · ready to merge`, "c-done", "Merge"];
+  if (tk.stage === "work") return tk.need ? ["Terminal waiting on you", "c-need", "Waiting"] : ["Terminal working · no pull request yet", "c-run", ""];
+  if (tk.stage === "blocked") return [`Blocked by #${tk.blocker}${tk.blockerNote ? " · " + tk.blockerNote : ""}`, "c-need", ""];
+  return ["Ready · no blockers", "c-off", ""];
+}
+const idsBy = (stage) => Object.keys(st.tk).map(Number).filter((n) => T(n).stage === stage && !T(n).term);
+
+/* B: terminal rows with a lane */
+function termRowB(id) {
+  const t = st.terms[id];
+  const cur = st.sel === id && st.stage === "term" && !st.comp;
+  if (!t.ticket) return `<button class="trow${cur ? " cur" : ""}" type="button" data-a="sel" data-arg="${id}"${g("term-" + id)} aria-label="${esc(t.name)}, ${t.status}"><span class="l1"><i class="td ${t.dot}"></i><b>${esc(t.name)}</b><span class="ago">${t.status}</span></span></button>`;
+  const n = t.ticket, tk = T(n), [txt, cls, chip] = stateText(n);
+  return `<button class="trow${cur ? " cur" : ""}" type="button" data-a="tk" data-arg="${n}"${g("tk-" + n, !(st.sel === id && st.stage === "term"))} aria-label="${esc(t.name)}, ticket ${n} ${esc(tk.title)}, ${txt}">
+    <span class="l1"><i class="td ${t.dot}"></i><b>${esc(tk.title)}</b><span class="num">#${n}</span>${chip ? `<span class="chip ${cls}">${chip}</span>` : ""}</span>
+    <span class="l2"><span class="stx ${cls}">${txt}</span><span class="ago">${esc(t.name.split(" · ")[0])}</span></span>
+    ${stepBar(n)}</button>`;
+}
+function ticketRowB(n) {
+  const tk = T(n), [txt, cls] = stateText(n);
+  const ready = tk.stage === "ready";
+  return `<div class="trow${st.comp && st.comp.n === n ? " cur" : ""}" role="button" tabindex="0" data-a="tk" data-arg="${n}"${g("tk-" + n)} aria-label="Ticket ${n} ${esc(tk.title)}, ${txt}">
+    <span class="l1"><span class="td" style="border:1.5px dashed var(--muted);width:7px;height:7px"></span><b>${esc(tk.title)}</b><span class="num">#${n}</span>${ready ? `<button class="btn go sm" type="button" data-a="impl" data-arg="${n}"${g("impl-" + n)}>Implement</button>` : ""}</span>
+    <span class="l2"><span class="stx ${cls}">${txt}</span></span></div>`;
+}
+function panelB() {
+  const terms = Object.keys(st.terms);
+  const ready = idsBy("ready"), blocked = idsBy("blocked"), merged = idsBy("merged");
+  return `<div class="phead">Projects<small>${terms.length} terminals</small></div><div class="pscroll">
+    <div class="proj">${ico("folder")}Quay-2<small>master</small></div>
+    ${terms.map(termRowB).join("")}
+    <div class="sh">Ready to start <span class="n">${ready.length}</span></div>${ready.slice(0, 3).map(ticketRowB).join("") || `<p class="empty">Nothing ready</p>`}
+    <div class="sh">Blocked <span class="n">${blocked.length}</span></div>${blocked.map(ticketRowB).join("")}
+    <div class="sh">Merged today <span class="n">${merged.length}</span><span class="cap"><button class="link" type="button" data-a="noop">Show</button></span></div>
+    <button class="link" type="button" data-a="noop">+6 more open tickets in Source control</button>
+    <div class="proj" style="margin-top:6px">${ico("folder")}core-values<small>no terminals</small></div></div>`;
+}
+
+/* A, C, D: today's terminal list */
+function termListPanel(extra) {
+  return `<div class="phead">Projects<small>${Object.keys(st.terms).length} terminals</small></div><div class="pscroll"><div class="proj">${ico("folder")}Quay-2<small>master</small></div>
+    ${Object.entries(st.terms).map(([k, t]) => `<button class="trow${st.sel === k && st.stage === "term" ? " cur" : ""}" type="button" data-a="sel" data-arg="${k}"${g("term-" + k, !(st.sel === k && st.stage === "term"))}><span class="l1"><i class="td ${t.dot}"></i><b>${esc(t.name)}</b><span class="ago">${t.status}</span></span></button>`).join("")}
+    ${extra || ""}<div class="proj" style="margin-top:6px">${ico("folder")}core-values<small>no terminals</small></div></div>`;
+}
+function sourcePanel() {
+  const open = Object.keys(st.tk).map(Number).filter((n) => T(n).stage !== "merged");
+  return `<div class="phead">Source control<small>Quay-2</small></div><div class="pscroll">
+    <div class="sh">Pull requests <span class="n">${T(571).stage === "merged" ? 1 : 2}</span></div>
+    ${T(571).stage !== "merged" ? `<button class="trow" type="button" data-a="pr" data-arg="571"${g("pr-574")}><span class="l1">${ico("pr")}<b>Run canvas: node phases</b><span class="num">#574</span></span><span class="l2 c-done">checks passing</span></button>` : ""}
+    <button class="trow" type="button" data-a="noop"><span class="l1">${ico("pr")}<b>Docs: tutorial shots</b><span class="num">#579</span></span><span class="l2">draft</span></button>
+    <div class="sh">Issues <span class="n">${open.length + 6}</span></div>
+    ${open.map((n) => `<button class="trow${st.comp && st.comp.n === n ? " cur" : ""}" type="button" data-a="issue" data-arg="${n}"${g("issue-" + n)}><span class="l1">${ico("issue")}<b>${esc(T(n).title)}</b><span class="num">#${n}</span></span></button>`).join("")}
+    <button class="link" type="button" data-a="noop">+6 more</button>
+    <div class="sh">Topos · Diffs · Pre-PR Audit</div><p class="empty">Stand-ins, folded.</p></div>`;
+}
+
+/* C: strip over the stage */
+const COLS = [["ready", "Ready"], ["blocked", "Blocked"], ["work", "Implementing"], ["review", "Review"], ["merged", "Merged today"]];
+function cardC(n, big) {
+  const tk = T(n), t = tk.term ? st.terms[tk.term] : null, [txt, cls, chip] = stateText(n);
+  const cur = (st.comp && st.comp.n === n) || (!st.comp && tk.term === st.sel && st.stage === "term");
+  if (big) return `<div class="trow${cur ? " cur" : ""}" role="button" tabindex="0" data-a="tk" data-arg="${n}"${g("tk-" + n, !(tk.term && tk.term === st.sel))}><span class="l1">${t ? `<i class="td ${t.dot}"></i>` : ""}<b>${esc(tk.title)}</b><span class="num">#${n}</span></span><span class="l2"><span class="stx ${cls}">${txt}</span></span>${stepBar(n)}${tk.stage === "ready" ? `<span class="l1"><button class="btn go sm" type="button" data-a="impl" data-arg="${n}"${g("impl-" + n)}>Implement</button></span>` : ""}</div>`;
+  return `<div class="scard${cur ? " cur" : ""}" role="button" tabindex="0" data-a="tk" data-arg="${n}"${g("tk-" + n, !(tk.term && tk.term === st.sel && st.stage === "term"))} title="${esc(tk.title)} · ${txt}">${t ? `<i class="td ${t.dot}"></i>` : ""}<span class="num">#${n}</span><b>${esc(tk.title)}</b>${tk.stage === "ready" ? `<button class="go-mini" type="button" data-a="impl" data-arg="${n}"${g("impl-" + n)} aria-label="Implement ${n}">▶</button>` : chip ? `<span class="chip ${cls}">${chip}</span>` : ""}</div>`;
+}
+const colIds = (stage) => Object.keys(st.tk).map(Number).filter((n) => T(n).stage === stage);
+const stripC = () => `<div class="strip" aria-label="Ticket pipeline">${COLS.map(([k, label]) => { const ids = colIds(k); return `<div class="scol"><h5>${label} <span class="n">${ids.length}</span></h5>${ids.slice(0, 3).map((n) => cardC(n)).join("")}</div>`; }).join("")}</div>`;
+const boardD = () => `<div class="board">${COLS.map(([k, label]) => { const ids = colIds(k); return `<div class="bcol"><h5>${label} <span class="n">${ids.length}</span></h5>${ids.map((n) => cardC(n, true)).join("") || `<p class="empty">None</p>`}</div>`; }).join("")}</div>`;
+
+/* ---------- stage and companion ---------- */
+function stageHtml() {
+  const t = st.terms[st.sel];
+  const tabs = [`<button class="stab" type="button" role="tab" aria-selected="${st.stage === "term"}" data-a="stage" data-arg="term"${g("stage-term", st.stage !== "term")}><i class="td ${t.dot}"></i>${esc(t.name)}</button>`];
+  if (st.board) tabs.push(`<button class="stab" type="button" role="tab" aria-selected="${st.stage === "board"}" data-a="stage" data-arg="board"${g("board-open", st.stage !== "board")}>${ico("board")}Tickets · Quay-2</button>`);
+  const body = st.stage === "board" ? boardD() : `<pre class="out">${t.out}</pre>`;
+  return `<section class="stage" aria-label="Stage"><div class="stabs" role="tablist" aria-label="Stage tabs">${tabs.join("")}</div>${v === "C" ? stripC() : ""}${body}</section>`;
+}
+function compHtml() {
+  const c = compTarget();
+  const followed = !st.comp;
+  let head = `<div class="chead">${followed ? `Following <b>${esc(st.terms[st.sel].name)}</b>` : `Opened from the ${v === "A" ? "Source control panel" : v === "D" ? "board" : "pipeline"}`}<span class="grow"></span>${followed ? "" : `<button class="link" type="button" data-a="sel" data-arg="${st.sel}">Back to terminal</button>`}</div>`;
+  let body;
+  if (c.kind === "repo") body = `<div class="ghh"><h3>Quay-2 <span>repository</span></h3></div><div class="cells"><div class="cell">Open pull requests<b>2</b></div><div class="cell">Open issues<b>12</b></div></div><p class="desc">A plain shell has no ticket. Link to... picks one.</p>`;
+  else if (c.kind === "pr") {
+    const tk = T(c.n), mg = tk.stage === "merged";
+    body = `<div class="ghh"><h3>${esc(tk.title)} <span>#${tk.pr}</span></h3><div><span class="pill ${mg ? "mrg" : "open"}">${mg ? "Merged" : "Open"}</span> <span class="m">ticket-${c.n} into master · Closes #${c.n}</span></div></div>
+      <div class="card ${mg ? "" : "ready"}"><h4>${mg ? "Merged into master" : "Ready to merge"}</h4>
+      <div class="cells"><div class="cell">Checks<b class="c-done">${tk.checks || "passed"}</b></div><div class="cell">Comments<b>2</b></div><div class="cell">Files<b>6</b></div><div class="cell">Commits<b>3</b></div></div>
+      ${mg ? `<div class="l1" style="display:flex;gap:6px">${st.undo ? `<button class="btn sm" type="button" data-a="noop">Undo (5 s)</button>` : ""}<button class="btn sm" type="button" data-a="noop">Delete branch</button></div>` : `<div style="display:flex;gap:6px"><button class="btn mg" type="button" data-a="merge" data-arg="${c.n}"${g("comp-merge")}>Squash and merge</button><button class="btn sm" type="button" data-a="noop">▾</button></div>`}</div>
+      <p class="desc">The pull request view you approved. Stand-in only.</p>`;
+  } else {
+    const tk = T(c.n);
+    let card;
+    if (tk.stage === "ready") card = `<div class="card ready"><h4>Ready to start</h4><p class="desc">No open blockers. Unassigned.</p><div style="display:flex;gap:6px"><button class="btn go" type="button" data-a="impl" data-arg="${c.n}"${g("comp-implement")}>Implement</button><button class="btn sm" type="button" data-a="noop">▾</button></div></div>`;
+    else if (tk.stage === "blocked") card = `<div class="card block"><h4>Blocked by 1 open ticket</h4><p class="desc">#${tk.blocker} ${esc(T(tk.blocker).title)}${tk.blockerNote ? " · " + tk.blockerNote : ""}</p><div><button class="btn" type="button" data-a="blocker" data-arg="${tk.blocker}">Show the blocker</button></div></div>
+      <div class="cell" style="border-color:var(--amber)">Blocked by<b>#${tk.blocker} ${esc(T(tk.blocker).title)}</b></div>`;
+    else if (tk.stage === "work") card = `<div class="card"><h4>In progress</h4><p class="desc">${esc(st.terms[tk.term].name)} · ${st.terms[tk.term].status}</p></div>`;
+    else card = `<div class="card"><h4>Closed as completed</h4><p class="desc">by #${tk.pr}</p></div>`;
+    body = `<div class="ghh"><h3>${esc(tk.title)} <span>#${c.n}</span></h3><div><span class="pill open">Open</span> <span class="m">Task · part of the crash-log spec</span></div></div>${card}
+      <div class="cells"><div class="cell">Blocked by<b>${tk.blocker ? 1 : 0}</b></div><div class="cell">Comments<b>1</b></div><div class="cell">Pull request<b>${tk.pr ? "#" + tk.pr : "none"}</b></div><div class="cell">Details<b>2 labels</b></div></div>
+      <p class="desc">The issue view you approved. Stand-in only.</p>`;
+  }
+  return `<aside class="comp" aria-label="Companion">${head}<div class="cscroll">${body}</div></aside>`;
+}
+
+/* ---------- notes and tables ---------- */
+const NOTES = {
+  A: { what: "No pipeline. The Projects panel stays a list of terminals; tickets are found in the Source control panel and read in the companion, which follows the selected terminal.",
+    pro: ["Nothing new to build or learn.", "The Projects panel stays short: one line per terminal.", "Every ticket action already exists in the companion's issue and pull request views."],
+    con: ["Nothing shows how far each ticket has got without picking its terminal.", "Starting the next ticket means switching to Source control and back.", "Most clicks of the four."] },
+  B: { what: "Each terminal row in the Projects panel grows a second line: its ticket, one line of state, a chip for what needs you, and a four-step lane (Ticket · Terminal · Pull request · Merged). Under the terminals, Ready to start (with Implement) and Blocked list tickets that have no terminal yet, three each, then +N into Source control.",
+    pro: ["The pipeline is the terminal list you already use; no new place to look.", "Implement the next ready ticket in one click from the panel.", "Plain shells, the companion and the stage are unchanged."],
+    con: ["Terminal rows double in height; about 12 fit before the panel scrolls.", "The pipeline hides when another module's panel is open (the status dots stay).", "Only three ready tickets show; the rest are one click away."] },
+  C: { what: "A strip across the top of the stage, always on, with five columns: Ready, Blocked, Implementing, Review and Merged today. Each card is one line; ready cards carry a play button that runs Implement. The Projects panel is unchanged.",
+    pro: ["Every ticket's stage is visible whatever module is open.", "Reads left to right in the order of the loop.", "Ties B on clicks."],
+    con: ["Takes about 86 px off every terminal, all the time.", "One-line cards at about 150 px truncate titles.", "A third column of status beside the module bar dots and the Projects list."] },
+  D: { what: "The Projects panel gets a Ticket board launcher. It opens a full-width board as a stage tab with five columns of full cards, each with its lane and Implement. Picking a card selects its terminal and the companion follows, but the board stays on top until you go back to the terminal's tab.",
+    pro: ["Full cards with room for every detail.", "Nothing changes in the panel apart from one launcher.", "Good for a weekly look over a whole milestone."],
+    con: ["The board covers the terminal you are working with.", "Going back to the terminal is an extra tab click every time.", "A second copy of what Source control lists."] },
+};
+const WHERE = [
+  ["Where the pipeline lives", { A: ["none", "Nowhere"], B: ["panel", "Projects panel, on terminal rows"], C: ["strip", "Strip over the stage"], D: ["tab", "Board stage tab"] }],
+  ["A ticket with a terminal", { A: ["panel", "Terminal row, one line"], B: ["panel", "Terminal row: ticket, state, chip, lane"], C: ["strip", "Card in Implementing or Review"], D: ["tab", "Card in its column"] }],
+  ["A ready ticket", { A: ["panel", "Source control Issues list"], B: ["panel", "Ready to start, with Implement"], C: ["strip", "Ready card, play button"], D: ["tab", "Ready card, Implement"] }],
+  ["A blocked ticket", { A: ["panel", "Source control Issues list"], B: ["panel", "Blocked, naming the blocker"], C: ["strip", "Blocked card"], D: ["tab", "Blocked card"] }],
+  ["Merged tickets", { A: ["none", "Not shown"], B: ["panel", "Terminal row keeps Merged; others folded into a count"], C: ["strip", "Merged today column"], D: ["tab", "Merged today column"] }],
+  ["Merge, comment, close", { A: ["comp", "Companion"], B: ["comp", "Companion"], C: ["comp", "Companion"], D: ["comp", "Companion"] }],
+  ["At 10k open tickets", { A: ["panel", "Source control paginates"], B: ["panel", "Three per list, then +N into Source control"], C: ["strip", "Three per column, then +N"], D: ["tab", "Each column paginates"] }],
+  ["Terminal height lost", { A: ["none", "None"], B: ["none", "None"], C: ["strip", "About 86 px"], D: ["tab", "All of it while the board is up"] }],
+];
+const WL = { panel: ["w-panel", "Panel"], comp: ["w-comp", "Companion"], tab: ["w-tab", "Stage tab"], strip: ["w-strip", "Strip"], none: ["w-none", "None"] };
+function renderTables() {
+  $("where").innerHTML = `<thead><tr><th>What</th>${["A", "B", "C", "D"].map((k) => `<th class="${k === v ? "cur" : ""}">${NAMES[k]}</th>`).join("")}</tr></thead><tbody>${WHERE.map(([what, m]) => `<tr><td>${what}</td>${["A", "B", "C", "D"].map((k) => `<td class="${k === v ? "cur" : ""}"><span class="where ${WL[m[k][0]][0]}">${WL[m[k][0]][1]}</span> ${m[k][1]}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  $("bench").innerHTML = `<thead><tr><th>Pipeline</th><th>Clicks</th><th>Pointer travel</th><th>Runs</th></tr></thead><tbody>${["A", "B", "C", "D"].map((k) => {
+    const b = bench[k];
+    return `<tr class="${k === v ? "cur" : ""}"><td>${NAMES[k]}</td><td class="n">${b ? b.clicks : "—"}</td><td class="n">${b ? b.travel.toLocaleString("en-US") + " px" : "—"}</td><td>${b ? b.runs : 0}</td></tr>`;
+  }).join("")}</tbody>`;
+}
+
+/* ---------- walkthrough ---------- */
+const WALK = [
+  { title: "Look at each pipeline", body: "Press A, B, C and D in the Pipeline row. Each shows the same tickets in the window below. B is my pick.",
+    prog: () => `${W.seen.size} of 4 seen`, done: () => W.seen.size === 4 },
+  { title: "Run the job in a pipeline", body: "Pick a pipeline, then follow the glowing outline in the window: it shows the next thing to press, for four short steps (the job row above the window ticks them off). Switching pipeline starts a fresh run.",
+    prog: () => J.finished ? "Finished" : `Step ${jobStep() + 1} of ${JOB.length}`, done: () => Object.keys(bench).length >= 1 },
+  { title: "Run it in a second pipeline", body: "Pick a different pipeline and follow the outline again, so the table under the window compares two.",
+    prog: () => `${Object.keys(bench).length} of 2 pipelines run`, done: () => Object.keys(bench).length >= 2 },
+  { title: "Approve, then copy", body: "My recommendation is under the window. Answer Your decision (the pipeline question starts blank, so nothing is chosen for you), then press Copy my answers and paste the text into the chat.",
+    prog: () => "", done: () => false },
+];
+const advanced = new Set();
+function renderWalk() {
+  while (W.step < WALK.length - 1 && !advanced.has(W.step) && WALK[W.step].done()) { advanced.add(W.step); W.step++; }
+  const s = WALK[W.step];
+  $("walk").innerHTML = `<div class="wtop"><span class="wstep">Step ${W.step + 1} of ${WALK.length}</span><h2>${s.title}</h2><span class="wprog">${s.prog()}</span></div>
+    <p>${s.body}</p>
+    <div class="row"><div class="wdots">${WALK.map((_, i) => `<i class="${i < W.step ? "ok" : i === W.step ? "on" : ""}"></i>`).join("")}</div>
+    <span class="grow"></span><div class="wnav">${W.step > 0 ? '<button class="ghost" type="button" id="w-back">Back</button>' : ""}${W.step < WALK.length - 1 ? '<button class="ghost" type="button" id="w-skip">Skip this step</button>' : ""}</div></div>`;
+  $("ask").classList.toggle("lit", W.step === WALK.length - 1);
+  const b = $("w-back"), k = $("w-skip");
+  if (b) b.onclick = () => { W.step--; renderWalk(); };
+  if (k) k.onclick = () => { advanced.add(W.step); W.step++; renderWalk(); };
+}
+
+/* ---------- render ---------- */
+function render() {
+  const s = $("shell");
+  const keep = {};
+  ["pscroll", "cscroll", "board"].forEach((c) => { const e = s.querySelector("." + c); if (e) keep[c] = e.scrollTop; });
+  let panel = "";
+  if (st.mod === "projects") panel = v === "B" ? panelB() : termListPanel(v === "D" ? `<div class="sh">Tickets</div><button class="launch" type="button" data-a="board"${g("board-open", st.stage !== "board")}>${ico("board")}<span class="ttl"><b>Ticket board</b><small>Quay-2 · ${Object.keys(st.tk).length} tickets in five columns</small></span><span class="m">↗</span></button>` : "");
+  else if (st.mod === "source") panel = sourcePanel();
+  const dots = Object.entries(st.terms).map(([k, t]) => `<button class="tdot${st.sel === k ? " sel" : ""}" type="button" aria-label="${esc(t.name)}, ${t.status}" data-a="sel" data-arg="${k}"${g("term-" + k, !(st.sel === k && st.stage === "term"))}><i class="td ${t.dot}"></i></button>`).join("");
+  s.innerHTML = `<nav class="abar" aria-label="Module bar">
+      <button class="ib${st.mod === "projects" ? " on" : ""}" type="button" aria-label="Projects" data-a="mod" data-arg="projects"${g("mod-projects", st.mod !== "projects")}>${ico("folder")}</button>
+      <div class="tdots" role="list" aria-label="Terminals">${dots}</div>
+      <button class="ib${st.mod === "source" ? " on" : ""}" type="button" aria-label="Source control, 2 open pull requests" data-a="mod" data-arg="source"${g("mod-source", st.mod !== "source")}>${ico("branch")}<span class="badge blue">${T(571).stage === "merged" ? 1 : 2}</span></button>
+      <button class="ib" type="button" aria-label="Agents" data-a="noop">${ico("bot")}</button>
+      <button class="ib" type="button" aria-label="Workflows" data-a="noop">${ico("flow")}</button>
+      <button class="ib" type="button" aria-label="Project" data-a="noop">${ico("sliders")}</button>
+      <span class="grow"></span><span class="spend">$4.12</span></nav>
+    ${panel ? `<div class="panel" style="width:${st.mod === "projects" ? PANEL_W[v] : 260}px">${panel}</div>` : ""}
+    ${stageHtml()}${compHtml()}`;
+  ["pscroll", "cscroll", "board"].forEach((c) => { const e = s.querySelector("." + c); if (e && keep[c] != null) e.scrollTop = keep[c]; });
+  if (!J.finished) {
+    const i = jobStep();
+    if (i >= 0) {
+      for (const key of JOB[i].keys) {
+        const el = s.querySelector(`[data-guide="${key}"]`);
+        if (el) {
+          el.classList.add("guide");
+          const box = el.closest(".pscroll, .cscroll, .board");
+          if (box && box.getBoundingClientRect) {
+            const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+            if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 12;
+            else if (r.top < b.top) box.scrollTop -= b.top - r.top + 12;
+          }
+          break;
+        }
+      }
+    }
+  }
+  const cur = jobStep();
+  $("job").innerHTML = JOB.map((j, i) => `<li class="${J.finished || j.done() ? "done" : i === cur ? "now" : ""}">${j.label}</li>`).join("");
+  const nt = NOTES[v];
+  $("n-what").textContent = nt.what;
+  $("n-pro").innerHTML = nt.pro.map((x) => `<li>${x}</li>`).join("");
+  $("n-con").innerHTML = nt.con.map((x) => `<li>${x}</li>`).join("");
+  $("readout").innerHTML = `<span>This run: <b>${J.clicks}</b> clicks</span><span><b>${Math.round(J.travel).toLocaleString("en-US")}</b> px pointer travel</span>${J.finished ? '<span class="toast">Job done. Press Reset run, or pick another pipeline.</span>' : ""}${st.toast ? `<span class="toast">${esc(st.toast)}</span>` : ""}`;
+  document.querySelectorAll("#seg label").forEach((l) => l.classList.toggle("seen", W.seen.has(l.htmlFor.slice(2))));
+  renderTables();
+  renderWalk();
+  renderAnswer();
+}
+
+/* ---------- events ---------- */
+const shell = $("shell");
+shell.addEventListener("pointerdown", (e) => {
+  if (J.finished) return;
+  J.clicks++;
+  const p = { x: e.clientX + scrollX, y: e.clientY + scrollY };
+  if (J.last && Number.isFinite(p.x) && Number.isFinite(p.y)) J.travel += Math.hypot(p.x - J.last.x, p.y - J.last.y);
+  if (Number.isFinite(p.x) && Number.isFinite(p.y)) J.last = p;
+});
+shell.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-a]");
+  if (!b) return;
+  act(b.dataset.a, b.dataset.arg);
+  render();
+});
+shell.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches('[role="button"][data-a]')) { e.preventDefault(); e.target.click(); }
+});
+const resetAll = () => { st = fresh(); resetJob(); render(); };
+document.querySelectorAll('#seg input[name="v"]').forEach((r) => r.addEventListener("change", () => { v = r.value; W.seen.add(v); resetAll(); }));
+$("reset").addEventListener("click", resetAll);
+
+/* ---------- decision form ---------- */
+const SHOW = { num: "number and title", steps: "four-step bar", steplab: "step labels", state: "state line", chip: "needs-you chip", blocker: "blocker number", who: "assignee", age: "age" };
+const SCOPE = { mine: "open tickets assigned to me or unassigned, three per list, +N into Source control", map: "open sub-issues of a pinned parent", none: "only tickets with a terminal or pull request" };
+const DO = { impl: "Implement", merge: "Merge from the lane", blocker: "jump to blocker", close: "close" };
+function answerText() {
+  const f = new FormData($("ask"));
+  const fav = f.get("fav"), scope = f.get("scope");
+  const runs = Object.keys(bench).sort().map((k) => `${k} ${bench[k].clicks} clicks, ${bench[k].travel.toLocaleString("en-US")} px`).join("; ");
+  return [
+    "Ticket pipeline: my decision",
+    "Pipeline approved: " + (fav ? (fav === "none" ? "none of these" : NAMES[fav]) : "(not answered)"),
+    "Lane shows: " + (f.getAll("show").map((k) => SHOW[k]).join(", ") || "nothing ticked"),
+    "Tickets without a terminal: " + (scope ? SCOPE[scope] : "(not answered)"),
+    "Lane actions: " + (f.getAll("do").map((k) => DO[k]).join(", ") || "pick only"),
+    "Best job runs: " + (runs || "none"),
+    "Notes: " + ($("notes").value.trim() || "none"),
+  ].join("\n");
+}
+function renderAnswer() { $("answer").textContent = answerText(); }
+$("ask").addEventListener("input", renderAnswer);
+$("ask").addEventListener("change", renderAnswer);
+$("ask").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = answerText();
+  renderAnswer();
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($("answer")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copied").textContent = "Selected. Press Ctrl+C, then paste it into the chat."; };
+  try { navigator.clipboard.writeText(text).then(() => { $("copied").textContent = "Copied. Paste it into the chat."; }, fallback); } catch (_) { fallback(); }
+});
+
+render();
+</script>
