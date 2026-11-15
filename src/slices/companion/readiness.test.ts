@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { PullRequestReadiness } from "../github/types.ts";
-import { commitMessageDefaults, DEFAULT_MERGE_METHOD, MERGE_METHODS, readiness, readinessCells } from "./readiness.ts";
+import { arrivalCell, commitMessageDefaults, DEFAULT_MERGE_METHOD, MERGE_METHODS, readiness, readinessCells } from "./readiness.ts";
 
 const open = (over: Partial<PullRequestReadiness> = {}): PullRequestReadiness => ({
   repo: "o/r",
@@ -166,4 +166,22 @@ test("the merge methods are listed merge commit, squash, rebase, with squash the
     ["rebase", "Rebase and merge"],
   ]);
   assert.equal(DEFAULT_MERGE_METHOD, "squash");
+});
+
+test("on arrival a failing check opens, else an unresolved comment, else nothing", () => {
+  const failingAndUnresolved = open({
+    checks: { failing: 1, pending: 0, skipped: 0, passing: 3 },
+    comments: { total: 2, unresolved: 1 },
+  });
+  assert.equal(arrivalCell(failingAndUnresolved), "checks");
+  assert.equal(arrivalCell(open({ comments: { total: 2, unresolved: 1 } })), "comments");
+  assert.equal(arrivalCell(open({ checks: { failing: 0, pending: 2, skipped: 1, passing: 1 } })), null);
+  assert.equal(arrivalCell(open()), null);
+});
+
+test("arrival follows the same rule on a merged or closed pull request", () => {
+  const failing = { checks: { failing: 1, pending: 0, skipped: 0, passing: 0 }, comments: { total: 1, unresolved: 1 } };
+  assert.equal(arrivalCell(open({ ...failing, state: "MERGED" })), "checks");
+  assert.equal(arrivalCell(open({ comments: { total: 1, unresolved: 1 }, state: "CLOSED" })), "comments");
+  assert.equal(arrivalCell(open({ state: "CLOSED" })), null);
 });

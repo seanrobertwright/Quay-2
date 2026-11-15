@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MergeMethod, PullRequestReadiness, PullRequestState } from "../github/types.ts";
 import {
+  arrivalCell,
   commitMessageDefaults,
   DEFAULT_MERGE_METHOD,
   MERGE_METHODS,
@@ -9,9 +10,11 @@ import {
   readiness,
   readinessCells,
   type ReadinessCell,
+  type ReadinessCellId,
   type ReadinessTone,
   type SegmentTone,
 } from "./readiness.ts";
+import { CellDetail } from "./CellDetail.tsx";
 import { errorText, usePullRequestReadiness, type PullRequestLocation } from "./usePullRequestReadiness.ts";
 
 /** What `merge_github_pr` reports once the pull request has merged. */
@@ -44,7 +47,10 @@ const SEGMENT_TONE: Record<SegmentTone, string> = {
   neutral: "bg-[#58a6ff]",
 };
 
-/** The companion's pull request view: GitHub's header, then the readiness card, then the description. */
+/**
+ * The companion's pull request view: GitHub's header, then the readiness card, then the open
+ * cell's detail, or the description while no cell is open.
+ */
 export const PullRequestView = (location: PullRequestLocation) => {
   const { pr, loading, error, reload } = usePullRequestReadiness(location);
   if (!pr) {
@@ -54,6 +60,27 @@ export const PullRequestView = (location: PullRequestLocation) => {
       </p>
     );
   }
+  return <PullRequestBody pr={pr} error={error} location={location} onChanged={reload} />;
+};
+
+/**
+ * The view once the pull request is read. It mounts on the first answer, so the cell it opens on
+ * arrival comes from that answer and a later refresh leaves the operator's choice alone.
+ */
+const PullRequestBody = ({
+  pr,
+  error,
+  location,
+  onChanged,
+}: {
+  pr: PullRequestReadiness;
+  error: string | null;
+  location: PullRequestLocation;
+  onChanged: () => void;
+}) => {
+  const [arrival] = useState(() => arrivalCell(pr));
+  const [open, setOpen] = useState<ReadinessCellId | null>(arrival);
+  const detailId = useId();
   return (
     <div className="p-3 space-y-3 text-xs">
       <PullRequestHeader pr={pr} />
@@ -62,11 +89,30 @@ export const PullRequestView = (location: PullRequestLocation) => {
           Could not refresh: {error}
         </p>
       )}
-      <ReadinessCard pr={pr} location={location} onChanged={reload} />
-      {pr.body.trim() !== "" && (
-        <section aria-label="Description" className="whitespace-pre-wrap break-words text-[#c9d1d9]">
-          {pr.body}
-        </section>
+      <ReadinessCard
+        pr={pr}
+        location={location}
+        onChanged={onChanged}
+        open={open}
+        detailId={detailId}
+        onToggle={(cell) => setOpen((current) => (current === cell ? null : cell))}
+      />
+      {open ? (
+        <CellDetail
+          key={open}
+          cell={open}
+          id={detailId}
+          arrived={open === arrival}
+          pr={pr}
+          location={location}
+          onChanged={onChanged}
+        />
+      ) : (
+        pr.body.trim() !== "" && (
+          <section aria-label="Description" className="whitespace-pre-wrap break-words text-[#c9d1d9]">
+            {pr.body}
+          </section>
+        )
       )}
     </div>
   );
@@ -107,15 +153,21 @@ const BranchChip = ({ title, name }: { title: string; name: string }) => (
   </code>
 );
 
-/** The readiness card: headline, its reason, the control, and the four cells. */
+/** The readiness card: headline, its reason, the control, and the four cells, which open their detail. */
 const ReadinessCard = ({
   pr,
   location,
   onChanged,
+  open,
+  detailId,
+  onToggle,
 }: {
   pr: PullRequestReadiness;
   location: PullRequestLocation;
   onChanged: () => void;
+  open: ReadinessCellId | null;
+  detailId: string;
+  onToggle: (cell: ReadinessCellId) => void;
 }) => {
   const verdict = readiness(pr);
   return (
@@ -137,37 +189,51 @@ const ReadinessCard = ({
       </div>
       <ul className="grid grid-cols-4 border-t border-[#30363d]">
         {readinessCells(pr).map((cell) => (
-          <Cell key={cell.id} cell={cell} />
+          <Cell
+            key={cell.id}
+            cell={cell}
+            open={open === cell.id}
+            detailId={detailId}
+            onToggle={() => onToggle(cell.id)}
+          />
         ))}
       </ul>
     </section>
   );
 };
 
-/** One of the card's cells: name, count and segmented bar. Its detail comes in a later build. */
-const Cell = ({ cell }: { cell: ReadinessCell }) => (
-  <li data-cell={cell.id} className="p-2 space-y-1 border-r last:border-r-0 border-[#30363d]">
-    <div className="flex items-baseline justify-between gap-1">
-      <span className="text-[#8b949e]">{cell.label}</span>
-      <span data-count className="font-semibold text-white">
-        {cell.count}
-      </span>
-    </div>
-    <div
-      role="img"
-      aria-label={cell.segments.length ? `${cell.label}: ${cell.segments.map((s) => s.label).join(", ")}` : `${cell.label}: none`}
-      className="flex h-1.5 gap-px overflow-hidden rounded-full bg-[#30363d]"
+/** One of the card's cells: name, count and segmented bar, on a button that opens and closes its detail. */
+const Cell = ({ cell, open, detailId, onToggle }: { cell: ReadinessCell; open: boolean; detailId: string; onToggle: () => void }) => (
+  <li data-cell={cell.id} className="border-r last:border-r-0 border-[#30363d]">
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={open ? detailId : undefined}
+      onClick={onToggle}
+      className={`block w-full p-2 space-y-1 text-left hover:bg-[#1c2128] ${open ? "bg-[#1f6feb1a] shadow-[inset_0_-2px_0_#58a6ff]" : ""}`}
     >
-      {cell.segments.map((segment) => (
-        <span
-          key={segment.tone + segment.label}
-          data-segment
-          title={segment.label}
-          style={{ flexGrow: segment.value }}
-          className={SEGMENT_TONE[segment.tone]}
-        />
-      ))}
-    </div>
+      <span className="flex items-baseline justify-between gap-1">
+        <span className="text-[#8b949e]">{cell.label}</span>
+        <span data-count className="font-semibold text-white">
+          {cell.count}
+        </span>
+      </span>
+      <span
+        role="img"
+        aria-label={cell.segments.length ? `${cell.label}: ${cell.segments.map((s) => s.label).join(", ")}` : `${cell.label}: none`}
+        className="flex h-1.5 gap-px overflow-hidden rounded-full bg-[#30363d]"
+      >
+        {cell.segments.map((segment) => (
+          <span
+            key={segment.tone + segment.label}
+            data-segment
+            title={segment.label}
+            style={{ flexGrow: segment.value }}
+            className={SEGMENT_TONE[segment.tone]}
+          />
+        ))}
+      </span>
+    </button>
   </li>
 );
 

@@ -3,6 +3,8 @@
 
 use serde::Serialize;
 
+use super::gh::{api_error, blocking, count, gh_api, pr_task, repo_slug, run_gh, text, RepoSlug};
+
 /// Check runs and status contexts read per pull request; more than this are not counted.
 const CHECKS_READ: u32 = 100;
 /// Review threads read per pull request for the unresolved count; more than this are not counted.
@@ -64,56 +66,51 @@ __typename ... on CheckRun {{ status conclusion }} ... on StatusContext {{ state
     )
 }
 
-/// Counts check runs and status contexts by outcome, as GitHub's pull request page groups them.
+/// How one check run or status context turned out, as GitHub's pull request page groups them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckOutcome {
+    /// Failed, timed out, cancelled, or waiting on an action.
+    Failing,
+    /// Queued or running.
+    Pending,
+    /// Skipped, neutral or stale.
+    Skipped,
+    Passing,
+}
+
+/// The outcome of one `statusCheckRollup` context: a `CheckRun` or a `StatusContext`.
+pub(super) fn check_outcome(node: &serde_json::Value) -> CheckOutcome {
+    if node["__typename"] == "StatusContext" {
+        match node["state"].as_str().unwrap_or_default() {
+            "SUCCESS" => CheckOutcome::Passing,
+            "FAILURE" | "ERROR" => CheckOutcome::Failing,
+            _ => CheckOutcome::Pending,
+        }
+    } else if node["status"].as_str() != Some("COMPLETED") {
+        CheckOutcome::Pending
+    } else {
+        match node["conclusion"].as_str().unwrap_or_default() {
+            "SUCCESS" => CheckOutcome::Passing,
+            "SKIPPED" | "NEUTRAL" | "STALE" => CheckOutcome::Skipped,
+            _ => CheckOutcome::Failing,
+        }
+    }
+}
+
+/// Counts check runs and status contexts by outcome.
 fn count_checks(nodes: &[serde_json::Value]) -> PullRequestCheckCounts {
     let mut counts = PullRequestCheckCounts::default();
     for node in nodes {
-        let bucket = if node["__typename"] == "StatusContext" {
-            match node["state"].as_str().unwrap_or_default() {
-                "SUCCESS" => &mut counts.passing,
-                "FAILURE" | "ERROR" => &mut counts.failing,
-                _ => &mut counts.pending,
-            }
-        } else if node["status"].as_str() != Some("COMPLETED") {
-            &mut counts.pending
-        } else {
-            match node["conclusion"].as_str().unwrap_or_default() {
-                "SUCCESS" => &mut counts.passing,
-                "SKIPPED" | "NEUTRAL" | "STALE" => &mut counts.skipped,
-                _ => &mut counts.failing,
-            }
+        let bucket = match check_outcome(node) {
+            CheckOutcome::Failing => &mut counts.failing,
+            CheckOutcome::Pending => &mut counts.pending,
+            CheckOutcome::Skipped => &mut counts.skipped,
+            CheckOutcome::Passing => &mut counts.passing,
         };
         *bucket += 1;
     }
     counts
-}
-
-fn count(value: &serde_json::Value) -> u32 {
-    value.as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0)
-}
-
-fn text(value: &serde_json::Value) -> String {
-    value.as_str().unwrap_or_default().to_string()
-}
-
-/// The error GitHub gave in `stdout` (GraphQL `errors`, else a REST `message`), else `stderr`,
-/// else `fallback`.
-fn api_error(stdout: &[u8], stderr: &str, fallback: &str) -> String {
-    let json = serde_json::from_slice::<serde_json::Value>(stdout).unwrap_or(serde_json::Value::Null);
-    let messages: Vec<&str> = json["errors"]
-        .as_array()
-        .map(|errs| errs.iter().filter_map(|e| e["message"].as_str()).collect())
-        .unwrap_or_default();
-    if !messages.is_empty() {
-        return messages.join("; ");
-    }
-    if let Some(message) = json["message"].as_str() {
-        return message.to_string();
-    }
-    if !stderr.trim().is_empty() {
-        return stderr.trim().to_string();
-    }
-    fallback.to_string()
 }
 
 /// Reads the readiness query's output.
@@ -153,47 +150,6 @@ fn parse_readiness(stdout: &[u8], stderr: &str) -> Result<PullRequestReadiness, 
         },
         commits: count(&pr["commits"]["totalCount"]),
     })
-}
-
-/// The repository a pull request command acts on.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RepoSlug {
-    /// The working folder's repository, which `gh` fills into `{owner}` and `{repo}`.
-    Folder,
-    /// A named repository, `owner` and `name`.
-    Named(String, String),
-}
-
-impl RepoSlug {
-    /// The REST path of the repository.
-    fn path(&self) -> String {
-        match self {
-            RepoSlug::Folder => "repos/{owner}/{repo}".to_string(),
-            RepoSlug::Named(owner, name) => format!("repos/{owner}/{name}"),
-        }
-    }
-
-    /// The `gh api graphql` fields that set `$owner` and `$name`. A named repository goes as raw
-    /// strings (`-f`); the working folder's goes as `-F`, the only form in which `gh` fills its
-    /// placeholders.
-    fn graphql_fields(&self) -> [String; 4] {
-        match self {
-            RepoSlug::Folder => ["-F".into(), "owner={owner}".into(), "-F".into(), "name={repo}".into()],
-            RepoSlug::Named(owner, name) => ["-f".into(), format!("owner={owner}"), "-f".into(), format!("name={name}")],
-        }
-    }
-}
-
-/// Parses a pull request slot's repository: `owner/name`, or none for the working folder's.
-fn repo_slug(repo: Option<&str>) -> Result<RepoSlug, String> {
-    let Some(repo) = repo else { return Ok(RepoSlug::Folder) };
-    let part_ok = |p: &str| {
-        !p.is_empty() && p != "." && p != ".." && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-    };
-    match repo.split_once('/') {
-        Some((owner, name)) if part_ok(owner) && part_ok(name) => Ok(RepoSlug::Named(owner.to_string(), name.to_string())),
-        _ => Err(format!("Not a repository name (owner/name): {repo:?}")),
-    }
 }
 
 /// A merge method GitHub's merge API takes.
@@ -304,8 +260,6 @@ fn parse_pull_state(stdout: &[u8], stderr: &str) -> Result<PullState, String> {
 const MERGE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 /// How many times the pull request is polled before the merge counts as timed out.
 const MERGE_POLL_ATTEMPTS: u32 = 30;
-/// How long one `gh` call may take before it is killed.
-const GH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Polls `fetch` until the pull request has merged, sleeping `MERGE_POLL_INTERVAL` between polls,
 /// at most `attempts` times. Fails on a fetch error, on the pull request closing unmerged, and
@@ -331,33 +285,6 @@ fn wait_for_merge(
     ))
 }
 
-/// Runs `gh` with `args` in `repo_path` under `GH_TIMEOUT` and returns what it printed, whether or
-/// not it succeeded.
-fn run_gh(repo_path: &str, args: &[String]) -> Result<super::commands::GhOutput, String> {
-    let mut cmd = super::commands::create_gh_command(repo_path);
-    cmd.args(args);
-    super::commands::output_within(&mut cmd, GH_TIMEOUT)
-}
-
-/// Runs `gh` with `args` in `repo_path` under `GH_TIMEOUT` and returns its stdout, or GitHub's
-/// error when it fails.
-fn gh_api(repo_path: &str, args: &[String], what: &str) -> Result<Vec<u8>, String> {
-    let out = run_gh(repo_path, args)?;
-    if out.success {
-        Ok(out.stdout)
-    } else {
-        Err(api_error(&out.stdout, &out.stderr, &format!("{what} failed")))
-    }
-}
-
-fn number_arg(number: u32) -> Result<u32, String> {
-    if number == 0 {
-        Err("Not a pull request number: 0".to_string())
-    } else {
-        Ok(number)
-    }
-}
-
 /// One pull request's header and readiness, for the companion's pull request view. `repo` is the
 /// pull request slot's `owner/name`, or none for the repository at `repo_path`.
 #[tauri::command]
@@ -366,9 +293,7 @@ pub async fn get_github_pr_readiness(
     repo: Option<String>,
     number: u32,
 ) -> Result<PullRequestReadiness, String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let mut args: Vec<String> = vec!["api".into(), "graphql".into()];
         args.extend(slug.graphql_fields());
         args.extend(["-F".to_string(), format!("number={number}"), "-f".to_string(), format!("query={}", readiness_query())]);
@@ -377,7 +302,6 @@ pub async fn get_github_pr_readiness(
         parse_readiness(&out.stdout, &out.stderr)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// What came of a merge: the merge itself succeeded, and the branch was deleted or why not.
@@ -406,12 +330,10 @@ pub async fn merge_github_pr(
     head_branch: String,
     delete_branch: bool,
 ) -> Result<MergeOutcome, String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
     let method = MergeMethod::parse(&method)?;
     check_sha(&head_sha)?;
     let branch_path = if delete_branch { Some(branch_ref_path(&head_branch)?) } else { None };
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let args = merge_async_args(&slug, number, method, commit_title.as_deref(), commit_message.as_deref(), &head_sha);
         gh_api(&repo_path, &args, "Merge")?;
         let pull = [String::from("api"), format!("{}/pulls/{number}", slug.path())];
@@ -433,7 +355,6 @@ pub async fn merge_github_pr(
         })
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 fn delete_args(slug: &RepoSlug, branch_path: &str) -> Vec<String> {
@@ -445,9 +366,8 @@ fn delete_args(slug: &RepoSlug, branch_path: &str) -> Vec<String> {
 pub async fn delete_github_branch(repo_path: String, repo: Option<String>, branch: String) -> Result<(), String> {
     let slug = repo_slug(repo.as_deref())?;
     let branch_path = branch_ref_path(&branch)?;
-    tokio::task::spawn_blocking(move || gh_api(&repo_path, &delete_args(&slug, &branch_path), "Delete branch").map(|_| ()))
+    blocking(move || gh_api(&repo_path, &delete_args(&slug, &branch_path), "Delete branch").map(|_| ()))
         .await
-        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Puts a deleted head branch back on GitHub at `sha`, the pull request's last head commit.
@@ -456,7 +376,7 @@ pub async fn restore_github_branch(repo_path: String, repo: Option<String>, bran
     let slug = repo_slug(repo.as_deref())?;
     branch_ref_path(&branch)?;
     check_sha(&sha)?;
-    tokio::task::spawn_blocking(move || {
+    blocking(move || {
         let args: Vec<String> = vec![
             "api".into(),
             "--method".into(),
@@ -470,15 +390,12 @@ pub async fn restore_github_branch(repo_path: String, repo: Option<String>, bran
         gh_api(&repo_path, &args, "Restore branch").map(|_| ())
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Reopens a closed pull request.
 #[tauri::command]
 pub async fn reopen_github_pr(repo_path: String, repo: Option<String>, number: u32) -> Result<(), String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let args: Vec<String> = vec![
             "api".into(),
             "--method".into(),
@@ -490,7 +407,6 @@ pub async fn reopen_github_pr(repo_path: String, repo: Option<String>, number: u
         gh_api(&repo_path, &args, "Reopen").map(|_| ())
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[cfg(test)]
@@ -553,17 +469,6 @@ mod tests {
         assert_eq!(parse_readiness(out, "").unwrap_err(), "Could not resolve to a PullRequest with the number of 99.");
         assert_eq!(parse_readiness(b"", "HTTP 401: Bad credentials").unwrap_err(), "HTTP 401: Bad credentials");
     }
-    #[test]
-    fn repo_slug_takes_owner_and_name_or_falls_back_to_the_working_folder_s() {
-        assert_eq!(repo_slug(None).unwrap(), RepoSlug::Folder);
-        assert_eq!(repo_slug(Some("o-1/r.x_y")).unwrap(), RepoSlug::Named("o-1".into(), "r.x_y".into()));
-        for bad in ["", "o", "o/r/x", "../r", "o/..", "o r/x", "/r", "o/"] {
-            assert!(repo_slug(Some(bad)).is_err(), "{bad}");
-        }
-        assert_eq!(RepoSlug::Folder.path(), "repos/{owner}/{repo}");
-        assert_eq!(RepoSlug::Named("o".into(), "r".into()).path(), "repos/o/r");
-    }
-
     #[test]
     fn merge_methods_are_merge_squash_and_rebase_only() {
         for (sent, method) in [("merge", MergeMethod::Merge), ("squash", MergeMethod::Squash), ("rebase", MergeMethod::Rebase)] {
