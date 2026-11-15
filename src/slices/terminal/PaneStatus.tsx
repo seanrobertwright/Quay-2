@@ -23,6 +23,14 @@ const LIVE_MODES: Record<PermissionMode, { label: string; Icon: typeof ShieldChe
   },
 };
 
+/** A coloured status dot and its text, the shape of every state but working and exited. */
+const StateDot: FC<{ text: string; textClass: string; dotClass: string }> = ({ text, textClass, dotClass }) => (
+  <span className={`flex min-w-0 items-center gap-1 ${textClass}`}>
+    <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${dotClass}`} aria-hidden="true" />
+    <span className="truncate" title={text}>{text}</span>
+  </span>
+);
+
 /** An agent's state and current tool as one short line for the pane header. */
 const AgentState: FC<{ terminal: TerminalInfo; activeTool?: string | null }> = ({ terminal, activeTool }) => {
   switch (terminal.claude_status) {
@@ -38,36 +46,16 @@ const AgentState: FC<{ terminal: TerminalInfo; activeTool?: string | null }> = (
     }
     case "waiting": {
       const text = `Waiting for decision${terminal.current_tool ? ` (${terminal.current_tool})` : ""}`;
-      return (
-        <span className="flex min-w-0 items-center gap-1 text-[#d29922] font-semibold animate-pulse">
-          <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#d29922]" aria-hidden="true" />
-          <span className="truncate" title={text}>{text}</span>
-        </span>
-      );
+      return <StateDot text={text} textClass="text-[#d29922] font-semibold animate-pulse" dotClass="bg-[#d29922]" />;
     }
     case "idle":
-      return (
-        <span className="flex min-w-0 items-center gap-1 text-[#3fb950]">
-          <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#3fb950]" aria-hidden="true" />
-          <span className="truncate">Ready</span>
-        </span>
-      );
+      return <StateDot text="Ready" textClass="text-[#3fb950]" dotClass="bg-[#3fb950]" />;
     case "starting":
-      return (
-        <span className="flex min-w-0 items-center gap-1 text-[#8b949e]">
-          <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#d29922] animate-pulse" aria-hidden="true" />
-          <span className="truncate">Starting</span>
-        </span>
-      );
+      return <StateDot text="Starting" textClass="text-[#8b949e]" dotClass="bg-[#d29922] animate-pulse" />;
     case "exited":
       return <span className="truncate text-[#ff7b72] font-mono">Exited with code {terminal.exit_code ?? "?"}</span>;
     default:
-      return (
-        <span className="flex min-w-0 items-center gap-1 text-[#8b949e]">
-          <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#8b949e]" aria-hidden="true" />
-          <span className="truncate">Unknown</span>
-        </span>
-      );
+      return <StateDot text="Unknown" textClass="text-[#8b949e]" dotClass="bg-[#8b949e]" />;
   }
 };
 

@@ -66,20 +66,24 @@ test("a waiting agent names the tool it waits on", () => {
   assert.ok(container.textContent?.includes("Waiting for decision (Write)"), container.textContent ?? "");
 });
 
+test("an idle agent shows Ready", () => {
+  const { container } = render(agent({ claude_status: "idle" }));
+  assert.equal(container.textContent?.startsWith("Ready"), true, container.textContent ?? "");
+});
+
 test("an exited agent shows its exit code", () => {
   const { container } = render(agent({ claude_status: "exited", exit_code: 2 }));
   assert.ok(container.textContent?.includes("Exited with code 2"), container.textContent ?? "");
 });
 
-test("the Skip/Ask pill names the live mode and toggles it on click", () => {
+test("the Skip/Ask pill names Skip and toggles the mode on click", () => {
   const skip = render(agent({ live_mode: "skip" }));
   assert.equal(skip.pill()?.getAttribute("aria-label"), "Mode: Skip");
   act(() => skip.pill()!.click());
   assert.deepEqual(skip.calls, ["toggle"]);
-  act(() => mounted!.root.unmount());
-  mounted!.container.remove();
-  mounted = null;
+});
 
+test("the Skip/Ask pill names Ask while the agent asks before tool calls", () => {
   const ask = render(agent({ live_mode: "normal" }));
   assert.equal(ask.pill()?.getAttribute("aria-label"), "Mode: Ask");
 });
