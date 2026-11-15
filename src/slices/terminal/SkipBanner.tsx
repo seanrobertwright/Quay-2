@@ -1,7 +1,7 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
-import { RunKind } from "../terminal/types";
-import { AgentIcon } from "../terminal/AgentIcons";
+import { RunKind } from "./types";
+import { AgentIcon } from "./AgentIcons";
 
 export interface SkipBannerProps {
   runKind?: RunKind | string;

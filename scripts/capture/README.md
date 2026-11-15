@@ -112,7 +112,7 @@ running from the fixture folder, then removes the fixture.
 
 ## The fixture Claude config
 
-Quay's status strip and rail show Claude Code's spend, which Quay prices from the transcripts
+Quay's module bar spend ticker shows Claude Code's spend, which Quay prices from the transcripts
 under its Claude config. Replays write no transcripts, so a capture hands Quay the recorded run's
 own transcripts, scrubbed down to their token counts. Every still then shows that run's total.
 

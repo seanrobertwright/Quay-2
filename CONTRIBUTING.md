@@ -30,7 +30,7 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 ### Frontend Slices (`src/slices/`)
 - **`terminal/`**: Terminal lifecycle powered by `@xterm/xterm`, fit addon, emoji width provider, and modal launcher.
 - **`rail/`**: Left navigation sidebar, collapsible project tree, collapsible worktrees, status indicators, and condensed tool row.
-- **`stage/`**: Main viewport area supporting side-by-side splits, vertical splits, 2x2 grid, zoom mode, and bottom status strips.
+- **`stage/`**: Main viewport area supporting side-by-side splits, vertical splits, 2x2 grid, zoom mode, the stage tab bar, and the shell-wide warning banner.
 - **`orchestrator/`**: A2A Mission Control modal for operator dispatch and inter-agent message logs.
 - **`github/`**: GitHub Companion slide-over drawer with blocked issue tags, filter chips, and 1-click agent prompt submission.
 - **`archon/`**: Visual DAG execution canvas, live node status inspector, streaming execution logs, and spec task trackers.

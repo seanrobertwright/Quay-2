@@ -1,10 +1,8 @@
 import { FC, useState, useRef, CSSProperties } from "react";
-import { TerminalInfo, StageLayout, isAgentRunKind } from "../terminal/types";
+import { TerminalInfo, StageLayout } from "../terminal/types";
 import { TerminalView } from "../terminal/TerminalView";
-import { SkipBanner } from "./SkipBanner";
-import { StatusStrip } from "./StatusStrip";
 import { Placeholder } from "./Placeholder";
-import { AttentionBadge } from "../attention/AttentionBadge";
+import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
 import { StageTabBar } from "./StageTabBar";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
@@ -21,9 +19,8 @@ interface StageProps {
   focusedPane: "primary" | "secondary" | "grid-0" | "grid-1" | "grid-2" | "grid-3";
   splitRatio: number;
   zoomedFromLayout: StageLayout | null;
+  /** The bridge's current tool, shown in the selected terminal's pane header. */
   activeTool?: string | null;
-  pendingPermissionsCount?: number;
-  waitingCount?: number;
   onSelectTerminal: (id: string) => void;
   onSelectPane: (pane: "primary" | "secondary" | number) => void;
   onSwitchPaneTerminal: (pane: "primary" | "secondary" | number, terminalId: string) => void;
@@ -35,12 +32,6 @@ interface StageProps {
   onSplitVertical: () => void;
   onSplitGrid: () => void;
   onNewTerminal: () => void;
-  onOpenActionLog: () => void;
-  onOpenPermissionModal?: () => void;
-  onOpenAttentionQueue?: () => void;
-  onOpenGithubDrawer?: () => void;
-  onOpenAuditModal?: () => void;
-  onOpenSessionHistory?: () => void;
   onToggleLiveMode?: (terminalId: string, currentMode: "skip" | "normal") => void;
   onRelaunchTerminal?: (terminalId: string) => void;
   onRenameTerminal?: (terminalId: string, name: string) => void;
@@ -59,8 +50,6 @@ export const Stage: FC<StageProps> = ({
   splitRatio,
   zoomedFromLayout,
   activeTool,
-  pendingPermissionsCount = 0,
-  waitingCount = 0,
   onSelectTerminal,
   onSelectPane,
   onSwitchPaneTerminal,
@@ -71,12 +60,6 @@ export const Stage: FC<StageProps> = ({
   onSplitVertical,
   onSplitGrid,
   onNewTerminal,
-  onOpenActionLog,
-  onOpenPermissionModal,
-  onOpenAttentionQueue,
-  onOpenGithubDrawer,
-  onOpenAuditModal,
-  onOpenSessionHistory,
   onToggleLiveMode,
   onRelaunchTerminal,
   onRenameTerminal,
@@ -115,7 +98,8 @@ export const Stage: FC<StageProps> = ({
         term.id ===
         singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
       isFocused = isVisible;
-      showPaneHeader = false;
+      // The pane header carries the terminal's state and Skip/Ask pill in every layout.
+      showPaneHeader = true;
       paneStyle = {
         position: "absolute",
         inset: 0,
@@ -238,9 +222,12 @@ export const Stage: FC<StageProps> = ({
         terminal={term}
         allTerminals={visibleTerminals}
         showPaneHeader={showPaneHeader}
+        framed={layout !== "single"}
+        activeTool={isVisible && isFocused && term.id === activeTerminalId ? activeTool : null}
         onSelect={onPaneSelect}
-        onZoomPane={onToggleZoom}
-        onClosePane={onUnsplit}
+        // A lone pane has nothing to close, and zooms only back out to the layout it came from.
+        onZoomPane={layout !== "single" || zoomedFromLayout !== null ? onToggleZoom : undefined}
+        onClosePane={layout !== "single" ? onUnsplit : undefined}
         onSwitchTerminal={onSwitchTerm}
         onRelaunch={onRelaunchTerminal ? () => onRelaunchTerminal(term.id) : undefined}
         onRename={onRenameTerminal ? (name) => onRenameTerminal(term.id, name) : undefined}
@@ -255,14 +242,9 @@ export const Stage: FC<StageProps> = ({
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
       <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+        {/* A shell-wide warning shows with no terminal open too, such as one raised at startup */}
+        <ShellWarningBanner />
         <Placeholder onNewTerminal={onNewTerminal} />
-        {/* With no terminal there is no status strip, so the badge gets a strip of its own: it is
-            visible from every project, including one with no terminals */}
-        {waitingCount > 0 && onOpenAttentionQueue && (
-          <div className="@container h-8 bg-[#161b22] border-t border-[#30363d] px-4 flex items-center justify-end shrink-0 text-xs">
-            <AttentionBadge waitingCount={waitingCount} onOpen={onOpenAttentionQueue} />
-          </div>
-        )}
         <div key="stage-viewport" className="hidden" aria-hidden="true">
           {terminalViews}
           {/* A second child keeps the panes nested as they are in the stage viewport below;
@@ -282,12 +264,6 @@ export const Stage: FC<StageProps> = ({
     const targetId = gridTerminalIds[idx];
     focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
   }
-
-  const isAgent = isAgentRunKind(focusedTerminal.run_kind);
-
-  const showSkipBanner =
-    isAgent &&
-    focusedTerminal.permission_mode === "skip";
 
   // Draggable Divider mouse down handler
   const handleDividerMouseDown = (e: React.MouseEvent) => {
@@ -336,13 +312,8 @@ export const Stage: FC<StageProps> = ({
         onToggleZoom={onToggleZoom}
       />
 
-      {/* Skip Banner above terminal */}
-      {showSkipBanner && (
-        <SkipBanner
-          runKind={focusedTerminal.run_kind}
-          agentName={focusedTerminal.name}
-        />
-      )}
+      {/* Shell-wide warnings: full stage width, between the tab bar and the panes */}
+      <ShellWarningBanner />
 
       {/* Main Terminal Viewport (Persistently mounts all terminals across all projects) */}
       <div
@@ -461,25 +432,6 @@ export const Stage: FC<StageProps> = ({
             );
           })}
       </div>
-
-      {/* Status Strip below terminal */}
-      <StatusStrip
-        terminal={activeTerminal}
-        activeTool={activeTool}
-        pendingCount={pendingPermissionsCount}
-        waitingCount={waitingCount}
-        onOpenActionLog={onOpenActionLog}
-        onOpenGithubDrawer={onOpenGithubDrawer}
-        onOpenAuditModal={onOpenAuditModal}
-        onOpenSessionHistory={onOpenSessionHistory}
-        onOpenPermissionModal={onOpenPermissionModal}
-        onOpenAttentionQueue={onOpenAttentionQueue}
-        onToggleLiveMode={
-          onToggleLiveMode
-            ? () => onToggleLiveMode(activeTerminal.id, activeTerminal.live_mode)
-            : undefined
-        }
-      />
     </main>
   );
 };
