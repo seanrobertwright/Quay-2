@@ -76,6 +76,15 @@ test("the header shows the terminal's link and the source that set each slot", (
   assert.match(header.textContent ?? "", /from the branch/);
 });
 
+test("a pull request that closes several tickets lists them all", () => {
+  const { container } = render({
+    ...linked,
+    pull_request: { repo: null, number: 659, source: "branch", pinned: false, at: 2, state: "OPEN", closes: [636, 640] },
+  });
+  const header = container.querySelector("header") as HTMLElement;
+  assert.match(header.textContent ?? "", /closes #636, #640/);
+});
+
 test("a pinned slot shows a pin mark that unpins it", () => {
   const { container, unpins } = render(linked);
   assert.equal(button(container, "Unpin ticket #637"), undefined, "an unpinned slot has no pin mark");

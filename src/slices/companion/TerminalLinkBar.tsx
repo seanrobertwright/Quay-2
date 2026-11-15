@@ -17,8 +17,8 @@ export function refText(ref: LinkRef): string {
 }
 
 /**
- * The companion header's terminal link: each filled slot with the source that set it and, when it
- * is pinned, a pin mark that unpins it; and, for a tie, the candidate strip whose buttons pin.
+ * The companion header's terminal link: each filled slot with the source that set it and the
+ * tickets a pull request closes, and, when it is pinned, a pin mark that unpins it; and, for a tie, the candidate strip whose buttons pin.
  * Renders nothing for a link with no slot filled and no tie.
  */
 export const TerminalLinkBar = ({
@@ -75,6 +75,11 @@ const LinkSlotItem = ({ name, slot, onUnpin }: { name: LinkSlotName; slot: LinkS
     <li className="flex items-center gap-1.5 min-w-0">
       <span className="text-white truncate">{label}</span>
       {!slot.pinned && <span className="text-[#8b949e]">{SOURCE_LABELS[slot.source]}</span>}
+      {slot.closes && slot.closes.length > 0 && (
+        <span className="text-[#8b949e]">
+          closes {slot.closes.map((number) => refText({ repo: slot.repo, number })).join(", ")}
+        </span>
+      )}
       {slot.pinned && (
         <button
           type="button"
