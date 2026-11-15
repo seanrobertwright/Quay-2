@@ -475,7 +475,7 @@ const DiscardRow: React.FC<{
 export interface StagingInspectorProps {
   id: string;
   staging: Staging;
-  /** The selected worktree's name, as the Rail shows it. */
+  /** The selected worktree's name, as the Projects panel shows it. */
   worktreeName: string;
   width: number;
   onWidth: (width: number) => void;

@@ -302,7 +302,7 @@ test("an item with a checked state is a checkbox item announcing it, and the key
   assert.equal(focusedName(), "Rename…");
 });
 
-/** A focusable row with a menu, as a Rail row would have, built on `useContextMenu`. */
+/** A focusable row with a menu, as a Projects panel row would have, built on `useContextMenu`. */
 const RowWithMenu: FC<{ name: string; opened: string[] }> = ({ name, opened }) => {
   const menu = useContextMenu<string>();
   return createElement(

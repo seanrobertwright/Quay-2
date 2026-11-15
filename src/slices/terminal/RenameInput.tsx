@@ -1,4 +1,4 @@
-// The box that renames a terminal in place, on its Rail row or its pane header. It opens with
+// The box that renames a terminal in place, on its Projects panel row or its pane header. It opens with
 // the name selected; Enter or leaving the box saves a changed name, and Escape keeps the old one.
 import { useEffect, useRef, useState, type FC } from "react";
 

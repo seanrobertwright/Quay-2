@@ -848,7 +848,7 @@ export function useWorkspace() {
     [terminals, enterProject]
   );
 
-  // Select / activate a terminal (e.g. from Rail or shortcut)
+  // Select / activate a terminal (e.g. from the Projects panel or shortcut)
   const selectTerminal = useCallback(
     (id: string) => {
       const targetTerm = terminals.find((t) => t.id === id);

@@ -203,7 +203,7 @@ Paste into `frontend-agent`: `Undo your own edit to shared/types.ts, so it is ex
 The Live A2A Message Trail records every message passed between agents. Each entry shows the message's sender, recipient and status (`Dispatched` while being processed, `Completed` when finished). When the sender waited (`wait_for_reply: true`), the recipient's return is labelled **Reply**; when the sender did not wait (`wait_for_reply: false`), the response is labelled **Answer**.
 
 ::: do
-1. Press `Ctrl+Shift+B M` to open Mission Control, or click its icon, the network icon, in the toolbar at the bottom of the rail.
+1. Press `Ctrl+Shift+B M` to open Mission Control, or click the **Agents** icon, the robot on the bar down the window's left edge, then **Mission Control**.
 2. Scroll down to **Live A2A Message Trail**. The newest entry is at the top: the hand-off, then the change, then the first request.
 3. Press `Esc` to close Mission Control. The agents keep working behind it.
 :::

@@ -122,12 +122,12 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   const liveMode = LIVE_MODES[terminal.live_mode];
 
   // The strip stays one h-8 line at every width. It is a size container, so it
-  // responds to the stage's width (window minus rail), not the window's. When
+  // responds to the stage's width (window minus the module bar and panel), not the window's. When
   // room runs short, text truncates with an ellipsis and a title tooltip rather
   // than wrapping: the project path gives way first, then "auto-approved", then
   // "Approval Required", and the status text keeps a minimum width. The mode
   // name and the button labels stay whole. Only on a stage narrower than 56rem
-  // (narrower than either capture width, e.g. with the rail dragged wide) do the
+  // (narrower than either capture width, e.g. in a narrow window) do the
   // labels collapse to their icons; every item, count and click target stays.
   return (
     <div className="@container h-8 bg-[#161b22] border-t border-[#30363d] px-4 flex items-center justify-between gap-4 overflow-hidden whitespace-nowrap text-xs text-[#8b949e] shrink-0 select-none">

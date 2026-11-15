@@ -33,9 +33,9 @@ Quay 2 calculates costs using official Anthropic API pricing tiers:
 
 ---
 
-## Live Spend Pill in Navigation Rail
+## Live Spend Pill in the Projects Panel
 
-At the bottom of the navigation rail, Quay 2 displays your live cumulative spend:
+At the bottom of the Projects panel, Quay 2 displays your live cumulative spend:
 ```text
 [🪙 $42.18]   ^⇧b n · ^⇧b 1..9   🟢 ConPTY
 ```

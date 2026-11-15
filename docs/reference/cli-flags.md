@@ -209,7 +209,7 @@ Quay 2 reads these from its own environment when it starts. They are not passed 
 
 | Variable | Purpose | Default |
 | :--- | :--- | :--- |
-| `QUAY_BRIDGE_PORT` | Pins the loopback port of the bridge (the event and MCP server that the rail header's port badge shows). Must be a whole number from 1 to 65535. | Unset or empty: the OS picks a random free port on each launch. |
+| `QUAY_BRIDGE_PORT` | Pins the loopback port of the bridge (the event and MCP server that the Projects panel header's port badge shows). Must be a whole number from 1 to 65535. | Unset or empty: the OS picks a random free port on each launch. |
 
 ```powershell
 $env:QUAY_BRIDGE_PORT = "47100"

@@ -1,5 +1,5 @@
-// The worktree row menu (#509), opened from a worktree's row in the Rail. This module only says
-// what the menu offers; the Rail binds each action to the handler its own buttons already use.
+// The worktree row menu (#509), opened from a worktree's row in the Projects panel. This module only says
+// what the menu offers; the Projects panel binds each action to the handler its own buttons already use.
 //
 // An item that applies but cannot run now is shown disabled, with the reason as its hint.
 
@@ -20,7 +20,7 @@ export function worktreeBranch(worktree: Pick<GitWorktree, "branch">): string | 
   return worktree.branch.startsWith("refs/heads/") ? worktree.branch.slice("refs/heads/".length) : worktree.branch;
 }
 
-/** What a worktree's Rail row shows for it: its branch, or its HEAD's short hash when that is detached. */
+/** What a worktree's Projects panel row shows for it: its branch, or its HEAD's short hash when that is detached. */
 export function worktreeRowName(worktree: Pick<GitWorktree, "branch" | "head">): string {
   return worktreeBranch(worktree) ?? worktree.head.slice(0, 7);
 }

@@ -55,7 +55,7 @@ const baseName = (path: string) => path.split(/[/\\]/).filter(Boolean).pop() ?? 
 
 /**
  * Names the project at `path`: a project's name, a worktree as "project › " followed by the name its
- * Rail row shows, or the folder name for a path the Rail does not list.
+ * Projects panel row shows, or the folder name for a path the Projects panel does not list.
  */
 function projectLabel(
   path: string | null,

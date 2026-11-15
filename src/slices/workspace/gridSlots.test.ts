@@ -25,7 +25,7 @@ test("when the grid is showing with an empty slot, splitGrid fills only that slo
   assert.deepEqual(slots, ["test-architect", "pwsh", "test-runner", "reviewer"]);
 });
 
-test("switching into the grid from single puts the active terminal first, then fills in rail order", () => {
+test("switching into the grid from single puts the active terminal first, then fills in Projects panel order", () => {
   const slots = chooseGridSlots({
     layout: "single",
     currentSlots: [null, null, null, null],

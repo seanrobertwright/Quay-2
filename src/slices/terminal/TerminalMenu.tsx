@@ -1,4 +1,4 @@
-// The terminal menu (#508), shared by a terminal's Rail row and its pane header, and the terminal
+// The terminal menu (#508), shared by a terminal's Projects panel row and its pane header, and the terminal
 // body menu (#511), which puts a clipboard group above it. The items come from `terminalMenu`
 // and `terminalBodyMenu`; each surface hands in the handlers its own buttons and shortcuts
 // already call, and this module adds the actions every surface shares: the two folder actions,

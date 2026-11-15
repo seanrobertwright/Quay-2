@@ -1,5 +1,5 @@
-// The project row menu (#509), opened from a project's row in the Rail. This module only says
-// what the menu offers; the Rail binds each action to the handler its own buttons already use.
+// The project row menu (#509), opened from a project's row in the Projects panel. This module only says
+// what the menu offers; the Projects panel binds each action to the handler its own buttons already use.
 
 import type { ContextMenuItem } from "../overlay/ContextMenu.tsx";
 import type { Project } from "../workspace/types.ts";
