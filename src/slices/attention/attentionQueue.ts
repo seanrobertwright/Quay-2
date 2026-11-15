@@ -339,3 +339,17 @@ export function droppedPermissionCount(queue: AttentionQueue, terminalId: string
 export function undeliveredAnswer(queue: AttentionQueue): UndeliveredAnswer | null {
   return queue.undeliveredAnswer;
 }
+
+/**
+ * The last question `terminalId` asked that still waits for an answer: its newest permission
+ * request among `items`, deferred or not, or null when it waits on none. The lens reply strip
+ * shows it.
+ */
+export function lastQuestion(items: readonly AttentionItem[], terminalId: string): PermissionItem | null {
+  let last: PermissionItem | null = null;
+  for (const item of items) {
+    if (item.kind !== "permission" || item.terminalId !== terminalId) continue;
+    if (!last || item.waitingSince >= last.waitingSince) last = item;
+  }
+  return last;
+}
