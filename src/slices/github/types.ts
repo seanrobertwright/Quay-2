@@ -63,6 +63,8 @@ export interface GithubPullRequest {
   statusCheckRollup?: { state: string } | null;
   mergeable?: string | null;
   url: string;
+  /** The tickets in the pull request's own repository that its `Closes #N` names. */
+  closingIssues: number[];
 }
 
 export interface GithubRepoInfo {

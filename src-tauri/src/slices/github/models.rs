@@ -95,6 +95,9 @@ pub struct GithubPullRequest {
     pub mergeable: Option<String>,
     #[serde(default)]
     pub url: String,
+    /// The tickets in the pull request's own repository that its `Closes #N` names.
+    #[serde(rename = "closingIssues", default)]
+    pub closing_issues: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, State};
 
 use super::manager::PtyManager;
-use super::models::{SpawnTerminalRequest, TerminalInfo, TerminalOutputPayload};
+use super::models::{SpawnTerminalRequest, TerminalInfo, TerminalLink, TerminalOutputPayload};
 use crate::slices::bridge::state::BridgeState;
 use crate::slices::orchestrator::A2ARouter;
 
@@ -101,6 +101,16 @@ pub async fn rename_terminal(
     pty_manager: State<'_, PtyManager>,
 ) -> Result<(), String> {
     pty_manager.rename(&terminal_id, &name)
+}
+
+/// Records the terminal's link, which the frontend resolved from a signal or a pin, and saves it.
+#[tauri::command]
+pub async fn set_terminal_link(
+    terminal_id: String,
+    link: TerminalLink,
+    pty_manager: State<'_, PtyManager>,
+) -> Result<(), String> {
+    pty_manager.set_link(&terminal_id, link)
 }
 
 /// The PiG version Quay's PiG extension was tested with, for the tag Mission Control shows on

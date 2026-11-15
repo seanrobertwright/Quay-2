@@ -177,7 +177,8 @@ pub async fn handle_events(
 /// events come through `handle_events`; Quay makes the ones for an OpenCode terminal
 /// itself (see `opencode`). Typing a held message runs on a blocking thread, so this
 /// never blocks.
-pub fn apply_event(ctx: &AppContext, envelope: Envelope) {
+pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
+    ctx.bridge_state.pair_tool_call(&mut envelope);
     let tag = envelope.tag.clone();
     ctx.bridge_state.record_envelope(envelope.clone());
 

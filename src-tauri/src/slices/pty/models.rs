@@ -290,6 +290,123 @@ pub struct TerminalInfo {
     /// before any event from the event-bridge plugin arrived.
     #[serde(default)]
     pub plugin_hint: bool,
+    /// The terminal link: the ticket and pull request this terminal belongs to. Saved with
+    /// the terminal, so it survives a restart and a relaunch, and goes when the terminal closes.
+    #[serde(default)]
+    pub link: Option<TerminalLink>,
+}
+
+/// One of a terminal link's two slots. The frontend's `LinkSlotName` mirrors it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkSlotName {
+    Ticket,
+    PullRequest,
+}
+
+/// What set a terminal link slot, strongest first. The frontend's `LINK_SOURCES` mirrors it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LinkSource {
+    Pin,
+    Launch,
+    Activity,
+    Branch,
+}
+
+/// A ticket or pull request: its number, in `repo` (`owner/name`), or in the terminal's own
+/// repository when `repo` is `None`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkRef {
+    pub repo: Option<String>,
+    pub number: u32,
+}
+
+/// One filled slot of a terminal link. The frontend's `LinkSlot` mirrors it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkSlot {
+    /// The ticket or pull request the slot names, serialized inline as `repo` and `number`.
+    #[serde(flatten)]
+    pub target: LinkRef,
+    pub source: LinkSource,
+    pub pinned: bool,
+    /// When the signal that set it arrived, in epoch ms.
+    pub at: u64,
+    /// A pull request's state as last seen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// The tickets a pull request closes, as last seen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closes: Option<Vec<u32>>,
+}
+
+/// Two or more refs tied at one strength for one slot, waiting for the operator to pick.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkCandidates {
+    pub slot: LinkSlotName,
+    pub source: LinkSource,
+    pub options: Vec<LinkRef>,
+    pub at: u64,
+}
+
+/// A terminal's ticket and pull request slots and any tie waiting on the operator. The
+/// frontend resolves signals into it (`applyLinkSignal`); the backend keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalLink {
+    pub ticket: Option<LinkSlot>,
+    pub pull_request: Option<LinkSlot>,
+    #[serde(default)]
+    pub candidates: Vec<LinkCandidates>,
+}
+
+/// Most refs a tie, or a pull request's closing tickets, may list.
+const MAX_LINK_REFS: usize = 50;
+
+impl TerminalLink {
+    /// Checks a link the frontend sent: every number positive, every repository `owner/name`,
+    /// at most one tie per slot, and each tie naming two to `MAX_LINK_REFS` refs.
+    pub fn validate(&self) -> Result<(), String> {
+        for slot in [&self.ticket, &self.pull_request].into_iter().flatten() {
+            check_ref(&slot.target)?;
+            if let Some(closes) = &slot.closes {
+                if closes.len() > MAX_LINK_REFS || closes.contains(&0) {
+                    return Err(format!(
+                        "A pull request's closing tickets must be at most {} positive numbers",
+                        MAX_LINK_REFS
+                    ));
+                }
+            }
+        }
+        if self.candidates.len() > 2
+            || (self.candidates.len() == 2 && self.candidates[0].slot == self.candidates[1].slot)
+        {
+            return Err("A terminal link holds at most one tie per slot".to_string());
+        }
+        for tie in &self.candidates {
+            if tie.options.len() < 2 || tie.options.len() > MAX_LINK_REFS {
+                return Err(format!("A tie names two to {} refs", MAX_LINK_REFS));
+            }
+            for option in &tie.options {
+                check_ref(option)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Whether `link_ref`'s repository is `owner/name` (or absent) and its number is positive.
+fn check_ref(link_ref: &LinkRef) -> Result<(), String> {
+    if link_ref.number == 0 {
+        return Err("A ticket or pull request number must be positive".to_string());
+    }
+    if let Some(repo) = link_ref.repo.as_deref() {
+        let valid_part = |p: &str| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+        match repo.split_once('/') {
+            Some((owner, name)) if valid_part(owner) && valid_part(name) => {}
+            _ => return Err(format!("Not a repository (owner/name): {}", repo)),
+        }
+    }
+    Ok(())
 }
 
 impl TerminalInfo {
@@ -391,6 +508,8 @@ pub struct PersistedTerminalSession {
     pub last_updated: u64,
     #[serde(default)]
     pub created_at: u64,
+    #[serde(default)]
+    pub link: Option<TerminalLink>,
 }
 
 /// A running terminal named after its id, for tests that need one without a PTY.
@@ -414,6 +533,7 @@ pub fn test_terminal(id: &str, run_kind: RunKind, claude_status: ClaudeStatus) -
         claude_session_id: None,
         created_at: 0,
         plugin_hint: false,
+        link: None,
     }
 }
 

@@ -176,6 +176,51 @@ export interface TerminalInfo {
   created_at?: number;
   /** Whether the pane shows the plugin hint: this launch went 30 seconds without a plugin event. */
   plugin_hint?: boolean;
+  /** The terminal link: the ticket and pull request the terminal belongs to. Absent when none was recorded. */
+  link?: TerminalLink | null;
+}
+
+/** The two slots of a terminal link. Mirrors `LinkSlotName` in the backend. */
+export type LinkSlotName = "ticket" | "pull_request";
+
+/**
+ * What set a terminal link slot, strongest first: the operator's pin, the terminal's launch facts,
+ * the agent's activity, or the working folder's branch. Mirrors `LinkSource` in the backend.
+ */
+export const LINK_SOURCES = ["pin", "launch", "activity", "branch"] as const;
+export type LinkSource = (typeof LINK_SOURCES)[number];
+
+/** A ticket or pull request: its number, in `repo` (`owner/name`), or in the terminal's own repository when null. */
+export interface LinkRef {
+  repo: string | null;
+  number: number;
+}
+
+/** One filled slot of a terminal link. Mirrors `LinkSlot` in the backend. */
+export interface LinkSlot extends LinkRef {
+  source: LinkSource;
+  pinned: boolean;
+  /** When the signal that set it arrived, in epoch ms. */
+  at: number;
+  /** A pull request's state as last seen (`OPEN`, `MERGED` or `CLOSED`); absent when not yet seen. */
+  state?: string | null;
+  /** The tickets a pull request closes, from its `Closes #N`; absent when not yet seen. */
+  closes?: number[] | null;
+}
+
+/** Two or more refs tied at one strength for one slot: Quay asks instead of guessing. */
+export interface LinkCandidates {
+  slot: LinkSlotName;
+  source: LinkSource;
+  options: LinkRef[];
+  at: number;
+}
+
+/** A terminal's two slots and any tie waiting on the operator. Mirrors `TerminalLink` in the backend. */
+export interface TerminalLink {
+  ticket: LinkSlot | null;
+  pull_request: LinkSlot | null;
+  candidates: LinkCandidates[];
 }
 
 /** A terminal's status after the backend's plugin rules moved it, sent as `terminal-status`. */

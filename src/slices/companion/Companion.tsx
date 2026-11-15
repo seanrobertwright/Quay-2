@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { TerminalInfo } from "../terminal/types.ts";
+import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
 import {
@@ -12,22 +12,56 @@ import {
 import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
+import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
+import { LinkToPicker } from "./LinkToPicker.tsx";
+import type { LinkChoice } from "./linkChoices.ts";
+
+/** What the companion reads and changes about terminal links. */
+export interface CompanionLinking {
+  /** The terminal's link as last resolved, or null when it has none. */
+  linkOf: (terminal: TerminalInfo) => TerminalLink | null;
+  pin: (terminalId: string, slot: LinkSlotName, ref: LinkRef) => void;
+  unpin: (terminalId: string, slot: LinkSlotName) => void;
+  /** What Link to... offers the terminal: guesses when `query` is empty, else search results. */
+  choices: (terminal: TerminalInfo, query: string) => readonly LinkChoice[];
+  /** Fetches what Link to... offers the terminal. */
+  loadChoices: (terminal: TerminalInfo) => void;
+}
 
 /** What the companion knows about the selected terminal, handed to each view. */
 export interface CompanionContext {
   terminal: TerminalInfo;
   repository: TerminalRepository;
+  /** The terminal's link, or null when it has none. */
+  link: TerminalLink | null;
+  /** Terminal links, or null where the companion has none to change (as in some tests). */
+  linking: CompanionLinking | null;
+}
+
+/** Whether `link` fills either slot. */
+export function isLinked(link: TerminalLink | null): boolean {
+  return !!(link?.ticket || link?.pull_request);
 }
 
 /**
- * The Repository view: the selected terminal's repository, shown when the terminal has no link.
- * Until terminals record a link, every terminal has none.
+ * The Repository view: the selected terminal's repository, with a Link to... control while the
+ * terminal has no link.
  */
 export const REPOSITORY_VIEW: CompanionView<CompanionContext> = {
   id: REPOSITORY_VIEW_ID,
   label: "Repository",
   available: () => true,
-  render: ({ terminal, repository }) => <RepositoryView terminal={terminal} repository={repository} />,
+  render: ({ terminal, repository, link, linking }) => (
+    <RepositoryView terminal={terminal} repository={repository}>
+      {linking && !isLinked(link) && (
+        <LinkToPicker
+          choices={(query) => linking.choices(terminal, query)}
+          onOpen={() => linking.loadChoices(terminal)}
+          onPick={(slot, ref) => linking.pin(terminal.id, slot, ref)}
+        />
+      )}
+    </RepositoryView>
+  ),
 };
 
 /**
@@ -48,17 +82,24 @@ interface CompanionProps {
   /** The registered views, in the order the view switch lists them. */
   views: readonly CompanionView<CompanionContext>[];
   prefs: CompanionPrefs;
+  /** Terminal links; without it the companion shows none. */
+  linking?: CompanionLinking | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
-export const Companion = ({ selectedTerminal, projects, projectWorktrees, views, prefs }: CompanionProps) => {
+export const Companion = ({ selectedTerminal, projects, projectWorktrees, views, prefs, linking = null }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
-        ? { terminal: selectedTerminal, repository: terminalRepository(selectedTerminal, projects, projectWorktrees) }
+        ? {
+            terminal: selectedTerminal,
+            repository: terminalRepository(selectedTerminal, projects, projectWorktrees),
+            link: linking ? linking.linkOf(selectedTerminal) : (selectedTerminal.link ?? null),
+            linking,
+          }
         : null,
-    [selectedTerminal, projects, projectWorktrees],
+    [selectedTerminal, projects, projectWorktrees, linking],
   );
   // The view picked on the switch holds while its terminal stays selected and still has it.
   // Selecting another terminal forgets it, so every selection starts from the first view.
@@ -82,12 +123,21 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
     >
       <CompanionDivider width={width} onResize={setWidth} onCommit={resize} />
       {context && shown && (
-        <header className="h-12 shrink-0 px-3 flex items-center border-b border-[#30363d] bg-[#161b22]">
-          <ViewSwitch
-            views={choices}
-            shown={shown.id}
-            onPick={(view) => setPicked({ terminalId: context.terminal.id, view })}
-          />
+        <header className="shrink-0 flex flex-col border-b border-[#30363d] bg-[#161b22]">
+          <div className="h-12 px-3 flex items-center">
+            <ViewSwitch
+              views={choices}
+              shown={shown.id}
+              onPick={(view) => setPicked({ terminalId: context.terminal.id, view })}
+            />
+          </div>
+          {context.link && (
+            <TerminalLinkBar
+              link={context.link}
+              onPin={(slot, ref) => linking?.pin(context.terminal.id, slot, ref)}
+              onUnpin={(slot) => linking?.unpin(context.terminal.id, slot)}
+            />
+          )}
         </header>
       )}
       {context && shown ? (

@@ -1,5 +1,5 @@
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -22,7 +22,14 @@ pub struct BridgeState {
     events_history: Arc<Mutex<Vec<Envelope>>>,
     pending_permissions: Arc<Mutex<HashMap<String, PendingPermissionItem>>>,
     session_allowed_tools: Arc<Mutex<HashMap<String, HashSet<String>>>>,
+    /// The input of each tool call that started and hasn't finished, keyed by terminal and
+    /// `toolUseId`, oldest first, so its `tool.finished` can carry the command with the result.
+    open_tool_calls: Arc<Mutex<VecDeque<(String, String, serde_json::Value)>>>,
 }
+
+/// Most started tool calls kept waiting for their `tool.finished`. A call whose finish never
+/// comes (the session died) is dropped once this many newer ones started.
+pub const MAX_OPEN_TOOL_CALLS: usize = 256;
 
 impl BridgeState {
     pub fn new() -> Self {
@@ -34,6 +41,7 @@ impl BridgeState {
             events_history: Arc::new(Mutex::new(Vec::new())),
             pending_permissions: Arc::new(Mutex::new(HashMap::new())),
             session_allowed_tools: Arc::new(Mutex::new(HashMap::new())),
+            open_tool_calls: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -104,6 +112,40 @@ impl BridgeState {
             .entry(terminal_id.to_string())
             .or_insert_with(|| Arc::new(Notify::new()))
             .clone()
+    }
+
+    /// Keeps each tool call's command with its result. The event-bridge plugin sends a call's
+    /// arguments (`input`) on `tool.started` and its result (`text`) on `tool.finished`; this
+    /// remembers the first and adds it to the second, matched by terminal and `toolUseId`, so a
+    /// finished call says both what ran and what it printed. Other events pass unchanged.
+    pub fn pair_tool_call(&self, envelope: &mut Envelope) {
+        let (Some(tag), Some(id)) = (
+            envelope.tag.clone(),
+            envelope.data.get("toolUseId").and_then(|v| v.as_str()).map(str::to_string),
+        ) else {
+            return;
+        };
+        let mut open = self.open_tool_calls.lock();
+        match envelope.event_type.as_str() {
+            "tool.started" => {
+                if let Some(input) = envelope.data.get("input") {
+                    if open.len() >= MAX_OPEN_TOOL_CALLS {
+                        open.pop_front();
+                    }
+                    open.push_back((tag, id, input.clone()));
+                }
+            }
+            "tool.finished" => {
+                let Some(at) = open.iter().position(|(t, i, _)| *t == tag && *i == id) else {
+                    return;
+                };
+                let (_, _, input) = open.remove(at).expect("position is in range");
+                if let Some(data) = envelope.data.as_object_mut() {
+                    data.entry("input").or_insert(input);
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn record_envelope(&self, envelope: Envelope) {
@@ -225,6 +267,66 @@ impl BridgeState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tool_event(event_type: &str, tag: &str, data: serde_json::Value) -> Envelope {
+        Envelope {
+            v: 1,
+            boot: "b".to_string(),
+            seq: 1,
+            ts: 1,
+            session_id: "s".to_string(),
+            tag: Some(tag.to_string()),
+            event_type: event_type.to_string(),
+            data,
+        }
+    }
+
+    #[test]
+    fn a_finished_tool_call_keeps_the_command_it_started_with_and_its_result() {
+        let state = BridgeState::new();
+        let input = serde_json::json!({ "command": "gh pr create --fill" });
+        let mut started = tool_event("tool.started", "term-a", serde_json::json!({ "tool": "Bash", "toolUseId": "t1", "input": input }));
+        state.pair_tool_call(&mut started);
+        let mut finished = tool_event(
+            "tool.finished",
+            "term-a",
+            serde_json::json!({ "tool": "Bash", "toolUseId": "t1", "status": "ok", "text": "https://github.com/o/r/pull/9" }),
+        );
+        state.pair_tool_call(&mut finished);
+        assert_eq!(finished.data["input"], input);
+        assert_eq!(finished.data["text"], "https://github.com/o/r/pull/9");
+    }
+
+    #[test]
+    fn a_tool_call_is_paired_only_within_its_own_terminal_and_only_once() {
+        let state = BridgeState::new();
+        let mut started = tool_event("tool.started", "term-a", serde_json::json!({ "toolUseId": "t1", "input": { "command": "ls" } }));
+        state.pair_tool_call(&mut started);
+        let mut other = tool_event("tool.finished", "term-b", serde_json::json!({ "toolUseId": "t1", "text": "x" }));
+        state.pair_tool_call(&mut other);
+        assert!(other.data.get("input").is_none());
+        let mut first = tool_event("tool.finished", "term-a", serde_json::json!({ "toolUseId": "t1", "text": "x" }));
+        state.pair_tool_call(&mut first);
+        assert!(first.data.get("input").is_some());
+        let mut again = tool_event("tool.finished", "term-a", serde_json::json!({ "toolUseId": "t1", "text": "x" }));
+        state.pair_tool_call(&mut again);
+        assert!(again.data.get("input").is_none());
+    }
+
+    #[test]
+    fn tool_calls_that_never_finish_are_forgotten_past_the_cap() {
+        let state = BridgeState::new();
+        for n in 0..=MAX_OPEN_TOOL_CALLS {
+            let mut started = tool_event("tool.started", "term-a", serde_json::json!({ "toolUseId": format!("t{n}"), "input": n }));
+            state.pair_tool_call(&mut started);
+        }
+        let mut oldest = tool_event("tool.finished", "term-a", serde_json::json!({ "toolUseId": "t0" }));
+        state.pair_tool_call(&mut oldest);
+        assert!(oldest.data.get("input").is_none());
+        let mut newest = tool_event("tool.finished", "term-a", serde_json::json!({ "toolUseId": format!("t{MAX_OPEN_TOOL_CALLS}") }));
+        state.pair_tool_call(&mut newest);
+        assert_eq!(newest.data["input"], MAX_OPEN_TOOL_CALLS);
+    }
 
     #[tokio::test]
     async fn test_bridge_state_permission_lifecycle() {
