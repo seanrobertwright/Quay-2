@@ -17,6 +17,7 @@ import {
 import { CellDetail } from "./CellDetail.tsx";
 import { usePopupLayer } from "../overlay/useOverlay.ts";
 import { errorText, usePullRequestReadiness, type PullRequestLocation } from "./usePullRequestReadiness.ts";
+import { PRIMARY, SECONDARY } from "./buttonStyles.ts";
 
 /** What `merge_github_pr` reports once the pull request has merged. */
 interface MergeOutcome {
@@ -288,10 +289,6 @@ export const Failure = ({ text }: { text: string | null }) =>
       {text}
     </p>
   ) : null;
-
-const BUTTON = "h-7 px-3 rounded-md border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed";
-const PRIMARY = `${BUTTON} border-[#2ea043] bg-[#238636] text-white enabled:hover:bg-[#2ea043]`;
-const SECONDARY = `${BUTTON} border-[#30363d] bg-[#21262d] text-[#c9d1d9] enabled:hover:bg-[#30363d]`;
 
 /**
  * The merge split button. The main button starts the confirm step for the picked method; the

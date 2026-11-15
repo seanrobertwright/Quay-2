@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { usePopupLayer } from "../overlay/useOverlay.ts";
+import { PRIMARY, SECONDARY } from "./buttonStyles.ts";
 
 /** One entry in a split button's menu. */
 export interface SplitItem<K extends string> {
@@ -7,11 +8,7 @@ export interface SplitItem<K extends string> {
   label: string;
 }
 
-const BUTTON = "h-7 px-3 rounded-md border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed";
-const TONES = {
-  primary: `${BUTTON} border-[#2ea043] bg-[#238636] text-white enabled:hover:bg-[#2ea043]`,
-  secondary: `${BUTTON} border-[#30363d] bg-[#21262d] text-[#c9d1d9] enabled:hover:bg-[#30363d]`,
-};
+const TONES = { primary: PRIMARY, secondary: SECONDARY };
 
 /**
  * A split button: the main button runs `onMain`; the arrow beside it, named `toggleLabel`, opens a

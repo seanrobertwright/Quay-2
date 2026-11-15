@@ -17,6 +17,7 @@ import { IssueCellDetail } from "./IssueCellDetail.tsx";
 import { useGithubRead } from "./useGithubRead.ts";
 import { SplitButton } from "./SplitButton.tsx";
 import { Failure, useAction } from "./PullRequestView.tsx";
+import { MUTED, SECONDARY } from "./buttonStyles.ts";
 
 /** Where a ticket lives: the folder `gh` runs in, the slot's repository when it names one, and its number. */
 export interface IssueLocation {
@@ -64,11 +65,6 @@ export interface Acting {
   /** Reads the ticket again, after a change to it. */
   onChanged: () => void;
 }
-
-const BUTTON = "h-7 px-3 rounded-md border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed";
-const SECONDARY = `${BUTTON} border-[#30363d] bg-[#21262d] text-[#c9d1d9] enabled:hover:bg-[#30363d]`;
-
-const MUTED = "text-[#8b949e]";
 
 const HEADLINE_TONE: Record<StatusTone, string> = {
   ready: "text-[#3fb950]",
