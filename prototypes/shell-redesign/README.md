@@ -42,3 +42,7 @@ with example data; nothing is wired to Quay.
 - `quay-module-bar-badges.html`: four ways the module bar shows terminal
   status while the Projects panel is closed, with a scripted event feed and
   a click counter. Chosen: a dot per terminal under the Projects icon.
+- `quay-agents-panel.html`: four layouts for the Agents module (one
+  accordion, lists left with detail in the companion, tabs in the panel,
+  an Agents stage tab), with a guided six-step job, a click counter, and a
+  table of where each part opens. Awaiting the operator's choice.

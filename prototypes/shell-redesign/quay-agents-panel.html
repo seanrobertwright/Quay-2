@@ -1,0 +1,803 @@
+<title>Quay Agents Panel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a guided walkthrough card, then one live Quay window (module bar, Agents panel, stage,
+   companion) with four switchable ways to lay out the Agents module, a live click and travel
+   counter for one six-step job, a "where each one opens" table, and a decision form with one Copy button.
+   Single dark look, Quay's palette, same as the other shell-redesign prototypes. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --go: #238636; --go-line: #2ea043; --sel: #132339; --guide: #f0b72f;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--q-panel); display: flex; flex-direction: column; gap: 1px; flex: 1 1 230px; min-width: 0; position: relative; }
+.seg label b { color: var(--hi); font: 600 14px var(--display); }
+.seg label small { color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--blue); background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.rec-mark { font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+.seg label.seen b::after { content: " ✓"; color: var(--green); font-size: 12px; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+
+/* walkthrough */
+.walk { border: 1px solid rgba(240,183,47,.55); background: linear-gradient(180deg, rgba(240,183,47,.08), rgba(240,183,47,.02)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.walk .wtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.walk .wstep { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.walk h2 { margin: 0; font-size: 19px; }
+.walk .wprog { font: 12px var(--mono); color: var(--hi); margin-left: auto; }
+.walk .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdots { display: flex; gap: 6px; }
+.wdots i { width: 22px; height: 4px; border-radius: 2px; background: var(--q-line); }
+.wdots i.on { background: var(--guide); } .wdots i.ok { background: var(--green); }
+.wnav { display: flex; gap: 8px; }
+
+/* job strip */
+.job { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.job ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.job li { border: 1px solid var(--q-line); border-radius: 14px; padding: 3px 10px 3px 8px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; background: var(--q-panel); font-size: 13px; }
+.job li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--q-line); box-sizing: border-box; }
+.job li.done { color: #e6edf3; border-color: rgba(63,185,80,.5); }
+.job li.done::before { background: var(--green); border-color: var(--green); }
+.job li.now { color: var(--hi); border-color: var(--guide); }
+.job .lead { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* mock window */
+.shell { position: relative; display: flex; width: 1200px; height: 640px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+.shell svg { width: 16px; height: 16px; flex: none; }
+.shell button { background: none; border: 0; padding: 0; text-align: left; color: inherit; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: stretch; }
+.ib { height: 44px; display: grid !important; place-items: center; position: relative; color: var(--muted) !important; }
+.ib svg { width: 20px; height: 20px; }
+.ib:hover { color: var(--hi) !important; background: var(--q-raise) !important; }
+.ib.on { color: #fff !important; box-shadow: inset 2px 0 0 var(--blue); }
+.tdots { display: flex; flex-direction: column; padding: 2px 0 6px; border-bottom: 1px solid var(--q-line); }
+.tdot { height: 24px; display: grid !important; place-items: center; position: relative; }
+.tdot:hover { background: var(--q-raise) !important; }
+.tdot.sel::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; background: var(--hi); }
+.td { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.td.w { background: var(--green); } .td.a { background: var(--amber); box-shadow: 0 0 0 3px rgba(210,153,34,.25); } .td.i { border: 2px solid var(--muted); width: 6px; height: 6px; }
+.badge { position: absolute; top: 5px; right: 5px; min-width: 14px; height: 14px; border-radius: 7px; font: 600 9px/14px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.badge.blue { background: var(--blue); }
+.grow { flex: 1; }
+.spend { font: 10px var(--mono); color: var(--muted); text-align: center; padding: 6px 0; }
+
+.panel { flex: none; border-right: 1px solid var(--q-line); background: var(--q-panel); display: flex; flex-direction: column; min-height: 0; }
+.phead { padding: 9px 12px 7px; font: 600 13px var(--display); color: var(--hi); display: flex; align-items: center; gap: 8px; }
+.phead small { font: 10px var(--mono); color: var(--muted); margin-left: auto; }
+.pscroll { flex: 1; overflow: auto; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.sh { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 4px 3px; display: flex; gap: 6px; align-items: center; }
+.sh .n { color: var(--hi); }
+.sh .cap { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.acc { width: 100%; display: flex !important; align-items: center; gap: 6px; padding: 7px 6px !important; border-radius: 6px; font: 600 11px var(--mono) !important; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) !important; }
+.acc:hover { background: var(--q-raise) !important; color: var(--hi) !important; }
+.acc .n { color: var(--hi); margin-left: auto; text-transform: none; }
+.acc.open { color: var(--hi) !important; }
+.accbody { display: flex; flex-direction: column; gap: 4px; padding: 0 0 6px; }
+.ptabs { display: flex; gap: 2px; padding: 0 8px 6px; border-bottom: 1px solid var(--q-line); flex-wrap: wrap; }
+.ptab { padding: 5px 7px !important; border-radius: 6px; color: var(--muted) !important; font-size: 11.5px; display: inline-flex !important; gap: 4px; align-items: center; }
+.ptab[aria-selected=true] { background: var(--q-raise) !important; color: #fff !important; }
+.ptab .n { font: 600 9px var(--mono); background: var(--amber); color: #0d1117; border-radius: 6px; padding: 0 4px; }
+
+.rowbtn { width: 100%; display: flex !important; gap: 8px; align-items: center; padding: 6px 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; min-width: 0; }
+.rowbtn:hover { border-color: #484f58 !important; }
+.ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ttl b { color: #e6edf3; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ttl small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.chev { color: var(--muted); font-size: 11px; }
+.wrow.open .rowbtn { border-color: var(--amber) !important; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.perm { border: 1px solid var(--amber); border-top: 0; border-radius: 0 0 6px 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: #1a1708; }
+.plab { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+pre.code { margin: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 5px; padding: 6px 8px; font: 11px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; color: #e6edf3; max-height: 160px; overflow: auto; }
+.pbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn { border: 1px solid var(--q-line) !important; background: var(--q-raise) !important; border-radius: 6px; padding: 4px 10px !important; font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+.btn.go { background: var(--go) !important; border-color: var(--go-line) !important; color: #fff !important; }
+.btn.sm { padding: 2px 8px !important; font-size: 11px; }
+.m { color: var(--muted); }
+.empty { color: var(--muted); padding: 6px 8px; font-size: 11.5px; }
+.peer { display: flex; flex-direction: column; border: 1px solid var(--q-line); border-radius: 6px; background: var(--q-bg); overflow: hidden; }
+.peer .rowbtn { border: 0 !important; border-radius: 0; }
+.prev { display: block !important; padding: 4px 8px 6px 25px !important; font-size: 11px; color: var(--fg); border-top: 1px dashed var(--q-line) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.prev:hover { background: var(--q-raise) !important; }
+.prev em { font-style: normal; color: var(--green); font-weight: 600; }
+.role { font: 9px var(--mono); border: 1px solid var(--q-line); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.trow { width: 100%; display: flex !important; flex-direction: column; gap: 2px; padding: 6px 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; }
+.trow .tl { display: flex; gap: 6px; align-items: center; font-size: 11px; min-width: 0; }
+.trow .tl b { color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-ok { color: var(--green); font: 600 10px var(--mono); } .st-q { color: var(--blue); font: 600 10px var(--mono); } .st-err { color: var(--red); font: 600 10px var(--mono); }
+.tmsg { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.texp { display: flex; flex-direction: column; gap: 4px; padding: 4px 2px 2px; }
+pre.reply { margin: 0; border-left: 2px solid var(--green); background: rgba(63,185,80,.07); padding: 6px 8px; font: 11px/1.5 var(--mono); white-space: pre-wrap; color: #e6edf3; }
+.lrow { width: 100%; display: flex !important; gap: 6px; align-items: center; padding: 5px 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; font: 11px var(--mono); min-width: 0; }
+.lrow .tool { color: var(--hi); font-weight: 600; }
+.lrow .cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.lrow .ms { color: var(--muted); }
+.ic-ok { color: var(--green); } .ic-err { color: var(--red); }
+.lexp { padding: 2px 0 4px; }
+.form { display: flex; flex-direction: column; gap: 4px; border: 1px dashed var(--q-line); border-radius: 6px; padding: 6px; }
+.form .fr { display: flex; gap: 4px; align-items: center; font-size: 11px; color: var(--muted); }
+.fake { flex: 1; border: 1px solid var(--q-line); border-radius: 5px; padding: 3px 6px; background: var(--q-bg); color: var(--muted); font-size: 11px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.srow { width: 100%; display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--q-bg); border: 1px solid var(--q-line); min-width: 0; }
+.play { width: 26px; height: 26px; border-radius: 6px; display: grid !important; place-items: center; background: var(--go) !important; color: #fff !important; flex: none; }
+.play svg { width: 12px; height: 12px; }
+.link { color: var(--blue) !important; font-size: 11.5px; padding: 4px 6px !important; }
+.hq { width: 100%; box-sizing: border-box; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 5px 8px; color: var(--hi); font-size: 11.5px; }
+.hrow { width: 100%; display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--q-bg); border: 1px solid var(--q-line); min-width: 0; box-sizing: border-box; }
+.hide { display: none !important; }
+.launch { width: 100%; display: flex !important; gap: 10px; align-items: center; padding: 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; }
+.launch:hover { border-color: #484f58 !important; }
+.launch .ext { color: var(--muted); font-size: 11px; }
+
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.stabs { height: 34px; flex: none; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--q-panel); }
+.stab { padding: 5px 10px !important; border-radius: 6px; color: var(--muted) !important; font: 11.5px var(--mono); display: inline-flex !important; gap: 6px; align-items: center; white-space: nowrap; }
+.stab[aria-selected=true] { background: var(--q-raise) !important; color: #fff !important; }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; color: #8b949e; }
+.out b { color: #e6edf3; font-weight: 500; } .out .g { color: var(--green); } .out .r { color: var(--red); } .out .y { color: var(--amber); } .out .p { color: var(--purple); }
+.dash { flex: 1; overflow: auto; padding: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; }
+.dsec { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; background: var(--q-panel); min-width: 0; }
+.dsec h3 { margin: 0 0 2px; font: 600 12px var(--display); color: var(--hi); display: flex; gap: 6px; align-items: center; }
+.dsec.focus { border-color: var(--blue); }
+.cards { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.builder { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 10px; color: var(--muted); }
+
+.comp { width: 340px; flex: none; border-left: 1px solid var(--q-line); display: flex; flex-direction: column; min-height: 0; }
+.chead { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); align-items: center; }
+.cseg { padding: 5px 10px !important; border-radius: 6px; color: var(--muted) !important; font-size: 11.5px; display: inline-flex !important; gap: 5px; align-items: center; }
+.cseg[aria-selected=true] { background: var(--q-raise) !important; color: #fff !important; }
+.cscroll { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.card { border: 1px solid var(--q-line); border-radius: 8px; padding: 10px; background: var(--q-panel); display: flex; flex-direction: column; gap: 6px; }
+.card h3 { margin: 0; font: 600 13px var(--display); color: var(--hi); }
+.cells { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cell { border: 1px solid var(--q-line); border-radius: 6px; padding: 5px 7px; font-size: 11px; }
+.cell b { display: block; color: var(--hi); font-size: 13px; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--q-line); border-radius: 10px; padding: 0 8px; font-size: 10.5px; color: var(--muted); }
+.chip.on { border-color: var(--blue); color: var(--hi); }
+.strip { border-top: 1px solid var(--q-line); padding: 8px; display: flex; gap: 6px; align-items: center; }
+.ago { font: 10px var(--mono); color: var(--muted); }
+.modalbg { position: absolute; inset: 0; background: rgba(1,4,9,.6); display: grid; place-items: center; z-index: 4; }
+.modal { width: 480px; border: 1px solid var(--q-line); border-radius: 10px; background: var(--q-panel); padding: 14px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 16px 48px rgba(0,0,0,.6); }
+.modal h3 { margin: 0; font: 600 14px var(--display); color: var(--hi); }
+
+/* the guide */
+.guide { outline: 2px solid var(--guide) !important; outline-offset: 2px; animation: pulse 1.1s ease-in-out infinite; position: relative; z-index: 1; }
+@keyframes pulse { 50% { outline-color: rgba(240,183,47,.25); } }
+@media (prefers-reduced-motion: reduce) { .guide { animation: none; } }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; min-height: 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+.recbox { border: 1px solid rgba(240,183,47,.45); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.recbox h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.recbox ul { margin: 0; padding-left: 18px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); vertical-align: top; }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: var(--hi); white-space: nowrap; }
+th.cur, td.cur { background: var(--sel); }
+tr.cur td { background: var(--sel); }
+.where { font: 600 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.w-panel { background: rgba(88,166,255,.15); color: var(--blue); } .w-comp { background: rgba(163,113,247,.15); color: var(--purple); }
+.w-tab { background: rgba(63,185,80,.15); color: var(--green); } .w-modal { background: rgba(248,81,73,.15); color: var(--red); } .w-pal { background: var(--q-raise); color: var(--muted); }
+
+/* decision form */
+form.ask { display: flex; flex-direction: column; gap: 18px; border: 1px solid var(--q-line); border-radius: 10px; padding: 16px; background: var(--q-panel); }
+form.ask.lit { border-color: var(--guide); }
+.q { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.q legend { color: var(--hi); font-weight: 600; padding: 0; margin-bottom: 4px; }
+.q legend small { color: var(--muted); font-weight: 400; display: block; }
+.opt { display: flex; gap: 8px; align-items: flex-start; }
+.opt input { margin-top: 4px; accent-color: var(--blue); }
+.opt em { font-style: normal; font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+.order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-width: 460px; }
+.order li { display: flex; gap: 8px; align-items: center; border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 6px 4px 10px; background: var(--q-bg); }
+.order li span { flex: 1; }
+.order button { border: 1px solid var(--q-line); background: var(--q-raise); border-radius: 5px; width: 28px; height: 26px; }
+.order button:disabled { opacity: .35; cursor: default; }
+form.ask textarea { background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 7px 9px; min-height: 60px; color: var(--hi); }
+.copyrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.copybtn { background: var(--go); border: 1px solid var(--go-line); color: #fff; font-weight: 600; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+pre.answer { margin: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 10px 12px; font: 12px/1.6 var(--mono); white-space: pre-wrap; color: var(--fg); max-height: 260px; overflow: auto; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></symbol>
+  <symbol id="i-net" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5l-6 5.5M12 11.5l6 5.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></symbol>
+  <symbol id="i-hist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+  <symbol id="i-swarm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="4" width="8" height="7" rx="1"/><rect x="3" y="13" width="8" height="7" rx="1"/><rect x="13" y="13" width="8" height="7" rx="1"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15V9a3 3 0 0 0-3-3h-3"/></symbol>
+  <symbol id="i-act" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click everything</div>
+    <h1>Quay Agents Panel</h1>
+    <p class="lede">The Agents module holds five things today: Waiting on You, Swarm presets, Mission Control, Session History and the Action Log. Today each one is its own drawer or modal. Here are four ways to lay them out across the panel, the companion and a stage tab. The card below walks you through it.</p>
+  </header>
+
+  <section class="walk" id="walk" aria-live="polite"></section>
+
+  <fieldset class="seg" id="seg">
+    <legend>Layout</legend>
+    <input type="radio" name="v" id="v-A" value="A"><label for="v-A"><b>A · One accordion</b><small>All five stacked in the panel; open what you need</small></label>
+    <input type="radio" name="v" id="v-B" value="B" checked><label for="v-B"><b>B · Lists left, detail right<span class="rec-mark">Recommended</span></b><small>Panel holds the lists; a terminal's own activity goes in the companion</small></label>
+    <input type="radio" name="v" id="v-C" value="C"><label for="v-C"><b>C · Tabs in the panel</b><small>Five tabs across the top of the panel; one at a time, full height</small></label>
+    <input type="radio" name="v" id="v-D" value="D"><label for="v-D"><b>D · Agents stage tab</b><small>Panel holds Waiting on You and four launchers; the rest open in one stage tab</small></label>
+  </fieldset>
+
+  <div class="job" aria-live="polite">
+    <span class="lead">The job</span>
+    <ol id="job"></ol>
+    <button class="ghost" id="reset" type="button">Reset run</button>
+  </div>
+
+  <div class="scroll"><div class="shell" id="shell"></div></div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>Where each one opens</h2>
+  <p class="lede">The column for the layout you are looking at is highlighted. Sizes are for the panel unless the cell says otherwise.</p>
+  <div class="scroll"><table id="where"></table></div>
+
+  <h2>Your runs of the job</h2>
+  <p class="lede">Counted live in the mock: every press inside the window is a click, and pointer travel is the straight-line distance between presses. Typing is not counted. The table keeps your best run per layout and resets when the page reloads. Switching layout starts a fresh run.</p>
+  <div class="scroll"><table id="bench"></table></div>
+
+  <h2>My recommendation</h2>
+  <div class="recbox">
+    <h3>B · Lists left, detail right</h3>
+    <ul>
+      <li>It follows the rule the companion already set: things that belong to one terminal (its permission request, its tool calls, its messages to other agents) sit beside that terminal. Things that span terminals (who is waiting, which agents exist, swarms, past sessions) are lists in the panel.</li>
+      <li>Nothing covers the terminal. Today the permission request is a modal and four of the five are drawers over the screen; D keeps the modal and puts the rest in a tab that hides the terminal.</li>
+      <li>Panel order is how often the loop needs each one: Waiting on You (grows to 5 rows, then scrolls), Agents in this project with each one's latest reply, saved Swarms (built-in presets and the builder open in a stage tab), and Session History filling the rest with search.</li>
+      <li>The Action Log and the message trail merge into one Activity view in the companion, for the selected terminal. A message strip at its foot sends a task to that agent, which replaces Mission Control's dispatch form. Broadcast moves to the palette.</li>
+    </ul>
+    <p>The cost: the companion gets a second view (Pull request or Activity), so one more switch to learn. In my own run of the job, following the outline, B took 7 clicks, D 8 (one of them only to get back to the terminal), and A and C 10 each, because every step there starts by opening a section or tab.</p>
+    <p>This is only my pick. Nothing is decided until you approve below.</p>
+  </div>
+
+  <h2>Your decision</h2>
+  <form class="ask" id="ask">
+    <fieldset class="q">
+      <legend>1. Which layout do you approve?</legend>
+      <label class="opt"><input type="radio" name="fav" value="A"> A · One accordion</label>
+      <label class="opt"><input type="radio" name="fav" value="B"> <span>B · Lists left, detail right<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="fav" value="C"> C · Tabs in the panel</label>
+      <label class="opt"><input type="radio" name="fav" value="D"> D · Agents stage tab</label>
+      <label class="opt"><input type="radio" name="fav" value="none"> None of these; see my notes</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>2. Order of the panel, top to bottom<small>Starts in my recommended order. Use the arrows to move a line. Skip this if you chose D.</small></legend>
+      <ol class="order" id="order"></ol>
+    </fieldset>
+    <fieldset class="q">
+      <legend>3. When an agent asks permission to run a tool, what happens?</legend>
+      <label class="opt"><input type="radio" name="perm" value="modal"> A modal pops up over everything, as today</label>
+      <label class="opt"><input type="radio" name="perm" value="comp"> <span>Its row appears in Waiting on You and its terminal's dot turns amber; the request opens in the companion when you pick that row or that terminal<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="perm" value="row"> Its row appears in Waiting on You, and Allow and Deny sit on the row itself</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>4. Anything else? (optional)</legend>
+      <textarea id="notes" aria-label="Your notes"></textarea>
+    </fieldset>
+    <div class="copyrow">
+      <button class="copybtn" type="submit" id="copy">Copy my answers</button>
+      <span class="toast" id="copied" aria-live="polite"></span>
+    </div>
+    <pre class="answer" id="answer" tabindex="0" aria-label="Your answers as text"></pre>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const NAMES = { A: "A · One accordion", B: "B · Lists left, detail right", C: "C · Tabs in the panel", D: "D · Agents stage tab" };
+const PANEL_W = { A: 300, B: 280, C: 300, D: 230 };
+
+/* ---------- example data ---------- */
+const TERMS = {
+  p1: { name: "claude · ticket-571", role: "Responder", dot: "a", status: "waiting", where: "Quay2 · .wt/ticket-571",
+    out: `<span class="m">$</span> claude <span class="m">--ticket 571</span>
+<span class="p">●</span> Reading ticket <b>Run canvas: node phases</b> (#571)
+<span class="g">✓</span> phases.ts, runCanvas.ts, RunNode.tsx updated
+<span class="p">●</span> Asked codex · review to check runCanvas.ts for races
+<span class="r">✗</span> pnpm vitest run …/runCanvas.test.ts
+  <span class="m">expected "idle", received undefined</span>
+<span class="p">●</span> The idle fixture is missing a step. Fixed it.
+<span class="y">?</span> Allow Bash: pnpm vitest run …/runCanvas.test.ts <span class="m">[waiting on you]</span>` },
+  p2: { name: "codex · review", role: "Listener", dot: "w", status: "working", where: "Quay2 · .wt/review",
+    out: `<span class="m">$</span> codex <span class="m">--listen</span>
+<span class="p">●</span> Task from claude · ticket-571: review runCanvas.ts for races
+<span class="g">✓</span> Read runCanvas.ts, RunNode.tsx, phases.ts
+<span class="p">●</span> Replied with two findings
+<span class="p">●</span> Watching for the next task…` },
+  p3: { name: "archon · implement-588", role: "Listener", dot: "a", status: "finished turn", where: "Quay2 · .wt/archon-588",
+    out: `<span class="m">$</span> archon run implement <span class="m">--ticket 588</span>
+<span class="g">✓</span> plan · code · test
+<span class="g">✓</span> Opened pull request #589
+<span class="y">●</span> Turn finished. Waiting for your next message.` },
+};
+const WAIT = {
+  w1: { t: "p1", kind: "Permission request: Bash", age: "3m",
+    perm: { tool: "Bash", label: "Command to execute", body: "pnpm vitest run src/slices/praxis-builder/runCanvas.test.ts --reporter=verbose", reason: "Re-run the failing test after fixing the idle fixture." } },
+  w2: { t: "p3", kind: "Finished turn", age: "7m" },
+};
+const LOG = {
+  p1: [
+    { id: "lb1", tool: "Bash", ok: false, cmd: "pnpm vitest run src/slices/praxis-builder/runCanvas.test.ts", ms: "8.2 s", time: "14:06",
+      out: "FAIL  runCanvas.test.ts > idle phase\nAssertionError: expected \"idle\", received undefined\n  at runCanvas.test.ts:42:18\n\nTest Files  1 failed (1)\n     Tests  1 failed | 11 passed (12)" },
+    { id: "lb2", tool: "Edit", ok: true, cmd: "src/slices/praxis-builder/fixtures/idle.ts", ms: "14 ms", time: "14:05", out: "+3 −1 lines" },
+    { id: "lb3", tool: "Read", ok: true, cmd: "src/slices/praxis-builder/phases.ts", ms: "6 ms", time: "14:02", out: "212 lines" },
+    { id: "lb4", tool: "Bash", ok: true, cmd: "git worktree add .wt/ticket-571 -b ticket-571", ms: "0.4 s", time: "13:58", out: "Preparing worktree (new branch 'ticket-571')" },
+  ],
+  p2: [
+    { id: "lc1", tool: "Read", ok: true, cmd: "src/slices/praxis-builder/runCanvas.ts", ms: "5 ms", time: "14:03", out: "188 lines" },
+    { id: "lc2", tool: "Read", ok: true, cmd: "src/slices/praxis-builder/RunNode.tsx", ms: "4 ms", time: "14:03", out: "96 lines" },
+  ],
+  p3: [
+    { id: "ld1", tool: "Bash", ok: true, cmd: "gh pr create --fill", ms: "2.1 s", time: "13:51", out: "https://github.com/…/pull/589" },
+  ],
+};
+const TRAIL = [
+  { id: "t1", from: "p1", to: "p2", status: "Completed", took: "41 s", time: "14:03", msg: "Review runCanvas.ts on ticket-571 for races between setPhase and emit.",
+    reply: "Two findings.\n1. runCanvas.ts: setPhase is not awaited before emit(\"phase\"), so a fast node can report idle.\n2. RunNode.tsx: the list key is the array index; use node.id." },
+  { id: "t2", from: "you", to: "all", status: "Dispatched", took: "", time: "13:40", msg: "Freeze master at 15:00 for the release.", reply: "" },
+];
+const SWARMS = [
+  { id: "rp", name: "Review pair", roster: "Claude builder · Codex reviewer", layout: "Side by side", saved: true },
+  { id: "tt", name: "Ticket trio", roster: "Claude · Codex · test runner", layout: "Grid", saved: true },
+  { id: "b1", name: "Implement and test", roster: "Claude · test runner", layout: "Side by side" },
+  { id: "b2", name: "Red team", roster: "Claude · Codex · Gemini", layout: "Grid" },
+  { id: "b3", name: "Spec then build", roster: "Claude planner · Claude builder", layout: "Stacked" },
+  { id: "b4", name: "Pair debug", roster: "Claude · Codex", layout: "Side by side" },
+  { id: "b5", name: "Docs sweep", roster: "Claude · Gemini", layout: "Stacked" },
+];
+const HIST = [
+  { id: "h0", prompt: "add the readiness card to the companion", when: "Today at 13:52", msgs: 41 },
+  { id: "h1", prompt: "fix the updater signature check after the key rotation", when: "Yesterday at 17:40", msgs: 84 },
+  { id: "h2", prompt: "wayfinder 600: pie contexts prototype", when: "Yesterday at 11:15", msgs: 132 },
+  { id: "h3", prompt: "why does archon resume hit database is locked", when: "Nov 12 at 09:30", msgs: 57 },
+  { id: "h4", prompt: "split the stage header into a tab bar", when: "Nov 11 at 16:02", msgs: 63 },
+  { id: "h5", prompt: "bench gate noise on the vitest 5 upgrade", when: "Nov 10 at 10:48", msgs: 29 },
+];
+const tname = (k) => (k === "you" ? "you" : k === "all" ? "all agents" : TERMS[k].name);
+
+/* ---------- state ---------- */
+const fresh = () => ({ mod: "agents", sel: "p1", stage: "term", dashOpen: false, dashFocus: "", builderOpen: false,
+  cv: "pr", permFor: null, openW: null, modal: null, sec: { wait: true }, tab: "wait", openLog: null, openT: null,
+  waits: ["w1", "w2"], q: "", toast: "" });
+let v = "B";
+let st = fresh();
+let J;
+const resetJob = () => { J = { allow: false, bash: false, reply: false, swarm: false, resume: false, clicks: 0, travel: 0, last: null, finished: false }; };
+resetJob();
+const bench = {};
+const W = { step: 0, seen: new Set(["B"]) };
+
+const JOB = [
+  { k: "allow", label: "Read claude · ticket-571's command, then allow it", done: () => J.allow, keys: ["perm-allow", "w1", "tab-wait", "sec-wait", "mod-agents"] },
+  { k: "bash", label: "Open the output of its last Bash call", done: () => J.bash, keys: ["lb1", "comp-activity", "term-p1", "tab-log", "sec-log", "stage-dash", "dash-log", "mod-agents"] },
+  { k: "reply", label: "Read codex · review's reply to it", done: () => J.reply, keys: ["t1", "p2reply", "comp-activity", "tab-mission", "sec-mission", "stage-dash", "dash-mission", "mod-agents"] },
+  { k: "swarm", label: "Launch your Review pair swarm", done: () => J.swarm, keys: ["launch-rp", "tab-swarm", "sec-swarm", "stage-dash", "dash-swarm", "mod-agents"] },
+  { k: "resume", label: "Resume yesterday's updater session", done: () => J.resume, keys: ["resume-h1", "tab-history", "sec-history", "stage-dash", "dash-history", "mod-agents"] },
+  { k: "back", label: "End on claude · ticket-571's terminal", done: () => st.stage === "term" && st.sel === "p1" && !st.modal, keys: ["modal-close", "stage-term", "term-p1"] },
+];
+const jobStep = () => JOB.findIndex((j) => !j.done());
+const jobLive = () => !J.finished;
+
+/* ---------- actions ---------- */
+function act(a, arg) {
+  st.toast = "";
+  switch (a) {
+    case "mod": st.mod = st.mod === arg ? null : arg; break;
+    case "sel": st.sel = arg; st.stage = "term"; if (st.cv === "perm") st.cv = "pr"; break;
+    case "stage": st.stage = arg; break;
+    case "sec": st.sec[arg] = !st.sec[arg]; break;
+    case "tab": st.tab = arg; break;
+    case "wait": {
+      const w = WAIT[arg];
+      if (!w.perm) { st.sel = w.t; st.stage = "term"; if (st.cv === "perm") st.cv = "pr"; st.toast = `Showing ${TERMS[w.t].name}`; break; }
+      if (v === "A" || v === "C") st.openW = st.openW === arg ? null : arg;
+      else if (v === "B") { st.sel = w.t; st.stage = "term"; st.cv = "perm"; st.permFor = arg; }
+      else st.modal = arg;
+      break;
+    }
+    case "allow": case "deny":
+      st.waits = st.waits.filter((x) => x !== arg);
+      if (arg === "w1" && a === "allow") J.allow = true;
+      st.openW = null; st.modal = null; if (st.cv === "perm") st.cv = "pr";
+      st.toast = a === "allow" ? "Allowed. The test is running." : "Denied.";
+      break;
+    case "later": st.modal = null; break;
+    case "cv": st.cv = arg; break;
+    case "log": st.openLog = st.openLog === arg ? null : arg; if (arg === "lb1" && st.openLog) J.bash = true; break;
+    case "trail": st.openT = st.openT === arg ? null : arg; if (arg === "t1" && st.openT) J.reply = true; break;
+    case "peer-reply": {
+      const t = TRAIL.find((x) => x.id === arg);
+      if (t.from !== st.sel && t.to !== st.sel) st.sel = t.to;
+      st.stage = "term"; st.cv = "act"; st.openT = arg; if (arg === "t1") J.reply = true; break;
+    }
+    case "launch": { const s = SWARMS.find((x) => x.id === arg); if (arg === "rp") J.swarm = true; st.toast = `${s.name}: spawning terminals in Quay2.`; break; }
+    case "resume": { if (arg === "h1") J.resume = true; st.toast = "Resuming that session in a new terminal."; break; }
+    case "dash": st.dashOpen = true; st.stage = "dash"; st.dashFocus = arg; break;
+    case "builder": st.builderOpen = true; st.stage = "builder"; break;
+    case "noop": break;
+  }
+  if (!J.finished && jobStep() === -1) {
+    J.finished = true;
+    const b = bench[v];
+    const run = { clicks: J.clicks, travel: Math.round(J.travel) };
+    bench[v] = !b || run.clicks < b.clicks || (run.clicks === b.clicks && run.travel < b.travel) ? { ...run, runs: (b ? b.runs : 0) + 1 } : { ...b, runs: b.runs + 1 };
+  }
+}
+
+/* ---------- blocks ---------- */
+const g = (key, on = true) => (on ? ` data-guide="${key}"` : "");
+function permBody(id) {
+  const w = WAIT[id];
+  return `<div class="perm"><div class="plab">${esc(w.perm.tool)} · ${esc(w.perm.label)}</div><pre class="code">${esc(w.perm.body)}</pre>
+    <p class="m">${esc(w.perm.reason)}</p>
+    <div class="pbtns"><button class="btn go" type="button" data-a="allow" data-arg="${id}"${g("perm-allow")}>Allow once</button><button class="btn" type="button" data-a="allow" data-arg="${id}">Allow for session</button><button class="btn" type="button" data-a="deny" data-arg="${id}">Deny</button></div></div>`;
+}
+function waitRows(mode) {
+  if (!st.waits.length) return `<p class="empty">Nothing is waiting on you</p>`;
+  return st.waits.map((id) => {
+    const w = WAIT[id], t = TERMS[w.t], open = mode === "inline" && st.openW === id;
+    return `<div class="wrow${open ? " open" : ""}"><button class="rowbtn" type="button" data-a="wait" data-arg="${id}"${g(id)}><i class="td a"></i><span class="ttl"><b>${esc(t.name)}</b><small>${esc(w.kind)} · waited ${w.age}</small></span>${mode === "inline" && w.perm ? `<span class="chev">${open ? "▾" : "▸"}</span>` : ""}</button>${open ? permBody(id) : ""}</div>`;
+  }).join("");
+}
+function trailRow(t) {
+  const open = st.openT === t.id;
+  const sc = t.status === "Completed" ? "st-ok" : "st-q";
+  return `<div><button class="trow" type="button" data-a="trail" data-arg="${t.id}"${g(t.id)}><span class="tl"><b>${esc(tname(t.from))} → ${esc(tname(t.to))}</b><span class="${sc}">${t.status}</span><span class="grow"></span><span class="ago">${t.took ? t.took + " · " : ""}${t.time}</span></span>${open ? "" : `<span class="tmsg">${esc(t.reply ? "Reply: " + t.reply.split("\n")[0] : t.msg)}</span>`}</button>
+    ${open ? `<div class="texp"><pre class="code">${esc(t.msg)}</pre>${t.reply ? `<pre class="reply">${esc(t.reply)}</pre>` : ""}</div>` : ""}</div>`;
+}
+function logRow(r) {
+  const open = st.openLog === r.id;
+  return `<div><button class="lrow" type="button" data-a="log" data-arg="${r.id}"${g(r.id)}><span class="${r.ok ? "ic-ok" : "ic-err"}">${r.ok ? "✓" : "✗"}</span><span class="tool">${r.tool}</span><span class="cmd">${esc(r.cmd)}</span><span class="ms">${r.ms}</span></button>${open ? `<div class="lexp"><pre class="code">${esc(r.out)}</pre></div>` : ""}</div>`;
+}
+function missionBlock(wide) {
+  const peers = Object.entries(TERMS).map(([k, t]) => `<div class="srow"><i class="td ${t.dot}"></i><span class="ttl"><b>${esc(t.name)}</b><small>${t.status}</small></span><span class="role">${t.role}</span></div>`).join("");
+  return `${peers}
+    <div class="form"><div class="fr">From <span class="fake">claude · ticket-571</span> to <span class="fake">codex · review</span></div>
+      <div class="chips"><span class="chip">Code review</span><span class="chip">Run tests</span><span class="chip">Status</span><span class="chip">Handoff</span></div>
+      <div class="fr"><span class="fake">Task for the agent…</span><button class="btn sm" type="button" data-a="noop">Dispatch</button></div>
+      <div class="fr"><span class="fake">Broadcast to all agents…</span><button class="btn sm" type="button" data-a="noop">Send</button></div></div>
+    <div class="sh">Message trail <span class="n">${TRAIL.length}</span></div>${TRAIL.map(trailRow).join("")}`;
+}
+function logBlock() {
+  return `<div class="sh">${esc(TERMS[st.sel].name)} <span class="cap">${LOG[st.sel].length} calls</span></div>${LOG[st.sel].map(logRow).join("")}`;
+}
+function swarmRows(list) {
+  return list.map((s) => `<div class="srow"><span class="ttl"><b>${esc(s.name)}</b><small>${esc(s.roster)} · ${s.layout}</small></span><button class="play" type="button" aria-label="Launch ${esc(s.name)}" data-a="launch" data-arg="${s.id}"${g("launch-" + s.id)}>${ico("play")}</button></div>`).join("");
+}
+function swarmBlock() {
+  return `<div class="sh">Yours</div>${swarmRows(SWARMS.filter((s) => s.saved))}<div class="sh">Built in</div>${swarmRows(SWARMS.filter((s) => !s.saved))}<button class="link" type="button" data-a="builder">+ New swarm (opens the builder tab)</button>`;
+}
+function histBlock() {
+  return `<input class="hq" id="hq" type="search" placeholder="Search prompts or session ids" aria-label="Search sessions" value="${esc(st.q)}">
+    ${HIST.map((h) => `<div class="hrow" data-prompt="${esc(h.prompt.toLowerCase())}"><span class="ttl"><b title="${esc(h.prompt)}">${esc(h.prompt)}</b><small>${h.when} · ${h.msgs} msgs</small></span><button class="btn sm" type="button" data-a="resume" data-arg="${h.id}"${g("resume-" + h.id)}>Resume</button></div>`).join("")}
+    <p class="empty">Up to 100 sessions in this project · All workspaces</p>`;
+}
+
+/* ---------- panels ---------- */
+const SECTIONS_AC = [
+  ["wait", "Waiting on you", () => st.waits.length, () => waitRows("inline")],
+  ["mission", "Mission Control", () => Object.keys(TERMS).length, () => missionBlock()],
+  ["swarm", "Swarm presets", () => SWARMS.length, swarmBlock],
+  ["history", "Session history", () => HIST.length, histBlock],
+  ["log", "Action log", () => LOG[st.sel].length, logBlock],
+];
+function panelA() {
+  return `<div class="phead">Agents<small>Quay2</small></div><div class="pscroll">${SECTIONS_AC.map(([k, label, n, body]) => {
+    const open = !!st.sec[k];
+    return `<button class="acc${open ? " open" : ""}" type="button" aria-expanded="${open}" data-a="sec" data-arg="${k}"${g("sec-" + k, !open)}><span>${open ? "▾" : "▸"}</span>${label}<span class="n">${n()}</span></button>${open ? `<div class="accbody">${body()}</div>` : ""}`;
+  }).join("")}</div>`;
+}
+function panelC() {
+  const cur = SECTIONS_AC.find((s) => s[0] === st.tab);
+  const short = { wait: "Waiting", mission: "Mission", swarm: "Swarms", history: "History", log: "Log" };
+  return `<div class="phead">Agents<small>Quay2</small></div>
+    <div class="ptabs" role="tablist" aria-label="Agents sections">${SECTIONS_AC.map(([k]) => `<button class="ptab" type="button" role="tab" aria-selected="${st.tab === k}" data-a="tab" data-arg="${k}"${g("tab-" + k, st.tab !== k)}>${short[k]}${k === "wait" && st.waits.length ? `<span class="n">${st.waits.length}</span>` : ""}</button>`).join("")}</div>
+    <div class="pscroll" style="padding-top:8px">${cur[3]()}</div>`;
+}
+function panelB() {
+  const peers = Object.entries(TERMS).map(([k, t]) => {
+    const t1 = TRAIL[0];
+    const prev = k === "p2" ? `<button class="prev" type="button" data-a="peer-reply" data-arg="t1"${g("p2reply")}><em>Replied</em> to ${esc(tname(t1.from))}: ${esc(t1.reply.split("\n")[0])}</button>` : "";
+    return `<div class="peer"><button class="rowbtn" type="button" data-a="sel" data-arg="${k}"><i class="td ${t.dot}"></i><span class="ttl"><b>${esc(t.name)}</b><small>${t.status}</small></span><span class="role">${t.role}</span></button>${prev}</div>`;
+  }).join("");
+  return `<div class="phead">Agents<small>Quay2</small></div><div class="pscroll">
+    <div class="sh">Waiting on you <span class="n">${st.waits.length}</span><span class="cap">up to 5, then scrolls</span></div>${waitRows("comp")}
+    <div class="sh">Agents in Quay2 <span class="n">${Object.keys(TERMS).length}</span><span class="cap">latest reply</span></div>${peers}
+    <div class="sh">Swarms <span class="cap">saved</span></div>${swarmRows(SWARMS.filter((s) => s.saved))}<button class="link" type="button" data-a="builder">All presets and the builder</button>
+    <div class="sh">Session history <span class="cap">fills the rest</span></div>${histBlock()}</div>`;
+}
+const DASH = [
+  ["mission", "Mission Control", "net", () => `${Object.keys(TERMS).length} agents · 1 new reply`],
+  ["log", "Action log", "list", () => `${LOG[st.sel].length} calls · ${TERMS[st.sel].name}`],
+  ["swarm", "Swarms", "swarm", () => `2 saved · 5 built in`],
+  ["history", "Session history", "hist", () => `${HIST.length} recent · search`],
+];
+function panelD() {
+  return `<div class="phead">Agents<small>Quay2</small></div><div class="pscroll">
+    <div class="sh">Waiting on you <span class="n">${st.waits.length}</span></div>${waitRows("modal")}
+    <div class="sh">Open in the Agents tab</div>
+    ${DASH.map(([k, label, ic, sub]) => `<button class="launch" type="button" data-a="dash" data-arg="${k}"${g("dash-" + k, st.stage !== "dash")}>${ico(ic)}<span class="ttl"><b>${label}</b><small>${sub()}</small></span><span class="ext">↗</span></button>`).join("")}</div>`;
+}
+function projectsPanel() {
+  return `<div class="phead">Projects<small>3 terminals</small></div><div class="pscroll">${Object.entries(TERMS).map(([k, t]) => `<button class="rowbtn" type="button" data-a="sel" data-arg="${k}"><i class="td ${t.dot}"></i><span class="ttl"><b>${esc(t.name)}</b><small>${esc(t.where)}</small></span></button>`).join("")}</div>`;
+}
+
+/* ---------- stage and companion ---------- */
+function stageHtml() {
+  const tabs = [`<button class="stab" type="button" role="tab" aria-selected="${st.stage === "term"}" data-a="stage" data-arg="term"${g("stage-term", st.stage !== "term")}><i class="td ${TERMS[st.sel].dot}"></i>${esc(TERMS[st.sel].name)}</button>`];
+  if (st.dashOpen) tabs.push(`<button class="stab" type="button" role="tab" aria-selected="${st.stage === "dash"}" data-a="stage" data-arg="dash"${g("stage-dash", st.stage !== "dash")}>${ico("bot")}Agents</button>`);
+  if (st.builderOpen) tabs.push(`<button class="stab" type="button" role="tab" aria-selected="${st.stage === "builder"}" data-a="stage" data-arg="builder">${ico("swarm")}Swarm builder</button>`);
+  let body;
+  if (st.stage === "dash") {
+    body = `<div class="dash">${DASH.map(([k, label, ic]) => `<section class="dsec${st.dashFocus === k ? " focus" : ""}"><h3>${ico(ic)}${label}</h3>${k === "mission" ? missionBlock(true) : k === "log" ? logBlock() : k === "swarm" ? swarmBlock() : histBlock()}</section>`).join("")}</div>`;
+  } else if (st.stage === "builder") {
+    body = `<div class="builder"><h3 style="margin:0;color:var(--hi);font:600 14px var(--display)">New swarm</h3>
+      <div class="form"><div class="fr">Name <span class="fake">Review pair</span></div><div class="fr">Layout <span class="fake">Side by side · Stacked · 2×2 grid</span></div>
+      <div class="fr">Agent 1 <span class="fake">Claude · builder · role prompt…</span></div><div class="fr">Agent 2 <span class="fake">Codex · reviewer · role prompt…</span></div>
+      <div class="fr"><button class="btn sm" type="button" data-a="noop">+ Add agent</button><span class="grow"></span><button class="btn sm" type="button" data-a="noop">Save</button><button class="btn sm go" type="button" data-a="noop">Launch</button></div></div>
+      <p class="m">The full catalog and the builder need width, so they open here as a stage tab in every layout.</p></div>`;
+  } else {
+    body = `<pre class="out">${TERMS[st.sel].out}</pre>`;
+  }
+  return `<section class="stage" aria-label="Stage"><div class="stabs" role="tablist" aria-label="Stage tabs">${tabs.join("")}</div>${body}</section>`;
+}
+function prStub() {
+  if (st.sel === "p2") return `<div class="card"><h3>codex · review</h3><p class="m">No ticket or pull request is linked to this terminal.</p></div>`;
+  const pr = st.sel === "p1" ? ["Run canvas: node phases", "#574", "1 failing", "2", "6"] : ["Import host template", "#589", "passing", "0", "4"];
+  return `<div class="card"><h3>${pr[0]} <span class="m">${pr[1]}</span></h3><div class="cells"><div class="cell">Checks<b>${pr[2]}</b></div><div class="cell">Comments<b>${pr[3]}</b></div><div class="cell">Files<b>${pr[4]}</b></div><div class="cell">Commits<b>3</b></div></div><button class="btn" type="button" data-a="noop">Squash and merge</button></div>
+    <p class="m" style="font-size:11px">The pull request view you chose earlier. Stand-in only.</p>`;
+}
+function activity() {
+  const msgs = TRAIL.filter((t) => t.from === st.sel || t.to === st.sel || t.to === "all");
+  const items = [...msgs.map((t) => ({ time: t.time, html: trailRow(t) })), ...LOG[st.sel].map((r) => ({ time: r.time, html: logRow(r) }))].sort((a, b) => b.time.localeCompare(a.time));
+  return `<div class="chips"><span class="chip on">All</span><span class="chip">Tool calls ${LOG[st.sel].length}</span><span class="chip">Messages ${msgs.length}</span><span class="chip">Errors</span></div>${items.map((i) => i.html).join("")}`;
+}
+function compHtml() {
+  let head = "", body, foot = "";
+  if (v === "B") {
+    head = `<div class="chead" role="tablist" aria-label="Companion view"><button class="cseg" type="button" role="tab" aria-selected="${st.cv === "pr"}" data-a="cv" data-arg="pr">${ico("pr")}Pull request</button><button class="cseg" type="button" role="tab" aria-selected="${st.cv === "act"}" data-a="cv" data-arg="act"${g("comp-activity", st.cv !== "act")}>${ico("act")}Activity</button><span class="grow"></span><span class="ago">${esc(TERMS[st.sel].name)}</span></div>`;
+    if (st.cv === "perm" && st.waits.includes(st.permFor)) {
+      body = `<div class="card"><h3>${esc(TERMS[WAIT[st.permFor].t].name)} asks to run ${esc(WAIT[st.permFor].perm.tool)}</h3><p class="m">waited ${WAIT[st.permFor].age}</p></div>${permBody(st.permFor).replace('class="perm"', 'class="perm" style="border-top:1px solid var(--amber);border-radius:6px"')}`;
+    } else if (st.cv === "act") {
+      body = activity();
+      foot = `<div class="strip"><span class="fake">Message ${esc(TERMS[st.sel].name)}…</span><button class="btn sm" type="button" data-a="noop">Send</button></div>`;
+    } else body = prStub();
+  } else {
+    head = `<div class="chead"><span class="cseg" style="color:#fff">${ico("pr")}Pull request</span><span class="grow"></span><span class="ago">${esc(TERMS[st.sel].name)}</span></div>`;
+    body = prStub();
+  }
+  return `<aside class="comp" aria-label="Companion">${head}<div class="cscroll">${body}</div>${foot}</aside>`;
+}
+function modalHtml() {
+  if (!st.modal) return "";
+  const w = WAIT[st.modal];
+  return `<div class="modalbg"><div class="modal" role="dialog" aria-label="Tool approval"><h3>Tool approval · ${esc(TERMS[w.t].name)}</h3><div class="plab">Tool: ${esc(w.perm.tool)} · ${esc(w.perm.label)}</div><pre class="code">${esc(w.perm.body)}</pre><p class="m">${esc(w.perm.reason)}</p>
+    <div class="pbtns"><button class="btn" type="button" data-a="deny" data-arg="${st.modal}">Deny</button><button class="btn" type="button" data-a="later"${g("modal-close")}>Later</button><span class="grow"></span><button class="btn" type="button" data-a="allow" data-arg="${st.modal}">Allow for session</button><button class="btn go" type="button" data-a="allow" data-arg="${st.modal}"${g("perm-allow")}>Allow once</button></div></div></div>`;
+}
+
+/* ---------- notes and tables ---------- */
+const NOTES = {
+  A: { what: "Every part keeps its own section in one scrolling panel, 300 px wide. Waiting on You starts open; you open the others as you need them, and they stay open.",
+    pro: ["One place to look; nothing else in the shell changes.", "You can keep the sections you use open all the time."],
+    con: ["Every step starts by opening a section, and open sections push the rest down out of sight.", "Logs, replies and the permission command wrap in 300 px.", "Mission Control's dispatch form is cramped."] },
+  B: { what: "The panel holds the four lists in a fixed order: Waiting on You, Agents in this project, saved Swarms, Session History. What belongs to one terminal (its permission request, tool calls and messages) opens in the companion beside it, as a second view called Activity.",
+    pro: ["No sections or tabs to open: the lists are always there.", "The permission request, the log and replies have the companion's 340 px and sit next to the terminal they belong to.", "Activity merges the Action Log and the message trail, so one place says what an agent did and said."],
+    con: ["The companion gains a second view to switch to.", "Picking a permission row selects that terminal.", "Broadcast and the full preset catalog move out of the panel (palette and a stage tab)."] },
+  C: { what: "Five tabs across the top of a 300 px panel: Waiting, Mission, Swarms, History, Log. One shows at a time, at full height.",
+    pro: ["Each part gets the whole panel height.", "Familiar tab pattern; the Waiting tab carries a count."],
+    con: ["What you are not looking at is hidden; a waiting agent shows only as a count on its tab.", "Every step starts with a tab click.", "Same 300 px width limit as A."] },
+  D: { what: "The panel keeps only Waiting on You and four launchers, 230 px wide. Mission Control, the Action Log, Swarms and Session History open together in one Agents tab on the stage. Permission requests stay a modal, as today.",
+    pro: ["Wide room for logs, replies and swarm cards.", "Narrow panel leaves more stage.", "Once the tab is open, every later step is one click."],
+    con: ["The Agents tab covers the terminal you are working with; you click back to it.", "The permission modal blocks the whole window.", "Four parts in one tab are cramped at this window size."] },
+};
+const WHERE = [
+  ["Waiting on You", { A: ["panel", "Section, open at start"], B: ["panel", "Top; grows to 5 rows, then scrolls; one line when empty"], C: ["panel", "Tab, the default"], D: ["panel", "Top of a narrow panel"] }],
+  ["A permission request", { A: ["panel", "Opens under its row"], B: ["comp", "Companion of that terminal"], C: ["panel", "Opens under its row"], D: ["modal", "Modal over everything"] }],
+  ["Agents in the project", { A: ["panel", "Inside Mission Control"], B: ["panel", "Second; one row per agent with its latest reply"], C: ["panel", "Mission tab"], D: ["tab", "Agents tab"] }],
+  ["Dispatch and broadcast", { A: ["panel", "Form in Mission Control"], B: ["comp", "Message strip in Activity; broadcast in the palette"], C: ["panel", "Form in the Mission tab"], D: ["tab", "Agents tab"] }],
+  ["Message trail", { A: ["panel", "Mission Control, all agents"], B: ["comp", "Activity, for the selected terminal"], C: ["panel", "Mission tab"], D: ["tab", "Agents tab"] }],
+  ["Swarm presets", { A: ["panel", "Section: saved and built in"], B: ["panel", "Third; saved only, up to 4"], C: ["panel", "Swarms tab"], D: ["tab", "Agents tab"] }],
+  ["Swarm builder and full catalog", { A: ["tab", "Stage tab"], B: ["tab", "Stage tab"], C: ["tab", "Stage tab"], D: ["tab", "Agents tab, then the builder tab"] }],
+  ["Session History", { A: ["panel", "Section with search"], B: ["panel", "Last; fills the rest, search on top, 100 at most"], C: ["panel", "History tab"], D: ["tab", "Agents tab"] }],
+  ["Action Log", { A: ["panel", "Section, selected terminal"], B: ["comp", "Activity, for the selected terminal"], C: ["panel", "Log tab"], D: ["tab", "Agents tab"] }],
+];
+const WL = { panel: ["w-panel", "Panel"], comp: ["w-comp", "Companion"], tab: ["w-tab", "Stage tab"], modal: ["w-modal", "Modal"] };
+function renderTables() {
+  $("where").innerHTML = `<thead><tr><th>What</th>${["A", "B", "C", "D"].map((k) => `<th class="${k === v ? "cur" : ""}">${NAMES[k]}</th>`).join("")}</tr></thead><tbody>${WHERE.map(([what, m]) => `<tr><td>${what}</td>${["A", "B", "C", "D"].map((k) => `<td class="${k === v ? "cur" : ""}"><span class="where ${WL[m[k][0]][0]}">${WL[m[k][0]][1]}</span> ${m[k][1]}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  $("bench").innerHTML = `<thead><tr><th>Layout</th><th>Clicks</th><th>Pointer travel</th><th>Runs</th></tr></thead><tbody>${["A", "B", "C", "D"].map((k) => {
+    const b = bench[k];
+    return `<tr class="${k === v ? "cur" : ""}"><td>${NAMES[k]}</td><td class="n">${b ? b.clicks : "—"}</td><td class="n">${b ? b.travel.toLocaleString("en-US") + " px" : "—"}</td><td>${b ? b.runs : 0}</td></tr>`;
+  }).join("")}</tbody>`;
+}
+
+/* ---------- walkthrough ---------- */
+const WALK = [
+  { title: "Look at each layout", body: "Press A, B, C and D in the Layout row. Each lays out the same Agents module in the window below. B is my pick.",
+    prog: () => `${W.seen.size} of 4 seen`, done: () => W.seen.size === 4 },
+  { title: "Run the job in a layout", body: "Pick a layout, then follow the glowing outline in the window: it shows the next thing to press, for six short steps (the job row above the window ticks them off). Switching layout starts a fresh run.",
+    prog: () => J.finished ? "Finished" : `Step ${jobStep() + 1} of ${JOB.length}`, done: () => Object.keys(bench).length >= 1 },
+  { title: "Run it in a second layout", body: "Pick a different layout and follow the outline again, so the table under the window compares two.",
+    prog: () => `${Object.keys(bench).length} of 2 layouts run`, done: () => Object.keys(bench).length >= 2 },
+  { title: "Approve, then copy", body: "My recommendation is under the window. Answer Your decision (the layout question starts blank, so nothing is chosen for you), then press Copy my answers and paste the text into the chat.",
+    prog: () => "", done: () => false },
+];
+const advanced = new Set();
+function renderWalk() {
+  while (W.step < WALK.length - 1 && !advanced.has(W.step) && WALK[W.step].done()) { advanced.add(W.step); W.step++; }
+  const s = WALK[W.step];
+  $("walk").innerHTML = `<div class="wtop"><span class="wstep">Step ${W.step + 1} of ${WALK.length}</span><h2>${s.title}</h2><span class="wprog">${s.prog()}</span></div>
+    <p>${s.body}</p>
+    <div class="row"><div class="wdots">${WALK.map((_, i) => `<i class="${i < W.step ? "ok" : i === W.step ? "on" : ""}"></i>`).join("")}</div>
+    <span class="grow"></span><div class="wnav">${W.step > 0 ? '<button class="ghost" type="button" id="w-back">Back</button>' : ""}${W.step < WALK.length - 1 ? '<button class="ghost" type="button" id="w-skip">Skip this step</button>' : ""}</div></div>`;
+  $("ask").classList.toggle("lit", W.step === WALK.length - 1);
+  const b = $("w-back"), k = $("w-skip");
+  if (b) b.onclick = () => { W.step--; renderWalk(); };
+  if (k) k.onclick = () => { advanced.add(W.step); W.step++; renderWalk(); };
+}
+
+/* ---------- render ---------- */
+function applyFilter(root) {
+  const q = st.q.trim().toLowerCase();
+  root.querySelectorAll(".hrow").forEach((r) => r.classList.toggle("hide", !!q && !r.dataset.prompt.includes(q)));
+}
+function render() {
+  const s = $("shell");
+  const keep = {};
+  ["pscroll", "cscroll", "dash"].forEach((c) => { const e = s.querySelector("." + c); if (e) keep[c] = e.scrollTop; });
+  const panel = st.mod === "agents" ? ({ A: panelA, B: panelB, C: panelC, D: panelD })[v]() : st.mod === "projects" ? projectsPanel() : "";
+  const dots = Object.entries(TERMS).map(([k, t]) => `<button class="tdot${st.sel === k ? " sel" : ""}" type="button" aria-label="${esc(t.name)}, ${t.status}" data-a="sel" data-arg="${k}"${g("term-" + k, st.sel !== k)}><i class="td ${t.dot}"></i></button>`).join("");
+  s.innerHTML = `<nav class="abar" aria-label="Module bar">
+      <button class="ib${st.mod === "projects" ? " on" : ""}" type="button" aria-label="Projects" data-a="mod" data-arg="projects">${ico("folder")}</button>
+      <div class="tdots">${dots}</div>
+      <button class="ib" type="button" aria-label="Source control, 2 open pull requests" data-a="noop">${ico("branch")}<span class="badge blue">2</span></button>
+      <button class="ib${st.mod === "agents" ? " on" : ""}" type="button" aria-label="Agents, ${st.waits.length} waiting" data-a="mod" data-arg="agents"${g("mod-agents", st.mod !== "agents")}>${ico("bot")}${st.waits.length ? `<span class="badge">${st.waits.length}</span>` : ""}</button>
+      <button class="ib" type="button" aria-label="Workflows" data-a="noop">${ico("flow")}</button>
+      <button class="ib" type="button" aria-label="Project" data-a="noop">${ico("sliders")}</button>
+      <span class="grow"></span><span class="spend">$4.12</span></nav>
+    ${panel ? `<div class="panel" style="width:${st.mod === "agents" ? PANEL_W[v] : 260}px">${panel}</div>` : ""}
+    ${stageHtml()}${compHtml()}${modalHtml()}`;
+  ["pscroll", "cscroll", "dash"].forEach((c) => { const e = s.querySelector("." + c); if (e && keep[c] != null) e.scrollTop = keep[c]; });
+  applyFilter(s);
+  if (jobLive()) {
+    const i = jobStep();
+    if (i >= 0) {
+      for (const key of JOB[i].keys) {
+        const el = [...s.querySelectorAll(`[data-guide="${key}"]`)].find((e) => !e.closest(".hide"));
+        if (el) {
+          el.classList.add("guide");
+          /* keep the outline in view inside its own scroll box, without scrolling the page */
+          const box = el.closest(".pscroll, .cscroll, .dash");
+          if (box && box.getBoundingClientRect) {
+            const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+            if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 12;
+            else if (r.top < b.top) box.scrollTop -= b.top - r.top + 12;
+          }
+          break;
+        }
+      }
+    }
+  }
+  const cur = jobStep();
+  $("job").innerHTML = JOB.map((j, i) => `<li class="${J.finished || (cur >= 0 && i < cur) ? "done" : jobLive() && i === cur ? "now" : ""}">${j.label}</li>`).join("");
+  const n = NOTES[v];
+  $("n-what").textContent = n.what;
+  $("n-pro").innerHTML = n.pro.map((x) => `<li>${x}</li>`).join("");
+  $("n-con").innerHTML = n.con.map((x) => `<li>${x}</li>`).join("");
+  $("readout").innerHTML = `<span>This run: <b>${J.clicks}</b> clicks</span><span><b>${Math.round(J.travel).toLocaleString("en-US")}</b> px pointer travel</span>${J.finished ? '<span class="toast">Job done. Press Reset run, or pick another layout.</span>' : ""}${st.toast ? `<span class="toast">${esc(st.toast)}</span>` : ""}`;
+  document.querySelectorAll("#seg label").forEach((l) => l.classList.toggle("seen", W.seen.has(l.htmlFor.slice(2))));
+  renderTables();
+  renderWalk();
+  renderAnswer();
+}
+
+/* ---------- events ---------- */
+const shell = $("shell");
+shell.addEventListener("pointerdown", (e) => {
+  if (J.finished) return;
+  J.clicks++;
+  const p = { x: e.clientX + scrollX, y: e.clientY + scrollY };
+  if (J.last && Number.isFinite(p.x) && Number.isFinite(p.y)) J.travel += Math.hypot(p.x - J.last.x, p.y - J.last.y);
+  if (Number.isFinite(p.x) && Number.isFinite(p.y)) J.last = p;
+});
+shell.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-a]");
+  if (!b) return;
+  act(b.dataset.a, b.dataset.arg);
+  render();
+});
+shell.addEventListener("input", (e) => {
+  if (e.target.id !== "hq") return;
+  st.q = e.target.value;
+  applyFilter(shell);
+});
+document.querySelectorAll('#seg input[name="v"]').forEach((r) => r.addEventListener("change", () => {
+  v = r.value; W.seen.add(v); st = fresh(); resetJob(); render();
+}));
+$("reset").addEventListener("click", () => { st = fresh(); resetJob(); render(); });
+
+/* ---------- decision form ---------- */
+let order = ["Waiting on you", "Agents in the project, with latest reply", "Saved swarms", "Session history"];
+function renderOrder() {
+  $("order").innerHTML = order.map((o, i) => `<li><span>${i + 1}. ${o}</span><button type="button" aria-label="Move ${o} up" data-up="${i}"${i === 0 ? " disabled" : ""}>↑</button><button type="button" aria-label="Move ${o} down" data-down="${i}"${i === order.length - 1 ? " disabled" : ""}>↓</button></li>`).join("");
+}
+$("order").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const i = Number(b.dataset.up ?? b.dataset.down), j = b.dataset.up != null ? i - 1 : i + 1;
+  if (j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  renderOrder(); renderAnswer();
+});
+const PERM = { modal: "a modal over everything, as today", comp: "row in Waiting on You and an amber dot; opens in the companion", row: "row in Waiting on You with Allow and Deny on the row" };
+function answerText() {
+  const f = new FormData($("ask"));
+  const fav = f.get("fav"), perm = f.get("perm");
+  const runs = Object.keys(bench).sort().map((k) => `${k} ${bench[k].clicks} clicks, ${bench[k].travel.toLocaleString("en-US")} px`).join("; ");
+  return [
+    "Agents panel: my decision",
+    "Layout approved: " + (fav ? (fav === "none" ? "none of these" : NAMES[fav]) : "(not answered)"),
+    "Panel order: " + (fav === "D" ? "n/a (D)" : order.join(" > ")),
+    "Permission request: " + (perm ? PERM[perm] : "(not answered)"),
+    "Best job runs: " + (runs || "none"),
+    "Notes: " + ($("notes").value.trim() || "none"),
+  ].join("\n");
+}
+function renderAnswer() { $("answer").textContent = answerText(); }
+$("ask").addEventListener("input", renderAnswer);
+$("ask").addEventListener("change", renderAnswer);
+$("ask").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = answerText();
+  renderAnswer();
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($("answer")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copied").textContent = "Selected. Press Ctrl+C, then paste it into the chat."; };
+  try { navigator.clipboard.writeText(text).then(() => { $("copied").textContent = "Copied. Paste it into the chat."; }, fallback); } catch (_) { fallback(); }
+});
+
+renderOrder();
+render();
+</script>
