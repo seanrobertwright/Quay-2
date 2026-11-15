@@ -66,7 +66,6 @@ export function useWorkspace() {
     projectName: string;
     suggestedIssueNumber?: number;
   } | null>(null);
-  const [isGithubDrawerOpen, setIsGithubDrawerOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
   const [isAttentionQueueOpen, setIsAttentionQueueOpen] = useState(false);
@@ -1252,8 +1251,12 @@ export function useWorkspace() {
   const ctrlBPrefix = useCtrlBPrefix();
   // Chord `d` asks the app to open the diff lens, which needs the terminal links the app works out
   // from what this hook returns. The app sets the opener each render; it returns false when the
-  // selected terminal has no pull request, and the chord then opens the Diff Inspector.
+  // selected terminal has no pull request, and the chord then opens the repo-wide Diffs (the Diff
+  // Inspector) from the Source control panel.
   const diffLensOpener = useRef<(() => boolean) | null>(null);
+  // Chords `i` and `a` open the Source control panel, a module the app owns. The app sets the opener
+  // each render.
+  const sourceControlOpener = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
@@ -1263,11 +1266,16 @@ export function useWorkspace() {
       splitGrid,
       openSwarmModal: () => setIsSwarmModalOpen(true),
       openDiffs: () => {
-        if (!diffLensOpener.current?.()) setIsDiffInspectorOpen(true);
+        if (diffLensOpener.current?.()) return;
+        sourceControlOpener.current?.();
+        setIsDiffInspectorOpen(true);
       },
       openNewWorktreeModal,
-      toggleGithubDrawer: () => setIsGithubDrawerOpen((prev) => !prev),
-      openAuditModal: () => setIsAuditModalOpen(true),
+      openSourceControl: () => sourceControlOpener.current?.(),
+      openPrePrAudit: () => {
+        sourceControlOpener.current?.();
+        setIsAuditModalOpen(true);
+      },
       toggleSessionHistory: () => setIsSessionHistoryOpen((prev) => !prev),
       toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
       toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
@@ -1421,6 +1429,7 @@ export function useWorkspace() {
     isDiffInspectorOpen,
     setIsDiffInspectorOpen,
     diffLensOpener,
+    sourceControlOpener,
     projectWorktrees,
     refreshWorktrees,
     isNewWorktreeOpen,
@@ -1429,8 +1438,6 @@ export function useWorkspace() {
     openNewWorktreeModal,
     createWorktree,
     removeWorktree,
-    isGithubDrawerOpen,
-    setIsGithubDrawerOpen,
     isAuditModalOpen,
     setIsAuditModalOpen,
     isSessionHistoryOpen,

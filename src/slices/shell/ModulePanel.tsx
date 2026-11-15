@@ -46,7 +46,7 @@ export interface PanelLauncher {
 
 /**
  * A panel that lists the tools its module holds today, each opening that tool as before. The
- * Source control, Agents, Workflows and Project panels start as these until their own panels land.
+ * Agents, Workflows and Project panels start as these until their own panels land.
  */
 export const LauncherPanel = ({ title, launchers }: { title: string; launchers: PanelLauncher[] }) => {
   const id = useId();

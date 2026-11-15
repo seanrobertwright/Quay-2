@@ -1,5 +1,4 @@
-import { Coins, FileDiff, GitGraph, History, Network, Settings, ShieldCheck, Zap } from "lucide-react";
-import { GithubIcon } from "../github/GithubIcon.tsx";
+import { Coins, History, Network, Settings, Zap } from "lucide-react";
 import { ArchonIcon } from "../archon/ArchonIcon.tsx";
 import { PraxisIcon } from "../praxis-builder/PraxisIcon.tsx";
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
@@ -8,10 +7,6 @@ import type { PanelLauncher } from "./ModulePanel.tsx";
 
 /** The tools the placeholder panels open, each as it opens today. */
 export interface PlaceholderHandlers {
-  openGithub: () => void;
-  openTopos: () => void;
-  openDiffs: () => void;
-  openPrePrAudit: () => void;
   openMissionControl: () => void;
   openSessionHistory: () => void;
   openSwarm: () => void;
@@ -25,18 +20,15 @@ export interface PlaceholderHandlers {
   hasProject: boolean;
 }
 
+/** The modules whose panels are still placeholders. */
+export type PlaceholderModule = Exclude<ModuleId, "projects" | "source-control">;
+
 /**
- * What each module other than Projects lists until its own panel lands: the tools the rail's
- * toolbar and the stage header opened, grouped by the module the shell redesign spec gives them.
+ * What each placeholder module lists until its own panel lands: the tools the rail's toolbar and
+ * the stage header opened, grouped by the module the shell redesign spec gives them.
  */
-export function placeholderLaunchers(h: PlaceholderHandlers): Record<Exclude<ModuleId, "projects">, PanelLauncher[]> {
+export function placeholderLaunchers(h: PlaceholderHandlers): Record<PlaceholderModule, PanelLauncher[]> {
   return {
-    "source-control": [
-      { id: "github", label: "GitHub Issues & PRs", shortcut: "Ctrl+Shift+B i", icon: <GithubIcon className="w-4 h-4 text-white" />, onClick: h.openGithub },
-      { id: "topos", label: "Topos", shortcut: "Ctrl+Shift+B c", icon: <GitGraph className="w-4 h-4 text-[#58a6ff]" />, onClick: h.openTopos },
-      { id: "diffs", label: "Diffs", shortcut: "Ctrl+Shift+B d", icon: <FileDiff className="w-4 h-4 text-[#3fb950]" />, onClick: h.openDiffs },
-      { id: "audit", label: "Pre-PR Audit Gate", shortcut: "Ctrl+Shift+B a", icon: <ShieldCheck className="w-4 h-4 text-[#f85149]" />, onClick: h.openPrePrAudit },
-    ],
     agents: [
       { id: "a2a", label: "Mission Control", shortcut: "Ctrl+Shift+B m", icon: <Network className="w-4 h-4 text-[#c9d1d9]" />, onClick: h.openMissionControl },
       { id: "sessions", label: "Session History", shortcut: "Ctrl+Shift+B h", icon: <History className="w-4 h-4 text-[#58a6ff]" />, onClick: h.openSessionHistory },

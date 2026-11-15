@@ -88,7 +88,8 @@ interface CommandPaletteProps {
   onAddProject: () => void;
   projectWorktrees?: Record<string, GitWorktree[]>;
   onOpenNewWorktree?: () => void;
-  onOpenGithubDrawer?: () => void;
+  /** Opens the Source control panel, with its pull request and issue lists. */
+  onOpenSourceControl?: () => void;
   onOpenPrePrAudit?: () => void;
   onOpenSessionHistory?: () => void;
   onOpenAttentionQueue?: () => void;
@@ -127,7 +128,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenA2A,
   onOpenDiffInspector,
   onOpenNewWorktree,
-  onOpenGithubDrawer,
+  onOpenSourceControl,
   onOpenPrePrAudit,
   onOpenSessionHistory,
   onOpenAttentionQueue,
@@ -333,7 +334,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-diff-inspector",
         category: "Tools & Actions",
         title: "Visual Diff & File Changes",
-        subtitle: "Inspect code edits and writes from Claude tools",
+        subtitle: "Repo-wide Diffs from the Source control panel: code edits and writes from Claude tools",
         shortcut: "Ctrl+Shift+B d",
         icon: <GitCompare className="w-4 h-4 text-[#3fb950]" />,
         action: () => onOpenDiffInspector(),
@@ -398,15 +399,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
-    if (onOpenGithubDrawer) {
+    if (onOpenSourceControl) {
       items.push({
-        id: "action-github-companion",
+        id: "action-source-control",
         category: "Tools & Actions",
-        title: "GitHub Issues & Pull Requests",
-        subtitle: "Browse issues, label filters, PR status checks, and 1-click agent dispatch",
+        title: "Source control: Pull Requests & Issues",
+        subtitle: "Open the Source control panel; pick a row to open it in the companion",
         icon: <GithubIcon className="w-4 h-4 text-white" />,
         shortcut: "Ctrl+Shift+B i",
-        action: () => onOpenGithubDrawer(),
+        action: () => onOpenSourceControl(),
       });
     }
 
@@ -415,7 +416,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-pre-pr-audit",
         category: "Tools & Actions",
         title: "Pre-PR Audit Gate...",
-        subtitle: "Scan git diff & untracked files for secrets, paths, and claim leaks",
+        subtitle: "From the Source control panel: scan git diff & untracked files for secrets, paths, and claim leaks",
         icon: <ShieldAlert className="w-4 h-4 text-[#f85149]" />,
         shortcut: "Ctrl+Shift+B a",
         action: () => onOpenPrePrAudit(),
@@ -636,7 +637,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     activeTerminalId,
     projectWorktrees,
     onOpenNewWorktree,
-    onOpenGithubDrawer,
+    onOpenSourceControl,
     onSetLayout,
     onToggleZoom,
     onFocusNextPane,

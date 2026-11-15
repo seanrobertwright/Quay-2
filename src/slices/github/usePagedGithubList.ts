@@ -7,7 +7,7 @@ import {
   GITHUB_PAGE_SIZE,
   type GithubPage,
   type PagedList,
-} from "./paging";
+} from "./paging.ts";
 
 export interface PagedGithubList<T> {
   list: PagedList<T>;

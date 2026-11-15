@@ -13,7 +13,6 @@ test("an expanded project's menu lists its items in their groups, ending with Co
     "Swarm preset…",
     "---",
     "Open Topos",
-    "GitHub issues & PRs",
     "Workspace settings…",
     "---",
     "Copy path",
