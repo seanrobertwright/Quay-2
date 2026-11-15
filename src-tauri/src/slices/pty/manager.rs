@@ -1144,7 +1144,7 @@ impl PtyManager {
 mod tests {
     use super::*;
     use crate::slices::pty::models::{
-        test_terminal, LinkCandidates, LinkSlot, LinkSlotName, LinkSource, PermissionMode, RunKind, TerminalLink,
+        test_terminal, LinkCandidates, LinkRef, LinkSlot, LinkSlotName, LinkSource, PermissionMode, RunKind, TerminalLink,
         ALL_RUN_KINDS,
     };
     use crate::test_support::TempDir;
@@ -1416,8 +1416,7 @@ mod tests {
     fn pinned_pull_request_link() -> TerminalLink {
         TerminalLink {
             ticket: Some(LinkSlot {
-                repo: None,
-                number: 637,
+                target: LinkRef { repo: None, number: 637 },
                 source: LinkSource::Launch,
                 pinned: false,
                 at: 10,
@@ -1425,8 +1424,7 @@ mod tests {
                 closes: None,
             }),
             pull_request: Some(LinkSlot {
-                repo: Some("seanrobertwright/Quay-2".to_string()),
-                number: 659,
+                target: LinkRef { repo: Some("seanrobertwright/Quay-2".to_string()), number: 659 },
                 source: LinkSource::Pin,
                 pinned: true,
                 at: 20,
@@ -1486,15 +1484,26 @@ mod tests {
         let manager = PtyManager::new();
         launched(&manager, "term-link-bad", RunKind::Codex);
         let mut zero = pinned_pull_request_link();
-        zero.ticket.as_mut().unwrap().number = 0;
+        zero.ticket.as_mut().unwrap().target.number = 0;
         assert!(manager.set_link("term-link-bad", zero).is_err());
         let mut repo = pinned_pull_request_link();
-        repo.pull_request.as_mut().unwrap().repo = Some("not a repo".to_string());
+        repo.pull_request.as_mut().unwrap().target.repo = Some("not a repo".to_string());
         assert!(manager.set_link("term-link-bad", repo).is_err());
         let mut tie = pinned_pull_request_link();
         tie.candidates = vec![LinkCandidates { slot: LinkSlotName::PullRequest, source: LinkSource::Branch, options: vec![], at: 1 }];
         assert!(manager.set_link("term-link-bad", tie).is_err(), "a tie names at least two refs");
         assert_eq!(manager.get_info("term-link-bad").unwrap().link, None);
+    }
+
+    #[test]
+    fn a_terminal_link_slot_names_its_ref_inline_as_the_frontend_sends_it() {
+        let sent = serde_json::json!({
+            "ticket": { "repo": null, "number": 637, "source": "launch", "pinned": false, "at": 10 },
+            "pull_request": null,
+        });
+        let link: TerminalLink = serde_json::from_value(sent.clone()).unwrap();
+        assert_eq!(link.ticket.as_ref().unwrap().target, LinkRef { repo: None, number: 637 });
+        assert_eq!(serde_json::to_value(&link).unwrap()["ticket"], sent["ticket"]);
     }
 
     #[test]

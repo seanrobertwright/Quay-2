@@ -325,8 +325,9 @@ pub struct LinkRef {
 /// One filled slot of a terminal link. The frontend's `LinkSlot` mirrors it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkSlot {
-    pub repo: Option<String>,
-    pub number: u32,
+    /// The ticket or pull request the slot names, serialized inline as `repo` and `number`.
+    #[serde(flatten)]
+    pub target: LinkRef,
     pub source: LinkSource,
     pub pinned: bool,
     /// When the signal that set it arrived, in epoch ms.
@@ -366,10 +367,13 @@ impl TerminalLink {
     /// at most one tie per slot, and each tie naming two to `MAX_LINK_REFS` refs.
     pub fn validate(&self) -> Result<(), String> {
         for slot in [&self.ticket, &self.pull_request].into_iter().flatten() {
-            check_ref(slot.repo.as_deref(), slot.number)?;
+            check_ref(&slot.target)?;
             if let Some(closes) = &slot.closes {
                 if closes.len() > MAX_LINK_REFS || closes.contains(&0) {
-                    return Err("A pull request's closing tickets must be at most 50 positive numbers".to_string());
+                    return Err(format!(
+                        "A pull request's closing tickets must be at most {} positive numbers",
+                        MAX_LINK_REFS
+                    ));
                 }
             }
         }
@@ -380,22 +384,22 @@ impl TerminalLink {
         }
         for tie in &self.candidates {
             if tie.options.len() < 2 || tie.options.len() > MAX_LINK_REFS {
-                return Err("A tie names two to 50 refs".to_string());
+                return Err(format!("A tie names two to {} refs", MAX_LINK_REFS));
             }
             for option in &tie.options {
-                check_ref(option.repo.as_deref(), option.number)?;
+                check_ref(option)?;
             }
         }
         Ok(())
     }
 }
 
-/// Whether `repo` is `owner/name` (or absent) and `number` is positive.
-fn check_ref(repo: Option<&str>, number: u32) -> Result<(), String> {
-    if number == 0 {
+/// Whether `link_ref`'s repository is `owner/name` (or absent) and its number is positive.
+fn check_ref(link_ref: &LinkRef) -> Result<(), String> {
+    if link_ref.number == 0 {
         return Err("A ticket or pull request number must be positive".to_string());
     }
-    if let Some(repo) = repo {
+    if let Some(repo) = link_ref.repo.as_deref() {
         let valid_part = |p: &str| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
         match repo.split_once('/') {
             Some((owner, name)) if valid_part(owner) && valid_part(name) => {}
