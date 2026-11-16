@@ -13,7 +13,7 @@ import { TerminalBodyMenu, TerminalMenu, type TerminalMenuHandlers } from "./Ter
 import { RenameInput } from "./RenameInput";
 import { onTerminalRequest } from "./terminalRequests";
 import { useTerminalMenu } from "./useTerminalMenu";
-import { rightClickOpensMenu, type BodyTerminal } from "./terminalBody";
+import { bodyRightClick, copySelection, pasteClipboard, type BodyTerminal } from "./terminalBody";
 import { useContextMenu } from "../overlay/useContextMenu";
 import {
   Maximize2,
@@ -199,6 +199,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- xterm.js owns the focusable textarea inside this pane; keyboard pane switching uses Ctrl+Shift+B o */}
       <div
         data-terminal-pane
+        data-pie-terminal={terminalId}
         onClick={(e) => {
           onSelect?.();
           if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
@@ -229,6 +230,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
           // Focusable so Shift+F10 and the Menu key open its terminal menu, as on a Projects panel row.
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- a labelled group that opens its terminal menu from the keyboard
           <div role="group" tabIndex={0}
+            data-pie-surface="list"
             aria-label={`Pane ${terminal?.name ?? terminalId}`}
             onContextMenu={onContextMenu}
             onKeyDown={onKeyDown}
@@ -413,18 +415,23 @@ export const TerminalView: FC<TerminalViewProps> = ({
             </div>
           )}
 
-          {/* A right-click here opens the body menu, unless the running program has turned on
-              mouse reporting and has the click. The app-wide policy cancels the native menu here
-              either way. */}
+          {/* A plain right-click here copies the selection, or pastes, unless the running program
+              has turned on mouse reporting and has the click; Shift+right-click opens the body
+              menu. The app-wide policy cancels the native menu here either way, and the pie
+              (middle-click, Alt+right-click) is opened by the document's pie listener first. */}
           <div
             ref={containerRef}
             tabIndex={-1}
             onContextMenu={(e) => {
               const term = getTerminal();
-              if (!term || !rightClickOpensMenu(term, e)) return;
+              if (!term) return;
+              const action = bodyRightClick(term, e);
+              if (action === "program") return;
               e.preventDefault();
               e.stopPropagation();
-              bodyMenu.openAt(term, { x: e.clientX, y: e.clientY }, refocus(term));
+              if (action === "copy") copySelection(term);
+              else if (action === "paste") pasteClipboard(term);
+              else bodyMenu.openAt(term, { x: e.clientX, y: e.clientY }, refocus(term));
             }}
             className="w-full h-full focus:outline-hidden"
           />

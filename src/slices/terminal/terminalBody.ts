@@ -1,4 +1,4 @@
-// What the terminal body does with the clipboard, its keys and a right-click (#511). Copy and
+// What the terminal body does with the clipboard, its keys and a right-click (#511, #648). Copy and
 // Paste each live here once: the keys (`attachTerminalKeys`) and the body menu both call them.
 import type { Terminal } from "@xterm/xterm";
 import { terminalKeyAction } from "./terminalKeys.ts";
@@ -31,13 +31,19 @@ export function pasteClipboard(term: BodyTerminal): void {
     });
 }
 
+/** What a right-click in the body does. */
+export type BodyRightClick = "copy" | "paste" | "menu" | "program";
+
 /**
- * Whether a right-click in the body opens Quay's menu. Once the running program has turned on
- * mouse reporting, a plain right-click is the program's (xterm has already sent it the press),
- * and Shift+right-click, which xterm keeps from the program, opens the menu.
+ * What a right-click in the body does. Shift+right-click opens Quay's menu, which xterm keeps
+ * from the program even with mouse reporting on. Otherwise, once the running program has turned
+ * on mouse reporting, the click is the program's (xterm has already sent it the press); with
+ * reporting off it copies the selection, when there is one, or else pastes.
  */
-export function rightClickOpensMenu(term: BodyTerminal, e: { shiftKey: boolean }): boolean {
-  return term.modes.mouseTrackingMode === "none" || e.shiftKey;
+export function bodyRightClick(term: BodyTerminal, e: { shiftKey: boolean }): BodyRightClick {
+  if (e.shiftKey) return "menu";
+  if (term.modes.mouseTrackingMode !== "none") return "program";
+  return term.hasSelection() ? "copy" : "paste";
 }
 
 /** What the terminal's keys ask of the pane around it. */

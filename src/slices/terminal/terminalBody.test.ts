@@ -12,7 +12,7 @@ import type { TerminalInfo } from "./types.ts";
 
 // xterm ships one CommonJS bundle, whose names Node's ESM loader can't see.
 const { Terminal } = ((await import("@xterm/xterm")) as unknown as { default: typeof import("@xterm/xterm") }).default;
-const { attachTerminalKeys, rightClickOpensMenu } = await import("./terminalBody.ts");
+const { attachTerminalKeys, bodyRightClick } = await import("./terminalBody.ts");
 const { TerminalBodyMenu } = await import("./TerminalMenu.tsx");
 
 const TERMINAL: TerminalInfo = {
@@ -176,16 +176,22 @@ test("Ctrl+F asks for the pane's search, and Shift+F10 and the Menu key for the 
   assert.deepEqual(sent, []);
 });
 
-test("a right-click opens the menu unless the program has turned on mouse reporting, when only Shift+right-click does", async () => {
+test("a plain right-click copies the selection when there is one, else pastes; Shift+right-click opens the menu", async () => {
+  const term = await openTerminal("hello world");
+  assert.equal(bodyRightClick(term, { shiftKey: false }), "paste", "nothing selected");
+  term.select(6, 0, 5);
+  assert.equal(bodyRightClick(term, { shiftKey: false }), "copy", "a selection");
+  assert.equal(bodyRightClick(term, { shiftKey: true }), "menu", "Shift+right-click");
+});
+
+test("with mouse reporting on a plain right-click is the program's, and Shift+right-click still opens the menu", async () => {
   const term = await openTerminal("hello");
-  assert.equal(rightClickOpensMenu(term, { shiftKey: false }), true, "reporting off");
-  assert.equal(rightClickOpensMenu(term, { shiftKey: true }), true, "reporting off, with Shift");
   // ESC[?1000h asks for button presses, ESC[?1003h for every motion as well.
   for (const on of ["[?1000h", "[?1003h"]) {
     await new Promise<void>((done) => term.write(on, done));
-    assert.equal(rightClickOpensMenu(term, { shiftKey: false }), false, `${JSON.stringify(on)}: the program has the click`);
-    assert.equal(rightClickOpensMenu(term, { shiftKey: true }), true, `${JSON.stringify(on)}: Shift+right-click`);
+    assert.equal(bodyRightClick(term, { shiftKey: false }), "program", `${JSON.stringify(on)}: the program has the click`);
+    assert.equal(bodyRightClick(term, { shiftKey: true }), "menu", `${JSON.stringify(on)}: Shift+right-click`);
   }
   await new Promise<void>((done) => term.write("[?1003l[?1000l", done));
-  assert.equal(rightClickOpensMenu(term, { shiftKey: false }), true, "reporting off again");
+  assert.equal(bodyRightClick(term, { shiftKey: false }), "paste", "reporting off again");
 });
