@@ -2,7 +2,7 @@
 // the WebView's `localStorage`, so per machine and for every project, and each is validated as it
 // is read: a missing or unknown stored value reads as the setting's default.
 import { OPENS_ON_KEY, type CompanionOpensOn, type PrefsStorage } from "../companion/companionPrefs.ts";
-import { PIE_PALETTES, type PiePaletteId } from "../pie/piePalettes.ts";
+import { PIE_PALETTES, paletteColors, type PiePaletteId } from "../pie/piePalettes.ts";
 
 /** Every shell preference's current value. */
 export interface ShellPrefs {
@@ -50,7 +50,7 @@ const SPECTRUM_SWATCH = "linear-gradient(90deg,hsl(170,100%,62%),hsl(260,100%,62
 /** A pie palette's swatch: Spectrum's hues, else its two colours side by side. */
 function paletteSwatch(id: PiePaletteId): string {
   if (id === "spectrum") return SPECTRUM_SWATCH;
-  const [a, b] = PIE_PALETTES.find((p) => p.id === id)?.colors ?? PIE_PALETTES[0].colors;
+  const [a, b] = paletteColors(id);
   return `linear-gradient(90deg,${a} 50%,${b} 50%)`;
 }
 

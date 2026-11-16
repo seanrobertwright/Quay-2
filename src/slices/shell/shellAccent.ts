@@ -1,6 +1,6 @@
 // The shell accent: the one colour that marks live state in the shell, set by the pie palette.
 // The shell look stylesheet (`shellLook.css`) draws the live parts from the tokens here.
-import { PIE_PALETTES, spectrumHue, type PiePaletteId } from "../pie/piePalettes.ts";
+import { paletteColors, spectrumHue, type PiePaletteId } from "../pie/piePalettes.ts";
 import { MODULES, type ModuleId } from "./modules.ts";
 
 /**
@@ -17,7 +17,7 @@ function withAlpha(hex: string, alpha: number): string {
 
 /** The accent tokens for `palette`, from its first colour. */
 export function accentTokens(palette: PiePaletteId): AccentTokens {
-  const [accent] = (PIE_PALETTES.find((p) => p.id === palette) ?? PIE_PALETTES[0]).colors;
+  const [accent] = paletteColors(palette);
   return { "--quay-accent": accent, "--quay-accent-line": withAlpha(accent, 0.55), "--quay-accent-haze": withAlpha(accent, 0.22) };
 }
 
