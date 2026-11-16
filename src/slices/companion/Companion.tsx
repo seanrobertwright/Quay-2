@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
@@ -591,7 +592,7 @@ const ViewSwitch = ({
                 move(index, -1);
               }
             }}
-            data-neon={checked ? "underline" : undefined}
+            data-neon={neonPart("underline", checked)}
             className={`shrink-0 min-w-10 px-2.5 text-xs border-b-2 transition-colors ${
               checked ? "text-white" : "border-transparent text-[#8b949e] hover:text-white"
             }`}

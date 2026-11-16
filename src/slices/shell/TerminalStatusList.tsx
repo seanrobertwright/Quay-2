@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import type { CSSProperties } from "react";
 import { BAR_BUTTON_CLASS, BarTooltip, MODULE_BAR_WIDTH } from "./ModuleBar.tsx";
 import {
@@ -82,7 +83,7 @@ export const TerminalStatusList = ({
               {selected && (
                 <span aria-hidden="true" data-selected-bar className="absolute left-0 top-0.5 bottom-0.5 w-[2px] bg-[#e6edf3]" />
               )}
-              <span aria-hidden="true" data-dot data-neon={LIVE_DOTS.has(status) ? "dot" : undefined} className={DOT_CLASS[status]} />
+              <span aria-hidden="true" data-dot data-neon={neonPart("dot", LIVE_DOTS.has(status))} className={DOT_CLASS[status]} />
               <BarTooltip>{`${projectName} · ${terminal.name} · ${statusLabel}`}</BarTooltip>
             </button>
           </li>

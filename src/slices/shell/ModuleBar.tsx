@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Bot, Command, FolderTree, GitPullRequest, Settings2, Workflow } from "lucide-react";
 import { MODULES, MODULE_NAMES, moduleAfterClick, type ModuleId } from "./modules.ts";
@@ -80,8 +81,11 @@ interface BarButtonProps {
   /** Set on module icons, which show and fold the panel. */
   controls?: string;
   badge?: Badge;
-  /** The colour the button lights in while current, in place of the accent. */
-  neon?: string | null;
+  /**
+   * A module's own hue under Spectrum (`moduleAccent`), which its icon and edge light in while
+   * current. Absent, they light in the shell accent.
+   */
+  neon?: string;
 }
 
 const BarButton = ({ label, shortcut, keyShortcuts, icon, onClick, current, controls, badge, neon }: BarButtonProps) => {
@@ -97,12 +101,12 @@ const BarButton = ({ label, shortcut, keyShortcuts, icon, onClick, current, cont
       aria-current={current ? "true" : undefined}
       aria-controls={controls}
       aria-keyshortcuts={keyShortcuts}
-      data-neon={current ? "module" : undefined}
+      data-neon={neonPart("module", current === true)}
       style={neon ? ({ ...BUTTON_STYLE, "--quay-neon": neon } as CSSProperties) : BUTTON_STYLE}
       className={`${BAR_BUTTON_CLASS} ${current ? "" : "text-[#8b949e] hover:text-white"}`}
     >
       {/* The open module's edge, drawn inside the button so the box still starts at x = 0. */}
-      {current && <span aria-hidden="true" data-neon="edge" className="absolute left-0 top-2.5 bottom-2.5 w-[2px]" />}
+      {current && <span aria-hidden="true" data-neon={neonPart("edge", true)} className="absolute left-0 top-2.5 bottom-2.5 w-[2px]" />}
       {icon}
       {badge && badgeLabel && (
         <span
@@ -183,7 +187,7 @@ export const ModuleBar = ({
             current={openModule === module}
             controls={panelId}
             badge={badges[module]}
-            neon={palette ? moduleAccent(palette, module) : null}
+            neon={(palette && moduleAccent(palette, module)) ?? undefined}
             onClick={() => onOpenModule(moduleAfterClick(openModule, module))}
           />
           {module === "projects" && renderTerminalList?.(listHeight)}

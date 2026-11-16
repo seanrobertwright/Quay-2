@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { FC, CSSProperties, MouseEvent, useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -223,7 +224,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
               : "border border-[#30363d]/60 rounded-md"
             : "w-full h-full"
         } ${className}`}
-        data-neon={framed && isFocused ? "pane" : undefined}
+        data-neon={neonPart("pane", framed && isFocused)}
         style={{
           display: isVisible ? "flex" : "none",
           ...style,
@@ -253,7 +254,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   value={terminalId}
                   onChange={(e) => onSwitchTerminal(e.target.value)}
                   onClick={(e: MouseEvent<HTMLSelectElement>) => e.stopPropagation()}
-                  data-neon={isFocused ? "title" : undefined}
+                  data-neon={neonPart("title", isFocused)}
                   className={`bg-transparent font-medium text-xs ${isFocused ? "" : "text-[#c9d1d9] hover:text-white"} border-none focus:outline-hidden cursor-pointer max-w-[140px] truncate`}
                 >
                   {allTerminals.map((t) => (
@@ -263,7 +264,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   ))}
                 </select>
               ) : (
-                <span data-neon={isFocused ? "title" : undefined} className="font-medium truncate max-w-[140px] text-xs">
+                <span data-neon={neonPart("title", isFocused)} className="font-medium truncate max-w-[140px] text-xs">
                   {terminal?.name || terminalId}
                 </span>
               )}
