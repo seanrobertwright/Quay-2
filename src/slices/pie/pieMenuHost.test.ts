@@ -8,7 +8,7 @@ import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { PieAction, PieTarget } from "./pieRing.ts";
+import type { PieAction, PieChoice, PieTarget } from "./pieRing.ts";
 import type { PieStrokeRecord } from "./pieStrokeLog.ts";
 
 const { PieMenuHost } = await import("./PieMenuHost.tsx");
@@ -42,7 +42,7 @@ async function mount(delayMs = 0) {
         palette: "cyber",
         labelOutline: true,
         displayDelayMs: delayMs,
-        onChoose: (action: PieAction, target: PieTarget) => chosen.push([action, target]),
+        onChoose: (choice: PieChoice, target: PieTarget) => chosen.push([choice.action, target]),
       })
     )
   );
@@ -184,7 +184,8 @@ async function mountWith(recent: { id: string; title: string }[]) {
         labelOutline: true,
         displayDelayMs: 0,
         recentCommands: recent,
-        onChoose: (action: PieAction, target: PieTarget, commandId?: string) => chosen.push([action, target, commandId]),
+        onChoose: (choice: PieChoice, target: PieTarget) =>
+          chosen.push([choice.action, target, choice.action === "palette-command" ? choice.commandId : undefined]),
         onStroke: (record: PieStrokeRecord) => strokes.push(record),
       })
     )

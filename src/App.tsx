@@ -13,7 +13,7 @@ import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
 import { useShellPrefs } from "./slices/shell/useShellPrefs";
 import { PieMenuHost } from "./slices/pie/PieMenuHost";
-import { pieFolder, pieTerminalId, type PieAction, type PieTarget, type RecentPaletteCommand } from "./slices/pie/pieRing";
+import { pieFolder, pieTerminalId, type PieChoice, type PieTarget, type RecentPaletteCommand } from "./slices/pie/pieRing";
 import { pieStrokeLog, type PieStrokeRecord } from "./slices/pie/pieStrokeLog";
 import { recentCommands } from "./slices/command-palette/recentCommands";
 import { requestTerminal } from "./slices/terminal/terminalRequests";
@@ -961,9 +961,9 @@ export function App() {
 
   // A pie stroke (#648, #649). N, E, S and W and their second-ring slices act on the selected
   // terminal; the diagonals on the terminal or row the pie opened over.
-  const runPieStroke = (action: PieAction, target: PieTarget, commandId?: string) => {
+  const runPieStroke = (choice: PieChoice, target: PieTarget) => {
     const terminalId = pieTerminalId(target);
-    switch (action) {
+    switch (choice.action) {
       case "next-wait":
         return selectNextWaiting();
       case "prev-wait":
@@ -978,7 +978,7 @@ export function App() {
       case "split-grid":
         return void splitGrid();
       case "palette-command":
-        if (commandId) paletteRunner.current?.(commandId);
+        paletteRunner.current?.(choice.commandId);
         return;
       case "new-claude":
         return void newTerminalOf("claude");

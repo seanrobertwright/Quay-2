@@ -108,5 +108,5 @@ test("Palette's slices are copies of the three most recent palette commands, dim
     null,
   ]);
   const four = [...recent, { id: "a", title: "A" }, { id: "b", title: "B" }];
-  assert.deepEqual(pieRing(target, four).S?.slices?.map((s) => s?.commandId), ["layout-grid", "open-topos", "a"]);
+  assert.deepEqual(pieRing(target, four).S?.slices?.map((s) => (s?.action === "palette-command" ? s.commandId : null)), ["layout-grid", "open-topos", "a"]);
 });

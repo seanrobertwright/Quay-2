@@ -29,19 +29,21 @@ export type PieAction =
   | "new-codex"
   | "new-pwsh";
 
-/** One second-ring slice: what it does and its label; a "palette-command" slice runs palette command `commandId`. */
-export interface PieSlice {
-  action: PieAction;
-  label: string;
-  commandId?: string;
-}
+/** What a wedge's own command does: any action but running a palette command, which only a slice can. */
+export type PieCommandAction = Exclude<PieAction, "palette-command">;
+
+/** What a chosen stroke does: an action, or running palette command `commandId`. */
+export type PieChoice = { action: PieCommandAction } | { action: "palette-command"; commandId: string };
+
+/** One second-ring slice: what it does and its label. */
+export type PieSlice = PieChoice & { label: string };
 
 /**
  * One wedge's command: what it does, its label and the letter that chooses it. A parent also has
  * three second-ring slices, anticlockwise to clockwise, null where a slice is dim.
  */
 export interface PieCommand {
-  action: PieAction;
+  action: PieCommandAction;
   label: string;
   letter: string;
   slices?: readonly (PieSlice | null)[];
@@ -68,9 +70,9 @@ export type PieTarget =
 /** A ring: each wedge's command, or null where none applies. Keys are in `WEDGES` order. */
 export type PieRing = Record<Wedge, PieCommand | null>;
 
-const command = (action: PieAction, label: string, letter: string, slices?: readonly (PieSlice | null)[]): PieCommand =>
+const command = (action: PieCommandAction, label: string, letter: string, slices?: readonly (PieSlice | null)[]): PieCommand =>
   slices ? { action, label, letter, slices } : { action, label, letter };
-const slice = (action: PieAction, label: string): PieSlice => ({ action, label });
+const slice = (action: PieCommandAction, label: string): PieSlice => ({ action, label });
 
 const NEXT_WAIT = command("next-wait", "Next wait", "q", [slice("prev-wait", "Prev"), slice("next-wait", "Next"), slice("waiting-list", "Waiting list")]);
 const SPLIT = command("split", "Split", "s", [slice("split-side", "Side"), slice("split-stack", "Stack"), slice("split-grid", "Grid")]);

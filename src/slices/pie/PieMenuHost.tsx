@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { elementOf } from "../overlay/contextMenuPolicy.ts";
 import { CLOSED, aimedSlice, aimedWedge, stepPie, type PieEvent, type PiePoint, type PieState } from "./pieRecognizer.ts";
-import { pieRing, type PieAction, type PieRing, type PieTarget, type RecentPaletteCommand } from "./pieRing.ts";
+import { pieRing, type PieChoice, type PieRing, type PieTarget, type RecentPaletteCommand } from "./pieRing.ts";
 import { strokeRecord, type PieStrokeRecord } from "./pieStrokeLog.ts";
 import { opensPie, piePlaceAt } from "./pieTriggers.ts";
 import type { PiePaletteId } from "./piePalettes.ts";
@@ -24,8 +24,8 @@ interface PieMenuHostProps {
   displayDelayMs: number;
   /** The palette's most recent commands, newest first, which Palette's slices copy. */
   recentCommands?: readonly RecentPaletteCommand[];
-  /** Runs a chosen stroke on what the pie opened over; a Palette slice's `commandId` names its palette command. */
-  onChoose: (action: PieAction, target: PieTarget, commandId?: string) => void;
+  /** Runs a chosen stroke on what the pie opened over. */
+  onChoose: (choice: PieChoice, target: PieTarget) => void;
   /** Called with the record of each stroke chosen with the pointer, for the stroke log. */
   onStroke?: (record: PieStrokeRecord) => void;
 }
@@ -79,8 +79,7 @@ export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, recentComma
         if (record) props.current.onStroke?.(record);
       }
       const slice = next.slice === null ? null : command.slices?.[next.slice];
-      if (slice) props.current.onChoose(slice.action, target, slice.commandId);
-      else props.current.onChoose(command.action, target);
+      props.current.onChoose(slice ?? { action: command.action }, target);
     };
     const pointOf = (e: MouseEvent): PiePoint => ({ x: e.clientX + shift.x, y: e.clientY + shift.y });
 
