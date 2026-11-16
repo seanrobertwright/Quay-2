@@ -663,3 +663,56 @@ test("closing the lens with a click on a readiness cell returns keyboard focus t
     pane.remove();
   }
 });
+
+// ---- The pie over the companion's pull request, and the Merge undo window (#650) ----
+
+/** A show request for terminal a's pull request carrying `ask`, as a pie stroke sends it. */
+const ask = (pullRequest: Record<string, unknown>, seq = 1) => ({ showRequest: { terminalId: "a", view: "pull-request", pullRequest, seq } });
+
+test("the pull request view is the pie's companion pull request target", async () => {
+  const { piePlaceAt } = await import("../pie/pieTriggers.ts");
+  const { container } = await render(github());
+  const title = container.querySelector("[data-pr-header] h2");
+  assert.ok(title);
+  assert.deepEqual(piePlaceAt(title).target, { surface: "companion-pr" });
+  const header = container.querySelector('[role="radiogroup"][aria-label="Companion view"]');
+  assert.ok(header);
+  assert.deepEqual(piePlaceAt(header).target, { surface: "companion" });
+});
+
+test("NW's ask opens Checks, even where the view arrived on Comments", async () => {
+  const { container } = await render(github(), ask({ kind: "checks" }));
+  assert.equal(cellButton(container, "checks")?.getAttribute("aria-expanded"), "true");
+  assert.equal(detail(container)?.getAttribute("aria-label"), "Checks");
+});
+
+test("SW's ask opens Comments and puts focus in the comment box", async () => {
+  const { container } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), ask({ kind: "comment" }));
+  assert.equal(cellButton(container, "comments")?.getAttribute("aria-expanded"), "true");
+  const box = container.querySelector('textarea[aria-label="Comment"]');
+  assert.ok(box, "comment box");
+  assert.ok(document.activeElement === box, "focus is in the comment box");
+});
+
+test("a Merge stroke with the window Off opens the confirm step on the stroke's method", async () => {
+  const { container } = await render(github(), ask({ kind: "confirm-merge", method: "rebase" }));
+  const form = container.querySelector('form[aria-label="Confirm merge"]');
+  assert.ok(form, "confirm step");
+  assert.ok(byName(container, "button", "Confirm rebase and merge"));
+});
+
+test("an ask is taken once: the view switched away and back does not repeat it", async () => {
+  const activity = { events: [], messages: [], waiting: [], answer: async () => {} };
+  const { container } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), { ...ask({ kind: "checks" }), activity });
+  await click(cellButton(container, "checks"));
+  assert.equal(detail(container), null, "closed by hand");
+  await click(byName(container, "radio", "Activity"));
+  await click(byName(container, "radio", "Pull request"));
+  assert.equal(detail(container), null, "the ask did not open Checks again");
+});
+
+test("the companion shows the Merge undo toast it is handed", async () => {
+  const toast = createElement("div", { role: "status" }, "Squash and merge #12 in 5 s");
+  const { container } = await render(github(), { toast });
+  assert.match(container.querySelector('[role="status"]')?.textContent ?? "", /Squash and merge #12 in 5 s/);
+});

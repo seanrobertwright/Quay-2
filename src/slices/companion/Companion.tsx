@@ -12,7 +12,7 @@ import {
 import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
-import { PullRequestView } from "./PullRequestView.tsx";
+import { PullRequestView, type PullRequestAsk } from "./PullRequestView.tsx";
 import { TicketView, type TicketActions } from "./TicketView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
@@ -80,6 +80,10 @@ export interface CompanionContext {
   run: CompanionRun | null;
   /** The Praxis Builder's inspector while its stage tab is in front, or null. */
   inspector: CompanionInspector | null;
+  /** What the latest request asked of the pull request view, until the view takes it, or null. */
+  pullRequestAsk: (PullRequestAsk & { seq: number }) | null;
+  /** Called by the pull request view once it has acted on the ask numbered `seq`. */
+  takePullRequestAsk: (seq: number) => void;
   /** Shows `view` for the terminal, as the view switch does. */
   show: (view: CompanionViewId) => void;
 }
@@ -122,7 +126,7 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
   id: "pull-request",
   label: "Pull request",
   available: ({ link }) => !!link?.pull_request,
-  render: ({ terminal, repository, link, lens, topos }) => {
+  render: ({ terminal, repository, link, lens, topos, pullRequestAsk, takePullRequestAsk }) => {
     const slot = link?.pull_request;
     if (!slot) return null;
     return (
@@ -131,6 +135,8 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
         repoPath={repository.path}
         repo={slot.repo}
         number={slot.number}
+        ask={pullRequestAsk}
+        onAskTaken={takePullRequestAsk}
         lens={
           lens || topos
             ? {
@@ -254,6 +260,8 @@ export interface CompanionShowRequest {
   view: CompanionViewId;
   /** The Activity entry to show, such as the message an Agents panel reply preview names. */
   entryId?: string;
+  /** What to ask of the pull request view, such as a pie stroke's Checks, Comment or confirm step. */
+  pullRequest?: PullRequestAsk;
   seq: number;
 }
 
@@ -288,6 +296,8 @@ interface CompanionProps {
    * companion shows the Inspector view, and once it goes, the view it showed before.
    */
   inspector?: CompanionInspector | null;
+  /** A toast at the foot of the companion, such as the Merge undo window's; none when null. */
+  toast?: ReactNode;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
@@ -305,6 +315,7 @@ export const Companion = ({
   showRequest = null,
   run = null,
   inspector = null,
+  toast = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
@@ -316,6 +327,9 @@ export const Companion = ({
   if (!inspector && overInspector !== null) setOverInspector(null);
   // The Activity entry the latest request asked for, while its terminal stays selected.
   const [focus, setFocus] = useState<(ActivityFocus & { terminalId: string }) | null>(null);
+  // What the latest request asked of the pull request view, while its terminal stays selected and
+  // until the view takes it, so a view that comes back later does not act on it again.
+  const [prAsk, setPrAsk] = useState<(PullRequestAsk & { seq: number; terminalId: string }) | null>(null);
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
@@ -331,11 +345,13 @@ export const Companion = ({
             focus: focus?.terminalId === selectedTerminal.id ? focus : null,
             run,
             inspector,
+            pullRequestAsk: prAsk?.terminalId === selectedTerminal.id ? prAsk : null,
+            takePullRequestAsk: (seq: number) => setPrAsk((current) => (current?.seq === seq ? null : current)),
             show: (view: CompanionViewId) =>
               inspector ? setOverInspector(view) : setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run, inspector],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run, inspector, prAsk],
   );
   const selectedId = context?.terminal.id ?? null;
   // Each request is taken once, when it arrives, as if its view were picked on the switch.
@@ -346,6 +362,7 @@ export const Companion = ({
       setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
       if (inspector) setOverInspector(showRequest.view);
       if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
+      if (showRequest.pullRequest) setPrAsk({ ...showRequest.pullRequest, terminalId: showRequest.terminalId, seq: showRequest.seq });
     }
   }
   if (picked && picked.terminalId !== selectedId) setPicked(null);
@@ -418,12 +435,19 @@ export const Companion = ({
         </header>
       )}
       {body ? (
-        <section data-companion-view={body.view.id} aria-label={body.view.label} className="flex-1 min-h-0 overflow-y-auto">
+        <section
+          data-companion-view={body.view.id}
+          // Over the pull request view the pie's diagonals are Diff lens, Comment and Checks (#650).
+          data-pie-target={body.view.id === PULL_REQUEST_VIEW.id ? "companion-pr" : undefined}
+          aria-label={body.view.label}
+          className="flex-1 min-h-0 overflow-y-auto"
+        >
           {body.content}
         </section>
       ) : (
         <p className="p-4 text-xs text-[#8b949e]">Select a terminal to see what it is working on.</p>
       )}
+      {toast && <div className="shrink-0">{toast}</div>}
     </aside>
   );
 };
