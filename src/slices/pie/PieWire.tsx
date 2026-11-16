@@ -4,7 +4,7 @@
 // label outline when that setting is on. A wedge whose command does not apply is a dim dashed
 // outline with no label. The live pie and the Project panel's preview both draw this.
 import type { CSSProperties } from "react";
-import { PIE_PALETTES, type PiePaletteId } from "../shell/shellPrefs.ts";
+import { PIE_PALETTES, type PiePaletteId } from "./piePalettes.ts";
 import { WEDGES, type Wedge } from "./pieRecognizer.ts";
 import type { PieRing } from "./pieRing.ts";
 
