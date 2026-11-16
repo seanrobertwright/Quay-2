@@ -74,6 +74,7 @@ export const PieWire = ({ ring, palette, labelOutline, aimed, aimedSlice = null,
   const outline = labelOutline ? { stroke: OUTLINE, strokeWidth: 3, strokeLinejoin: "round" as const, paintOrder: "stroke" } : {};
   const [hubColor] = wedgeColors(palette, 0);
   const half = PIE_WIRE_SIZE / 2;
+  const parent = aimed ? ring[aimed] : null;
   return (
     <svg
       viewBox={`${-half} ${-half} ${PIE_WIRE_SIZE} ${PIE_WIRE_SIZE}`}
@@ -131,9 +132,9 @@ export const PieWire = ({ ring, palette, labelOutline, aimed, aimedSlice = null,
           </g>
         );
       })}
-      {aimed && ring[aimed]?.slices && (
+      {aimed && parent?.slices && (
         <g data-second-ring={aimed}>
-          {ring[aimed].slices.map((slice, c) => {
+          {parent.slices.map((slice, c) => {
             const index = WEDGES.indexOf(aimed);
             const [rest, lit] = wedgeColors(palette, index);
             const a0 = index * 45 - 30 + c * 20;
@@ -154,7 +155,7 @@ export const PieWire = ({ ring, palette, labelOutline, aimed, aimedSlice = null,
                 data-slice={c}
                 data-aimed={on ? "true" : undefined}
                 role={menu ? "menuitem" : undefined}
-                aria-label={menu ? `${aimed}: ${ring[aimed].label} › ${slice.label}` : undefined}
+                aria-label={menu ? `${aimed}: ${parent.label} › ${slice.label}` : undefined}
               >
                 <path d={d} fill="none" stroke={color} strokeWidth={on ? 2.2 : 1.1} style={glow(color, on ? 9 : 4)} />
                 <text

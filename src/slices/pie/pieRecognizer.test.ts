@@ -3,7 +3,7 @@
 // a 26 px dead zone and eight 45° wedges with N straight up.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CLOSED, DEAD_ZONE_PX, SECOND_RING_PX, aimedSlice, aimedWedge, stepPie, wedgeAt, type PieStep } from "./pieRecognizer.ts";
+import { CLOSED, DEAD_ZONE_PX, SECOND_RING_PX, aimedSlice, aimedWedge, stepPie, wedgeAt, type PieRingKeys, type PieStep } from "./pieRecognizer.ts";
 
 const pick = (s: PieStep) => [s.chosen, s.slice];
 
@@ -129,7 +129,7 @@ const out = (r: number, deg: number) => {
 };
 
 /** Presses at `at`, moves through `path` and releases at its last point. */
-function stroke(path: { x: number; y: number }[], ring = PARENTS) {
+function stroke(path: { x: number; y: number }[], ring: PieRingKeys = PARENTS) {
   let s = stepPie(CLOSED, { type: "press", at, time: 0 }, ring, 0);
   for (const p of path) s = stepPie(s.state, { type: "move", at: p }, ring, 0);
   return stepPie(s.state, { type: "release", at: path[path.length - 1], time: 500 }, ring, 0);
