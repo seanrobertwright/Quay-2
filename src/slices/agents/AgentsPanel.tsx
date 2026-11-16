@@ -64,7 +64,12 @@ export const AgentsPanel = (props: AgentsPanelProps) => {
         {waiting.length === 0 ? (
           <p className="px-4 py-2 text-[#8b949e]">Nothing is waiting on you</p>
         ) : (
-          <WaitingRows {...props} nameOf={nameOf} />
+          <WaitingRows
+            waiting={waiting}
+            droppedPermissionCount={props.droppedPermissionCount}
+            onOpenWaiting={props.onOpenWaiting}
+            nameOf={nameOf}
+          />
         )}
       </Section>
       <Section title="Agents in the project">
@@ -133,7 +138,12 @@ export const AgentsPanel = (props: AgentsPanelProps) => {
           All presets and the builder
         </button>
       </Section>
-      <SessionHistory {...props} />
+      <SessionHistory
+        isOpen={props.isOpen}
+        project={project}
+        sessionHistoryRequest={props.sessionHistoryRequest}
+        onResumeSession={props.onResumeSession}
+      />
     </div>
   );
 };
@@ -151,7 +161,9 @@ const WaitingRows = ({
   droppedPermissionCount,
   onOpenWaiting,
   nameOf,
-}: AgentsPanelProps & { nameOf: (terminalId: string | null) => string }) => {
+}: Pick<AgentsPanelProps, "waiting" | "droppedPermissionCount" | "onOpenWaiting"> & {
+  nameOf: (terminalId: string | null) => string;
+}) => {
   const now = Date.now();
   // A terminal's dropped count sits on its oldest permission row, once.
   const counted = new Set<string | null>();
@@ -194,7 +206,12 @@ const WaitingRows = ({
 };
 
 /** Session history: the project's Claude sessions, newest first, with a search and Resume. */
-const SessionHistory = ({ isOpen, project, sessionHistoryRequest, onResumeSession }: AgentsPanelProps) => {
+const SessionHistory = ({
+  isOpen,
+  project,
+  sessionHistoryRequest,
+  onResumeSession,
+}: Pick<AgentsPanelProps, "isOpen" | "project" | "sessionHistoryRequest" | "onResumeSession">) => {
   const [sessions, setSessions] = useState<ClaudeSessionSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");

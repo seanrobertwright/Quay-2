@@ -673,10 +673,12 @@ export function App() {
     setIsSwarmBuilderOpen(false);
     setFrontToolId((front) => (front === SWARM_BUILDER_TOOL ? null : front));
   }, []);
-  const showTerminal = (id: string) => {
+  // `select` with the terminals brought back in front of any tool tab
+  const inFront = (select: (id: string) => void) => (id: string) => {
     setFrontToolId(null);
-    selectTerminal(id);
+    select(id);
   };
+  const showTerminal = inFront(selectTerminal);
   const stageTools: StageTool[] = isSwarmBuilderOpen
     ? [
         {
@@ -783,10 +785,7 @@ export function App() {
               bridgePort={bridgePort}
               projectWorktrees={projectWorktrees}
               claudeStats={claudeStats}
-              onSelectTerminal={(id) => {
-                setFrontToolId(null);
-                setActiveTerminalId(id);
-              }}
+              onSelectTerminal={inFront(setActiveTerminalId)}
               onCloseTerminal={(id) => killTerminal(id)}
               onNewTerminal={(projPath) => {
                 if (projPath) setActiveProject(projPath);
