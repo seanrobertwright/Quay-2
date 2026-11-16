@@ -231,7 +231,11 @@ const ReadinessCard = ({
 }) => {
   const verdict = readiness(pr);
   return (
-    <section aria-label="Readiness" className="rounded-md border border-[#30363d] bg-[#161b22]">
+    <section
+      aria-label="Readiness"
+      data-neon={verdict.tone === "ready" ? "ready" : undefined}
+      className={`rounded-md border bg-[#161b22] ${verdict.tone === "ready" ? "" : "border-[#30363d]"}`}
+    >
       <div className="p-3 space-y-2">
         <h3 className={`text-sm font-semibold ${HEADLINE_TONE[verdict.tone]}`}>{verdict.headline}</h3>
         <p className="text-[#8b949e]">{verdict.reason}</p>

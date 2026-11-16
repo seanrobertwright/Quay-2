@@ -3,6 +3,7 @@
 // its cells, the merge split button with its confirm step, and the controls after a merge or close.
 // GitHub is reached through Tauri's `invoke`, the out-of-process boundary these tests fake.
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -177,6 +178,17 @@ test("the readiness card shows the headline, its reason, and the four cells with
   ]);
   const comments = cells[1].querySelectorAll("[data-segment]");
   assert.deepEqual([...comments].map((s) => s.getAttribute("title")), ["1 unresolved", "1 other"]);
+});
+
+test("a ready readiness card glows green; a card that is not ready does not glow", async () => {
+  installShellLook("cyber");
+  const ready = await render(github());
+  const readyCard = getComputedStyle(ready.container.querySelector('[aria-label="Readiness"]') as HTMLElement);
+  assert.equal(readyCard.borderColor, "rgba(63, 185, 80, 0.6)", "Quay's ready green, #3fb950, at 60%");
+  assert.equal(readyCard.boxShadow, "0 0 12px rgba(63, 185, 80, 0.3)");
+  unmount();
+  const failing = await render(github(undefined, { mergeStateStatus: "BLOCKED", checks: { failing: 1, pending: 0, skipped: 0, passing: 3 } }));
+  assert.equal(getComputedStyle(failing.container.querySelector('[aria-label="Readiness"]') as HTMLElement).boxShadow, "");
 });
 
 test("merge is a split button on squash by default, whose menu picks merge commit, squash or rebase", async () => {

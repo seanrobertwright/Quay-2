@@ -28,3 +28,25 @@
   border-bottom-color: var(--quay-accent);
   box-shadow: 0 6px 8px -6px var(--quay-accent);
 }
+
+/* The selected terminal's row in the Projects panel. */
+[data-neon="row"] {
+  border-color: var(--quay-accent-line);
+  box-shadow: 0 0 3px var(--quay-accent), 0 0 9px var(--quay-accent-haze);
+}
+
+/* The selected terminal's pane in a split or grid, and its title, lit. */
+[data-neon="pane"] {
+  border-color: var(--quay-accent);
+  box-shadow: inset 0 0 14px var(--quay-accent-haze);
+}
+[data-neon="title"] {
+  color: var(--quay-accent);
+  text-shadow: 0 0 4px var(--quay-accent-haze);
+}
+
+/* The companion's ready card glows in the ready green, not the accent: green stays ready's colour. */
+[data-neon="ready"] {
+  border-color: rgba(63, 185, 80, 0.6);
+  box-shadow: 0 0 12px rgba(63, 185, 80, 0.3);
+}

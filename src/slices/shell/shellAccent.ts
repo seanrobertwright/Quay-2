@@ -3,13 +3,22 @@
 import { PIE_PALETTES, spectrumHue, type PiePaletteId } from "../pie/piePalettes.ts";
 import { MODULES, type ModuleId } from "./modules.ts";
 
-/** The CSS custom properties the shell look stylesheet reads, by name. */
-export type AccentTokens = Record<"--quay-accent", string>;
+/**
+ * The CSS custom properties the shell look stylesheet reads, by name: the accent, and the accent
+ * at part opacity for a lit border (`-line`) and an inner glow (`-haze`).
+ */
+export type AccentTokens = Record<"--quay-accent" | "--quay-accent-line" | "--quay-accent-haze", string>;
 
-/** The accent tokens for `palette`: its first colour. */
+/** `#rrggbb` at `alpha` opacity, as `rgba()`. */
+function withAlpha(hex: string, alpha: number): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** The accent tokens for `palette`, from its first colour. */
 export function accentTokens(palette: PiePaletteId): AccentTokens {
   const [accent] = (PIE_PALETTES.find((p) => p.id === palette) ?? PIE_PALETTES[0]).colors;
-  return { "--quay-accent": accent };
+  return { "--quay-accent": accent, "--quay-accent-line": withAlpha(accent, 0.55), "--quay-accent-haze": withAlpha(accent, 0.22) };
 }
 
 /** The lightest surface a lit part sits on: a raised or hovered row. Darker surfaces contrast more. */
