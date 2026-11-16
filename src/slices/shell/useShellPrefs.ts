@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { PrefsStorage } from "../companion/companionPrefs.ts";
-import { readShellPrefs, writeShellPref, type ShellPrefKey, type ShellPrefs } from "./shellPrefs.ts";
+import { readShellPrefs, writeShellPref, type SetShellPref, type ShellPrefKey, type ShellPrefs } from "./shellPrefs.ts";
 
 /**
  * The shell preferences in `storage` (the WebView's `localStorage` in the app), read once on mount
@@ -8,7 +8,7 @@ import { readShellPrefs, writeShellPref, type ShellPrefKey, type ShellPrefs } fr
  */
 export function useShellPrefs(storage: PrefsStorage): {
   prefs: ShellPrefs;
-  setPref: <K extends ShellPrefKey>(key: K, value: ShellPrefs[K]) => void;
+  setPref: SetShellPref;
 } {
   const [prefs, setPrefs] = useState(() => readShellPrefs(storage));
   const setPref = useCallback(

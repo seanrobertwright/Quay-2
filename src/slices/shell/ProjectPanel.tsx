@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ArrowUpCircle, Coins, FolderOpen, Settings } from "lucide-react";
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
-import { PIE_PALETTES, SHELL_SETTINGS, type ShellPrefKey, type ShellPrefs, type ShellSetting } from "./shellPrefs.ts";
+import { SHELL_SETTINGS, type SetShellPref, type ShellPrefKey, type ShellPrefs, type ShellSetting } from "./shellPrefs.ts";
 
 /** What a chord asks the Project panel to focus; `seq` counts requests so a repeat focuses again. */
 export interface ProjectPanelFocus {
@@ -24,7 +24,7 @@ interface ProjectPanelProps {
   onOpenTokenSpend: () => void;
   onOpenLogsFolder: () => void;
   onCheckForUpdates: () => void;
-  onSetPref: <K extends ShellPrefKey>(key: K, value: ShellPrefs[K]) => void;
+  onSetPref: SetShellPref;
 }
 
 const GroupHeading = ({ id, children, note }: { id: string; children: ReactNode; note?: string | null }) => (
@@ -71,15 +71,6 @@ const ActionRow = ({ label, detail, icon, onClick, disabled }: RowProps) => {
   );
 };
 
-const SPECTRUM_SWATCH = "linear-gradient(90deg,hsl(170,100%,62%),hsl(260,100%,62%),hsl(350,100%,62%),hsl(80,100%,62%))";
-
-/** The swatch a pie palette's radio shows: Spectrum's hues, else its two colours side by side. */
-function swatchOf(value: unknown): string | undefined {
-  if (value === "spectrum") return SPECTRUM_SWATCH;
-  const palette = PIE_PALETTES.find((p) => p.id === value);
-  return palette ? `linear-gradient(90deg,${palette.colors[0]} 50%,${palette.colors[1]} 50%)` : undefined;
-}
-
 const NEXT_KEYS = new Set(["ArrowRight", "ArrowDown"]);
 const PREVIOUS_KEYS = new Set(["ArrowLeft", "ArrowUp"]);
 
@@ -99,7 +90,8 @@ function ChoiceSetting<K extends ShellPrefKey>({
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const options = setting.options;
   const checked = Math.max(0, options.findIndex((option) => option.value === value));
-  const palette = setting.key === "piePalette";
+  const swatchOf = setting.swatch;
+  const palette = swatchOf !== undefined;
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     const step = NEXT_KEYS.has(e.key) ? 1 : PREVIOUS_KEYS.has(e.key) ? -1 : 0;
     if (step === 0) return;
@@ -118,7 +110,7 @@ function ChoiceSetting<K extends ShellPrefKey>({
       >
         {options.map((option, index) => {
           const isChecked = index === checked;
-          const swatch = palette ? swatchOf(option.value) : undefined;
+          const swatch = swatchOf?.(option.value);
           return (
             <button
               key={String(option.value)}
@@ -169,7 +161,7 @@ const ToggleSetting = ({ label, on, onSet }: { label: string; on: boolean; onSet
 );
 
 /** A shell setting as its control, set in one click. */
-function SettingControl<K extends ShellPrefKey>({ setting, prefs, onSetPref }: { setting: ShellSetting<K>; prefs: ShellPrefs; onSetPref: ProjectPanelProps["onSetPref"] }) {
+function SettingControl<K extends ShellPrefKey>({ setting, prefs, onSetPref }: { setting: ShellSetting<K>; prefs: ShellPrefs; onSetPref: SetShellPref }) {
   const value = prefs[setting.key];
   const onSet = (next: ShellPrefs[K]) => onSetPref(setting.key, next);
   if (setting.kind === "toggle") return <ToggleSetting label={setting.label} on={value === true} onSet={(on) => onSet(on as ShellPrefs[K])} />;

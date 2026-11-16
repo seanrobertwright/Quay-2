@@ -52,7 +52,7 @@ import { VsCodeIcon } from "../workspace/VsCodeIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
 import { isSamePath } from "../../utils/paths";
 import { toposPaletteEntries, type ToposRequestKind } from "../git/topos/toposPalette";
-import { preferenceCommands, type ShellPrefKey, type ShellPrefs } from "../shell/shellPrefs";
+import { preferenceCommands, type SetShellPref, type ShellPrefs } from "../shell/shellPrefs";
 
 export interface CommandItem {
   id: string;
@@ -120,7 +120,7 @@ interface CommandPaletteProps {
   onCheckForUpdates?: () => void;
   /** The shell settings, each a `Preferences: …` command when set with `onSetShellPref`. */
   shellPrefs?: ShellPrefs;
-  onSetShellPref?: <K extends ShellPrefKey>(key: K, value: ShellPrefs[K]) => void;
+  onSetShellPref?: SetShellPref;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({

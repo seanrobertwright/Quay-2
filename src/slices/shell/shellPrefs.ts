@@ -36,6 +36,9 @@ export interface ShellPrefs {
 
 export type ShellPrefKey = keyof ShellPrefs;
 
+/** Stores `value` for the setting `key`; the one signature every caller that sets a preference takes. */
+export type SetShellPref = <K extends ShellPrefKey>(key: K, value: ShellPrefs[K]) => void;
+
 /** One value a setting can take, as the panel and the palette name it. */
 export interface PrefOption<V> {
   value: V;
@@ -51,15 +54,30 @@ export interface ShellSetting<K extends ShellPrefKey = ShellPrefKey> {
   kind: "choice" | "toggle";
   options: readonly PrefOption<ShellPrefs[K]>[];
   defaultValue: ShellPrefs[K];
+  /**
+   * The CSS background of the swatch each value's radio shows. A choice with swatches lays its
+   * radios out as a grid of swatch buttons.
+   */
+  swatch?: (value: ShellPrefs[K]) => string;
 }
 
 type SettingTable = { [K in ShellPrefKey]: ShellSetting<K> };
+
+const SPECTRUM_SWATCH = "linear-gradient(90deg,hsl(170,100%,62%),hsl(260,100%,62%),hsl(350,100%,62%),hsl(80,100%,62%))";
+
+/** A pie palette's swatch: Spectrum's hues, else its two colours side by side. */
+function paletteSwatch(id: PiePaletteId): string {
+  if (id === "spectrum") return SPECTRUM_SWATCH;
+  const [a, b] = PIE_PALETTES.find((p) => p.id === id)?.colors ?? PIE_PALETTES[0].colors;
+  return `linear-gradient(90deg,${a} 50%,${b} 50%)`;
+}
 
 const ON_OFF = [
   { value: true, label: "On" },
   { value: false, label: "Off" },
 ] as const;
 
+// The table's key order is the order the Project panel and the palette show the settings.
 const SETTINGS: SettingTable = {
   piePalette: {
     key: "piePalette",
@@ -68,6 +86,7 @@ const SETTINGS: SettingTable = {
     kind: "choice",
     options: PIE_PALETTES.map((p) => ({ value: p.id, label: p.label })),
     defaultValue: "spectrum",
+    swatch: paletteSwatch,
   },
   pieLabelOutline: {
     key: "pieLabelOutline",
@@ -127,14 +146,7 @@ const SETTINGS: SettingTable = {
 };
 
 /** The shell settings, in the order the Project panel shows them. */
-export const SHELL_SETTINGS: readonly ShellSetting[] = [
-  SETTINGS.piePalette,
-  SETTINGS.pieLabelOutline,
-  SETTINGS.pieDisplayDelayMs,
-  SETTINGS.mergeUndoSeconds,
-  SETTINGS.companionOpensOn,
-  SETTINGS.soundChime,
-] as ShellSetting[];
+export const SHELL_SETTINGS: readonly ShellSetting[] = Object.values(SETTINGS) as ShellSetting[];
 
 /** The setting `key` names. */
 export function shellSetting<K extends ShellPrefKey>(key: K): ShellSetting<K> {
@@ -152,15 +164,8 @@ function readSetting<K extends ShellPrefKey>(storage: PrefsStorage, setting: She
 
 /** Every shell preference in `storage`; a missing or unknown value reads as its default. */
 export function readShellPrefs(storage: PrefsStorage): ShellPrefs {
-  const read = <K extends ShellPrefKey>(key: K) => readSetting(storage, shellSetting(key));
-  return {
-    piePalette: read("piePalette"),
-    pieLabelOutline: read("pieLabelOutline"),
-    pieDisplayDelayMs: read("pieDisplayDelayMs"),
-    mergeUndoSeconds: read("mergeUndoSeconds"),
-    companionOpensOn: read("companionOpensOn"),
-    soundChime: read("soundChime"),
-  };
+  // SETTINGS is keyed by every ShellPrefKey, so the entries cover the whole of ShellPrefs.
+  return Object.fromEntries(SHELL_SETTINGS.map((setting) => [setting.key, readSetting(storage, setting)])) as unknown as ShellPrefs;
 }
 
 /** Stores `value` for the setting `key`. A value the setting does not take is not stored. */
