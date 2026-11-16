@@ -216,7 +216,7 @@ const NO_IDS: ReadonlySet<string> = new Set();
 /** The width of the rail the definitions list folds to, in CSS px. */
 export const DEFINITIONS_RAIL_WIDTH = 40;
 
-interface PraxisBuilderModalProps {
+interface PraxisBuilderProps {
   isOpen: boolean;
   /** The active project, or null when no registered project (or its worktree) is active. */
   project: BuilderProject | null;
@@ -345,7 +345,7 @@ function trapTab(root: HTMLElement, e: { shiftKey: boolean; preventDefault: () =
   return false;
 }
 
-export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
+export const PraxisBuilder: FC<PraxisBuilderProps> = ({
   isOpen,
   project,
   onClose,
@@ -357,7 +357,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   ref,
 }) => {
   const listId = useId();
-  const dialogRef = useRef<HTMLElement | null>(null);
+  const builderRef = useRef<HTMLElement | null>(null);
   const conflictRef = useRef<HTMLDivElement | null>(null);
   const helpRef = useRef<HTMLDivElement | null>(null);
   const goToRef = useRef<HTMLDivElement | null>(null);
@@ -813,7 +813,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const previous = focusedElement();
-    dialogRef.current?.focus();
+    builderRef.current?.focus();
     return () => previous?.focus();
   }, [isOpen]);
 
@@ -824,11 +824,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!hasConflict) return;
     const previous = focusedElement();
-    const dialog = dialogRef.current;
+    const builder = builderRef.current;
     conflictRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
     return () => {
       if (previous?.isConnected) previous.focus();
-      else dialog?.focus();
+      else builder?.focus();
     };
   }, [hasConflict]);
 
@@ -837,11 +837,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!hasPending) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
+    const builder = builderRef.current;
     pendingRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
     return () => {
       if (previous?.isConnected) previous.focus();
-      else dialog?.focus();
+      else builder?.focus();
     };
   }, [hasPending]);
 
@@ -1369,7 +1369,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     announce(`${direction === "undo" ? "Undid" : "Redid"} ${moved.label}`);
     // The step may take away the focused card; focus stays in the builder, so its keys still work.
     requestAnimationFrame(() => {
-      if (!dialogRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? dialogRef.current)?.focus();
+      if (!builderRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? builderRef.current)?.focus();
     });
   };
 
@@ -1500,7 +1500,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (isTextField(target) && target instanceof HTMLElement) {
       target.blur();
       if (canvas) canvas.focus();
-      else dialogRef.current?.focus();
+      else builderRef.current?.focus();
       return;
     }
     if (selected.size > 0) return selectNodes([]);
@@ -1578,8 +1578,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // its text back on Escape, prevents its default to keep it. While a prompt or the help is
   // shown only Escape and Mod+S apply, and Tab cycles inside it.
   const handleKey = (e: KeyboardEvent, target: EventTarget | null) => {
-    const dialog = dialogRef.current;
-    if (e.defaultPrevented || !dialog || !(target instanceof Node) || !dialog.contains(target)) return;
+    const builder = builderRef.current;
+    if (e.defaultPrevented || !builder || !(target instanceof Node) || !builder.contains(target)) return;
     const overlay = helpShown
       ? helpRef.current
       : diffShown
@@ -1606,7 +1606,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           (e.shiftKey && (order.lastNode.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0));
       const next =
         nearEdges && order && current
-          ? tabTarget<HTMLElement | SVGElement>(tabStops(dialog), order.lastNode, order.edges, current, e.shiftKey)
+          ? tabTarget<HTMLElement | SVGElement>(tabStops(builder), order.lastNode, order.edges, current, e.shiftKey)
           : null;
       if (next) {
         e.preventDefault();
@@ -1626,7 +1626,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     e.preventDefault();
     runCommand(command, e, target);
   };
-  const onDialogKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => handleKey(e.nativeEvent, e.target);
+  const onBuilderKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => handleKey(e.nativeEvent, e.target);
 
   // A key that lands on the page itself, because the element that had focus went away, is
   // the builder's while it is shown: focus comes back to it and the key is handled there.
@@ -1636,10 +1636,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!isOpen || quitPrompt) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      const dialog = dialogRef.current;
-      if (!dialog || (e.target !== document.body && e.target !== document.documentElement)) return;
-      dialog.focus();
-      strayKeyRef.current(e, dialog);
+      const builder = builderRef.current;
+      if (!builder || (e.target !== document.body && e.target !== document.documentElement)) return;
+      builder.focus();
+      strayKeyRef.current(e, builder);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -1650,18 +1650,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // template. Focus the user has put anywhere else meanwhile, in the builder, in a dialog over it or
   // elsewhere in the shell, stays where it is.
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!rowFocus || !dialog) return;
+    const builder = builderRef.current;
+    if (!rowFocus || !builder) return;
     if (!focusLost(document.activeElement)) return;
     const rowKey = definitionKey({ kind: "templates", id: rowFocus.name });
     const row = rowFocus.listed
-      ? [...dialog.querySelectorAll<HTMLElement>("[data-definition-row]")].find((el) => el.dataset.definitionRow === rowKey)
+      ? [...builder.querySelectorAll<HTMLElement>("[data-definition-row]")].find((el) => el.dataset.definitionRow === rowKey)
       : undefined;
-    (row ?? dialog).focus();
+    (row ?? builder).focus();
   }, [rowFocus]);
 
   // A text field losing focus ends its typing step.
-  const onDialogBlur = (e: ReactFocusEvent<HTMLElement>) => {
+  const onBuilderBlur = (e: ReactFocusEvent<HTMLElement>) => {
     if (isTextField(e.target)) endTyping();
   };
 
@@ -2105,11 +2105,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         )}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- the builder's stage tab owns its keyboard shortcuts (#248); every control inside it is native */}
       <section
-        ref={dialogRef}
+        ref={builderRef}
         aria-label="Praxis Builder"
         tabIndex={-1}
-        onKeyDown={onDialogKeyDown}
-        onBlur={onDialogBlur}
+        onKeyDown={onBuilderKeyDown}
+        onBlur={onBuilderBlur}
         className="relative flex flex-col w-full h-full bg-[#0d1117] overflow-hidden text-[#c9d1d9] outline-none"
       >
         <header className="h-12 px-4 bg-[#161b22] border-b border-[#30363d] flex items-center gap-3 shrink-0">

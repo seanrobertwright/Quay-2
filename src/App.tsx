@@ -62,7 +62,7 @@ import { workflowPrefs } from "./slices/workflows/workflowPrefs";
 import { openRunPageOf } from "./slices/praxis-builder/runPage";
 import type { MachinaWorkOrder } from "./slices/machina/types";
 import type { CompanionViewId } from "./slices/companion/companionViews";
-import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
+import { BuilderProject, PraxisBuilder, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilder";
 import { Topos, type ToposTarget } from "./slices/git/topos/Topos";
 import { ToposLayer, ToposLens, useToposDock } from "./slices/companion/ToposDock";
 import type { ToposRequestKind } from "./slices/git/topos/toposPalette";
@@ -1313,7 +1313,7 @@ export function App() {
       {/* Praxis Builder (Ctrl+Shift+B p), over its stage tab's slot while the tab is in front:
           hidden, never unmounted, otherwise. Its inspector draws in the companion's Inspector view. */}
       <SlotLayer slot={builderInFront ? builderSlot : null} layerClass="z-30 flex" data={{ "data-praxis-builder-layer": true }}>
-      <PraxisBuilderModal
+      <PraxisBuilder
         ref={praxisBuilder}
         isOpen={builderInFront}
         inspectorSlot={builderInFront ? inspectorSlot : undefined}

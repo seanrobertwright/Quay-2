@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-const { PraxisBuilderModal, DEFINITIONS_RAIL_WIDTH } = await import("./PraxisBuilderModal.tsx");
+const { PraxisBuilder, DEFINITIONS_RAIL_WIDTH } = await import("./PraxisBuilder.tsx");
 const { MODULE_BAR_WIDTH } = await import("../shell/ModuleBar.tsx");
 const { DEFAULT_COMPANION_WIDTH } = await import("../companion/companionPrefs.ts");
 
@@ -69,7 +69,7 @@ async function showBuilder(inspectorSlot: HTMLElement | null = null): Promise<HT
   document.body.appendChild(container);
   const root = createRoot(container);
   mounted = { root, container };
-  const builder = createElement(PraxisBuilderModal, {
+  const builder = createElement(PraxisBuilder, {
     isOpen: true,
     project: { path: PROJECT, name: "project" },
     onClose: () => {},
