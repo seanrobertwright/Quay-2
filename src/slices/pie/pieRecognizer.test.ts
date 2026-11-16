@@ -3,7 +3,7 @@
 // a 26 px dead zone and eight 45° wedges with N straight up.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CLOSED, DEAD_ZONE_PX, SECOND_RING_PX, aimedSlice, aimedWedge, stepPie, wedgeAt, type PieRingKeys, type PieStep } from "./pieRecognizer.ts";
+import { CLOSED, DEAD_ZONE_PX, SECOND_RING_PX, SLICE_COUNT, aimedSlice, aimedWedge, sliceSpan, stepPie, wedgeAt, type PieRingKeys, type PieStep } from "./pieRecognizer.ts";
 
 const pick = (s: PieStep) => [s.chosen, s.slice];
 
@@ -143,6 +143,14 @@ test("the second ring starts at 132 px: short of it a stroke picks the parent, p
   assert.deepEqual(pick(stroke([out(160, -9)])), ["N", 1]);
   assert.deepEqual(pick(stroke([out(160, 11)])), ["N", 2]);
   assert.deepEqual(pick(stroke([out(160, 90)])), ["E", 1]);
+});
+
+test("a parent's three slices tile its direction ±30°, 20° each, anticlockwise to clockwise", () => {
+  assert.equal(SLICE_COUNT, 3);
+  assert.deepEqual(sliceSpan("E", 0), [60, 80]);
+  assert.deepEqual(sliceSpan("E", 1), [80, 100]);
+  assert.deepEqual(sliceSpan("E", 2), [100, 120]);
+  assert.deepEqual(sliceSpan("N", 0), [-30, -10]);
 });
 
 test("a stroke at a Merge-side slice locks to Merge on crossing and never picks Next wait", () => {

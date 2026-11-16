@@ -7,7 +7,7 @@
 // The live pie and the Project panel's preview both draw this.
 import type { CSSProperties } from "react";
 import { PIE_PALETTES, type PiePaletteId } from "./piePalettes.ts";
-import { WEDGES, type Wedge } from "./pieRecognizer.ts";
+import { WEDGES, sliceSpan, type Wedge } from "./pieRecognizer.ts";
 import type { PieRing } from "./pieRing.ts";
 
 const sliceLabel = (label: string) => (label.length > SLICE_LABEL_MAX ? `${label.slice(0, SLICE_LABEL_MAX - 1)}…` : label).toUpperCase();
@@ -135,10 +135,10 @@ export const PieWire = ({ ring, palette, labelOutline, aimed, aimedSlice = null,
       {aimed && parent?.slices && (
         <g data-second-ring={aimed}>
           {parent.slices.map((slice, c) => {
-            const index = WEDGES.indexOf(aimed);
-            const [rest, lit] = wedgeColors(palette, index);
-            const a0 = index * 45 - 30 + c * 20;
-            const d = sector(SLICE_INNER, SLICE_OUTER, a0 + 1, a0 + 19);
+            const [rest, lit] = wedgeColors(palette, WEDGES.indexOf(aimed));
+            const [a0, a1] = sliceSpan(aimed, c);
+            // A degree's gap at each edge keeps neighbouring slices' outlines apart.
+            const d = sector(SLICE_INNER, SLICE_OUTER, a0 + 1, a1 - 1);
             if (!slice) {
               return (
                 <g key={c} data-slice={c} data-dim="true" aria-hidden="true">
@@ -148,7 +148,7 @@ export const PieWire = ({ ring, palette, labelOutline, aimed, aimedSlice = null,
             }
             const on = c === aimedSlice;
             const color = on ? lit : rest;
-            const [lx, ly] = polar((SLICE_INNER + SLICE_OUTER) / 2, a0 + 10);
+            const [lx, ly] = polar((SLICE_INNER + SLICE_OUTER) / 2, (a0 + a1) / 2);
             return (
               <g
                 key={c}

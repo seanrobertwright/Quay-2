@@ -17,6 +17,17 @@ export const LOCK_WITHIN_DEG = 30;
 export const LOCK_HYSTERESIS_DEG = 32;
 /** Each of a parent's three slices spans this much; together they span its direction ±30°. */
 export const SLICE_DEG = 20;
+/** How many slices a parent's second ring holds. */
+export const SLICE_COUNT = (2 * LOCK_WITHIN_DEG) / SLICE_DEG;
+
+/**
+ * The bearings slice `slice` of `parent`'s second ring spans, from its anticlockwise edge to its
+ * clockwise one, in degrees clockwise from N (the first slice of N starts below 0).
+ */
+export function sliceSpan(parent: Wedge, slice: number): [number, number] {
+  const start = WEDGES.indexOf(parent) * 45 - LOCK_WITHIN_DEG + slice * SLICE_DEG;
+  return [start, start + SLICE_DEG];
+}
 
 /** Degrees clockwise from N of a stroke `dx`, `dy` px from the menu's centre (y grows downward), in [0, 360). */
 export function bearingOf(dx: number, dy: number): number {
@@ -111,7 +122,7 @@ interface PieAim {
 function aimAt(origin: PiePoint, at: PiePoint, lock: Wedge | null, ring: PieRingKeys): PieAim {
   if (lock) {
     const off = offWedge(bearingOf(at.x - origin.x, at.y - origin.y), lock);
-    return { wedge: lock, slice: Math.max(0, Math.min(2, Math.floor((off + LOCK_WITHIN_DEG) / SLICE_DEG))) };
+    return { wedge: lock, slice: Math.max(0, Math.min(SLICE_COUNT - 1, Math.floor((off + LOCK_WITHIN_DEG) / SLICE_DEG))) };
   }
   const wedge = wedgeAt(at.x - origin.x, at.y - origin.y);
   return { wedge: wedge && ring[wedge] ? wedge : null, slice: null };

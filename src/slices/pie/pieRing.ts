@@ -5,7 +5,7 @@
 // first ring picks one of their three second-ring slices. NE is Merge, and the companion's pull
 // request diagonals (Diff lens, Comment, Checks) need a pull request; both come with the Merge
 // stroke, so their wedges stay empty for now.
-import { WEDGES, type Wedge } from "./pieRecognizer.ts";
+import { SLICE_COUNT, WEDGES, type Wedge } from "./pieRecognizer.ts";
 
 /** What a stroke can do. */
 export type PieAction =
@@ -78,7 +78,7 @@ const NEW_TERM = command("new-term", "New term", "n", [slice("new-claude", "Clau
 
 /** Palette, whose slices copy the three most recent palette commands, newest first; dim where there are fewer. */
 function palette(recent: readonly RecentPaletteCommand[]): PieCommand {
-  const slices = [0, 1, 2].map((i): PieSlice | null =>
+  const slices = Array.from({ length: SLICE_COUNT }, (_, i): PieSlice | null =>
     recent[i] ? { action: "palette-command", label: recent[i].title, commandId: recent[i].id } : null
   );
   return command("palette", "Palette", "p", slices);

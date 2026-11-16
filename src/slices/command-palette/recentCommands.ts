@@ -1,12 +1,13 @@
 // The palette's most recent commands, newest first, which the pie's Palette slices copy (#649).
 // Kept in the WebView's localStorage, and validated as they are read.
 import type { PrefsStorage } from "../companion/companionPrefs.ts";
+import { SLICE_COUNT } from "../pie/pieRecognizer.ts";
 import type { RecentPaletteCommand } from "../pie/pieRing.ts";
 
 const KEY = "quay_recent_palette_commands";
 
 /** How many recent commands are kept: one per Palette slice. */
-export const MAX_RECENT_COMMANDS = 3;
+export const MAX_RECENT_COMMANDS = SLICE_COUNT;
 
 export interface RecentCommands {
   /** The commands the palette ran, newest first. */
