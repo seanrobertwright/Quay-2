@@ -192,7 +192,7 @@ async function mountWith(recent: { id: string; title: string }[]) {
   return { chosen, strokes };
 }
 
-test("a stroke past the second ring's start runs a slice: Split's Grid, Palette's recent command, New term's Claude", async () => {
+test("a stroke past the second ring's start runs a slice: Split's Grid, Palette's recent command, New term's Codex", async () => {
   const { chosen, strokes } = await mountWith([{ id: "layout-grid", title: "2x2 Quad Grid Layout" }]);
   const drag = async (x: number, y: number) => {
     await fire(el(".companion"), "mousedown", { button: 1 });

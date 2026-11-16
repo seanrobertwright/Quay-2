@@ -156,7 +156,7 @@ test("a stroke at a Merge-side slice locks to Merge on crossing and never picks 
 test("on crossing, the ring locks to the nearest parent within 30°, not the wedge under the pointer", () => {
   // 115° is SE's wedge (Zoom, no second ring), 25° from E: the lock goes to E, its last slice.
   assert.deepEqual(pick(stroke([out(150, 115)])), ["E", 2]);
-  // 165° is 30° from S, which has no second ring, and 75° from E: no parent within 30°, so the
+  // 165° is 15° from S, which has no second ring, and 75° from E: no parent within 30°, so the
   // first ring's wedge under the pointer is picked.
   assert.deepEqual(pick(stroke([out(150, 165)])), ["S", null]);
 });
@@ -166,7 +166,7 @@ test("the lock holds to 32° off its parent, then goes to the nearest parent wit
   assert.deepEqual(pick(stroke([out(150, 0), out(150, 31)])), ["N", 2]);
   // At 33° the lock lets go and Merge, 12° away, takes it: its first slice.
   assert.deepEqual(pick(stroke([out(150, 0), out(150, 33)])), ["NE", 0]);
-  // Back inside the second ring the lock is gone: crossing again locks afresh.
+  // Back short of the second ring the lock is gone: crossing again locks afresh.
   assert.deepEqual(pick(stroke([out(150, 40), out(100, 5), out(150, 5)])), ["N", 1]);
 });
 
