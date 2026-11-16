@@ -9,7 +9,7 @@ Launch Quay's TDD Swarm and type one prompt. `test-architect` writes failing tes
 - **Level** Intermediate
 :::
 
-**You'll learn:** how one agent hands work to another with `quay_send_message`, why a hand-off that takes minutes is sent with `wait_for_reply` false, how the receiving agent reports back with a new message of its own, and how to read the whole relay afterwards in Mission Control.
+**You'll learn:** how one agent hands work to another with `quay_send_message`, why a hand-off that takes minutes is sent with `wait_for_reply` false, how the receiving agent reports back with a new message of its own, and how to read the whole relay afterwards in an agent's Activity view.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
@@ -187,7 +187,7 @@ Paste `Now send feature-impl the message from my last prompt with quay_send_mess
 :::
 
 ::: ifnot test-architect waited, and after 60 seconds said feature-impl received the task but is still working
-It set `wait_for_reply` true. The message was delivered anyway, so the relay carries on: go on to step 5. In step 7 that trail entry shows a `No reply within 60s` note.
+It set `wait_for_reply` true. The message was delivered anyway, so the relay carries on: go on to step 5.
 :::
 
 :::
@@ -258,34 +258,31 @@ Paste `Send feature-impl the names of the failing tests with quay_send_message, 
 
 ::: step
 
-## 7. Read the relay in Mission Control
+## 7. Read the relay in Activity
+
+Both messages of the relay went to or from `test-architect`, so its **Activity** view holds the whole relay. The Activity view is one of the views of the **companion**, the panel on the window's right that shows what the selected terminal is working on.
 
 ::: do
-1. Press `Ctrl+Shift+B M` to open Mission Control, or click its icon, the network icon, in the toolbar at the bottom of the rail.
-2. Scroll down to **Live A2A Message Trail**. The newest entry is at the top.
-3. Press `Esc` to close Mission Control when you've read it.
+1. Click inside `test-architect` to select it, then press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch.
+2. Read the view. It lists `test-architect`'s tool calls and its messages, oldest first, so the newest is at the bottom. Each message shows its status, and the reply under it once one came.
 :::
 
 ::: see
-![Mission Control, scrolled down to the Live A2A Message Trail with two entries: feature-impl to test-architect with the message GREEN and an Answer ending RELAY DONE, and below it test-architect to feature-impl with the hand-off message. Both show Completed.](./07-trail.webp)
+![The companion's Activity view for test-architect: its tool calls, a To feature-impl entry with the hand-off message and feature-impl's report under it, and below it a From feature-impl entry with the message GREEN and a reply ending RELAY DONE. Both read completed.](./07-trail.webp)
 :::
 
 ::: must
-- An entry `feature-impl → test-architect` whose message is `GREEN`, **Completed**, with an **Answer:** ending `RELAY DONE`.
-- Below it, an entry `test-architect → feature-impl` with the hand-off message, **Completed**. Scroll the trail to read its **Answer:**, `feature-impl`'s report.
+- An entry `To feature-impl` with the hand-off message, `completed`. Under it is the reply, `feature-impl`'s report.
+- Below it, an entry `From feature-impl` whose message is `GREEN`, `completed`, with a reply ending `RELAY DONE`.
 :::
 
 ::: may
-- The times and durations on each entry.
-- The wording of the first entry's **Answer:**, apart from its last line.
+- The times on each entry, and the tool calls between the messages.
+- The wording of each reply, apart from the last line of the `GREEN` entry's reply.
 :::
 
-::: ifnot the trail has more than two entries
-The others are from earlier work in this Quay session. Look for the two that name `test-architect` and `feature-impl`.
-:::
-
-::: ifnot an entry says Reply instead of Answer, with a No reply within 60s note
-That agent waited for a reply instead of sending and moving on. The message still went through, so there is nothing to fix.
+::: ifnot the view has more than two message entries
+The others are from earlier work in this Quay session. Look for the `To feature-impl` and `From feature-impl` entries that carry the hand-off and `GREEN`.
 :::
 
 :::
@@ -331,7 +328,7 @@ The relay built what its own tests asked for, not everything `AGENTS.md` says. P
 
 ::: done
 - ✅ `test-architect`'s last line is `RELAY DONE`.
-- ✅ The Mission Control trail shows `test-architect → feature-impl` and `feature-impl → test-architect`, both Completed.
+- ✅ `test-architect`'s Activity view shows `To feature-impl` and `From feature-impl`, both `completed`.
 - ✅ `npm test`, the type check and the check suite all pass.
 - ✅ `git status --short` lists only `src/duration.ts`, `test/duration.test.ts` and `check/`.
 - ✅ You typed into an agent pane once, in step 4, apart from any If not you followed.

@@ -9,11 +9,11 @@ A reply only waits a minute. Hand a three-minute benchmark from one Claude Code 
 - **Level** Intermediate
 :::
 
-**You'll learn:** why a reply can't carry a long job, how `quay_send_message` with `wait_for_reply` set to false hands one over and gets the sender's prompt back at once, what `quay_get_agent_status` reports while the job runs, how a **file mailbox** carries the result and what says the job is done, and how a message nobody waited for shows in Mission Control's trail.
+**You'll learn:** why a reply can't carry a long job, how `quay_send_message` with `wait_for_reply` set to false hands one over and gets the sender's prompt back at once, what `quay_get_agent_status` reports while the job runs, how a **file mailbox** carries the result and what says the job is done, and how a message nobody waited for shows in the sender's **Activity** view.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes a letter key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and `Ctrl+Shift+B O` is the letter o, never the digit zero. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
-Agents message each other over Quay's **A2A bus**. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, and every message shows up in the trail in **Mission Control**, Quay's view of all the traffic on the bus. A sender can wait for the reply, but only for 60 seconds. This tutorial's job takes about three minutes, so `lead` doesn't wait. It asks `bench-runner` to write its result into a file, `bench.md`, whose last line they agree on in advance. That file is the **file mailbox**. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus and its four `quay_*` tools one message at a time.
+Agents message each other over Quay's **A2A bus**. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`. Each terminal's **Activity** view, in the companion on the window's right, lists the messages that terminal sent and got, each with its status and, once one comes, the reply under it. A sender can wait for the reply, but only for 60 seconds. This tutorial's job takes about three minutes, so `lead` doesn't wait. It asks `bench-runner` to write its result into a file, `bench.md`, whose last line they agree on in advance. That file is the **file mailbox**. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus and its four `quay_*` tools one message at a time.
 
 The starter project is `fire-then-poll`, a tiny word-count library with two versions of the same function. `countWordsNaive` keeps a list of words and searches it for every word it reads; `countWordsMap` keeps a `Map`. `npm run bench` times the two for about three minutes and prints a table comparing them. Nothing in the library gets changed.
 
@@ -145,7 +145,7 @@ A reply waits at most 60 seconds, and this job takes about three minutes, so `le
 :::
 
 ::: ifnot lead sat for about a minute, then said bench-runner received the task but is still working
-It sent the job with the default, which waits for a reply. The job still runs, so carry on from step 4. Its trail entry fills in when `bench-runner` finishes, the same as a job sent without waiting.
+It sent the job with the default, which waits for a reply. The job still runs, so carry on from step 4. Its entry in `lead`'s Activity view fills in when `bench-runner` finishes, the same as a job sent without waiting.
 :::
 
 :::
@@ -155,23 +155,22 @@ It sent the job with the default, which waits for a reply. The job still runs, s
 ## 4. Look in on it
 
 ::: do
-1. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`.
-2. Scroll down to **Live A2A Message Trail**. It lists the newest message first.
-3. Close Mission Control with the **×** at its top right, or press `Esc`.
+1. With `lead` still selected, press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch. The companion shows `lead`'s Activity view.
+2. Find the entry `To bench-runner`. The view lists `lead`'s tool calls and messages oldest first, so newer entries sit below it.
 :::
 
 ::: see
-![Mission Control scrolled to the Live A2A Message Trail, with one entry: lead → bench-runner, Dispatched, 1m 30s after it was sent, holding the job text with no answer under it.](./04-trail-dispatched.webp)
+![The companion's Activity view for lead, beside the split stage: the entry To bench-runner reads dispatched and holds the job text, with no reply under it.](./04-trail-dispatched.webp)
 :::
 
 ::: must
-- The newest entry reads `lead → bench-runner` and holds the job text.
-- It reads **Dispatched**, with no answer under it yet.
+- The entry reads `To bench-runner` and holds the job text.
+- It reads `dispatched`, with no reply under it yet.
 :::
 
 ::: may
-- The times on the entry, including how long ago it was sent.
-- Older entries below it, if you've done other A2A tutorials in this project.
+- The time on the entry.
+- `lead`'s own tool calls listed around it.
 :::
 
 :::
@@ -249,26 +248,26 @@ Poll by hand instead: paste step 5's line into `lead` every half minute until it
 
 ::: step
 
-## 7. Read the trail
+## 7. Read the reply in Activity
 
 ::: do
-1. Open Mission Control again, with its icon or `Ctrl+Shift+B M`, and scroll down to **Live A2A Message Trail**.
-2. Find the same `lead → bench-runner` entry. It is no longer the newest if an agent sent another message since.
+1. Look at `lead`'s Activity view in the companion again. If it shows another terminal, click into the `lead` pane, then press `Ctrl+Shift+B M`.
+2. Find the same `To bench-runner` entry. `lead`'s polls and its read of `bench.md` are listed below it.
 :::
 
-Mission Control records `bench-runner`'s last message as the entry's **Answer**, even though nobody waited for it. Only you see it there: `lead` had to read the file.
+Quay records `bench-runner`'s last message as the entry's reply, even though nobody waited for it. Only you see it there: `lead` had to read the file.
 
 ::: see
-![Mission Control's trail: the lead → bench-runner entry now reads Completed and took 4m 14s, with bench-runner's last message, saying it wrote bench.md and the winner is map, under Answer.](./07-trail-completed.webp)
+![The companion's Activity view for lead: the To bench-runner entry now reads completed, with bench-runner's last message, saying it wrote bench.md and the winner is map, under it.](./07-trail-completed.webp)
 :::
 
 ::: must
-- The `lead → bench-runner` entry reads **Completed**.
-- Under **Answer:** is `bench-runner`'s last message.
+- The `To bench-runner` entry reads `completed`.
+- Under it is `bench-runner`'s last message.
 :::
 
 ::: may
-- The answer's wording, and how long the entry `took`.
+- The reply's wording, and the time on the entry.
 :::
 
 :::
@@ -278,7 +277,7 @@ Mission Control records `bench-runner`'s last message as the entry's **Answer**,
 ## 8. Check it worked
 
 ::: do
-1. Close Mission Control with the **×** at its top right, or press `Esc`. Click into `bench-runner`, the right pane.
+1. Click into `bench-runner`, the right pane.
 2. Press `Ctrl+Shift+B 1`. `shell` takes the right pane. `bench-runner` keeps running, and the rail still lists it.
 :::
 
@@ -314,7 +313,7 @@ npm test; Get-Content bench.md -Tail 1; git status --short
 ::: done
 - ✅ `lead` got its prompt back straight after firing the job, while `bench-runner` was still working.
 - ✅ `lead` polled, then quoted `WINNER: map` from `bench.md`.
-- ✅ Mission Control's `lead → bench-runner` entry reads **Completed**, with an **Answer**.
+- ✅ `lead`'s Activity view shows its `To bench-runner` entry as `completed`, with `bench-runner`'s reply under it.
 - ✅ The six tests still pass, and `bench.md` is the only change `git status --short` shows.
 :::
 

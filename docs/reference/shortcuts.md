@@ -49,7 +49,7 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | `Ctrl+Shift+B Z` | **Toggle Zoom** | Maximizes active pane to full stage, or restores previous split |
 | `Ctrl+Shift+B O` | **Cycle Focus** | Moves keyboard focus clockwise to next visible pane |
 | `Ctrl+Shift+B X` | **Unsplit** | Collapses splits back to single active view |
-| `Ctrl+Shift+B S` | **Swarm Launcher** | Opens 1-click multi-agent swarm preset modal |
+| `Ctrl+Shift+B S` | **Swarm builder** | Opens the swarm builder in a stage tab: every swarm preset and the custom roster. Launching a swarm closes the tab |
 
 ---
 
@@ -61,14 +61,14 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | `Ctrl+Shift+B D` | **Diff lens** | Opens the diff lens on the selected terminal's pull request; with no pull request linked, opens the Source control panel and its repo-wide Diffs, the Visual Diff & File Changes drawer: a log of agents' Edit and Write tool calls |
 | `Ctrl+Shift+B I` | **Source control** | Opens the Source control panel: the repository's pull requests and issues, Topos, Diffs and Pre-PR Audit. Picking a pull request or issue opens it in the companion for the selected terminal |
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Opens the Source control panel and runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
-| `Ctrl+Shift+B H` | **Session History** | Opens Claude Code session history and auto-resumer |
-| `Ctrl+Shift+B Q` | **Waiting on You** | Toggles the attention drawer: every session waiting on you across all projects, oldest first. A row focuses its terminal; a finished turn can be dismissed. A permission request is answered in place with **Allow** or **Deny**, and choosing a request put off with **Later** reopens the approval dialog on it. A terminal past its 20 permission requests shows **+N older not shown** on its oldest one. The count on the module bar's **Agents** icon shows how many wait |
+| `Ctrl+Shift+B H` | **Session History** | Opens the Agents panel on its Session history: search the project's Claude Code sessions, at most 100, and **Resume** one |
+| `Ctrl+Shift+B Q` | **Next waiting terminal** | Selects the next terminal waiting on you, the next amber dot in the module bar's terminal status list. Every session waiting on you is a row in the Agents panel's **Waiting on you**; picking a permission request there opens it in the companion's Activity view, with **Allow once**, **Allow for session** and **Deny**. The count on the module bar's **Agents** icon shows how many wait |
 | `Ctrl+Shift+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+Shift+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
 | `Ctrl+Shift+B F` | **Machina** | Opens the [Factory Station](../features/machina-praxis.md), Quay's local factory: work orders, holds and Accept |
 | `Ctrl+Shift+B P` | **Praxis Builder** | Toggles the [Praxis Builder](../features/praxis-builder.md), which lists the project's `.praxis/` definitions and shows a graph you can edit on the canvas and in the inspector, undo with `Ctrl+Z`, redo with `Ctrl+Shift+Z` or `Ctrl+Y`, and save with `Ctrl+S` (`Cmd` on macOS). `Ctrl+F` goes to a node by id or kind, and `Tab`, `Enter`, the arrow keys and `Delete` work the canvas without a mouse. Press `?` in the canvas for the rest of its keys |
 | `Ctrl+Shift+B C` | **Topos** | Opens the Topos view, the Git cockpit, in the companion for the selected terminal's repository. Its **Wide** toggle opens it as the Topos lens over the terminal. It needs git 2.36 or newer |
-| `Ctrl+Shift+B M` | **Mission Control** | Opens Mission Control, where you send messages to agents on the A2A bus and read its message trail |
+| `Ctrl+Shift+B M` | **Activity** | Opens the Activity view in the companion for the selected terminal: its tool calls and messages, its pending permission request, and a message strip that sends it a task. Broadcast to all agents is in the command palette |
 | `Ctrl+Shift+P` | **Command Palette** | Opens global command launcher and searchable palette. `Ctrl+K` also opens it outside a terminal |
 | `Esc` | **Dismiss / Close** | Closes any open modal, dialog, or drawer |
 

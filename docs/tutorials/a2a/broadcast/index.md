@@ -9,11 +9,11 @@ One agent, one message, the whole team. A `release-captain` agent announces a co
 - **Level** Intermediate
 :::
 
-**You'll learn:** what a broadcast is, one line typed into every other agent in the project at once with nobody waiting for an answer; why broadcast text needs a fixed keyword such as `FREEZE` or `RELEASE FAIL CRITICAL`; how a team protocol in `AGENTS.md` turns a notice into behaviour; and how to read a broadcast's fan-out in Mission Control's trail.
+**You'll learn:** what a broadcast is, one line typed into every other agent in the project at once with nobody waiting for an answer; why broadcast text needs a fixed keyword such as `FREEZE` or `RELEASE FAIL CRITICAL`; how a team protocol in `AGENTS.md` turns a notice into behaviour; and how to read a broadcast's fan-out in the sender's **Activity** view.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
-Agents talk over Quay's **A2A bus**. Earlier A2A tutorials send one message to one agent with `quay_send_message`. This one uses only `quay_broadcast`, which sends one line to every other running agent in the same project. Quay types it into each agent's pane as a new prompt that starts `[Broadcast Notice]:`, shows a **Swarm Broadcast** banner at the top of each agent's pane and pops a toast in the window's corner. Plain shells get nothing. The sender doesn't wait and gets no answers back: it only learns which agents the notice reached. Every notice shows up in **Mission Control**, Quay's view of all the traffic on the bus. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus and its four `quay_*` tools.
+Agents talk over Quay's **A2A bus**. Earlier A2A tutorials send one message to one agent with `quay_send_message`. This one uses only `quay_broadcast`, which sends one line to every other running agent in the same project. Quay types it into each agent's pane as a new prompt that starts `[Broadcast Notice]:`, shows a **Swarm Broadcast** banner at the top of each agent's pane and pops a toast in the window's corner. Plain shells get nothing. The sender doesn't wait and gets no answers back: it only learns which agents the notice reached. Each terminal's **Activity** view, in the companion on the window's right, lists the messages that terminal sent and got, so the sender's view holds one entry for each agent a notice reached. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus and its four `quay_*` tools.
 
 Quay has no freeze of its own. A broadcast is only text, so what each agent does with it comes from the **Release protocol** in the starter's `AGENTS.md`, which every agent reads. That protocol is the real lesson.
 
@@ -232,7 +232,7 @@ The captain's first move is the `FREEZE` broadcast. Quay types it into `feature-
 
 ::: may
 - Whether you saw the toast, `Swarm Broadcast from release-captain`, and the banner of the same name on each receiver's pane: the toast lasts seven seconds and the banners ten.
-- Whether you see each receiver answer with `FROZEN` before the next notice arrives. The first release often takes under a minute, so the verdict can follow within seconds. Step 8's trail keeps both `FROZEN` answers.
+- Whether you see each receiver answer with `FROZEN` before the next notice arrives. The first release often takes under a minute, so the verdict can follow within seconds. Step 8's Activity view keeps both `FROZEN` answers.
 - The receivers' wording above `FROZEN`.
 :::
 
@@ -309,30 +309,30 @@ Paste `git restore README.md` into `shell`. Then paste `A release freeze is on. 
 
 ::: step
 
-## 8. Read the fan-out in Mission Control
+## 8. Read the fan-out in Activity
 
-One broadcast becomes one trail entry for each agent it reached. The trail is the only place a broadcast's answers are kept: the captain never sees them.
+One broadcast becomes one entry in the sender's Activity view for each agent it reached. Activity is where a broadcast's answers are kept: the captain never sees them.
 
 ::: do
-1. Click the **Agents** icon, the robot on the bar down the window's left edge, then **Mission Control**, or press `Ctrl+Shift+B M`.
-2. Scroll down to **Live A2A Message Trail**. It lists the newest message first and has its own scroll bar: scroll inside it to read every entry.
+1. Click into the `release-captain` pane, top left, so the companion follows it.
+2. Press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch. The view lists the captain's tool calls and its messages, oldest first, so the newest is at the bottom. Scroll the list to read every entry.
 :::
 
-An entry that someone waited on shows the peer's response as its **Reply**. Nobody waits on a broadcast, so each broadcast entry shows the agent's next response as its **Answer** instead.
+An entry that someone waited on shows the peer's reply under it. Nobody waits on a broadcast, so each broadcast entry shows the agent's next response there instead.
 
 ::: see
-![Mission Control scrolled to LIVE A2A MESSAGE TRAIL (4): the newest entry, release-captain → feature-dev tagged Broadcast and Completed, holds the RELEASE FAIL CRITICAL notice with feature-dev's CAUSE: line under Answer, and the release-captain → docs-writer entry for the same notice starts below it.](./08-trail.webp)
+![The companion's Activity view for release-captain, scrolled to the RELEASE FAIL CRITICAL broadcast: an entry To feature-dev reading completed, with feature-dev's CAUSE: line under it, and the To docs-writer entry for the same notice beside it, among the captain's tool calls.](./08-trail.webp)
 :::
 
 ::: must
-- Two broadcasts, `FREEZE` and `RELEASE FAIL CRITICAL`, each with one entry for `release-captain → feature-dev` and one for `release-captain → docs-writer`, tagged **Broadcast**.
-- Every one of those four entries reads **Completed**, with an **Answer:**. The `FREEZE` answers end `FROZEN`.
+- Two broadcasts, `FREEZE` and `RELEASE FAIL CRITICAL`, each with one entry `To feature-dev` and one `To docs-writer`.
+- Every one of those four entries reads `completed`, with the receiver's answer under it. The `FREEZE` answers end `FROZEN`.
 :::
 
 ::: may
-- The times, how long each entry `took`, and the answers' wording.
+- The times on the entries, and the answers' wording.
 - The order of the two entries for each broadcast.
-- Older entries below them, if you've done other A2A tutorials since Quay started. The heading counts every entry, so it reads `(4)` only when these are all.
+- The captain's tool calls listed between them, such as its `npm test` run.
 - No entry for your step 7 request: you typed it into `docs-writer` yourself, so it never went over the bus.
 :::
 
@@ -343,8 +343,7 @@ An entry that someone waited on shows the peer's response as its **Reply**. Nobo
 ## 9. Revert the late change
 
 ::: do
-1. Close Mission Control with the **×** at its top right, or press `Esc`.
-2. Click into the `shell` pane, bottom right.
+1. Click into the `shell` pane, bottom right.
 :::
 
 ::: paste `shell`
@@ -441,7 +440,7 @@ git log --oneline -4; git tag; node src/cli.ts --version; npm test
 :::
 
 ::: next
-[A2A 8: Mission Control operator run](/tutorials/a2a/mission-control/)
+[A2A 8: Operator run](/tutorials/a2a/mission-control/)
 
-Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI.
+Lead three agents yourself from their Activity views as they plan, build and verify a text-stats CLI.
 :::

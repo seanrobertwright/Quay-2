@@ -1,6 +1,6 @@
-# A2A 8: Mission Control operator run
+# A2A 8: Operator run
 
-You are the lead this time. Three Claude Code agents plan, build and verify a small text-stats CLI, and every task they get comes from you, typed into Mission Control. You run two agents at once and watch their timers, pass one agent's reply to another with **Copy Reply**, take a roll call with a broadcast, and clear the trail before the final verdict. You never type into an agent's pane.
+You are the lead this time. Three Claude Code agents plan, build and verify a small text-stats CLI, and every task they get comes from you, typed into each agent's **Activity** view. You run two agents at once and follow each one's work, carry one agent's result to another yourself, take a roll call with a broadcast, and read every agent's answer in the **Agents** panel before the final verdict. You never type into an agent's pane.
 
 ::: glance
 - **Time**
@@ -9,11 +9,11 @@ You are the lead this time. Three Claude Code agents plan, build and verify a sm
 - **Level** Intermediate
 :::
 
-**You'll learn:** how to send every task from Mission Control with **Dispatch as User**, run two agents at once and read each trail entry's timer, relay one agent's reply to another with **Copy Reply**, collect one answer per agent with a broadcast, clear the trail, and how a Mission Control dispatch waits for an agent's turn however long it takes.
+**You'll learn:** how to send every task from an agent's **Activity** view, run two agents at once and follow each one's tool calls and messages, carry one agent's result to another yourself, collect one answer per agent with **Broadcast to all agents**, read each agent's latest reply in the **Agents** panel, and how a message you send waits for an agent's turn however long it takes.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 4` is the fourth one listed. Each Paste box names the pane or the Mission Control box its line goes into: copy the line with the box's copy button, click into that pane or box, press `Ctrl+V` to paste it, then do what the step says to send it.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference. `Ctrl+Shift+B` shortcuts don't work while you are typing in a field such as a message strip, so click into a pane first. Each Paste box names the pane or the Quay field its line goes into: copy the line with the box's copy button, click into that pane or field, press `Ctrl+V` to paste it, then do what the step says to send it.
 
-The team is Quay's **Tri-Agent Council**, the same three agents and the same plan, build and verify loop as [Swarm 8: Tri-Agent Council](/tutorials/swarm/tri-agent-council/): `planner-agent` writes a plan, `builder-agent` builds it, and `verifier-agent` runs the result and gives a verdict. In Swarm 8 you briefed each agent in its own pane. Here you drive the whole loop from **Mission Control**, the panel where you send a peer a message yourself and read the **trail**, the list of every message on Quay's A2A bus, newest first. A **peer** is an agent terminal on the bus; the Council's PowerShell pane is not one. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) introduced Mission Control, and this page goes further with it.
+The team is Quay's **Tri-Agent Council**, the same three agents and the same plan, build and verify loop as [Swarm 8: Tri-Agent Council](/tutorials/swarm/tri-agent-council/): `planner-agent` writes a plan, `builder-agent` builds it, and `verifier-agent` runs the result and gives a verdict. In Swarm 8 you briefed each agent in its own pane. Here you drive the whole loop from the **companion**, the panel on the window's right edge that shows what the selected terminal is working on. Its **Activity** view lists that terminal's tool calls and the messages it sent and got on Quay's A2A bus, oldest first, and has a message strip at its foot where you send it a task yourself. There is no single list of every message: each agent's messages are in its own Activity view. The **Agents** panel, behind the robot icon on the **module bar**, the column of icons down the window's left edge, lists the agents in the project with a preview of each one's latest reply. A **peer** is an agent terminal on the bus; the Council's PowerShell pane is not one. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) introduced the Activity view, and this page goes further with it.
 
 The starter project is a text-stats CLI. `src/cli.ts` is finished, but the three functions it calls in `src/stats.ts` aren't written, so all six tests fail. `SPEC.md` says what the functions must do and ends with the exact line the CLI must print for `sample.txt`. `AGENTS.md` says which agent may change which files, and that the agents never message each other: you relay everything. All three agents run on Claude Code's default model.
 
@@ -74,7 +74,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: do
 1. In the rail, point at the `pwsh` terminal under your project and click the **×** at the right end of its row (**Close terminal**). The terminal closes at once. The Council brings its own PowerShell pane, `terminal-shell`, so this one isn't needed.
-2. Press `Ctrl+Shift+B S`. The Swarm Launcher opens.
+2. Press `Ctrl+Shift+B S`. The **Swarm builder** opens in a tab on the stage.
 3. Click the **Tri-Agent Council** card.
 4. Click **Launch Swarm Now**.
 :::
@@ -104,85 +104,91 @@ Quay starts a swarm's Claude Code agents in Skip mode, which Claude Code calls B
 :::
 
 ::: ifnot an agent shows the plugin hint
-Quay isn't hearing from the event-bridge plugin, so Mission Control could send that agent a task but never see its turn end. Install the plugin as the hint says, then run `/reload-plugins` in each pane that shows the hint. The hint goes away as soon as Quay hears from the plugin.
+Quay isn't hearing from the event-bridge plugin, so it could send that agent a task but never see its turn end. Install the plugin as the hint says, then run `/reload-plugins` in each pane that shows the hint. The hint goes away as soon as Quay hears from the plugin.
 :::
 
 ::: ifnot the rail lists five terminals, pwsh first
-The PowerShell terminal from step 1 is still open, so `Ctrl+Shift+B 4` in step 10 would pick the wrong terminal. Close `pwsh` as in Do 1. The grid keeps its four panes.
+The PowerShell terminal from step 1 is still open. Close `pwsh` as in Do 1, so only the Council's four terminals are in the project. The grid keeps its four panes.
 :::
 
 :::
 
 ::: step
 
-## 3. Open Mission Control
+## 3. Open the Agents panel
 
 ::: do
-1. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail. Its tooltip shows its shortcut, `Ctrl+Shift+B M`, which the rest of this page uses. Mission Control opens over the stage.
-2. Scroll down inside Mission Control to **Dispatch Prompt / Handoff Task**. Under it, tick **Dispatch as User**. **From Agent** greys out and reads **You**. From now on every task you send reaches its agent exactly as if you had typed it into that agent's pane.
-3. Click **To Agent** to see who you can send to, then click it again to close the list without changing it. It lists the three agents and not `terminal-shell`: a PowerShell pane isn't a peer, and Mission Control lists only the peers in the project that is open in the stage.
-4. Scroll down to the **Live A2A Message Trail**.
+1. Click the **Agents** icon, the robot icon on the module bar down the window's left edge. The Agents panel opens in the rail's place. Leave it open for the rest of the page; the **Projects** icon at the top of the module bar brings the rail back whenever you want it.
+2. Look under **Agents in the project**. Each row names an agent, its CLI and its level on the bus, and its status. `terminal-shell` isn't listed: a PowerShell pane isn't a peer, so no message reaches it.
 :::
 
 ::: see
-![Mission Control scrolled to Dispatch Prompt / Handoff Task: Dispatch as User ticked, From Agent greyed out reading You, To Agent on builder-agent marked IDLE; below it the Broadcast box reads 3 targets active, and the Live A2A Message Trail (0) says No inter-agent messages dispatched yet.](./03-panel-open.webp)
+![The Agents panel down the left, beside the 2x2 grid: under Agents in the project, planner-agent, builder-agent and verifier-agent, each reading claude · full peer and idle, with no reply preview under any of them, and no row for terminal-shell.](./03-panel-open.webp)
 :::
 
 ::: must
-- **From Agent** is greyed out and reads **You**.
-- **To Agent** lists `planner-agent`, `builder-agent` and `verifier-agent`, each marked `[IDLE]` and followed by its role, and nothing else.
-- The trail heading reads `Live A2A Message Trail (0)`, and the trail says `No inter-agent messages dispatched yet.`
+- **Agents in the project** lists `planner-agent`, `builder-agent` and `verifier-agent`, each reading `claude · full peer` and `idle`, and nothing else.
+- No agent has a reply preview under its row yet, because no one has sent it a message.
 :::
 
 ::: may
-- Which agent **To Agent** shows before you open it.
+- Whether **Waiting on you** lists the agents as having finished their turn, after confirming their roles, or reads `Nothing is waiting on you`.
 :::
 
-::: ifnot the trail already holds entries
-The trail keeps every message on the bus since Quay started, from every project, so a tutorial you did earlier left entries behind. Scroll to the trail heading and click **Clear Trail**. Step 8 explains what clearing does.
+::: ifnot an agent reads claude · listener
+Quay isn't hearing from that agent's event-bridge plugin, so it can't see the agent's turns end. Do step 2's fix for the plugin hint in that agent's pane. Its row then reads `claude · full peer`.
+:::
+
+::: ifnot Agents in the project says No agents in this project
+The panel lists the agents in the project of the selected terminal, and that is another project. Click into one of the Council's panes.
 :::
 
 :::
 
 ::: step
 
-## 4. Dispatch two tasks at once
+## 4. Send two tasks at once
 
 ::: do
-1. Set **To Agent** to `planner-agent`. Paste the line below into the message box under **Templates**, then click **Dispatch Task** (or press `Ctrl+Enter`). The box empties, and a toast in the top right shows the message leaving.
-2. Without waiting, set **To Agent** to `verifier-agent`, type or paste this shorter task into the message box and click **Dispatch Task**: `Run npm test. Edit no file and do not message other agents. Reply with the Vitest summary line and the name of every failing test, then the line BASELINE.`
-3. Scroll down to the trail and watch it. Each entry says **Dispatched**, with a timer beside it that counts up from the moment its agent got the task. Both agents work at the same time. The trail is a short box of its own: scroll inside it to see an older entry, or the end of a long reply.
+1. Click into `planner-agent`'s pane, top left, so it is the selected terminal, then press `Ctrl+Shift+B M`. The companion opens its **Activity** view for `planner-agent`, and the message strip at the foot of the view reads `Send planner-agent a task`.
+2. Paste the line below into the message strip and press Enter (or click **Send**). The strip empties, and a new entry, **From You**, joins the view with the line you sent.
+3. Without waiting, click into `verifier-agent`'s pane, bottom left, and press `Ctrl+Shift+B M`. Type or paste this shorter task into its message strip and press Enter: `Run npm test. Edit no file and do not message other agents. Reply with the Vitest summary line and the name of every failing test, then the line BASELINE.`
+4. Watch `verifier-agent`'s Activity view. Its **From You** entry reads `dispatched` while the verifier works, and each tool call it makes joins the list below it. When its turn ends, the entry reads `completed`, with the verifier's reply under it. The list runs oldest first, so scroll down inside the view to follow the newest. Both agents work at the same time: `planner-agent`'s pane header shows it working too.
 :::
 
-::: paste Mission Control, To planner-agent
+::: paste Activity, for planner-agent
 ```text
 Read SPEC.md and AGENTS.md, then write PLAN.md: the functions in src/stats.ts, the order to build them, and which test in test/stats.test.ts each one makes pass. Edit no other file and do not message other agents. Reply with a summary of at most five lines, then the line PLAN.md written.
 ```
 :::
 
 ::: see
-![The Live A2A Message Trail (2), showing its newest entry: You → verifier-agent tagged as user, Completed, took 38s, its Reply giving Tests 6 failed (6) and listing the failing tests by name.](./04-two-working.webp)
+![The companion's Activity view for verifier-agent: one entry, From You, with the npm test task and the status completed, the verifier's reply under it giving Tests 6 failed (6) and listing the failing tests by name, and its Bash tool call running npm test below, marked done.](./04-two-working.webp)
 :::
 
 ::: must
-- Two entries, newest first: `You → verifier-agent`, then `You → planner-agent`, each tagged **as user**.
-- While an entry is **Dispatched**, its timer counts up in whole seconds.
-- When an entry is **Completed**, the timer is replaced by `took` and how long the turn took.
-- The verifier's **Reply** says `6 failed` and ends with `BASELINE`.
+- `verifier-agent`'s Activity view has an entry that reads `From You`, with the task you sent it.
+- Its status reads `completed` once the verifier's turn ends.
+- The verifier's reply under it says `6 failed` and ends with `BASELINE`.
 :::
 
 ::: may
 - The times on each entry.
-- Which entry completes first, and whether you catch the planner still **Dispatched**. The verifier usually finishes in under a minute and the planner in one or two.
-- How the verifier lays out the failing tests.
+- Whether you catch the verifier's entry still `dispatched`, and which agent finishes first. The verifier usually finishes in under a minute and the planner in one or two.
+- Which tool calls the verifier lists, and how it lays out the failing tests.
+- Whether you saw the toast in the top right as each message left.
 :::
 
-::: ifnot an entry reads planner-agent → verifier-agent instead of You → verifier-agent
-**Dispatch as User** was unticked, so the task went out as if `planner-agent` had sent it. Tick **Dispatch as User** again before you send anything else. The task still reached the verifier, so you can carry on.
+::: ifnot Ctrl+Shift+B M does nothing
+Keyboard focus is still in a message strip, and `Ctrl+Shift+B` shortcuts don't work while you type in a field. Click into the agent's pane first, then press `Ctrl+Shift+B M`.
+:::
+
+::: ifnot the message strip names a different agent
+The Activity view shows the selected terminal, and it was not the one you meant. Click into the right agent's pane and press `Ctrl+Shift+B M` again, then paste the line into the message strip.
 :::
 
 ::: ifnot the verifier changed a file
-Its task says not to. Set **To Agent** to `verifier-agent`, paste `Undo your edits with git checkout -- src test and only report from now on. End with the line BASELINE.` and click **Dispatch Task**.
+Its task says not to. In `verifier-agent`'s Activity view, send `Undo your edits with git checkout -- src test and only report from now on. End with the line BASELINE.` from the message strip.
 :::
 
 :::
@@ -192,36 +198,35 @@ Its task says not to. Set **To Agent** to `verifier-agent`, paste `Undo your edi
 ## 5. Relay the baseline to the builder
 
 ::: do
-1. Wait until `You → planner-agent` is **Completed** too. Its **Reply** ends with `PLAN.md written`.
-2. Set **To Agent** to `builder-agent`. Paste the line below into the message box and type a space after it.
-3. Point at the verifier's **Reply**. **Copy Reply** shows at its right end. Click it: it flashes **Copied!**, and the reply is on the clipboard in place of the line you just pasted. (With the keyboard, Tab to it and it shows the same way.)
-4. Click at the end of the message box, after the space, and press `Ctrl+V` to add the verifier's reply. Click **Dispatch Task**.
+1. Click into `planner-agent`'s pane and press `Ctrl+Shift+B M`. Wait until its **From You** entry reads `completed` too. The planner's reply under it ends with `PLAN.md written`.
+2. Click into `builder-agent`'s pane, top right, and press `Ctrl+Shift+B M`. Paste the line below into its message strip and press Enter.
 
-The plan is on disk in `PLAN.md`, so the builder reads it there. The verifier's baseline exists only in its reply, so you carry it across yourself. That hand relay is what the operator does.
+The plan is on disk in `PLAN.md`, so the builder reads it there. The verifier's baseline exists only in its reply, so you carry it across yourself: the line ends with what you read in the verifier's Activity view in step 4. That hand relay is what the operator does.
 :::
 
-::: paste Mission Control, To builder-agent
+::: paste Activity, for builder-agent
 ```text
-Build PLAN.md: implement src/stats.ts until npm test and npm run typecheck both pass. Edit only src/ and do not message other agents. Reply with the files you changed, then the line npm test passing. The verifier's baseline:
+Build PLAN.md: implement src/stats.ts until npm test and npm run typecheck both pass. Edit only src/ and do not message other agents. Reply with the files you changed, then the line npm test passing. The verifier's baseline: npm test fails all 6 tests.
 ```
 :::
 
 ::: see
-![Mission Control mid-relay: the message box holds the line for builder-agent ending The verifier's baseline:, and in the trail below, the verifier's Reply shows Copied! where Copy Reply was.](./05-baseline-relayed.webp)
+![The companion's Activity view for builder-agent: one entry, From You, status dispatched, with the Build PLAN.md line ending The verifier's baseline: npm test fails all 6 tests, and the builder's first tool calls listed below it.](./05-baseline-relayed.webp)
 :::
 
 ::: must
-- After **Dispatch Task**, the message box empties and the newest entry is `You → builder-agent`, **Dispatched**, with a running timer.
-- Its message starts `Build PLAN.md` and ends with the verifier's reply, `BASELINE` included.
-- The two older entries are **Completed**, each with `took` and a time.
+- `planner-agent`'s **From You** entry reads `completed`, and its reply ends with `PLAN.md written`.
+- `builder-agent`'s Activity view has an entry that reads `From You`, with the status `dispatched` while the builder works.
+- That entry's message starts `Build PLAN.md` and ends with `The verifier's baseline: npm test fails all 6 tests.`
 :::
 
 ::: may
-- The wording of the baseline and the times.
+- The wording of the planner's summary, and the times.
+- Which tool calls the builder has made so far.
 :::
 
-::: ifnot there is no Copy Reply
-The entry is still **Dispatched**, so there is no reply to copy yet. Wait for **Completed**, then point at the reply again.
+::: ifnot planner-agent's entry still reads dispatched
+The planner is still writing its plan. Wait until its pane header shows a green dot and `Ready` and the entry reads `completed` before you send the builder its task, so `PLAN.md` is on disk when the builder reads it.
 :::
 
 :::
@@ -231,29 +236,29 @@ The entry is still **Dispatched**, so there is no reply to copy yet. Wait for **
 ## 6. Let the long one run
 
 ::: do
-1. Press `Esc` to close Mission Control.
-2. Watch `builder-agent` work in its pane, top right. Its header shows what it is doing while it works.
-3. When `builder-agent`'s header shows a green dot and `Ready`, press `Ctrl+Shift+B M` to open Mission Control again, and scroll down to the trail. Scroll inside the trail to read the end of the builder's reply.
+1. Keep `builder-agent`'s Activity view open and watch it work. Each tool call joins the bottom of the list, reads `running` and then `done`, and its **Output** button shows what it printed. Its pane header, top right, shows what it is doing too.
+2. When `builder-agent`'s header shows a green dot and `Ready`, scroll up in its Activity view to the **From You** entry, and read the builder's reply under it.
 
-The trail lives in Quay, not in the panel, so closing the panel loses nothing. A Mission Control dispatch also waits for the agent's turn however long it takes. An agent that waits on a peer with `quay_send_message` gives up after 60 seconds, as [A2A 6: Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) shows, but this entry completes with the builder's reply even when its turn runs for minutes.
+The messages live in Quay, not in the view, so picking another view or another terminal and coming back loses nothing. A message you send also waits for the agent's turn however long it takes. An agent that waits on a peer with `quay_send_message` gives up after 60 seconds, as [A2A 6: Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) shows, but this entry completes with the builder's reply even when its turn runs for minutes.
 :::
 
 ::: see
-![The trail's newest entry, You → builder-agent, Completed, took 2m 13s, over the message you sent it: the Build PLAN.md line followed by the verifier's baseline.](./06-builder-done.webp)
+![The companion's Activity view for builder-agent, scrolled to its From You entry: the Build PLAN.md line, the status completed, and the builder's reply under it naming src/stats.ts and ending npm test passing, with the builder's tool calls below it, each marked done.](./06-builder-done.webp)
 :::
 
 ::: must
-- `You → builder-agent` is **Completed**.
-- Its **Reply** names `src/stats.ts` and ends with `npm test passing`.
+- The builder's **From You** entry reads `completed`.
+- Its reply names `src/stats.ts` and ends with `npm test passing`.
 :::
 
 ::: may
 - How long the builder took, often more than a minute.
+- Which tool calls it made, and how many.
 - The wording before the last line.
 :::
 
 ::: ifnot the builder says a test still fails
-Set **To Agent** to `builder-agent`, paste `Run npm test, read the failing assertion and fix src/stats.ts until it passes. Do not change the tests. End with the line npm test passing.` and click **Dispatch Task**. Wait for **Completed** again.
+In `builder-agent`'s Activity view, paste `Run npm test, read the failing assertion and fix src/stats.ts until it passes. Do not change the tests. End with the line npm test passing.` into the message strip and press Enter. Wait for the new entry to read `completed`.
 :::
 
 :::
@@ -263,50 +268,49 @@ Set **To Agent** to `builder-agent`, paste `Run npm test, read the failing asser
 ## 7. Take a roll call
 
 ::: do
-1. Scroll up to **Broadcast Notice to the Active Project's Peers**. Beside the heading it reads `3 targets active`.
-2. Paste the line below into the box under it and click **Broadcast**.
-3. Scroll down to the trail and wait until all three new entries are **Completed**.
+1. Press `Ctrl+Shift+P` to open the command palette, type `broadcast` and pick **Broadcast to all agents...**. The **Broadcast to all agents** dialog opens with one line field.
+2. Paste the line below into the field and click **Broadcast**. The dialog closes.
+3. Click into `verifier-agent`'s pane and press `Ctrl+Shift+B M`. Scroll to the bottom of its Activity view, where the roll call is the newest **From You** entry, and wait until it reads `completed`.
 
-A broadcast reaches every running agent in the project that is open in the stage, and only that project. It doesn't wait for anyone, so each agent's response shows as an **Answer**, not a **Reply**.
+A broadcast reaches every running agent in the active project, the one the Council is in, and only that project. It goes out as you, so each agent's Activity view shows it as a **From You** entry. Quay doesn't wait for anyone, but each entry still reads `completed`, with that agent's answer under it, once the agent's turn ends.
 :::
 
-::: paste Mission Control, Broadcast box
+::: paste Broadcast to all agents, line field
 ```text
 Roll call: reply with one line, your session name and the files you changed, or none.
 ```
 :::
 
 ::: see
-![The Live A2A Message Trail (6), newest first: You → verifier-agent and You → builder-agent, each tagged Broadcast, Completed, took 19s, with the roll-call line and the Answers verifier-agent: none and builder-agent: src/stats.ts.](./07-roll-call.webp)
+![The companion's Activity view for verifier-agent, scrolled to the bottom: the newest entry, From You, holds the roll-call line with the status completed, and the verifier's answer under it names verifier-agent and none.](./07-roll-call.webp)
 :::
 
 ::: must
-- The banner `Broadcast sent to 3 agents!` shows under the box for a few seconds.
-- Three new entries, one each to `planner-agent`, `builder-agent` and `verifier-agent`, each reading `You → <agent>` and tagged **Broadcast**.
-- Each completes with an **Answer**: the planner names `PLAN.md`, the builder names `src/stats.ts`, and the verifier says none.
-- The trail heading reads `Live A2A Message Trail (6)`.
+- The dialog closes when you click **Broadcast**.
+- The newest **From You** entry in `verifier-agent`'s Activity view holds the roll-call line and reads `completed`.
+- The verifier's answer under it says none.
 :::
 
 ::: may
-- The order the three answers arrive in, and their wording.
+- The wording of the answer.
 - Whether you saw the toast in the top right, **Swarm Broadcast from You**. It leaves after a few seconds.
-- A higher count in the heading if you used an If not earlier.
 :::
 
 :::
 
 ::: step
 
-## 8. Clear the trail
+## 8. Read the roll call in the Agents panel
 
 ::: do
-1. Click **Clear Trail**, beside the trail heading.
+1. In the Agents panel on the left, look under **Agents in the project**. Under each agent's row is now a one-line preview of its latest reply, which is its roll-call answer: the planner names `PLAN.md`, the builder names `src/stats.ts`, and the verifier says none. Point at a preview to read all of it.
+2. Click `builder-agent`'s preview. Quay selects `builder-agent` and opens its Activity view at that message, outlined in blue.
 
-Clearing empties the trail for every project, and it can't be undone. The agents keep their own conversations; only Mission Control's record of the messages goes.
+There is no single list of every message on the bus. To check a message between two agents, open the sender's or the receiver's Activity view. The Agents panel's previews are the quick way to read every agent's latest reply at once.
 :::
 
 ::: see
-![The trail empty again: the heading reads Live A2A Message Trail (0) and the trail says No inter-agent messages dispatched yet.](./08-trail-cleared.webp)
+![The Agents panel on the left, each agent row with its roll-call answer as a preview under it: planner-agent naming PLAN.md, builder-agent naming src/stats.ts and verifier-agent none; on the right, builder-agent's Activity view with the roll-call entry outlined in blue.](./08-trail-cleared.webp)
 :::
 
 :::
@@ -316,32 +320,33 @@ Clearing empties the trail for every project, and it can't be undone. The agents
 ## 9. Ask for the verdict
 
 ::: do
-1. Set **To Agent** to `verifier-agent`, paste the line below into the message box and click **Dispatch Task**.
-2. Wait until the entry is **Completed**, then scroll inside the trail to the end of its reply.
+1. Click into `verifier-agent`'s pane, press `Ctrl+Shift+B M`, paste the line below into the message strip and press Enter.
+2. Wait until the new **From You** entry reads `completed`, then read the verifier's reply under it.
 :::
 
-::: paste Mission Control, To verifier-agent
+::: paste Activity, for verifier-agent
 ```text
 Run npm test, npm run typecheck and node src/cli.ts sample.txt, and compare the CLI output with the last line of SPEC.md. Edit no file and do not message other agents. Reply with the three results, then VERIFIED or REJECTED on the last line.
 ```
 :::
 
 ::: see
-![The Live A2A Message Trail (1), scrolled to the end of the verifier's Reply: Tests 6 passed (6), a typecheck with no errors, the CLI line Lines: 5  Words: 69  Top word: the (12) matching the last line of SPEC.md, and VERIFIED.](./09-verdict.webp)
+![The companion's Activity view for verifier-agent, scrolled to its newest From You entry: the verdict task, the status completed, and the reply under it giving Tests 6 passed (6), a typecheck with no errors, the CLI line Lines: 5  Words: 69  Top word: the (12) matching the last line of SPEC.md, and VERIFIED.](./09-verdict.webp)
 :::
 
 ::: must
-- The newest entry is `You → verifier-agent`, **Completed**, and it is the only entry since you cleared the trail.
-- Its **Reply** quotes `Lines: 5  Words: 69  Top word: the (12)` and ends with `VERIFIED`.
+- The newest **From You** entry in `verifier-agent`'s Activity view holds the verdict task and reads `completed`.
+- Its reply quotes `Lines: 5  Words: 69  Top word: the (12)` and ends with `VERIFIED`.
 :::
 
 ::: may
 - How long it took, and how the verifier words the three results.
+- The older entries above it, and the tool calls the verifier made.
 - More entries, if you used this step's If not.
 :::
 
 ::: ifnot the last line is REJECTED
-Relay the report as in step 5: set **To Agent** to `builder-agent`, type `Fix what the verifier found. Edit only src/. End with the line npm test passing. The verifier's report:` and a space into the message box, click **Copy Reply** on the verifier's entry, click at the end of the message box, press `Ctrl+V` and click **Dispatch Task**. When that entry is **Completed**, do this step again.
+Relay the report as in step 5. Read what the verifier's reply says failed, then click into `builder-agent`'s pane, press `Ctrl+Shift+B M` and type into its message strip `Fix what the verifier found. Edit only src/. End with the line npm test passing. The verifier's report:` followed by what failed, in your own words. Press Enter. When that entry reads `completed`, do this step again.
 :::
 
 :::
@@ -351,8 +356,7 @@ Relay the report as in step 5: set **To Agent** to `builder-agent`, type `Fix wh
 ## 10. Check it worked
 
 ::: do
-1. Press `Esc` to close Mission Control.
-2. Press `Ctrl+Shift+B 4` to move focus to `terminal-shell`, bottom right. Mission Control drove the agents; you check their work yourself.
+1. Click into `terminal-shell`'s pane, bottom right. The Activity views drove the agents; you check their work yourself.
 :::
 
 ::: paste `terminal-shell`
@@ -378,14 +382,14 @@ npm test; node src/cli.ts sample.txt; git status --short
 :::
 
 ::: ifnot git status lists another file
-An agent changed a file it doesn't own. If `git status` marks it ` M`, paste `git checkout -- test SPEC.md sample.txt AGENTS.md README.md package.json` into `terminal-shell` to put the starter's files back. If it marks a file outside `src/` with `??`, the agent left it behind: delete it. Then paste this step's line again. If a test then fails, relay the failure to `builder-agent` from Mission Control, as in step 6's If not.
+An agent changed a file it doesn't own. If `git status` marks it ` M`, paste `git checkout -- test SPEC.md sample.txt AGENTS.md README.md package.json` into `terminal-shell` to put the starter's files back. If it marks a file outside `src/` with `??`, the agent left it behind: delete it. Then paste this step's line again. If a test then fails, relay the failure to `builder-agent` from its Activity view, as in step 6's If not.
 :::
 
 ::: done
-- ✅ The verifier's trail entry ended with `VERIFIED`.
+- ✅ The verifier's verdict in its Activity view ended with `VERIFIED`.
 - ✅ `terminal-shell` shows `Tests  6 passed (6)`, and the CLI prints the line `SPEC.md` ends with.
 - ✅ `git status --short` lists `PLAN.md` and changes under `src/`, and nothing else.
-- ✅ You never typed into an agent's pane: every task went through Mission Control.
+- ✅ You never typed into an agent's pane: every task went through an agent's Activity view or **Broadcast to all agents**.
 :::
 
 :::

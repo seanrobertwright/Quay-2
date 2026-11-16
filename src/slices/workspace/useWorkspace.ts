@@ -22,7 +22,7 @@ import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/
 import { reportTerminalRelaunched } from "../terminal/terminalRelaunched";
 import { focusTerminal } from "../terminal/terminalRequests";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
-import { createCtrlBKeyHandler } from "./ctrlBPrefix";
+import { createCtrlBKeyHandler, type CtrlBActions } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
 import { opensCommandPalette } from "./paletteKey";
 import { chooseGridSlots } from "./gridSlots";
@@ -43,6 +43,9 @@ export type { Project };
 /** How long a project's view must sit still before it is written to disk. */
 const VIEW_SAVE_DEBOUNCE_MS = 500;
 
+/** The chords whose targets the app owns: the swarm builder tab, the Agents panel and the companion. */
+export type AgentOpeners = Pick<CtrlBActions, "openSwarmBuilder" | "openSessionHistory" | "selectNextWaiting" | "openActivity">;
+
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   // Empty until the backend reports the persisted active project
@@ -51,12 +54,10 @@ export function useWorkspace() {
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [bridgePort, setBridgePort] = useState<number>(0);
   const [isNewTerminalOpen, setIsNewTerminalOpen] = useState(false);
-  const [isA2AOpen, setIsA2AOpen] = useState(false);
   const [isActionLogOpen, setIsActionLogOpen] = useState(false);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [isWorkspaceSettingsOpen, setIsWorkspaceSettingsOpen] = useState(false);
   const [workspaceSettingsTarget, setWorkspaceSettingsTarget] = useState<Project | null>(null);
-  const [isSwarmModalOpen, setIsSwarmModalOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isDiffInspectorOpen, setIsDiffInspectorOpen] = useState(false);
   const [projectWorktrees, setProjectWorktrees] = useState<Record<string, GitWorktree[]>>({});
@@ -67,8 +68,6 @@ export function useWorkspace() {
     suggestedIssueNumber?: number;
   } | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
-  const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
-  const [isAttentionQueueOpen, setIsAttentionQueueOpen] = useState(false);
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
   const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
@@ -761,7 +760,6 @@ export function useWorkspace() {
       setTerminals((prev) => [...prev, term]);
       void syncStartingStatus([term.id]);
       enterProject(targetPath, [...terminals, term], term.id);
-      setIsSessionHistoryOpen(false);
       return term;
     } catch (err) {
       console.error("Failed to resume session:", err);
@@ -1259,6 +1257,10 @@ export function useWorkspace() {
   // Chord `c` opens the Topos view in the companion for the selected terminal, which the app owns.
   // The app sets the opener each render.
   const toposOpener = useRef<(() => void) | null>(null);
+  // Chords `s`, `h`, `q` and `m` open the swarm builder stage tab, the Agents panel's Session
+  // history, the next waiting terminal and the companion's Activity view, which the app owns. The
+  // app sets the openers each render.
+  const agentOpeners = useRef<AgentOpeners | null>(null);
   // The repo-wide Diffs and the Pre-PR Audit open with the Source control panel, their home. The
   // chords and the app's palette and panel share these.
   const openSourceControl = useCallback(() => sourceControlOpener.current?.(), []);
@@ -1277,7 +1279,7 @@ export function useWorkspace() {
       splitHorizontal,
       splitVertical,
       splitGrid,
-      openSwarmModal: () => setIsSwarmModalOpen(true),
+      openSwarmBuilder: () => agentOpeners.current?.openSwarmBuilder(),
       openDiffs: () => {
         if (diffLensOpener.current?.()) return;
         openRepoDiffs();
@@ -1285,15 +1287,15 @@ export function useWorkspace() {
       openNewWorktreeModal,
       openSourceControl,
       openPrePrAudit,
-      toggleSessionHistory: () => setIsSessionHistoryOpen((prev) => !prev),
+      openSessionHistory: () => agentOpeners.current?.openSessionHistory(),
       toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
       toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
       toggleFactoryStation: () => setIsFactoryStationOpen((prev) => !prev),
       togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
       openTopos: () => toposOpener.current?.(),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
-      toggleAttentionQueue: () => setIsAttentionQueueOpen((prev) => !prev),
-      openA2A: () => setIsA2AOpen(true),
+      selectNextWaiting: () => agentOpeners.current?.selectNextWaiting(),
+      openActivity: () => agentOpeners.current?.openActivity(),
       focusNextPane,
       toggleZoom,
       unsplit,
@@ -1423,8 +1425,6 @@ export function useWorkspace() {
     setIsNewTerminalOpen,
     isAddProjectOpen,
     setIsAddProjectOpen,
-    isA2AOpen,
-    setIsA2AOpen,
     isActionLogOpen,
     setIsActionLogOpen,
     isWorkspaceSettingsOpen,
@@ -1433,8 +1433,6 @@ export function useWorkspace() {
     openWorkspaceSettings,
     closeWorkspaceSettings,
     updateProjectSettings,
-    isSwarmModalOpen,
-    setIsSwarmModalOpen,
     launchSwarm,
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
@@ -1443,6 +1441,7 @@ export function useWorkspace() {
     diffLensOpener,
     sourceControlOpener,
     toposOpener,
+    agentOpeners,
     openRepoDiffs,
     openPrePrAudit,
     projectWorktrees,
@@ -1455,10 +1454,6 @@ export function useWorkspace() {
     removeWorktree,
     isAuditModalOpen,
     setIsAuditModalOpen,
-    isSessionHistoryOpen,
-    setIsSessionHistoryOpen,
-    isAttentionQueueOpen,
-    setIsAttentionQueueOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
     isArchonGraphOpen,

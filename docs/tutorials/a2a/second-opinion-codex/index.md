@@ -11,7 +11,7 @@
 
 **You'll learn:** how to open a Codex terminal in Quay and what its Skip mode means, how an agent that isn't Claude joins the A2A bus as a full peer, how to send Codex a job with `wait_for_reply` false, how to ask for an answer in a file of an agreed shape, how to poll with `quay_get_agent_status` until a peer is idle, and how to check an agent's review against tests it never saw.
 
-This tutorial builds on [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/), which introduces the `quay_*` tools and Mission Control's trail, and on [A2A 6: Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/), whose moves it reuses for a job too long to wait for: send it without waiting, poll until the peer is idle, then read the file it wrote. You don't need to have done either.
+This tutorial builds on [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/), which introduces the `quay_*` tools and the Activity view, and on [A2A 6: Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/), whose moves it reuses for a job too long to wait for: send it without waiting, poll until the peer is idle, then read the file it wrote. You don't need to have done either.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. Along the bottom of the stage, the **status strip** shows the status of the terminal that has focus. When the stage is split, each pane also has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes a letter key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and `Ctrl+Shift+B O` is the letter o, never the digit zero. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
@@ -192,40 +192,42 @@ Use quay_send_message to send codex the job below, with wait_for_reply set to fa
 :::
 
 ::: ifnot author sat for about a minute, then said codex received the task but is still working
-`author` waited for a reply after all. The job was delivered anyway, and Codex carries on with the review, so go on to step 5. The message's trail entry stays open and fills in when Codex's turn ends.
+`author` waited for a reply after all. The job was delivered anyway, and Codex carries on with the review, so go on to step 5. The message's entry in the Activity view stays open and fills in when Codex's turn ends.
 :::
 
 :::
 
 ::: step
 
-## 5. Watch it in Mission Control
+## 5. Watch it in Activity
+
+A peer has one of three levels on the A2A bus: a full peer, a responder or a listener. The **Agents** panel names each agent's CLI and level.
 
 ::: do
-1. Press `Ctrl+Shift+B M` to open Mission Control, or click its icon, the network icon, in the toolbar at the bottom of the rail.
-2. Read **Peers on the A2A bus** at the top. It explains the three levels a peer can have: full peer, responder and listener.
-3. Scroll down to **Agents**. It lists `author (claude)` and `codex (codex)`, each with its status. In this list a responder or a listener carries a **Responder** or **Listener** tag after its name; a full peer carries none. Neither `author` nor `codex` has one: Codex is a full peer, the same as Claude Code.
-4. Scroll down to **Live A2A Message Trail**. The newest entry, at the top, is `author → codex`.
-5. Press `Esc` to close Mission Control.
+1. Click the **Agents** icon, the robot icon on the module bar down the window's left edge. The Agents panel opens in place of the rail.
+2. Read **Agents in the project**. It lists `author` with `claude · full peer` and `codex` with `codex · full peer`, each with its status. Codex is a full peer, the same as Claude Code.
+3. Click `codex`'s row to select it, then pick **Activity** in the companion's view switch, or press `Ctrl+Shift+B M`. The companion, on the window's right, opens its Activity view for `codex`.
+4. The view lists one `From author` entry, with the job as its message.
+5. Click the **Projects** icon at the top of the module bar to bring the rail back.
 :::
 
 ::: see
-![Mission Control scrolled down to the Live A2A Message Trail with one entry, author to codex, Completed. Under the job, Codex's Answer says it wrote review.md with VERDICT: CHANGES REQUESTED and three findings.](./05-trail.webp)
+![The Agents panel beside the module bar lists author, claude · full peer, and codex, codex · full peer. On the right, the companion's Activity view for codex shows one From author entry, completed, with the job and, under it, Codex's answer saying it wrote review.md with VERDICT: CHANGES REQUESTED and three findings.](./05-trail.webp)
 :::
 
 ::: must
-- The **Agents** list shows `author (claude)` and `codex (codex)`, with no **Responder** or **Listener** tag on either.
-- The newest trail entry is `author → codex`, with the job as its message.
+- **Agents in the project** shows `author` with `claude · full peer` and `codex` with `codex · full peer`.
+- `codex`'s Activity view has a `From author` entry with the job as its message.
 :::
 
 ::: may
-- The entry's status: **Dispatched** while Codex works, then **Completed** once its turn ends, with Codex's closing words under **Answer:**.
-- The status each agent shows in the **Agents** list.
-- The times on the entry, and how long it took.
+- The entry's status: `dispatched` while Codex works, then `completed` once its turn ends, with Codex's closing words under the job.
+- The status each agent shows in **Agents in the project**, and a one-line preview of `codex`'s answer under its row once it has one.
+- The time on the entry.
 :::
 
-::: ifnot the trail lists older entries below yours
-Mission Control's trail shows earlier messages on the bus too, from before this tutorial. Yours is the newest, at the top.
+::: ifnot codex's Activity view lists older entries above yours
+The Activity view shows every message `codex` got or sent, from before this tutorial too, oldest first. Yours is the newest, at the bottom.
 :::
 
 :::
@@ -341,7 +343,7 @@ Codex missed a problem, or `author` fixed one wrongly. Each check test's name st
 - ✅ `codex` wrote `review.md`, and its first line is `VERDICT: CHANGES REQUESTED`.
 - ✅ `author` read the file, changed `src/retry.ts` and `test/retry.test.ts`, and its tests and type check pass.
 - ✅ The check suite passes: `Tests  3 passed (3)`.
-- ✅ Mission Control's trail entry `author → codex` read **Completed** in step 5, or does when you open Mission Control again.
+- ✅ The `From author` entry in `codex`'s Activity view read `completed` in step 5, or does when you open that view again.
 :::
 
 :::

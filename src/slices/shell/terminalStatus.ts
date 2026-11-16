@@ -1,6 +1,7 @@
 import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
+import type { AttentionItem } from "../attention/attentionQueue.ts";
 import { isSamePath, isSubpathOf } from "../../utils/paths.ts";
 
 /** The four dots of the module bar's terminal status list. */
@@ -41,6 +42,16 @@ export function dotStatus(terminal: Pick<TerminalInfo, "claude_status">): DotSta
   }
 }
 
+/** The terminals with a permission request waiting among `items`. */
+export function askingTerminals(items: readonly AttentionItem[]): Set<string> {
+  return new Set(items.flatMap((item) => (item.kind === "permission" && item.terminalId ? [item.terminalId] : [])));
+}
+
+/** A terminal's dot: amber waiting while it has a permission request in `asking`, else its status. */
+export function terminalDot(terminal: Pick<TerminalInfo, "id" | "claude_status">, asking: ReadonlySet<string>): DotStatus {
+  return asking.has(terminal.id) ? "waiting" : dotStatus(terminal);
+}
+
 /** One terminal's row: the terminal, its dot and the project group it sits in. */
 export interface StatusRow {
   terminal: TerminalInfo;
@@ -58,11 +69,15 @@ export interface StatusRow {
  * worktree (such as a worktree created a moment ago) is listed at the end of the deepest
  * project that holds it. The Projects panel does not list such a terminal yet; the bar still
  * gives every terminal a row.
+ *
+ * A terminal in `asking`, the terminals with a permission request waiting on the operator, shows
+ * the waiting dot whatever its status.
  */
 export function statusRows(
   terminals: readonly TerminalInfo[],
   projects: readonly Project[],
   projectWorktrees: Readonly<Record<string, readonly GitWorktree[]>>,
+  asking: ReadonlySet<string> = new Set(),
 ): StatusRow[] {
   // Each terminal's project: an exact project or worktree folder first, so a project nested
   // inside another keeps its own terminals, then the deepest project folder that holds it.
@@ -85,7 +100,7 @@ export function statusRows(
   const rows: StatusRow[] = [];
   const row = (terminal: TerminalInfo, projectName: string, group: string): StatusRow => ({
     terminal,
-    status: dotStatus(terminal),
+    status: terminalDot(terminal, asking),
     projectName,
     group,
   });
@@ -101,6 +116,20 @@ export function statusRows(
   }
   for (const t of terminals) if (!owner.has(t.id)) rows.push(row(t, OTHER_TERMINALS, ""));
   return rows;
+}
+
+/**
+ * The terminal `Ctrl+Shift+B q` selects: the first waiting row after the selected terminal's, in
+ * list order, wrapping to the top; the first waiting row when the selected terminal has no row.
+ * Null when no terminal waits.
+ */
+export function nextWaitingTerminal(rows: readonly StatusRow[], selectedId: string | null): string | null {
+  const from = rows.findIndex((r) => r.terminal.id === selectedId);
+  for (let step = 1; step <= rows.length; step++) {
+    const row = rows[(from + step + rows.length) % rows.length];
+    if (row.status === "waiting") return row.terminal.id;
+  }
+  return null;
 }
 
 const urgent = (row: StatusRow) => row.status === "waiting" || row.status === "exited";

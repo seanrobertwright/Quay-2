@@ -13,11 +13,9 @@ import {
   attentionItems,
   droppedPermissionCount,
   emptyAttentionQueue,
-  modalPermissions,
   pendingPermissionIds,
   type AttentionItem,
   type PendingPermission,
-  type PermissionItem,
   type UndeliveredAnswer,
   undeliveredAnswer,
 } from "./attentionQueue.ts";
@@ -58,14 +56,8 @@ export type AnswerPermission = (
 export interface AttentionQueueView {
   /** Every waiting item, oldest first. */
   items: AttentionItem[];
-  /** The permission requests the permission modal shows, oldest first; none when it is closed. */
-  modalPermissions: PermissionItem[];
-  /** The ids of every permission request still waiting, deferred or not, oldest first. */
+  /** The ids of every permission request still waiting, oldest first. */
   pendingPermissionIds: string[];
-  /** Puts `requestIds` off with Later: they leave the modal and stay in the queue. */
-  deferPermissions: (requestIds: readonly string[]) => void;
-  /** Shows deferred `requestIds` in the permission modal again. */
-  reopenPermissions: (requestIds: readonly string[]) => void;
   /**
    * Sends the user's answer to the backend and clears the request once the backend takes it. When
    * the backend refuses it because no agent is waiting for that answer any more, the request
@@ -89,8 +81,7 @@ export interface AttentionQueueView {
  * The attention queue, fed from the backend: permission requests and their resolutions, the
  * bridge's turn events, terminal status, and the user's input to a terminal. It lives in memory
  * only, so an app restart starts it empty; on a webview reload the backend's pending permissions
- * rebuild its permission items. Which requests were put off with Later is not kept across a
- * reload, so the rebuilt requests show in the permission modal again.
+ * rebuild its permission items.
  *
  * A new turn starting is the bridge's `turn.started` from the terminal's own session (Claude,
  * OpenCode and PiG send it, including for a prompt a peer typed in over A2A), or a
@@ -100,8 +91,7 @@ export interface AttentionQueueView {
  * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
  * terminal list (closed), or the user relaunches it.
  *
- * Returns the waiting items, the requests the permission modal shows, the ids of every pending
- * request, the latest answer that reached no agent, each terminal's count of requests its cap
+ * Returns the waiting items, the ids of every pending request, the latest answer that reached no agent, each terminal's count of requests its cap
  * dropped, and the user's actions on them, including dismissing a terminal's finished turn.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
@@ -187,14 +177,6 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     };
   }, []);
 
-  const deferPermissions = useCallback(
-    (requestIds: readonly string[]) => dispatch({ type: "permissionsDeferred", requestIds }),
-    []
-  );
-  const reopenPermissions = useCallback(
-    (requestIds: readonly string[]) => dispatch({ type: "permissionsReopened", requestIds }),
-    []
-  );
   const answerPermission = useCallback<AnswerPermission>(
     async (requestId, decision, reason, rememberForSession = false) => {
       try {
@@ -224,15 +206,11 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
   );
 
   const items = useMemo(() => attentionItems(queue), [queue]);
-  const modal = useMemo(() => modalPermissions(queue), [queue]);
   const pending = useMemo(() => pendingPermissionIds(queue), [queue]);
   const dropped = useCallback((terminalId: string | null) => droppedPermissionCount(queue, terminalId), [queue]);
   return {
     items,
-    modalPermissions: modal,
     pendingPermissionIds: pending,
-    deferPermissions,
-    reopenPermissions,
     answerPermission,
     undeliveredAnswer: undeliveredAnswer(queue),
     dismissUndeliveredAnswer,

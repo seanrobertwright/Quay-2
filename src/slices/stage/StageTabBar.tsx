@@ -1,9 +1,16 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
-import { Columns2, Grid2x2, Maximize2, Minimize2, Plus, Rows2, Square } from "lucide-react";
+import { Columns2, Grid2x2, Maximize2, Minimize2, Plus, Rows2, Square, X } from "lucide-react";
 import type { StageLayout, TerminalInfo } from "../terminal/types";
 
 /** The stage tab bar's height, in CSS px. */
 export const STAGE_TAB_BAR_HEIGHT = 34;
+
+/** A full-stage tool, such as the swarm builder, with its own stage tab. */
+export interface StageToolTab {
+  id: string;
+  label: string;
+  icon: ReactNode;
+}
 
 interface StageTabBarProps {
   /** The active project's terminals, in Projects panel order. */
@@ -20,6 +27,12 @@ interface StageTabBarProps {
   onSplitVertical: () => void;
   onSplitGrid: () => void;
   onToggleZoom: () => void;
+  /** The open stage tab tools, each with a tab after the terminals'. */
+  tools?: readonly StageToolTab[];
+  /** The tool in front of the terminals, whose tab is current instead of a terminal's; null for none. */
+  frontToolId?: string | null;
+  onSelectTool?: (id: string) => void;
+  onCloseTool?: (id: string) => void;
 }
 
 interface LayoutChoice {
@@ -32,8 +45,9 @@ interface LayoutChoice {
 
 /**
  * The bar on top of the stage, `STAGE_TAB_BAR_HEIGHT` tall: a tab per terminal of the active
- * project, then New terminal, with the layout switchers and Zoom on the right. A tab selects its
- * terminal: it focuses the pane that shows it, or else takes over the focused pane. Tabs are plain
+ * project, then a tab per open stage tab tool, then New terminal, with the layout switchers and
+ * Zoom on the right. A terminal tab selects its terminal: it focuses the pane that shows it, or
+ * else takes over the focused pane. A tool tab brings its tool in front of the panes. Tabs are plain
  * buttons marked current, not ARIA tabs, since the panes they show are not tab panels.
  */
 export const StageTabBar = ({
@@ -48,6 +62,10 @@ export const StageTabBar = ({
   onSplitVertical,
   onSplitGrid,
   onToggleZoom,
+  tools = [],
+  frontToolId = null,
+  onSelectTool,
+  onCloseTool,
 }: StageTabBarProps) => {
   const layoutRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const choices: LayoutChoice[] = [
@@ -76,7 +94,7 @@ export const StageTabBar = ({
   useEffect(() => {
     const tab = tabsRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
     tab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [currentTerminalId]);
+  }, [currentTerminalId, frontToolId]);
 
   return (
     <div
@@ -85,7 +103,7 @@ export const StageTabBar = ({
     >
       <div ref={tabsRef} role="group" aria-label="Stage tabs" className="min-w-0 flex items-stretch overflow-x-auto">
         {terminals.map((term, index) => {
-          const current = term.id === currentTerminalId;
+          const current = frontToolId === null && term.id === currentTerminalId;
           return (
             <button
               key={term.id}
@@ -105,6 +123,41 @@ export const StageTabBar = ({
                 {term.run_kind}
               </span>
             </button>
+          );
+        })}
+        {tools.map((tool) => {
+          const current = tool.id === frontToolId;
+          return (
+            <div
+              key={tool.id}
+              className={`relative shrink-0 flex items-stretch border-r border-[#30363d] ${
+                current ? "bg-[#0d1117] text-white" : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#21262d]"
+              }`}
+            >
+              {current && <span aria-hidden="true" className="absolute left-0 right-0 bottom-0 h-[2px] bg-[#58a6ff]" />}
+              <button
+                type="button"
+                data-stage-tool={tool.id}
+                onClick={() => onSelectTool?.(tool.id)}
+                aria-label={tool.label}
+                aria-current={current ? "true" : undefined}
+                className="max-w-[12rem] pl-3 pr-1 flex items-center gap-1.5"
+              >
+                <span aria-hidden="true" className="shrink-0 w-3.5 h-3.5 grid place-items-center">
+                  {tool.icon}
+                </span>
+                <span className="truncate">{tool.label}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onCloseTool?.(tool.id)}
+                aria-label={`Close ${tool.label}`}
+                title={`Close ${tool.label}`}
+                className="w-6 my-auto mr-1 h-6 grid place-items-center rounded hover:bg-[#30363d]"
+              >
+                <X className="w-3 h-3" aria-hidden="true" />
+              </button>
+            </div>
           );
         })}
       </div>

@@ -7,13 +7,19 @@ import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
 import { ModuleBar } from "./slices/shell/ModuleBar";
 import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
-import { statusRows } from "./slices/shell/terminalStatus";
+import { askingTerminals, nextWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers, type PlaceholderModule } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS, type CompanionShowRequest } from "./slices/companion/Companion";
+import type { CompanionActivity } from "./slices/companion/ActivityView";
+import { messageEntryId } from "./slices/companion/activity";
+import { AgentsPanel, type SessionHistoryRequest } from "./slices/agents/AgentsPanel";
+import { useTrailMessages } from "./slices/orchestrator/trailMessages";
+import { BroadcastDialog } from "./slices/orchestrator/BroadcastDialog";
+import type { AttentionItem } from "./slices/attention/attentionQueue";
 import type { TicketActions, TicketToStart } from "./slices/companion/TicketView";
 import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
@@ -26,9 +32,8 @@ import { useTerminalLinks } from "./slices/companion/useTerminalLinks";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
 import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
-import { A2APanel } from "./slices/orchestrator/A2APanel";
 import { WorkspaceSettingsModal } from "./slices/workspace/WorkspaceSettingsModal";
-import { SwarmModal } from "./slices/orchestrator/SwarmModal";
+import { SwarmBuilder } from "./slices/orchestrator/SwarmBuilder";
 import { useSavedSwarms } from "./slices/orchestrator/useSavedSwarms";
 import { CommandPalette } from "./slices/command-palette/CommandPalette";
 import { DiffViewerDrawer } from "./slices/bridge/DiffViewerDrawer";
@@ -40,7 +45,6 @@ import type { LinkRef, LinkSlotName, TerminalInfo } from "./slices/terminal/type
 import { getGlobalTerminalDimensions } from "./slices/terminal/useTerminal";
 import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
-import { SessionHistoryDrawer } from "./slices/sessions/SessionHistoryDrawer";
 import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
@@ -57,7 +61,8 @@ import { UpdateModal } from "./slices/updater/UpdateModal";
 import { checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
 import { isSamePath, resolveRootRepo } from "./utils/paths";
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, X, Zap } from "lucide-react";
+import type { StageTool } from "./slices/stage/Stage";
 
 /** What starting work on a ticket needs to know about it. */
 type IssueToStart = Pick<GithubIssue, "number" | "title">;
@@ -69,6 +74,9 @@ interface WorkPlace {
   /** Whether `targetDir` is a linked worktree, so Archon stays in it rather than making one. */
   isWorktree: boolean;
 }
+
+/** The swarm builder's stage tab id. */
+const SWARM_BUILDER_TOOL = "swarm-builder";
 
 export function App() {
   const {
@@ -101,8 +109,6 @@ export function App() {
     setIsNewTerminalOpen,
     isAddProjectOpen,
     setIsAddProjectOpen,
-    isA2AOpen,
-    setIsA2AOpen,
     isActionLogOpen,
     setIsActionLogOpen,
     isWorkspaceSettingsOpen,
@@ -110,8 +116,6 @@ export function App() {
     openWorkspaceSettings,
     closeWorkspaceSettings,
     updateProjectSettings,
-    isSwarmModalOpen,
-    setIsSwarmModalOpen,
     launchSwarm,
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
@@ -126,10 +130,6 @@ export function App() {
     removeWorktree,
     isAuditModalOpen,
     setIsAuditModalOpen,
-    isSessionHistoryOpen,
-    setIsSessionHistoryOpen,
-    isAttentionQueueOpen,
-    setIsAttentionQueueOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
     isArchonGraphOpen,
@@ -154,6 +154,7 @@ export function App() {
     diffLensOpener,
     sourceControlOpener,
     toposOpener,
+    agentOpeners,
     openRepoDiffs,
     openPrePrAudit,
   } = useWorkspace();
@@ -161,6 +162,9 @@ export function App() {
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
   const attentionQueue = useAttentionQueue(terminals);
   const { items: waitingItems } = attentionQueue;
+  // The A2A trail, newest first: the Activity view's messages and the Agents panel's reply previews.
+  const trailMessages = useTrailMessages();
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
@@ -554,9 +558,11 @@ export function App() {
     }
   };
 
+  // A terminal with a permission request waiting shows the amber waiting dot.
+  const asking = useMemo(() => askingTerminals(waitingItems), [waitingItems]);
   const terminalStatusRows = useMemo(
-    () => statusRows(terminals, projects, projectWorktrees),
-    [terminals, projects, projectWorktrees]
+    () => statusRows(terminals, projects, projectWorktrees, asking),
+    [terminals, projects, projectWorktrees, asking]
   );
   const openPrCount = useOpenPrCount(activeRootRepo);
   const spendTodayUsd = claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? null;
@@ -655,10 +661,82 @@ export function App() {
     openToposView();
   };
 
+  // The swarm builder's stage tab, open or not, and whether it is in front of the terminals. Picking
+  // a terminal anywhere brings the terminals back in front; the tab stays open until closed.
+  const [isSwarmBuilderOpen, setIsSwarmBuilderOpen] = useState(false);
+  const [frontToolId, setFrontToolId] = useState<string | null>(null);
+  const openSwarmBuilder = () => {
+    setIsSwarmBuilderOpen(true);
+    setFrontToolId(SWARM_BUILDER_TOOL);
+  };
+  const closeSwarmBuilder = useCallback(() => {
+    setIsSwarmBuilderOpen(false);
+    setFrontToolId((front) => (front === SWARM_BUILDER_TOOL ? null : front));
+  }, []);
+  // `select` with the terminals brought back in front of any tool tab
+  const inFront = (select: (id: string) => void) => (id: string) => {
+    setFrontToolId(null);
+    select(id);
+  };
+  const showTerminal = inFront(selectTerminal);
+  const stageTools: StageTool[] = isSwarmBuilderOpen
+    ? [
+        {
+          id: SWARM_BUILDER_TOOL,
+          label: "Swarm builder",
+          icon: <Zap className="w-3.5 h-3.5 text-[#d29922]" />,
+          content: (
+            <SwarmBuilder
+              activeProject={activeProject}
+              onClose={closeSwarmBuilder}
+              onLaunchSwarm={launchSwarm}
+              savedSwarms={savedSwarms}
+              onSaveSwarm={saveSwarm}
+              onRemoveSwarm={removeSwarm}
+            />
+          ),
+        },
+      ]
+    : [];
+
+  // The Activity view for a terminal, once it is the selected one: selecting a terminal in another
+  // project lands a moment later, and the companion takes a request only for the selected terminal.
+  const [pendingActivity, setPendingActivity] = useState<{ terminalId: string; entryId?: string } | null>(null);
+  useEffect(() => {
+    if (!pendingActivity || pendingActivity.terminalId !== activeTerminalId) return;
+    const { terminalId, entryId } = pendingActivity;
+    setPendingActivity(null);
+    setCompanionRequest((prev) => ({ terminalId, view: "activity", entryId, seq: (prev?.seq ?? 0) + 1 }));
+  }, [pendingActivity, activeTerminalId]);
+  const openActivity = (terminalId: string, entryId?: string) => {
+    if (terminalId !== activeTerminalId) showTerminal(terminalId);
+    setPendingActivity({ terminalId, entryId });
+  };
+  // A Waiting on you row selects its terminal; a permission request opens in Activity to answer.
+  const openWaiting = (item: AttentionItem) => {
+    if (!item.terminalId) return;
+    if (item.kind === "permission") openActivity(item.terminalId);
+    else showTerminal(item.terminalId);
+  };
+  const [sessionHistoryRequest, setSessionHistoryRequest] = useState<SessionHistoryRequest | null>(null);
+  const openSessionHistory = () => {
+    setOpenModule("agents");
+    setSessionHistoryRequest((prev) => ({ seq: (prev?.seq ?? 0) + 1 }));
+  };
+  const selectNextWaiting = () => {
+    const next = nextWaitingTerminal(terminalStatusRows, activeTerminalId);
+    if (next) showTerminal(next);
+  };
+  const openSelectedActivity = () => {
+    if (activeTerminalId) openActivity(activeTerminalId);
+  };
+  agentOpeners.current = { openSwarmBuilder, openSessionHistory, selectNextWaiting, openActivity: openSelectedActivity };
+  const companionActivity = useMemo<CompanionActivity>(
+    () => ({ events, messages: trailMessages, waiting: waitingItems, answer: attentionQueue.answerPermission }),
+    [events, trailMessages, waitingItems, attentionQueue.answerPermission]
+  );
+
   const launchers = placeholderLaunchers({
-    openMissionControl: () => setIsA2AOpen(true),
-    openSessionHistory: () => setIsSessionHistoryOpen(true),
-    openSwarm: () => setIsSwarmModalOpen(true),
     openArchon: () => setIsArchonGraphOpen(true),
     openFactory: () => setIsFactoryStationOpen(true),
     openPraxisBuilder: () => setIsPraxisBuilderOpen(true),
@@ -684,7 +762,7 @@ export function App() {
             rows={terminalStatusRows}
             maxHeight={maxHeight}
             selectedTerminalId={activeTerminalId}
-            onSelectTerminal={selectTerminal}
+            onSelectTerminal={showTerminal}
             onOpenProjects={() => setOpenModule("projects")}
           />
         )}
@@ -707,7 +785,7 @@ export function App() {
               bridgePort={bridgePort}
               projectWorktrees={projectWorktrees}
               claudeStats={claudeStats}
-              onSelectTerminal={(id) => setActiveTerminalId(id)}
+              onSelectTerminal={inFront(setActiveTerminalId)}
               onCloseTerminal={(id) => killTerminal(id)}
               onNewTerminal={(projPath) => {
                 if (projPath) setActiveProject(projPath);
@@ -724,7 +802,7 @@ export function App() {
               }}
               onRenameTerminal={renameTerminal}
               onOpenSettings={(proj) => openWorkspaceSettings(proj)}
-              onOpenSwarm={() => setIsSwarmModalOpen(true)}
+              onOpenSwarm={openSwarmBuilder}
               onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
               onRemoveWorktree={handleRemoveWorktree}
               onOpenTopos={openToposView}
@@ -746,7 +824,25 @@ export function App() {
               onResolveConflicts={handleResolvePrConflicts}
             />
           ),
-          agents: launcherPanel("agents"),
+          agents: (
+            <AgentsPanel
+              isOpen={openModule === "agents"}
+              project={activeProject}
+              terminals={terminals}
+              messages={trailMessages}
+              waiting={waitingItems}
+              droppedPermissionCount={attentionQueue.droppedPermissionCount}
+              selectedTerminalId={activeTerminalId}
+              sessionHistoryRequest={sessionHistoryRequest}
+              onSelectTerminal={showTerminal}
+              onOpenWaiting={openWaiting}
+              onOpenReply={(terminalId, messageId) => openActivity(terminalId, messageEntryId(messageId))}
+              savedSwarms={savedSwarms}
+              onLaunchSwarm={(preset) => void launchSwarm(preset)}
+              onOpenSwarmBuilder={openSwarmBuilder}
+              onResumeSession={(sessionId, projectPath) => void resumeSession(sessionId, projectPath)}
+            />
+          ),
           workflows: launcherPanel("workflows"),
           project: launcherPanel("project"),
         }}
@@ -766,7 +862,7 @@ export function App() {
         splitRatio={splitRatio}
         zoomedFromLayout={zoomedFromLayout}
         activeTool={currentTool}
-        onSelectTerminal={selectTerminal}
+        onSelectTerminal={showTerminal}
         onSelectPane={focusPane}
         onSwitchPaneTerminal={switchPaneTerminal}
         onSetLayout={setLayout}
@@ -781,6 +877,12 @@ export function App() {
         onRelaunchTerminal={relaunchTerminal}
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
+        tools={stageTools}
+        frontToolId={frontToolId}
+        onSelectTool={setFrontToolId}
+        onCloseTool={(id) => {
+          if (id === SWARM_BUILDER_TOOL) closeSwarmBuilder();
+        }}
       />
       {diffLens && selectedTerminal && (
         <DiffLens
@@ -810,6 +912,7 @@ export function App() {
         lens={diffLensControl}
         ticketActions={ticketActions}
         topos={toposDock.companion}
+        activity={companionActivity}
         showRequest={companionRequest}
       />
 
@@ -827,7 +930,7 @@ export function App() {
           if (projPath && projPath !== activeProject) {
             setActiveProject(projPath);
           }
-          selectTerminal(id);
+          showTerminal(id);
         }}
         onSetLayout={setLayout}
         onToggleZoom={toggleZoom}
@@ -844,17 +947,19 @@ export function App() {
           }
         }}
         onOpenWorkspaceSettings={() => openWorkspaceSettings(activeProject)}
-        onOpenSwarmModal={() => setIsSwarmModalOpen(true)}
+        onOpenSwarmBuilder={openSwarmBuilder}
         onLaunchSwarmPreset={launchSwarm}
         savedSwarms={savedSwarms}
         onOpenActionLog={() => setIsActionLogOpen(true)}
-        onOpenA2A={() => setIsA2AOpen(true)}
+        onBroadcast={() => setIsBroadcastOpen(true)}
+        onOpenActivity={openSelectedActivity}
         onOpenDiffInspector={openRepoDiffs}
         onOpenNewWorktree={() => openNewWorktreeModal(activeRootRepo)}
         onOpenSourceControl={openSourceControl}
         onOpenPrePrAudit={openPrePrAudit}
-        onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
-        onOpenAttentionQueue={() => setIsAttentionQueueOpen(true)}
+        onOpenSessionHistory={openSessionHistory}
+        onOpenAttentionQueue={() => setOpenModule("agents")}
+        onSelectNextWaiting={selectNextWaiting}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
@@ -892,17 +997,6 @@ export function App() {
         }}
       />
 
-      {/* 1-Click Multi-Agent Swarm Preset Modal */}
-      <SwarmModal
-        isOpen={isSwarmModalOpen}
-        activeProject={activeProject}
-        onClose={() => setIsSwarmModalOpen(false)}
-        onLaunchSwarm={launchSwarm}
-        savedSwarms={savedSwarms}
-        onSaveSwarm={saveSwarm}
-        onRemoveSwarm={removeSwarm}
-      />
-
       {/* Visual Diff & File Change Inspector Drawer */}
       <DiffViewerDrawer
         isOpen={isDiffInspectorOpen}
@@ -912,16 +1006,11 @@ export function App() {
         activeTerminalId={activeTerminalId}
       />
 
-      {/* The attention queue's permission modal, undelivered-answer notice and drawer (Ctrl+Shift+B q) */}
-      <AttentionSurfaces
-        queue={attentionQueue}
-        terminals={terminals}
-        projects={projects}
-        projectWorktrees={projectWorktrees}
-        isDrawerOpen={isAttentionQueueOpen}
-        onCloseDrawer={() => setIsAttentionQueueOpen(false)}
-        onFocusTerminal={selectTerminal}
-      />
+      {/* The notice for a permission answer that reached no agent */}
+      <AttentionSurfaces queue={attentionQueue} terminals={terminals} />
+
+      {/* Broadcast to all agents, from the palette */}
+      <BroadcastDialog isOpen={isBroadcastOpen} project={activeProject} onClose={() => setIsBroadcastOpen(false)} />
 
       {/* Open Project Dialog */}
       <OpenProjectDialog
@@ -947,14 +1036,6 @@ export function App() {
         events={currentEvents}
         allEvents={events}
         onClose={() => setIsActionLogOpen(false)}
-      />
-
-      {/* Agent-to-Agent Orchestration Bus Panel */}
-      <A2APanel
-        isOpen={isA2AOpen}
-        terminals={terminals}
-        activeProject={activeProject}
-        onClose={() => setIsA2AOpen(false)}
       />
 
       {/* Worktree removal refused by git: show its error and offer Remove anyway */}
@@ -995,14 +1076,6 @@ export function App() {
         projectName={activeProjectObj?.name || "Repo"}
         onClose={() => setIsAuditModalOpen(false)}
         onFixWithClaude={handleFixAuditWithClaude}
-      />
-
-      {/* Claude Session History & Auto-Resume Drawer (Ctrl+Shift+B h) */}
-      <SessionHistoryDrawer
-        isOpen={isSessionHistoryOpen}
-        activeProject={activeProject}
-        onClose={() => setIsSessionHistoryOpen(false)}
-        onResumeSession={(sessionId, projectPath) => resumeSession(sessionId, projectPath)}
       />
 
       {/* Claude Live Token Spend & Background Turn Chime Modal (Ctrl+Shift+B t) */}

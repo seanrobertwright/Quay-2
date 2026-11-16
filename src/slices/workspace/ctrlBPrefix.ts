@@ -67,7 +67,8 @@ export interface CtrlBActions {
   splitHorizontal(): void;
   splitVertical(): void;
   splitGrid(): void;
-  openSwarmModal(): void;
+  /** The swarm builder stage tab. */
+  openSwarmBuilder(): void;
   /** The diff lens for the selected terminal's pull request, else the repo-wide Diffs in Source control. */
   openDiffs(): void;
   openNewWorktreeModal(): void;
@@ -75,7 +76,8 @@ export interface CtrlBActions {
   openSourceControl(): void;
   /** The Pre-PR Audit, from the Source control panel. */
   openPrePrAudit(): void;
-  toggleSessionHistory(): void;
+  /** The Agents panel, on Session history. */
+  openSessionHistory(): void;
   toggleTokenSpend(): void;
   toggleArchonGraph(): void;
   toggleFactoryStation(): void;
@@ -83,8 +85,10 @@ export interface CtrlBActions {
   /** The Topos view in the companion, for the selected terminal's repository. */
   openTopos(): void;
   toggleUpdateModal(): void;
-  toggleAttentionQueue(): void;
-  openA2A(): void;
+  /** Selects the next terminal waiting on the operator. */
+  selectNextWaiting(): void;
+  /** The Activity view in the companion, for the selected terminal. */
+  openActivity(): void;
   focusNextPane(): void;
   toggleZoom(): void;
   unsplit(): void;
@@ -113,12 +117,12 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ['"', "splitVertical"],
   ["'", "splitVertical"],
   ["g", "splitGrid"],
-  ["s", "openSwarmModal"],
+  ["s", "openSwarmBuilder"],
   ["d", "openDiffs"],
   ["w", "openNewWorktreeModal"],
   ["i", "openSourceControl"],
   ["a", "openPrePrAudit"],
-  ["h", "toggleSessionHistory"],
+  ["h", "openSessionHistory"],
   ["t", "toggleTokenSpend"],
   ["$", "toggleTokenSpend"],
   ["r", "toggleArchonGraph"],
@@ -126,8 +130,8 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["p", "togglePraxisBuilder"],
   ["c", "openTopos"],
   ["u", "toggleUpdateModal"],
-  ["q", "toggleAttentionQueue"],
-  ["m", "openA2A"],
+  ["q", "selectNextWaiting"],
+  ["m", "openActivity"],
   ["o", "focusNextPane"],
   ["z", "toggleZoom"],
   ["x", "unsplit"],

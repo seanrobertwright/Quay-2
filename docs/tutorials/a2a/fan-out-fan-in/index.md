@@ -9,11 +9,11 @@ One `lead` agent splits a tiny static-site generator three ways and hands each p
 - **Level** Advanced
 :::
 
-**You'll learn:** how to hand work to several agents with one prompt, collect reports that come back in any order, keep parallel agents apart by giving each one its own folder, send an integration failure back to the agent that owns the part, and read a fan-out and fan-in in Mission Control.
+**You'll learn:** how to hand work to several agents with one prompt, collect reports that come back in any order, keep parallel agents apart by giving each one its own folder, send an integration failure back to the agent that owns the part, and read a fan-out and fan-in in the lead's Activity view.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
-Agents in a swarm can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, shows an **Incoming A2A Task** banner at the top of that pane, and pops a card in the window's top-right corner for a few seconds. It holds a message until the receiving agent has finished its current turn, so two messages never land in one prompt. A sender can wait up to a minute for the reply, or set `wait_for_reply` to false and carry on. Every message shows up in **Mission Control**, Quay's view of all the traffic on the bus. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
+Agents in a swarm can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, shows an **Incoming A2A Task** banner at the top of that pane, and pops a card in the window's top-right corner for a few seconds. It holds a message until the receiving agent has finished its current turn, so two messages never land in one prompt. A sender can wait up to a minute for the reply, or set `wait_for_reply` to false and carry on. Every message shows up in the **Activity** view of the agent that sent it and of the agent that got it, in the companion on the window's right. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
 
 The starter project is `ssg`, a static-site generator that isn't written yet. `src/types.ts` is the finished contract: it says what each part must do. The parser, the renderer and the command line are stubs, each in its own folder with its own red test file, and `src/site.ts`, which joins them, is a stub too. `AGENTS.md` says which agent owns which folder and how the workers report back. You build the four agents yourself in the swarm builder, the way [Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/) does.
 
@@ -236,7 +236,7 @@ Quay types each `DONE` report into `lead` as a new prompt and shows it in an **I
 
 ::: must
 - Each report arrives in `lead` as `[Peer agent (<worker>)]: DONE <part>`, with an `Incoming A2A Task from <worker>` banner.
-- `lead` answers each report with one `OUTSTANDING:` line that leaves out the parts already reported. Step 7 shows each answer again in Mission Control.
+- `lead` answers each report with one `OUTSTANDING:` line that leaves out the parts already reported. Step 7 shows each answer again in `lead`'s Activity view.
 - Each worker ends by saying it is stopping, as `AGENTS.md` says.
 :::
 
@@ -291,27 +291,29 @@ This is the fan-in loop working. The owner fixes its part and reports `DONE` aga
 
 ::: step
 
-## 7. Read the fan-out and fan-in in Mission Control
+## 7. Read the fan-out and fan-in in Activity
 
 ::: do
-1. Press `Ctrl+Shift+B Z` to put the grid back.
-2. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`.
-3. Scroll down to **Live A2A Message Trail**. It lists the newest message first and has its own scroll bar: scroll inside it to read every entry.
+1. Press `Ctrl+Shift+B Z` to put the grid back. `lead` stays selected.
+2. Press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch. The companion shows `lead`'s Activity view.
+3. Scroll the view to read every entry. It lists the oldest first, so the newest is at the bottom, and mixes `lead`'s tool calls in with its messages.
 :::
 
+Every message `lead` sent or got is in this one view: the three jobs it sent are its `To <worker>` entries, and the reports it got are its `From <worker>` entries.
+
 ::: see
-![Mission Control's Live A2A Message Trail, scrolled to cli-dev → lead with DONE cli and the Answer OUTSTANDING: parser, render, and parser-dev → lead with DONE parser below it, both Completed.](./07-trail.webp)
+![lead's Activity view in the companion, scrolled to a From cli-dev entry reading DONE cli with lead's answer OUTSTANDING: parser, render under it, followed by a From parser-dev entry reading DONE parser, both marked completed.](./07-trail.webp)
 :::
 
 ::: must
-- One entry from `lead` to each of `parser-dev`, `render-dev` and `cli-dev`, each `Completed` and holding that worker's job.
-- One `DONE` entry from each worker to `lead`, each `Completed`, with `lead`'s reply as its `Answer:`. That reply is an `OUTSTANDING:` line, or for the last report, `lead`'s summary ending `FAN-IN COMPLETE`.
+- One `To parser-dev`, one `To render-dev` and one `To cli-dev` entry, each `completed` and holding that worker's job.
+- One `From <worker>` entry reading `DONE <part>` for each worker, each `completed`, with `lead`'s answer under it. That answer is an `OUTSTANDING:` line, or for the last report, `lead`'s summary ending `FAN-IN COMPLETE`.
 :::
 
 ::: may
-- The order of the `DONE` entries, and any `FIX` entries, which make the trail longer.
-- A `DONE` entry showing `Queued` for a moment while `lead` answers the report before it.
-- The times, and how long each entry `took`.
+- The order of the `DONE` entries, and any `FIX` entries, which make the list longer.
+- A `DONE` entry showing `queued` for a moment while `lead` answers the report before it.
+- The times, and the tool calls between the messages.
 :::
 
 :::
@@ -321,7 +323,7 @@ This is the fan-in loop working. The owner fixes its part and reports `DONE` aga
 ## 8. Check it worked
 
 ::: do
-1. Close Mission Control with the **×** at its top right, or press `Esc`. Click into `cli-dev`, the bottom-right pane.
+1. Click into `cli-dev`, the bottom-right pane.
 2. Press `Ctrl+Shift+B 1`. `shell` takes the bottom-right cell. `cli-dev` keeps running, and the rail still lists it.
 :::
 

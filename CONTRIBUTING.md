@@ -31,11 +31,12 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 - **`terminal/`**: Terminal lifecycle powered by `@xterm/xterm`, fit addon, emoji width provider, and modal launcher.
 - **`rail/`**: Left navigation sidebar, collapsible project tree, collapsible worktrees, status indicators, and condensed tool row.
 - **`stage/`**: Main viewport area supporting side-by-side splits, vertical splits, 2x2 grid, zoom mode, the stage tab bar, and the shell-wide warning banner.
-- **`orchestrator/`**: A2A Mission Control modal for operator dispatch and inter-agent message logs.
+- **`agents/`**: The Agents panel: Waiting on you, agents in the project, saved swarms and session history.
+- **`orchestrator/`**: The A2A message trail, the Broadcast to all agents dialog, the swarm builder and its saved presets, and the live dispatch toasts.
 - **`github/`**: The Source control panel: the repository's pull requests and issues with state, search and label filters and capped paging, plus the Topos, Diffs and Pre-PR Audit tools.
 - **`archon/`**: Visual DAG execution canvas, live node status inspector, streaming execution logs, and spec task trackers.
 - **`machina/`**: The Factory Station (**Machina: local**): work order list and detail, the work order composer, the project gate config, holds and Accept.
-- **`sessions/`**: Session history browser and token spend meter.
+- **`sessions/`**: Types for the Claude Code sessions and token spend the backend reports, which Session history and the token spend meter show.
 
 > [!IMPORTANT]
 > **VSA Rule**: When adding or updating a feature, keep backend logic within `src-tauri/src/slices/<feature>/` and frontend UI within `src/slices/<feature>/`. Do not introduce circular dependencies between unrelated slices.

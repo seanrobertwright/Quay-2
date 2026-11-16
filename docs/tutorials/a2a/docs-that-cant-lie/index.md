@@ -13,7 +13,7 @@ A README is a list of promises, and the one in this project is already broken. T
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
-Agents in a swarm can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, shows an **Incoming A2A Task** banner at the top of that pane, and pops a card in the window's top-right corner for a few seconds. It holds a message until the receiving agent has finished its current turn, so two messages never land in one prompt. A sender can wait up to a minute for the reply, or set `wait_for_reply` to false and carry on. Every message shows up in **Mission Control**, Quay's view of all the traffic on the bus. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
+Agents in a swarm can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, shows an **Incoming A2A Task** banner at the top of that pane, and pops a card in the window's top-right corner for a few seconds. It holds a message until the receiving agent has finished its current turn, so two messages never land in one prompt. A sender can wait up to a minute for the reply, or set `wait_for_reply` to false and carry on. Every message shows up in the **Activity** view of the agent that sent it and of the agent that got it, in the companion on the window's right. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
 
 The starter project is `slugkit` 2.0.0, a small TypeScript library that turns titles into URL slugs. Its code and unit tests are finished and green, but its README was written for 1.x and never updated. `scripts/check-readme.ts` runs every sample in the README and compares what it prints with the output the README shows under it. `AGENTS.md` holds the goal, the rules for README samples, and what each of the three agents does. You build the three agents yourself in the swarm builder, the way [Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/) does.
 
@@ -206,7 +206,7 @@ The tutorial still works; the lesson is quieter. Paste `From here on, ask code-o
 :::
 
 ::: ifnot doc-writer's tool call says code-owner is still working
-The answer took longer than the minute a reply can wait. Its entry in Mission Control stays `Dispatched` and fills in when the answer lands. Paste `Ask code-owner that again as a shorter question and wait for the reply.` into `doc-writer`.
+The answer took longer than the minute a reply can wait. Its entry in `doc-writer`'s Activity view stays `dispatched` and fills in when the answer lands. Paste `Ask code-owner that again as a shorter question and wait for the reply.` into `doc-writer`.
 :::
 
 ::: ifnot a quay_send_message call says the name code-owner is ambiguous
@@ -217,27 +217,27 @@ Two live terminals share that name, usually an old desk left open beside a new o
 
 ::: step
 
-## 5. Read the questions in Mission Control
+## 5. Read the questions in Activity
 
 ::: do
-1. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`.
-2. Scroll down to **Live A2A Message Trail**. It lists the newest message first and has its own scroll bar: scroll inside it to read every entry.
-3. Close Mission Control with the **×** at its top right, or press `Esc`.
+1. Click into `doc-writer`, the top-left pane, to select it.
+2. Press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch. The companion shows `doc-writer`'s Activity view.
+3. Scroll the view to read every entry. It lists the oldest first, so the newest is at the bottom, and mixes `doc-writer`'s tool calls in with its messages.
 :::
 
-Each entry from `doc-writer` to `code-owner` is one question, with `code-owner`'s answer under it as its **Reply:**. Every fact in the new README crossed the bus as one of these entries, so you can see after the fact who said what.
+Each `To code-owner` entry is one question, with `code-owner`'s answer under it. Every fact in the new README crossed the bus as one of these entries, so you can see after the fact who said what.
 
 ::: see
-![Mission Control's Live A2A Message Trail, holding six entries, scrolled to a doc-writer → code-owner entry marked Completed: the question asks for the exact output of two uniqueSlug calls, and code-owner's Reply gives hello-world-3 and new-post and explains why.](./05-trail.webp)
+![doc-writer's Activity view in the companion, scrolled to a To code-owner entry marked completed: the question asks for the exact output of two uniqueSlug calls, and code-owner's reply under it gives hello-world-3 and new-post and explains why. Tool call entries sit above and below it.](./05-trail.webp)
 :::
 
 ::: must
-- At least one entry from `doc-writer` to `code-owner`, `Completed`, with a `Reply:`.
+- At least one `To code-owner` entry marked `completed`, with `code-owner`'s answer under it.
 :::
 
 ::: may
 - The questions, how many there are, and the times.
-- An entry from `doc-writer` to `fact-checker` with `Draft ready`, if `doc-writer` has already finished. Its `Answer:` is `fact-checker`'s verdict, which step 6 explains.
+- A `To fact-checker` entry with `Draft ready`, if `doc-writer` has already finished. The text under it is `fact-checker`'s verdict, which step 6 explains.
 :::
 
 :::
@@ -253,7 +253,7 @@ Each entry from `doc-writer` to `code-owner` is one question, with `code-owner`'
 4. This repeats until every sample passes, or until the third failing run, when `fact-checker` stops with `NOT VERIFIED:`.
 :::
 
-Neither agent waits for the other here. If `fact-checker` waited for `doc-writer`'s fix while `doc-writer` waited for `fact-checker`'s verdict, both would sit blocked until the minute ran out. That's why `AGENTS.md` lets only `doc-writer` wait, and only on `code-owner`. Nobody waited on `Draft ready` or on a failure line, so in Mission Control each shows an **Answer:**, not a **Reply:**.
+Neither agent waits for the other here. If `fact-checker` waited for `doc-writer`'s fix while `doc-writer` waited for `fact-checker`'s verdict, both would sit blocked until the minute ran out. That's why `AGENTS.md` lets only `doc-writer` wait, and only on `code-owner`. Nobody waited on `Draft ready` or on a failure line: each one's answer reached its sender's Activity view later, without holding up its sender's turn.
 
 ::: see
 ![fact-checker says the checker passed on round 1 with all three exports covered, so it sent doc-writer no message, and ends VERIFIED: 4 of 4 samples ran as written, while doc-writer explains its draft and all three agents show Ready.](./06-verified.webp)
@@ -296,7 +296,7 @@ npm run check:readme; git status --short
 ```
 :::
 
-The checker proves every sample in the README is true. It doesn't prove the README is complete: which facts it chose to show is up to `doc-writer`, and the trail from step 5 shows which facts it asked about.
+The checker proves every sample in the README is true. It doesn't prove the README is complete: which facts it chose to show is up to `doc-writer`, and its Activity view from step 5 shows which facts it asked about.
 
 ::: see
 ![shell in the top-left cell: the checker prints PASS for samples 1 to 4, Exports covered: slugify, truncate, uniqueSlug and 4 of 4 samples ran as written, and git status lists only M README.md.](./07-check-green.webp)
@@ -320,7 +320,7 @@ The checker proves every sample in the README is true. It doesn't prove the READ
 - ✅ `npm run check:readme` prints no `FAIL` line, covers every export and ends with `<n> of <n> samples ran as written`.
 - ✅ `git status --short` lists `README.md` as the only changed file.
 - ✅ `fact-checker`'s last line is the `VERIFIED:` line.
-- ✅ Mission Control's trail shows `doc-writer`'s questions to `code-owner`, each `Completed` with a `Reply:`.
+- ✅ `doc-writer`'s Activity view shows its questions to `code-owner`, each `To code-owner`, `completed`, with the answer under it.
 :::
 
 :::
