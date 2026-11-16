@@ -31,6 +31,7 @@ const AGENT = term("t1", "agent");
 const SHELL = term("t2", "shell");
 
 const lane = (over: Partial<TicketLane> = {}): TicketLane => ({
+  repo: null,
   number: 651,
   title: "Projects panel: ticket pipeline lanes",
   steps: [
@@ -168,6 +169,17 @@ test("Close offers completed, not planned and duplicate, and closes the lane's t
     select.dispatchEvent(new Event("change", { bubbles: true }));
   });
   assert.deepEqual(calls, ['close E:/alpha {"repo":null,"number":651} NOT_PLANNED']);
+});
+
+test("Close on a lane whose ticket lives in another repository closes it there", () => {
+  const { container, calls } = render({}, (t) => (t.id === AGENT.id ? lane({ repo: "other/repo" }) : null));
+  const select = lanes(container)[0].querySelector<HTMLSelectElement>("select[aria-label='Close #651']");
+  assert.ok(select);
+  act(() => {
+    select.value = "COMPLETED";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  assert.deepEqual(calls, ['close E:/alpha {"repo":"other/repo","number":651} COMPLETED']);
 });
 
 test("Ready to start and Blocked list their tickets with +N into Source control, and Merged today counts the rest", () => {

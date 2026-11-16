@@ -35,6 +35,8 @@ export interface LaneInput {
 
 /** One terminal row's lane. */
 export interface TicketLane {
+  /** `owner/name` of the ticket's repository as its slot names it, or null for the project's own. */
+  repo: string | null;
   number: number;
   title: string;
   steps: { id: LaneStepId; label: string; tone: LaneStepTone }[];
@@ -106,6 +108,7 @@ export function ticketLane({ link, ticket, pullRequest, waiting, now }: LaneInpu
   const needsYou: NeedsYou | null = waiting ? "Waiting" : verdict?.tone === "failing" ? "Failing" : canMerge ? "Merge" : null;
   const since = current === "terminal" ? ticketSlot.at : (prSlot?.at ?? ticketSlot.at);
   return {
+    repo: ticketSlot.repo,
     number: ticketSlot.number,
     title: ticket?.title ?? `Ticket #${ticketSlot.number}`,
     steps,

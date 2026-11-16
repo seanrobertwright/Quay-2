@@ -153,7 +153,7 @@ export const LaneView = ({
           </button>
         )}
         {lane.current !== "merged" && (
-          <CloseSelect number={lane.number} onClose={(reason) => pipeline.onClose(repoPath, { repo: null, number: lane.number }, reason)} />
+          <CloseSelect number={lane.number} onClose={(reason) => pipeline.onClose(repoPath, { repo: lane.repo, number: lane.number }, reason)} />
         )}
       </div>
     </div>

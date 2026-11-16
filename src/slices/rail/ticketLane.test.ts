@@ -75,6 +75,11 @@ test("a terminal whose pull request is ready to merge shows the Pull request ste
   assert.equal(lane.age, "5m");
 });
 
+test("a lane names the repository its ticket slot names, null for the project's own", () => {
+  assert.equal(ticketLane(input())?.repo, null);
+  assert.equal(ticketLane(input({ link: link({ ticket: slot(651, NOW, { repo: "other/repo" }) }) }))?.repo, "other/repo");
+});
+
 test("a plain shell, with no ticket slot, has no lane", () => {
   assert.equal(ticketLane(input({ link: null })), null);
   assert.equal(ticketLane(input({ link: link({ ticket: null, pull_request: slot(574, NOW) }) })), null);
