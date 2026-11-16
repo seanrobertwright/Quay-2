@@ -154,7 +154,10 @@ fn build_issues_page_query(states: Option<&str>, since: bool) -> String {
     let states_arg = states.map(|s| format!(", states: {s}")).unwrap_or_default();
     let (since_var, since_arg) = if since { (", $since: DateTime", ", filterBy: { since: $since }") } else { ("", "") };
     format!(
-        "query($owner: String!, $name: String!, $first: Int!, $after: String{since_var}) {{ repository(owner: $owner, name: $name) {{          issues(first: $first, after: $after{states_arg}{since_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{          pageInfo {{ endCursor hasNextPage }}          nodes {{ number title state url updatedAt closedAt stateReason {AUTHOR_FIELDS} {LABEL_FIELDS} assignees(first: 10) {{ nodes {{ login name }} }} }} }} }} }}"
+        "query($owner: String!, $name: String!, $first: Int!, $after: String{since_var}) {{ repository(owner: $owner, name: $name) {{ \
+         issues(first: $first, after: $after{states_arg}{since_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{ \
+         pageInfo {{ endCursor hasNextPage }} \
+         nodes {{ number title state url updatedAt closedAt stateReason {AUTHOR_FIELDS} {LABEL_FIELDS} assignees(first: 10) {{ nodes {{ login name }} }} }} }} }} }}"
     )
 }
 
@@ -192,7 +195,7 @@ fn run_page_query(
     query: &str,
     page_size: u32,
     after: Option<&str>,
-    vars: &[(&str, &str)],
+    since: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let mut cmd = create_gh_command(repo_path);
     // gh fills {owner} and {repo} from the repository of the working directory.
@@ -211,8 +214,8 @@ fn run_page_query(
     if let Some(cursor) = after {
         cmd.args(["-f", &format!("after={}", cursor)]);
     }
-    for (name, value) in vars {
-        cmd.args(["-f", &format!("{}={}", name, value)]);
+    if let Some(since) = since {
+        cmd.args(["-f", &format!("since={}", since)]);
     }
     let output = cmd
         .output()
@@ -398,13 +401,12 @@ pub async fn list_github_issues(
     tokio::task::spawn_blocking(move || {
         let states = issue_states(state.as_deref().unwrap_or("open"))?;
         let since = since.as_deref().map(parse_since).transpose()?;
-        let vars: Vec<(&str, &str)> = since.map(|s| ("since", s)).into_iter().collect();
         let json = run_page_query(
             &repo_path,
             &build_issues_page_query(states, since.is_some()),
             page_size.unwrap_or(DEFAULT_PAGE_SIZE),
             after.as_deref(),
-            &vars,
+            since,
         )?;
         let mut page = parse_issues_page(&json)?;
         let issues = &mut page.items;
@@ -487,7 +489,7 @@ pub async fn list_github_prs(
             &build_prs_page_query(states),
             page_size.unwrap_or(DEFAULT_PAGE_SIZE),
             after.as_deref(),
-            &[],
+            None,
         )?;
         parse_prs_page(&json)
     })
@@ -744,8 +746,7 @@ mod tests {
 
     #[test]
     fn the_viewer_is_the_one_login_gh_printed() {
-        assert_eq!(parse_viewer(b"octocat
-").as_deref(), Some("octocat"));
+        assert_eq!(parse_viewer(b"octocat\n").as_deref(), Some("octocat"));
         assert_eq!(parse_viewer(b""), None);
         assert_eq!(parse_viewer(b"not a login"), None);
     }
