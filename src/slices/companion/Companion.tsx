@@ -662,7 +662,7 @@ const CompanionDivider = ({
     >
       <div
         style={{ width: DIVIDER_LINE_WIDTH }}
-        className="h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:bg-[#58a6ff] group-focus-visible/handle:outline group-focus-visible/handle:outline-1 group-focus-visible/handle:outline-[#58a6ff]"
+        className="h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:bg-[#58a6ff] group-focus-visible/handle:outline group-focus-visible/handle:outline-1 group-focus-visible/handle:outline-(--quay-accent)"
       />
     </div>
   );

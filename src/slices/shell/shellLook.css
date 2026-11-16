@@ -50,3 +50,11 @@
   border-color: rgba(63, 185, 80, 0.6);
   box-shadow: 0 0 12px rgba(63, 185, 80, 0.3);
 }
+
+/* The focus ring, for every control that does not draw its own. In the base layer, so a control's
+   own focus utility (such as `focus-visible:outline-none`) still wins. */
+:focus-visible {
+  outline: 2px solid var(--quay-accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 3px var(--quay-accent), 0 0 9px var(--quay-accent-haze);
+}

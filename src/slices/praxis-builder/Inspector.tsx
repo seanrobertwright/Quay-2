@@ -303,7 +303,7 @@ const Dependencies: FC<{
                 <button
                   type="button"
                   title={`Go to ${dep}`}
-                  className="truncate rounded hover:underline focus-visible:outline-1 focus-visible:outline-[#58a6ff]"
+                  className="truncate rounded hover:underline focus-visible:outline-1 focus-visible:outline-(--quay-accent)"
                   onClick={() => onGoToNode(dep)}
                 >
                   {dep}

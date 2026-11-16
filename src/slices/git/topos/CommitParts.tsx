@@ -53,7 +53,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ label, running, output
         <pre tabIndex={0}
           id={outputId}
           aria-label={label}
-          className="max-h-40 overflow-auto px-3 pb-2 text-[11px] leading-4 font-mono text-[#c9d1d9] whitespace-pre-wrap break-words outline-none focus-visible:ring-1 focus-visible:ring-[#58a6ff]"
+          className="max-h-40 overflow-auto px-3 pb-2 text-[11px] leading-4 font-mono text-[#c9d1d9] whitespace-pre-wrap break-words outline-none focus-visible:ring-1 focus-visible:ring-(--quay-accent)"
         >
           {output === "" ? "Waiting for output…" : output}
         </pre>

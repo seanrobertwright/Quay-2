@@ -32,3 +32,13 @@ test("the selected terminal's pane title is lit in the accent", () => {
   assert.equal(title.color, "#dfe9ff");
   assert.match(title.textShadow, /^0 0 [1-6]px rgba\(223, 233, 255, 0\.\d+\)$/, "a soft glow in the accent");
 });
+
+test("the focus ring is the accent, with a soft glow, and follows a palette change", () => {
+  installShellLook("sunset");
+  const button = part("button");
+  button.focus();
+  assert.equal(getComputedStyle(button).outline, "#ff3d81 solid 2px");
+  assert.match(getComputedStyle(button).boxShadow, /^0 0 [1-4]px #ff3d81/);
+  installShellLook("acid");
+  assert.equal(getComputedStyle(button).outlineColor, "#b6ff1a");
+});
