@@ -52,6 +52,15 @@ export function terminalDot(terminal: Pick<TerminalInfo, "id" | "claude_status">
   return asking.has(terminal.id) ? "waiting" : dotStatus(terminal);
 }
 
+/**
+ * The worktrees of the project at `projectPath` that are listed under it as worktrees: not the main
+ * one, and not the project's own folder. A project registered from a linked worktree lists that
+ * folder in its own worktree list, and its terminals already belong to the project itself.
+ */
+export function secondaryWorktrees(projectPath: string, worktrees: readonly GitWorktree[]): GitWorktree[] {
+  return worktrees.filter((wt) => !wt.is_main && !isSamePath(wt.path, projectPath));
+}
+
 /** One terminal's row: the terminal, its dot and the project group it sits in. */
 export interface StatusRow {
   terminal: TerminalInfo;
@@ -86,7 +95,7 @@ export function statusRows(
     const exact = projects.find(
       (p) =>
         isSamePath(t.project_path, p.path) ||
-        (projectWorktrees[p.path] ?? []).some((wt) => !wt.is_main && isSamePath(t.project_path, wt.path)),
+        secondaryWorktrees(p.path, projectWorktrees[p.path] ?? []).some((wt) => isSamePath(t.project_path, wt.path)),
     );
     if (exact) {
       owner.set(t.id, { project: exact, nested: false });
@@ -108,8 +117,7 @@ export function statusRows(
     const mine = terminals.filter((t) => owner.get(t.id)?.project === project);
     const inFolder = (path: string) => mine.filter((t) => !owner.get(t.id)?.nested && isSamePath(t.project_path, path));
     for (const t of inFolder(project.path)) rows.push(row(t, project.name, project.path));
-    for (const wt of projectWorktrees[project.path] ?? []) {
-      if (wt.is_main) continue;
+    for (const wt of secondaryWorktrees(project.path, projectWorktrees[project.path] ?? [])) {
       for (const t of inFolder(wt.path)) rows.push(row(t, project.name, project.path));
     }
     for (const t of mine) if (owner.get(t.id)?.nested) rows.push(row(t, project.name, project.path));
