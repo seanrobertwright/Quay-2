@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ArrowUpCircle, Coins, FolderOpen, Settings } from "lucide-react";
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
+import { PieWire } from "../pie/PieWire.tsx";
+import { pieRing } from "../pie/pieRing.ts";
 import { SHELL_SETTINGS, type SetShellPref, type ShellPrefKey, type ShellPrefs, type ShellSetting } from "./shellPrefs.ts";
 
 /** What a chord asks the Project panel to focus; `seq` counts requests so a repeat focuses again. */
@@ -168,6 +170,9 @@ function SettingControl<K extends ShellPrefKey>({ setting, prefs, onSetPref }: {
   return <ChoiceSetting setting={setting} value={value} onSet={onSet} />;
 }
 
+/** What the preview pie shows: the ring over a terminal, which fills every wedge but Merge's. */
+const PREVIEW_RING = pieRing({ surface: "terminal", terminalId: "" });
+
 /**
  * The Project module's panel: the This project group, which acts on the open project, and the
  * Quay · every project group, the shell's own settings as one-click controls.
@@ -218,6 +223,18 @@ export const ProjectPanel = (props: ProjectPanelProps) => {
         </div>
         <div role="group" aria-labelledby={everyProjectId} className="mt-2 border-t border-[#30363d]">
           <GroupHeading id={everyProjectId}>Quay · every project</GroupHeading>
+          {/* Drawn from the current settings, so it redraws as the pie palette or label outline changes. */}
+          <div className="px-2.5 py-1.5 flex justify-center">
+            <PieWire
+              as="preview"
+              label="Pie preview"
+              ring={PREVIEW_RING}
+              palette={props.prefs.piePalette}
+              labelOutline={props.prefs.pieLabelOutline}
+              aimed={null}
+              className="w-[200px] h-[200px]"
+            />
+          </div>
           {SHELL_SETTINGS.map((setting) => (
             <SettingControl key={setting.key} setting={setting} prefs={props.prefs} onSetPref={props.onSetPref} />
           ))}
