@@ -9,11 +9,11 @@ One Claude Code agent writes a rate limiter. A second Claude Code agent reviews 
 - **Level** Intermediate
 :::
 
-**You'll learn:** asking a peer for a verdict with `quay_send_message` and `wait_for_reply`, why a fixed last line makes a verdict checkable, passing work between agents by reference (staged changes in git) instead of pasting it into a message, what to do when a reply outlasts its 60 seconds, and reading a back-and-forth in Mission Control's message trail.
+**You'll learn:** asking a peer for a verdict with `quay_send_message` and `wait_for_reply`, why a fixed last line makes a verdict checkable, passing work between agents by reference (staged changes in git) instead of pasting it into a message, what to do when a reply outlasts its 60 seconds, and reading a back-and-forth in an agent's Activity view.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes a letter key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
-Agents can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`. A sender can wait up to a minute for the reply, which comes back to it with its line breaks intact. Every message shows up in **Mission Control**, Quay's view of all the traffic on the bus. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
+Agents can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`. A sender can wait up to a minute for the reply, which comes back to it with its line breaks intact. Every message shows up in the **Activity** view of the agent that sent it and of the agent that got it. The Activity view is one of the views of the **companion**, the panel on the window's right that shows what the selected terminal is working on. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
 
 ::: before
 ## Before you start
@@ -234,39 +234,39 @@ Paste into `reviewer`: `You never edit or stage files. Undo what you just change
 
 ::: step
 
-## 6. Watch the gate close in Mission Control
+## 6. Watch the gate close in the reviewer's Activity view
 
-Mission Control records every message sent on the A2A bus.
+The reviewer's Activity view lists every message it got on the A2A bus, with the answer it gave.
 
 ::: do
-1. While the loop runs, click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`.
-2. Scroll down to **Live A2A Message Trail**. Each round is one `developer → reviewer` entry: the message, its status, and the reviewer's answer under **Reply:**. The trail lists the newest entry first, so the latest round sits on top, and it has its own scroll bar: scroll inside it to read the older rounds.
-3. Stay until the top entry reads **Completed** with a reply ending `APPROVED`, then close the panel with the **×** at its top right, or press `Esc`.
+1. While the loop runs, click into `reviewer` to select it, then press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch. The companion opens its Activity view for `reviewer`.
+2. Each round is one `From developer` entry: the message, its status, and the reviewer's answer under it. The view lists the oldest entry first, so the latest round sits at the bottom. Between the rounds are the reviewer's own tool calls, such as the `git diff --cached` it runs.
+3. Stay until the bottom `From developer` entry reads `completed` with an answer ending `APPROVED`.
 :::
 
 ::: see
-![Mission Control's Live A2A Message Trail: on top, developer → reviewer, Completed, took 37s, Review round 2, with the reply No checklist items fail. APPROVED; an earlier developer → reviewer entry below it.](./06-trail-approved.webp)
+![The companion's Activity view for reviewer: two From developer entries, each with a Bash git diff --cached call after it. The bottom one, Review round 2, reads completed, with the answer No checklist items fail. APPROVED under it.](./06-trail-approved.webp)
 :::
 
 ::: must
-- Every entry is `developer → reviewer`.
-- Every reply before the top one ends `CHANGES REQUESTED`, and the top one ends `APPROVED`.
-- The newest round is on top.
+- Every message entry is `From developer`.
+- Every answer before the bottom one ends `CHANGES REQUESTED`, and the bottom one ends `APPROVED`.
+- The newest round is at the bottom.
 :::
 
 ::: may
 - The number of rounds, usually two and at most four.
-- The findings listed in each reply.
-- The times, and how long each entry `took`.
+- The findings listed in each answer.
+- The times, and the tool calls between the messages.
 - An entry that asks the reviewer to repeat its last verdict, if a round outlasted the 60-second wait.
 :::
 
-::: ifnot there is only one entry and it says APPROVED
+::: ifnot there is only one message entry and it says APPROVED
 The developer got every checklist item right the first time. The gate still did its job; carry on.
 :::
 
-::: ifnot an entry reads Dispatched with the note No reply within 60s
-That round outlasted the 60-second wait. The entry stays open, and when `reviewer` finishes its turn, its answer fills in and the entry turns **Completed**. If `developer` carried on by checking the reviewer's status, let it run. If it stopped, use step 5's If not for a reviewer that is still working.
+::: ifnot an entry reads dispatched with no answer under it
+That round outlasted the 60-second wait, or `reviewer` is still answering it. The entry stays open, and when `reviewer` finishes its turn, its answer fills in and the entry turns `completed`. If `developer` carried on by checking the reviewer's status, let it run. If it stopped, use step 5's If not for a reviewer that is still working.
 :::
 
 :::
@@ -309,7 +309,7 @@ The developer stopped before committing. Read its last message: if round 4 was n
 :::
 
 ::: done
-- ✅ The reviewer's last reply in Mission Control ends with `APPROVED`, and no reply before it does.
+- ✅ The reviewer's last answer in its Activity view ends with `APPROVED`, and no answer before it does.
 - ✅ `git log --oneline` shows the `feat: add fixed-window rate limiter` commit on top of `Starter`.
 - ✅ That commit touches `CHANGELOG.md`, `src/limiter.ts` and `test/limiter.test.ts` only.
 - ✅ `npm test` passes and `git status --short` is empty.

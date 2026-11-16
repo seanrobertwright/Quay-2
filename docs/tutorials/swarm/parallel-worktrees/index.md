@@ -440,5 +440,5 @@ git branch -D try-scan; git branch -d try-index; git worktree list; npm run comp
 ::: next
 [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/)
 
-The next tutorial in series order. Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply.
+The next tutorial in series order. Send an agent a message from its Activity view, then watch one agent ask another a question and wait for the reply.
 :::

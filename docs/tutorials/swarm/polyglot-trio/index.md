@@ -9,7 +9,7 @@ Three agents from three vendors build one small tool. Antigravity plans a CSV-to
 - **Level** Advanced
 :::
 
-**You'll learn:** how to launch the Polyglot Agent Trio preset; what a full peer and a responder are, and how Mission Control shows them; how to give an agent its role by hand when its CLI takes no launch prompt; how to ask a responder a short question and get its reply; how a plan and a review travel as files while the A2A bus carries only the short messages; and how a non-Claude agent sends a message.
+**You'll learn:** how to launch the Polyglot Agent Trio preset; what a full peer and a responder are, and how the Agents panel shows them; how to give an agent its role by hand when its CLI takes no launch prompt; how to ask a responder a short question and get its reply; how a plan and a review travel as files while the A2A bus carries only the short messages; and how a non-Claude agent sends a message.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The letter after `Ctrl+Shift+B` is the plain key, with no `Shift`. `Ctrl+Shift+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, click into the pane and press `Ctrl+V`, then press `Enter` to send it.
 
@@ -120,22 +120,22 @@ The plugin hint is an amber strip under `claude-dev`'s header that starts `No ev
 
 ::: step
 
-## 3. Meet the team in Mission Control
+## 3. Meet the team in the Agents panel
 
-All three agents are on the A2A bus, but not on the same terms. Mission Control's agent list shows each one's level.
+All three agents are on the A2A bus, but not on the same terms. The Agents panel shows each one's CLI and level.
 
 ::: do
-1. Press `Ctrl+Shift+B M` to open **Mission Control**.
-2. Read the **Agents** list. `claude-dev` and `codex-reviewer` carry no tag: they are full peers. `agy-planner` is tagged **Responder**. `test-runner` and the PowerShell pane from step 1 aren't listed, because a shell isn't a peer.
-3. Press `Esc` to close Mission Control.
+1. Click the **Agents** icon, the robot, on the module bar down the window's left edge. The **Agents** panel opens in place of the rail.
+2. Read **Agents in the project**. `claude-dev` reads `claude · full peer` and `codex-reviewer` reads `codex · full peer`. `agy-planner` reads `antigravity · responder`. `test-runner` and the PowerShell pane from step 1 aren't listed, because a shell isn't a peer.
+3. Click the **Projects** icon at the top of the module bar to bring the rail back.
 :::
 
 ::: see
-![Mission Control's Agents list with claude-dev, agy-planner and codex-reviewer, the Responder tag on agy-planner, and an empty message trail.](./03-team-levels.webp)
+![The Agents panel's Agents in the project list with claude-dev and codex-reviewer each marked full peer, and agy-planner marked antigravity · responder.](./03-team-levels.webp)
 :::
 
-::: ifnot claude-dev is tagged Listener
-Quay isn't hearing from `claude-dev`'s event-bridge plugin yet, and until it does, `claude-dev` can't answer. Fix it as the plugin hint in step 2 says, then open Mission Control again.
+::: ifnot claude-dev reads claude · listener
+Quay isn't hearing from `claude-dev`'s event-bridge plugin yet, and until it does, `claude-dev` can't answer. Fix it as the plugin hint in step 2 says, then open the Agents panel again.
 :::
 
 :::
@@ -304,22 +304,22 @@ Codex waited for a reply after all. The message still reached `claude-dev`, so c
 
 ::: do
 1. Press `Ctrl+Shift+B 2` to move focus to `claude-dev`, and wait until it ends with `FIXES DONE`.
-2. Press `Ctrl+Shift+B M` to open Mission Control, scroll to **Live A2A Message Trail** at the bottom of the panel, and read its entries, newest first: `codex-reviewer → claude-dev`, then `claude-dev → agy-planner`.
-3. Press `Esc` to close Mission Control.
+2. Press `Ctrl+Shift+B M` to open the companion's **Activity** view for `claude-dev`. It lists `claude-dev`'s tool calls and its messages, oldest first, so the newest is at the bottom.
+3. Find its two messages: **To agy-planner**, with `agy-planner`'s reply under it, and below it **From codex-reviewer**.
 :::
 
 ::: see
-![Mission Control's message trail with two entries, both Completed: codex-reviewer to claude-dev at the top, then claude-dev to agy-planner.](./08-fixes-done.webp)
+![claude-dev's Activity view with its tool calls and two messages, both completed: To agy-planner with the PLAN READY reply under it, and further down From codex-reviewer.](./08-fixes-done.webp)
 :::
 
 ::: must
 - `claude-dev`'s last line is `FIXES DONE`.
-- The trail's two entries, `codex-reviewer → claude-dev` above `claude-dev → agy-planner`, both read Completed.
+- In `claude-dev`'s Activity view, **To agy-planner** sits above **From codex-reviewer**, and both read `completed`.
 :::
 
 ::: may
 - What `claude-dev` changed. After `VERDICT: APPROVED` it may report that nothing needed fixing.
-- The times on the trail's entries.
+- Which tool calls the Activity view lists between the two messages, and how many.
 :::
 
 :::
@@ -365,7 +365,7 @@ A rule slipped past the plan, the build and the review, and each failing test's 
 - ✅ `agy-planner` wrote `PLAN.md` and answered `claude-dev` with a reply that starts `PLAN READY`.
 - ✅ `codex-reviewer` wrote `review.md`, starting `VERDICT:`, and sent `claude-dev` a message.
 - ✅ The check suite passes, `Tests  6 passed (6)`, and the converter prints the JSON `SPEC.md` ends with.
-- ✅ Mission Control's trail shows both messages Completed.
+- ✅ `claude-dev`'s Activity view shows both messages `completed`.
 :::
 
 :::

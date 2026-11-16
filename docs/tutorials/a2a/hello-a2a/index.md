@@ -1,6 +1,6 @@
 # A2A 1: Hello, A2A
 
-Open two Claude Code agents, `asker` and `answerer`, side by side. First you send `answerer` a message yourself from Mission Control. Then `asker` finds its peer, asks it to sum up the starter's `package.json`, waits for the reply and quotes it back to you.
+Open two Claude Code agents, `asker` and `answerer`, side by side. First you send `answerer` a message yourself from its Activity view. Then `asker` finds its peer, asks it to sum up the starter's `package.json`, waits for the reply and quotes it back to you.
 
 ::: glance
 - **Time**
@@ -9,11 +9,11 @@ Open two Claude Code agents, `asker` and `answerer`, side by side. First you sen
 - **Level** Starter
 :::
 
-**You'll learn:** how to check the event-bridge plugin with `/plugin`, open two Claude Code terminals side by side, send a peer a message from Mission Control with **Dispatch as User**, have one agent use the four `quay_*` tools (`quay_list_agents`, `quay_send_message` with a wait for the reply, `quay_get_agent_status` and `quay_broadcast`), and read Mission Control's trail and toasts.
+**You'll learn:** how to check the event-bridge plugin with `/plugin`, open two Claude Code terminals side by side, send a peer a message yourself from the companion's **Activity** view, have one agent use the four `quay_*` tools (`quay_list_agents`, `quay_send_message` with a wait for the reply, `quay_get_agent_status` and `quay_broadcast`), and read each agent's messages in its Activity view and in the toasts.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. Along the bottom of the stage, the **status strip** shows the status of the terminal that has focus. When the stage is split, each pane also has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes a letter key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and `Ctrl+Shift+B O` is the letter o, never the digit zero. Holding Shift on that second key makes no difference to a letter. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane or the Quay field its line goes into: copy the line with the box's copy button, click into that pane or field, press `Ctrl+V` to paste it, then press Enter to send it, unless the step says which button to click.
 
-This tutorial is about agents messaging each other over Quay's A2A bus. A **peer** is an agent terminal on the bus: here, `asker` and `answerer`. A PowerShell terminal is not a peer, so no message reaches it. **Mission Control** is the panel where you send a peer a message yourself and read the **trail**, the list of every message on the bus, newest first. The starter project is a small, finished package, `hello-a2a`, which is only there to give `answerer` something real to read. Nothing in it gets built or changed.
+This tutorial is about agents messaging each other over Quay's A2A bus. A **peer** is an agent terminal on the bus: here, `asker` and `answerer`. A PowerShell terminal is not a peer, so no message reaches it. The **companion**, the panel on the window's right edge, shows what the selected terminal is working on. Its **Activity** view lists that terminal's tool calls and the messages it sent and got on the bus, oldest first, and has a message strip at its foot where you send it a message yourself. The starter project is a small, finished package, `hello-a2a`, which is only there to give `answerer` something real to read. Nothing in it gets built or changed.
 
 ::: before
 ## Before you start
@@ -156,41 +156,41 @@ Do step 2's fix for the plugin hint, but in `answerer`: `/reload-plugins` goes i
 ## 4. Send answerer a message yourself
 
 ::: do
-1. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`. Mission Control opens over the stage.
-2. Scroll down inside Mission Control to **Dispatch Prompt / Handoff Task**, which sits below the first screenful. Under it, tick **Dispatch as User**. **From Agent** greys out and reads **You**.
-3. Check that **To Agent** shows `answerer`. If it doesn't, choose `answerer` there.
-4. Paste the line below into the message box under them, then click **Dispatch Task**. With **Dispatch as User**, the message reaches `answerer` exactly as if you had typed it into its pane. A message from another agent arrives with a `[Peer agent (<name>)]:` prefix instead, as step 6 shows.
-5. Watch the **Live A2A Message Trail** below the form until the new entry reads **Completed**.
+1. Click into `answerer`'s pane on the right, so it is the selected terminal, then press `Ctrl+Shift+B M`. The companion on the window's right edge opens its **Activity** view for `answerer`. You can also pick **Activity** in the companion's view switch.
+2. Check that the message strip at the foot of the view reads `Send answerer a task`.
+3. Paste the line below into the message strip, then press Enter or click **Send**. Quay always sends it as you, so it reaches `answerer` exactly as if you had typed it into its pane. A message from another agent arrives with a `[Peer agent (<name>)]:` prefix instead, as step 6 shows.
+4. Watch the new entry in the Activity view, **From You**, until its status reads `completed` and `answerer`'s reply shows under it.
 :::
 
-::: paste Mission Control
+::: paste Activity
 ```text
 Say hello in one short sentence, then tell me the name of the folder you are working in.
 ```
 :::
 
 ::: see
-![Mission Control scrolled down to the Dispatch Prompt / Handoff Task form, with Dispatch as User ticked, From Agent reading You and To Agent on answerer; below it the trail holds one entry, You → answerer tagged as user and Completed, with answerer's greeting naming the hello-a2a folder under Reply.](./04-dispatch-as-user.webp)
+![The companion's Activity view for answerer: one entry, From You, with the line you sent and the status completed, and answerer's greeting naming the hello-a2a folder under it; the message strip at the foot reads Send answerer a task.](./04-dispatch-as-user.webp)
 :::
 
 ::: must
-- The entry reads `You → answerer` and carries the **as user** tag.
-- Its status is **Completed**.
-- Under **Reply**, `answerer` names `hello-a2a`, the folder you unzipped the starter into.
+- The Activity view shows an entry that reads `From You`, with the line you sent.
+- Its status is `completed`.
+- Under it, `answerer`'s reply names `hello-a2a`, the folder you unzipped the starter into.
 :::
 
 ::: may
 - The greeting's wording.
-- The times on the entry, including how long it took.
+- The time on the entry.
+- Whether the view also lists a tool call `answerer` made to find its folder.
 - Whether you saw the toast in the top right as the message left, `You → answerer` marked **DISPATCHED** with a **View Terminal** button. It leaves after a few seconds.
 :::
 
-::: ifnot the trail lists older entries below yours
-Mission Control's trail shows earlier messages on the bus too, from before this tutorial. Your entry is the newest, at the top. In step 9, read only the three newest entries.
+::: ifnot the message strip names asker or pwsh
+The Activity view shows the selected terminal, and it was not `answerer`. Click into `answerer`'s pane on the right and press `Ctrl+Shift+B M` again, then paste the line into the message strip.
 :::
 
-::: ifnot the entry stays Dispatched for more than a minute
-Press `Esc` to close Mission Control and look at `answerer`'s pane. If it shows the plugin hint, do step 2's fix for it in `answerer`, then open Mission Control and dispatch the line again.
+::: ifnot the entry stays dispatched for more than a minute
+Look at `answerer`'s pane. If it shows the plugin hint, do step 2's fix for it in `answerer`, then press `Ctrl+Shift+B M` and send the line from the message strip again.
 :::
 
 :::
@@ -200,8 +200,7 @@ Press `Esc` to close Mission Control and look at `answerer`'s pane. If it shows 
 ## 5. asker finds its peers
 
 ::: do
-1. Press `Esc` to close Mission Control.
-2. Click into the `asker` pane on the left.
+1. Click into the `asker` pane on the left. The companion follows it, so it now shows `asker`.
 :::
 
 ::: paste `asker`
@@ -316,7 +315,7 @@ Call quay_broadcast with the text: Hello, A2A is working. Then tell me it was se
 ::: must
 - `answerer`'s pane shows `[Broadcast Notice]: Hello, A2A is working.`
 - `asker`'s own pane does not: a broadcast reaches every other peer, never its sender.
-- `asker` says the notice reached `answerer`. A broadcast never waits for replies, so whatever `answerer` says back stays in its own pane and in the trail.
+- `asker` says the notice reached `answerer`. A broadcast never waits for replies, so whatever `answerer` says back stays in its own pane.
 :::
 
 ::: may
@@ -332,9 +331,9 @@ Call quay_broadcast with the text: Hello, A2A is working. Then tell me it was se
 ## 9. Check it worked
 
 ::: do
-1. Open Mission Control again, with its icon or `Ctrl+Shift+B M`, and scroll down to the **Live A2A Message Trail**. The trail scrolls on its own inside Mission Control and shows about two entries at a time: scroll the trail to see the third.
-2. Press `Esc` to close it.
-3. Press `Ctrl+Shift+B O` to move focus to the right pane, then `Ctrl+Shift+B 1` to show the PowerShell terminal there. `answerer` keeps running behind it.
+1. Click into `asker`'s pane and press `Ctrl+Shift+B M`. The Activity view lists `asker`'s tool calls and the messages it sent, oldest first, so the newest is at the bottom. Scroll the view to read them all.
+2. Click into `answerer`'s pane and press `Ctrl+Shift+B M` again. Its Activity view lists the messages it got.
+3. With focus on the right pane, press `Ctrl+Shift+B 1` to show the PowerShell terminal there. `answerer` keeps running behind it.
 :::
 
 ::: paste PowerShell pane
@@ -344,28 +343,30 @@ git status --short
 :::
 
 ::: see
-![Mission Control's trail of three, showing its two newest entries: asker → answerer tagged Broadcast, Completed, with answerer's acknowledgement under Answer, and below it asker → answerer with the package.json message, Completed.](./09-message-trail.webp)
+![asker's Activity view in the companion: its quay tool calls and two To answerer entries, the package.json message completed with answerer's reply naming hello-a2a and 0.3.0 under it, then the broadcast Hello, A2A is working. at the bottom.](./09-message-trail.webp)
 :::
 
 ::: must
-- The trail lists three entries, newest first: `asker → answerer` tagged **Broadcast**, then `asker → answerer`, then `You → answerer` tagged **as user**.
-- The untagged `asker → answerer` entry is **Completed**, and its **Reply** names `hello-a2a` and `0.3.0`.
-- `You → answerer` is **Completed**, with a **Reply**.
+- `asker`'s Activity view lists two `To answerer` entries, oldest first: the `package.json` message, then the broadcast `Hello, A2A is working.`
+- The `package.json` entry is `completed`, and the reply under it names `hello-a2a` and `0.3.0`.
+- `answerer`'s Activity view lists `From You` first, `completed` with a reply under it, then two `From asker` entries.
 - `git status --short` prints nothing.
 :::
 
 ::: may
 - The times, and the wording of each reply.
-- Whether the broadcast entry is **Completed** with `answerer`'s acknowledgement under **Answer**, or still **Dispatched** while `answerer` answers.
+- Which tool calls each view lists between the messages.
+- Whether the broadcast entry is `completed` with `answerer`'s acknowledgement under it, or still `dispatched` while `answerer` answers.
 - The folder in the PowerShell prompt, which is wherever you unzipped the starter.
 :::
 
 ::: ifnot git status lists a file
-An agent changed a file it was told to leave alone. Paste `git checkout -- .` into the PowerShell pane to put the starter back, then paste `git status --short` again. The messaging still worked; the trail is the proof.
+An agent changed a file it was told to leave alone. Paste `git checkout -- .` into the PowerShell pane to put the starter back, then paste `git status --short` again. The messaging still worked; the Activity views are the proof.
 :::
 
 ::: done
-- ✅ Mission Control's trail shows all three messages, and the two sent by you and by `asker` with a wait are **Completed** with a **Reply**.
+- ✅ `asker`'s Activity view shows both messages it sent to `answerer`, and the `package.json` one is `completed` with a reply naming `hello-a2a` and `0.3.0`.
+- ✅ `answerer`'s Activity view shows your message, `From You`, `completed` with a reply.
 - ✅ `asker`'s pane quotes a reply naming `hello-a2a` and `0.3.0`.
 - ✅ `answerer`'s pane shows `[Broadcast Notice]: Hello, A2A is working.`
 - ✅ `git status --short` printed nothing.

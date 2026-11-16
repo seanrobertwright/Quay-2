@@ -246,14 +246,14 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
-| 1 | [Hello, A2A](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
+| 1 | [Hello, A2A](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/hello-a2a/) | Send an agent a message from its Activity view, then watch one agent ask another a question and wait for the reply. |
 | 2 | [Contract-first handoff](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/contract-first-handoff/) | Have two agents agree a notes app's API over the A2A bus before either builds its half. |
 | 3 | [Hands-off TDD relay](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
 | 4 | [Review gate before commit](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/review-gate/) | Have a reviewer agent check every change to a rate limiter until its reply ends in `APPROVED`. |
 | 5 | [Fan-out / fan-in](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/fan-out-fan-in/) | Have a lead agent split a static-site generator across three workers at once, then wire their parts together. |
 | 6 | [Long jobs: fire, then poll](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
 | 7 | [Broadcast coordination](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/broadcast/) | Have a release captain broadcast a code freeze, hold it through a failed release and lift it when the release passes. |
-| 8 | [Mission Control operator run](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/mission-control/) | Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI. |
+| 8 | [Operator run](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/mission-control/) | Lead three agents yourself from their Activity views as they plan, build and verify a text-stats CLI. |
 | 9 | [Docs that can't lie](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/docs-that-cant-lie/) | Have three agents rewrite a broken README until every code sample in it runs as written. |
 | 10 | [Second opinion from Codex](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/second-opinion-codex/) | Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down. |
 <!-- tutorials:end -->

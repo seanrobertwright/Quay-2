@@ -9,7 +9,7 @@ Two Claude Code agents build a notes app, and this time they agree the API betwe
 - **Level** Intermediate
 :::
 
-**You'll learn:** having one agent own a contract and another negotiate it over the bus, the difference between waiting for a reply and sending without waiting, fixed last lines that make an agent's reply checkable, and reading a negotiation back in Mission Control's message trail.
+**You'll learn:** having one agent own a contract and another negotiate it over the bus, the difference between waiting for a reply and sending without waiting, fixed last lines that make an agent's reply checkable, and reading a negotiation back in an agent's Activity view.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status badge (such as `Ready` or `Working`). The pane with **focus** has a lit border, and what you type or paste goes into it. When a step gives you a line to paste into a pane, click into that pane, paste the line and press Enter to run or send it. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed.
 
@@ -17,7 +17,7 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 
 - `backend-agent` owns the contract. Only it writes `shared/types.ts`.
 - `frontend-agent` never edits the contract. It asks for it, and asks for changes, with `quay_send_message` and `wait_for_reply: true`. Each answer comes back as a reply, because each one is a small edit that fits inside the 60 seconds a reply waits.
-- Each contract reply ends with a fixed last line, `CONTRACT v1 READY`, then `CONTRACT v2 READY`, so you can check the round in Mission Control.
+- Each contract reply ends with a fixed last line, `CONTRACT v1 READY`, then `CONTRACT v2 READY`, so you can check the round in `frontend-agent`'s Activity view.
 - When the contract covers what the UI needs, `frontend-agent` sends `CONTRACT AGREED. Build server/ against shared/types.ts.` with `wait_for_reply: false`. Building the API takes minutes, far past 60 seconds, so nobody waits for it. That message is the handoff.
 - If a reply ever runs past 60 seconds, the contract is a file anyway: `frontend-agent` polls `quay_get_agent_status` until it reports `backend-agent` as `idle`, then reads `shared/types.ts`. That is the file mailbox, used here only as the fallback.
 
@@ -198,33 +198,33 @@ Paste into `frontend-agent`: `Undo your own edit to shared/types.ts, so it is ex
 
 ::: step
 
-## 5. Read the negotiation in Mission Control
+## 5. Read the negotiation in Activity
 
-The Live A2A Message Trail records every message passed between agents. Each entry shows the message's sender, recipient and status (`Dispatched` while being processed, `Completed` when finished). When the sender waited (`wait_for_reply: true`), the recipient's return is labelled **Reply**; when the sender did not wait (`wait_for_reply: false`), the response is labelled **Answer**.
+Each agent's **Activity** view, in the companion on the window's right, lists the messages it sent (`To <peer>`) and got (`From <peer>`), mixed in with its tool calls. Each message shows its status, `dispatched` while the recipient works on it and `completed` when it has finished, and the recipient's response under it once one comes. A response shows the same way whether the sender waited for it or not.
 
 ::: do
-1. Press `Ctrl+Shift+B M` to open Mission Control, or click the **Agents** icon, the robot on the bar down the window's left edge, then **Mission Control**.
-2. Scroll down to **Live A2A Message Trail**. The newest entry is at the top: the hand-off, then the change, then the first request.
-3. Press `Esc` to close Mission Control. The agents keep working behind it.
+1. Make sure `frontend-agent` is still the focused pane, so it is the selected terminal.
+2. Press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch. The companion shows `frontend-agent`'s Activity view.
+3. Scroll the view to read every entry. The oldest is at the top: the first request, then the change, then the hand-off at the bottom. The agents keep working while you read.
 :::
 
 ::: see
-![Mission Control, scrolled down to the Live A2A Message Trail (3). The top entry, frontend-agent to backend-agent, reads CONTRACT AGREED. Build server/ against shared/types.ts. and shows Dispatched. Below it, a Completed entry asks for the pinning changes to shared/types.ts.](./05-message-trail.webp)
+![frontend-agent's Activity view in the companion, scrolled to the bottom. The last entry, To backend-agent, reads CONTRACT AGREED. Build server/ against shared/types.ts. and shows dispatched. Above it, a completed To backend-agent entry asks for the pinning changes to shared/types.ts, with backend-agent's reply ending CONTRACT v2 READY under it.](./05-message-trail.webp)
 :::
 
 ::: must
-- The trail heading counts at least two messages.
-- Below the top entry, one Completed entry per contract round, each with a **Reply** ending in its version: `CONTRACT v2 READY`, then `CONTRACT v1 READY`. Scroll the trail to read them.
-- The top entry contains `CONTRACT AGREED` and shows Dispatched while `backend-agent` builds. When it finishes, the entry shows Completed and an **Answer**, not a Reply.
+- At least two `To backend-agent` entries.
+- Above the last one, one `completed` entry per contract round, each with `backend-agent`'s reply under it ending in its version: `CONTRACT v1 READY`, then `CONTRACT v2 READY`. Scroll the view to read them.
+- The last `To backend-agent` entry contains `CONTRACT AGREED` and shows `dispatched` while `backend-agent` builds. When it finishes, the entry shows `completed`, with `backend-agent`'s answer under it.
 :::
 
 ::: may
-- The wording of each request and reply, and the timestamps.
+- The wording of each request and reply, the timestamps, and the tool calls between the messages.
 - The number of rounds: a third (`CONTRACT v3 READY`) if `frontend-agent` asked twice, or only v1 if it asked for no change.
 :::
 
-::: ifnot the last entry already says Completed
-`backend-agent` finished building before you looked. Its answer in the trail is its build summary.
+::: ifnot the last entry already says completed
+`backend-agent` finished building before you looked. The answer under the entry is its build summary.
 :::
 
 :::
@@ -340,7 +340,7 @@ The build in step 7 didn't produce the page. Look at the build output above `Lis
 ::: done
 - ✅ A note pinned in the browser is listed first after a refresh, and a deleted note stays gone.
 - ✅ The `app` pane's log showed no 4xx or 5xx request on the first `npm start`.
-- ✅ Mission Control's trail shows the contract request, the change and `CONTRACT AGREED`, all from `frontend-agent` to `backend-agent`.
+- ✅ `frontend-agent`'s Activity view shows the contract request, the change and `CONTRACT AGREED`, each a `To backend-agent` entry.
 - ✅ With the server stopped (`Ctrl+C` in `app`), `npm test` and `npm run typecheck` pass, and `git status --short` lists changes only under `shared/`, `server/` and `web/`.
 :::
 
