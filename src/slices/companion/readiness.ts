@@ -240,3 +240,13 @@ export function mergeArgs(
     deleteBranch: !pr.isCrossRepository && (edits.deleteBranch ?? true),
   };
 }
+
+/** What `merge_github_pr` reports once the pull request has merged. */
+export interface MergeOutcome {
+  branchDeleted: boolean;
+  branchError: string | null;
+}
+
+/** The warning a merge that went through still carries: Delete branch failing, or null. */
+export const mergeWarning = (outcome: MergeOutcome): string | null =>
+  outcome.branchError ? `Merged, but Delete branch failed: ${outcome.branchError}` : null;

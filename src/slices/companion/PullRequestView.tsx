@@ -8,6 +8,8 @@ import {
   MERGE_METHODS,
   mergeArgs,
   mergeMethodLabel,
+  mergeWarning,
+  type MergeOutcome,
   readiness,
   readinessCells,
   type ReadinessCell,
@@ -19,16 +21,6 @@ import { CellDetail } from "./CellDetail.tsx";
 import { usePopupLayer } from "../overlay/useOverlay.ts";
 import { errorText, usePullRequestReadiness, type PullRequestLocation } from "./usePullRequestReadiness.ts";
 import { PRIMARY, SECONDARY } from "./buttonStyles.ts";
-
-/** What `merge_github_pr` reports once the pull request has merged. */
-export interface MergeOutcome {
-  branchDeleted: boolean;
-  branchError: string | null;
-}
-
-/** The warning a merge that went through still carries: Delete branch failing, or null. */
-export const mergeWarning = (outcome: MergeOutcome): string | null =>
-  outcome.branchError ? `Merged, but Delete branch failed: ${outcome.branchError}` : null;
 
 const PILL: Record<PullRequestState | "DRAFT", { label: string; className: string }> = {
   OPEN: { label: "Open", className: "bg-[#238636]" },
