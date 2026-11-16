@@ -65,10 +65,16 @@ export type PullRequestAsk =
   | { kind: "confirm-merge"; method: MergeMethod }
   | { kind: "reload" };
 
+/** A pull request ask numbered by `seq`, so the same ask sent twice is acted on twice. */
+export type NumberedPullRequestAsk = PullRequestAsk & { seq: number };
+
+/** The confirm step asked open on `method`, numbered by `seq`. */
+type ConfirmAsk = { method: MergeMethod; seq: number };
+
 interface PullRequestViewProps extends PullRequestLocation {
   lens?: PullRequestLens | null;
   /** An ask to act on once the pull request is read, numbered by `seq`. */
-  ask?: (PullRequestAsk & { seq: number }) | null;
+  ask?: NumberedPullRequestAsk | null;
   /** Called with the ask's `seq` once the view has acted on it. */
   onAskTaken?: (seq: number) => void;
 }
@@ -106,7 +112,7 @@ const PullRequestBody = ({
   error: string | null;
   location: PullRequestLocation;
   lens: PullRequestLens | null;
-  ask: (PullRequestAsk & { seq: number }) | null;
+  ask: NumberedPullRequestAsk | null;
   onAskTaken?: (seq: number) => void;
   onChanged: () => void;
 }) => {
@@ -114,7 +120,7 @@ const PullRequestBody = ({
   const [open, setOpen] = useState<ReadinessCellId | null>(arrival);
   // The latest Comment ask, which puts focus in the comment box, and the latest confirm-step ask.
   const [commentFocus, setCommentFocus] = useState<number | null>(null);
-  const [confirmAsk, setConfirmAsk] = useState<{ method: MergeMethod; seq: number } | null>(null);
+  const [confirmAsk, setConfirmAsk] = useState<ConfirmAsk | null>(null);
   const detailId = useId();
   useEffect(() => {
     if (!ask) return;
@@ -220,7 +226,7 @@ const ReadinessCard = ({
   onChanged: () => void;
   open: ReadinessCellId | null;
   detailId: string;
-  confirmAsk: { method: MergeMethod; seq: number } | null;
+  confirmAsk: ConfirmAsk | null;
   onToggle: (cell: ReadinessCellId) => void;
 }) => {
   const verdict = readiness(pr);
@@ -345,7 +351,7 @@ const MergeControl = ({
   pr: PullRequestReadiness;
   location: PullRequestLocation;
   enabled: boolean;
-  confirmAsk: { method: MergeMethod; seq: number } | null;
+  confirmAsk: ConfirmAsk | null;
   onChanged: () => void;
 }) => {
   const [method, setMethod] = useState<MergeMethod>(DEFAULT_MERGE_METHOD);

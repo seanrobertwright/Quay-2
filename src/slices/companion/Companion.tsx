@@ -12,7 +12,7 @@ import {
 import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
-import { PullRequestView, type PullRequestAsk } from "./PullRequestView.tsx";
+import { PullRequestView, type NumberedPullRequestAsk, type PullRequestAsk } from "./PullRequestView.tsx";
 import { TicketView, type TicketActions } from "./TicketView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
@@ -81,7 +81,7 @@ export interface CompanionContext {
   /** The Praxis Builder's inspector while its stage tab is in front, or null. */
   inspector: CompanionInspector | null;
   /** What the latest request asked of the pull request view, until the view takes it, or null. */
-  pullRequestAsk: (PullRequestAsk & { seq: number }) | null;
+  pullRequestAsk: NumberedPullRequestAsk | null;
   /** Called by the pull request view once it has acted on the ask numbered `seq`. */
   takePullRequestAsk: (seq: number) => void;
   /** Shows `view` for the terminal, as the view switch does. */
@@ -329,7 +329,7 @@ export const Companion = ({
   const [focus, setFocus] = useState<(ActivityFocus & { terminalId: string }) | null>(null);
   // What the latest request asked of the pull request view, while its terminal stays selected and
   // until the view takes it, so a view that comes back later does not act on it again.
-  const [prAsk, setPrAsk] = useState<(PullRequestAsk & { seq: number; terminalId: string }) | null>(null);
+  const [prAsk, setPrAsk] = useState<(NumberedPullRequestAsk & { terminalId: string }) | null>(null);
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal

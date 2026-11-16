@@ -1,4 +1,5 @@
 import type { MergeMethod, MergeStateStatus, PullRequestReadiness } from "../github/types.ts";
+import type { PullRequestLocation } from "./usePullRequestReadiness.ts";
 
 /** The colour family the readiness card's headline takes. */
 export type ReadinessTone = "ready" | "failing" | "blocked" | "pending" | "merged" | "closed";
@@ -222,7 +223,7 @@ export interface MergeArgs {
  * on, except for a fork's branch, which is not Quay's to delete. `edits` are the confirm step's.
  */
 export function mergeArgs(
-  location: { repoPath: string; repo: string | null; number: number },
+  location: PullRequestLocation,
   pr: Pick<PullRequestReadiness, "number" | "title" | "body" | "headRefName" | "headRefOid" | "isCrossRepository">,
   method: MergeMethod,
   edits: { title?: string; message?: string; deleteBranch?: boolean } = {},
