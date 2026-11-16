@@ -1,7 +1,7 @@
 // What the pie's first ring holds on each surface. Expected values are the spec's stroke table:
 // N, E, S and W keep one command everywhere; SE, SW and NW act on the pointer target; a command
-// that does not apply leaves its wedge empty (null), and the others never shift. NE (Merge) and the
-// companion's pull request wedges come with the Merge stroke ticket, so they stay empty here.
+// that does not apply leaves its wedge empty (null), and the others never shift. NE (Merge) is
+// empty in these first tests, which have no mergeable pull request; Merge's own tests follow.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pieFolder, pieRing, pieTerminalId, type PieTarget } from "./pieRing.ts";
@@ -81,7 +81,8 @@ test("the folder a stroke acts on: a row's; none off a row", () => {
 });
 
 // The second ring, from the spec's stroke table: Next wait, Split, Palette and New term are
-// parents of three slices each, on every surface; Merge's slot (NE) waits for the Merge ticket.
+// parents of three slices each, on every surface; Merge (NE), a parent only with a mergeable pull
+// request, has its own test below.
 const slices = (ring: ReturnType<typeof pieRing>) =>
   Object.fromEntries(Object.entries(ring).flatMap(([wedge, c]) => (c?.slices ? [[wedge, c.slices.map((s) => s && [s.label, s.action])]] : [])));
 
@@ -109,4 +110,46 @@ test("Palette's slices are copies of the three most recent palette commands, dim
   ]);
   const four = [...recent, { id: "a", title: "A" }, { id: "b", title: "B" }];
   assert.deepEqual(pieRing(target, four).S?.slices?.map((s) => (s?.action === "palette-command" ? s.commandId : null)), ["layout-grid", "open-topos", "a"]);
+});
+
+// NE is Merge (#650): it acts on the selected terminal's pull request on every surface, so it shows
+// wherever that pull request can merge, and stays empty on the empty stage and without one.
+const MERGEABLE = true;
+
+test("with a mergeable pull request, NE is Merge on every surface but the empty stage", () => {
+  const targets: PieTarget[] = [
+    { surface: "terminal", terminalId: "t1", zoomable: true },
+    { surface: "panel", row: { kind: "terminal", terminalId: "t1", folder: "C:\r" } },
+    { surface: "panel", row: null },
+    { surface: "companion" },
+    { surface: "companion-pr" },
+    { surface: "other" },
+  ];
+  for (const target of targets) {
+    const ne = pieRing(target, [], MERGEABLE).NE;
+    assert.deepEqual(ne && [ne.label, ne.action, ne.letter], ["Merge", "merge", "m"], target.surface);
+  }
+  assert.equal(pieRing({ surface: "empty-stage" }, [], MERGEABLE).NE, null);
+});
+
+test("with no mergeable pull request, NE is empty everywhere", () => {
+  assert.equal(pieRing({ surface: "terminal", terminalId: "t1", zoomable: true }, [], false).NE, null);
+  assert.equal(pieRing({ surface: "companion-pr" }).NE, null);
+});
+
+test("Merge's second ring: Squash, Commit and Rebase", () => {
+  const ne = pieRing({ surface: "companion" }, [], MERGEABLE).NE;
+  assert.deepEqual(ne?.slices?.map((s) => s && [s.label, s.action]), [
+    ["Squash", "merge-squash"],
+    ["Commit", "merge-commit"],
+    ["Rebase", "merge-rebase"],
+  ]);
+});
+
+test("over the companion's pull request: SE opens the diff lens, SW the comment box, NW Checks", () => {
+  assert.deepEqual(labels({ surface: "companion-pr" }), { ...FIXED, SE: "Diff lens", SW: "Comment", NW: "Checks" });
+  const ring = pieRing({ surface: "companion-pr" }, [], MERGEABLE);
+  assert.deepEqual([ring.SE?.action, ring.SW?.action, ring.NW?.action], ["diff-lens", "comment", "checks"]);
+  const letters = Object.values(ring).flatMap((c) => (c ? [c.letter] : []));
+  assert.equal(new Set(letters).size, letters.length);
 });
