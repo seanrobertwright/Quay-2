@@ -11,10 +11,10 @@ const NO_TEXT_INPUTS = ["button", "checkbox", "color", "file", "hidden", "image"
   .join("");
 
 /** Where the native menu's Cut, Copy, Paste, Select all and spelling apply. */
-const TEXT_FIELD = `input${NO_TEXT_INPUTS}, textarea, [contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i]`;
+export const TEXT_FIELD = `input${NO_TEXT_INPUTS}, textarea, [contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i]`;
 
 /** The element an event target is, or the element a text node sits in. */
-function elementOf(target: EventTarget | null): Element | null {
+export function elementOf(target: EventTarget | null): Element | null {
   if (target instanceof Element) return target;
   return target instanceof Node ? target.parentElement : null;
 }
@@ -23,7 +23,7 @@ function elementOf(target: EventTarget | null): Element | null {
  * The terminal body: xterm's root. Its hidden textarea only takes keys, so it is no text field,
  * and the native menu never shows there.
  */
-const TERMINAL_BODY = ".xterm";
+export const TERMINAL_BODY = ".xterm";
 
 /**
  * Whether a right-click keeps the native menu: in a text field, or, in a dev build, with Shift
