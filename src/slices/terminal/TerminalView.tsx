@@ -162,14 +162,16 @@ export const TerminalView: FC<TerminalViewProps> = ({
     closeTerminal: onCloseTerminal,
   };
 
-  // The terminal menu on a Projects panel row asks this pane to redraw or search (#508).
+  // The terminal menu on a Projects panel row asks this pane to redraw or search (#508), and
+  // the pie's Find and Rename ask it to search or to open the header's rename box (#648).
   useEffect(
     () =>
       onTerminalRequest(terminalId, (request) => {
         if (request === "redraw") repaintTerminal();
+        else if (request === "rename") startRename();
         else setIsSearchOpen(true);
       }),
-    [terminalId, repaintTerminal]
+    [terminalId, repaintTerminal, startRename]
   );
 
   // Hotkey listener for Ctrl+F when pane is focused

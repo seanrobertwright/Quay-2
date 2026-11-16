@@ -10,7 +10,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 const { TerminalRow } = await import("./TerminalRow.tsx");
-const { onTerminalRequest } = await import("../terminal/terminalRequests.ts");
+const terminalRequests = await import("../terminal/terminalRequests.ts");
+const { onTerminalRequest } = terminalRequests;
 type Terminal = import("../terminal/types.ts").TerminalInfo;
 
 const TERMINAL: Terminal = {
@@ -202,4 +203,18 @@ test("Redraw and Find… ask the terminal's own pane, and Find shows the termina
   } finally {
     stop.forEach((s) => s());
   }
+});
+
+test("the pie's Rename on a row opens that row's rename box, and says no row took it when none is drawn", () => {
+  const { requestTerminal } = terminalRequests;
+  assert.equal(requestTerminal("t1", "rename", "row"), false, "no row drawn yet");
+  const row = renderRow();
+  assert.equal(requestTerminal("t2", "rename", "row"), false, "another terminal's row");
+  assert.equal(row.querySelector("input"), null);
+  let taken = false;
+  act(() => {
+    taken = requestTerminal("t1", "rename", "row");
+  });
+  assert.equal(taken, true);
+  assert.equal(row.querySelector<HTMLInputElement>("input")?.value, "claude-1");
 });

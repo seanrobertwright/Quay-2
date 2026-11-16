@@ -1,17 +1,19 @@
 // What a surface needs to offer the terminal menu (#508): the menu's open state, the inline
 // rename box's state, and the element's right-click and Shift+F10 / Menu key handlers. A Projects panel
 // row and a pane header both use it, so the two open the menu the same way.
-import { useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useContextMenu } from "../overlay/useContextMenu.ts";
 
 export function useTerminalMenu(terminalId: string, onRename?: (newName: string) => void) {
   const menu = useContextMenu<string>();
   const [isRenaming, setIsRenaming] = useState(false);
+  // Stable, so a pane or row can subscribe it to rename requests once.
+  const startRename = useCallback(() => setIsRenaming(true), []);
 
   return {
     menu,
     isRenaming,
-    startRename: () => setIsRenaming(true),
+    startRename,
     /** The rename box's `onDone`: saves a changed name and closes the box. */
     renameDone: (newName: string | null) => {
       if (newName !== null) onRename?.(newName);
