@@ -1,5 +1,5 @@
-// The Merge undo window as a hook any Merge button can start: the pie's Merge stroke today, the
-// lane's Merge once the Projects pipeline has one. It holds the window (mergeUndo.ts), ticks it
+// The Merge undo window as a hook any Merge button can start: the pie's Merge stroke and the
+// Projects panel lane's Merge. It holds the window (mergeUndo.ts), ticks it
 // each second, and when it ends merges through `merge_github_pr` with the pull request view's
 // defaults (readiness.ts `mergeArgs`). The toast that shows it is `MergeUndoToast`.
 import { useCallback, useEffect, useRef, useState } from "react";

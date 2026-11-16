@@ -1,8 +1,11 @@
-import { useState, useId, type MouseEvent, type KeyboardEvent } from "react";
+import { Fragment, useState, useId, type MouseEvent, type KeyboardEvent } from "react";
 import type { PermissionMode, TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
 import { TerminalRow } from "./TerminalRow.tsx";
+import { LaneView, PipelineSection, type ProjectsPipeline } from "./TicketPipeline.tsx";
+
+export type { ProjectsPipeline } from "./TicketPipeline.tsx";
 import {
   FolderGit2,
   Plus,
@@ -53,6 +56,8 @@ interface ProjectsPanelProps {
   onRelaunchTerminal?: (id: string) => void;
   /** Switches a terminal between Skip and Ask, from the mode it is in now. */
   onToggleTerminalAsk?: (id: string, currentMode: PermissionMode) => void;
+  /** The ticket pipeline: a lane on each terminal row that holds a ticket, and the lists under the terminals. */
+  pipeline?: ProjectsPipeline | null;
 }
 
 /** The row a Projects panel menu is open for: a project's row, or one of its worktrees' rows. */
@@ -90,6 +95,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
   onOpenTopos,
   onOpenTokenSpend,
   onOpenInVsCode,
+  pipeline = null,
 }) => {
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   // Worktree lists start collapsed; an entry of `false` means the user expanded it
@@ -154,6 +160,23 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
       rowMenu.onKeyDown(e, target);
     }
   };
+
+  /** A terminal's row, numbered across all open terminals, with its lane when it holds a ticket. */
+  const renderTerminal = (term: TerminalInfo) => (
+    <Fragment key={term.id}>
+      <TerminalRow
+        index={terminals.findIndex((t) => t.id === term.id) + 1}
+        terminal={term}
+        isActive={term.id === activeTerminalId}
+        onSelect={() => onSelectTerminal(term.id)}
+        onClose={() => onCloseTerminal(term.id)}
+        onRename={onRenameTerminal}
+        onToggleAsk={onToggleTerminalAsk}
+        onRelaunch={onRelaunchTerminal}
+      />
+      {pipeline && <LaneFor terminal={term} isActive={term.id === activeTerminalId} onSelect={() => onSelectTerminal(term.id)} pipeline={pipeline} />}
+    </Fragment>
+  );
 
   const renderRowMenu = () => {
     const open = rowMenu.open;
@@ -411,25 +434,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                         <span>Launch terminal...</span>
                       </button>
                     ) : (
-                      projectTerminals.map((term) => {
-                        // Global sequential index across all open terminals
-                        const globalIndex = terminals.findIndex((t) => t.id === term.id) + 1;
-                        return (
-                          <TerminalRow
-                            key={term.id}
-                            index={globalIndex}
-                            terminal={term}
-                            isActive={term.id === activeTerminalId}
-                            onSelect={() => {
-                              onSelectTerminal(term.id);
-                            }}
-                            onClose={() => onCloseTerminal(term.id)}
-                            onRename={onRenameTerminal}
-                            onToggleAsk={onToggleTerminalAsk}
-                            onRelaunch={onRelaunchTerminal}
-                          />
-                        );
-                      })
+                      projectTerminals.map(renderTerminal)
                     )}
 
                     {/* Secondary Git Worktrees under this repo */}
@@ -574,24 +579,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                                 {/* Active terminals inside this worktree */}
                                 {wtTerminals.length > 0 && (
                                   <div className="ml-3 pl-2 border-l border-[#30363d]/60 space-y-1 my-1 pr-1">
-                                    {wtTerminals.map((term) => {
-                                      const globalIndex = terminals.findIndex((t) => t.id === term.id) + 1;
-                                      return (
-                                        <TerminalRow
-                                          key={term.id}
-                                          index={globalIndex}
-                                          terminal={term}
-                                          isActive={term.id === activeTerminalId}
-                                          onSelect={() => {
-                                            onSelectTerminal(term.id);
-                                          }}
-                                          onClose={() => onCloseTerminal(term.id)}
-                                          onRename={onRenameTerminal}
-                                          onToggleAsk={onToggleTerminalAsk}
-                                          onRelaunch={onRelaunchTerminal}
-                                        />
-                                      );
-                                    })}
+                                    {wtTerminals.map(renderTerminal)}
                                   </div>
                                 )}
                               </div>
@@ -601,6 +589,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                       )}
                       </div>
                     )}
+                    {pipeline && <PipelineSection projectPath={proj.path} pipeline={pipeline} />}
                   </div>
                 )}
               </div>
@@ -614,22 +603,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                 Other Terminals
               </div>
               <div className="ml-3 pl-2 border-l border-[#30363d]/60 space-y-1 my-1 pr-1">
-                {orphanTerminals.map((term) => {
-                  const globalIndex = terminals.findIndex((t) => t.id === term.id) + 1;
-                  return (
-                    <TerminalRow
-                      key={term.id}
-                      index={globalIndex}
-                      terminal={term}
-                      isActive={term.id === activeTerminalId}
-                      onSelect={() => onSelectTerminal(term.id)}
-                      onClose={() => onCloseTerminal(term.id)}
-                      onRename={onRenameTerminal}
-                      onToggleAsk={onToggleTerminalAsk}
-                      onRelaunch={onRelaunchTerminal}
-                    />
-                  );
-                })}
+                {orphanTerminals.map(renderTerminal)}
               </div>
             </div>
           )}
@@ -667,4 +641,20 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
       {renderRowMenu()}
     </div>
   );
+};
+
+/** The lane under a terminal row, when the terminal holds a ticket. */
+const LaneFor = ({
+  terminal,
+  isActive,
+  onSelect,
+  pipeline,
+}: {
+  terminal: TerminalInfo;
+  isActive: boolean;
+  onSelect: () => void;
+  pipeline: ProjectsPipeline;
+}) => {
+  const lane = pipeline.laneOf(terminal);
+  return lane ? <LaneView terminal={terminal} lane={lane} isActive={isActive} onSelect={onSelect} pipeline={pipeline} /> : null;
 };

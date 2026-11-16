@@ -47,12 +47,20 @@ Hides the plugin hint in a Claude terminal's pane until the terminal is relaunch
 ## 2. GitHub (`github`)
 
 ### `list_github_issues`
-Retrieves open or closed issues using `gh issue list`, augmented with GraphQL `blockedBy` dependencies.
+Retrieves one page of issues, newest first, through a GitHub GraphQL query, with each open issue's `blockedBy` dependencies. Each issue carries `closedAt` and `stateReason`.
 - **Arguments**:
   - `repo_path`: string
-  - `state`: optional string (`"open"` | `"closed"`)
-  - `limit`: optional number
-- **Returns**: `Vec<GithubIssue>`
+  - `state`: optional string (`"open"` | `"closed"` | `"all"`; default `"open"`)
+  - `after`: optional string, the previous page's `endCursor`
+  - `page_size`: optional number
+  - `since`: optional UTC timestamp such as `"2026-11-15T05:00:00Z"`; keeps only the issues updated since then
+- **Returns**: `GithubPage<GithubIssue>` (`items`, `endCursor`, `hasNextPage`)
+
+### `get_github_viewer`
+The login `gh` is signed in as.
+- **Arguments**:
+  - `repo_path`: string
+- **Returns**: `string | null`, null when `gh` is not signed in or GitHub cannot be reached
 
 ### `get_github_issue`
 Fetches detailed issue body and blocking issue references.

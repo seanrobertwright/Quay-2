@@ -5,9 +5,10 @@ import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
+import { useProjectsPipeline, type PipelineMoves } from "./slices/rail/useProjectsPipeline";
 import { ModuleBar } from "./slices/shell/ModuleBar";
 import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
-import { askingTerminals, nextWaitingTerminal, prevWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
+import { askingTerminals, nextWaitingTerminal, prevWaitingTerminal, statusRows, terminalDot } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
@@ -20,11 +21,11 @@ import { requestTerminal } from "./slices/terminal/terminalRequests";
 import { revealFolder } from "./slices/overlay/menuActions";
 import { moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
-import { Companion, COMPANION_VIEWS, type CompanionInspector, type CompanionShowRequest } from "./slices/companion/Companion";
+import { Companion, COMPANION_VIEWS, type CompanionInspector, type CompanionShowRequest, type CompanionTicket } from "./slices/companion/Companion";
 import { MergeUndoToast } from "./slices/companion/MergeUndoToast";
 import { useMergeUndo, type MergeJob } from "./slices/companion/useMergeUndo";
 import { useSelectedPullRequest } from "./slices/companion/useSelectedPullRequest";
-import { canMerge } from "./slices/companion/readiness";
+import { canMerge, DEFAULT_MERGE_METHOD } from "./slices/companion/readiness";
 import type { PullRequestAsk } from "./slices/companion/PullRequestView";
 import type { MergeMethod } from "./slices/github/types";
 import { SlotLayer } from "./slices/stage/SlotLayer";
@@ -703,8 +704,10 @@ export function App() {
     onMerged: () => {
       reloadSelectedPr();
       askPullRequestView({ kind: "reload" });
+      pipelineReload.current();
     },
   });
+  const pipelineReload = useRef<() => void>(() => {});
   const startMerge = (method: MergeMethod) => {
     if (selectedPr && canMerge(selectedPr.pr)) mergeUndo.start({ location: selectedPr.location, pr: selectedPr.pr, method });
   };
@@ -766,13 +769,64 @@ export function App() {
 
   // A companion view for a terminal, once it is the selected one: selecting a terminal in another
   // project lands a moment later, and the companion takes a request only for the selected terminal.
-  const [pendingView, setPendingView] = useState<{ terminalId: string; view: CompanionViewId; entryId?: string } | null>(null);
+  const [pendingView, setPendingView] = useState<{
+    terminalId: string;
+    view: CompanionViewId;
+    entryId?: string;
+    pullRequest?: PullRequestAsk;
+  } | null>(null);
   useEffect(() => {
     if (!pendingView || pendingView.terminalId !== activeTerminalId) return;
-    const { terminalId, view, entryId } = pendingView;
+    const { terminalId, view, entryId, pullRequest } = pendingView;
     setPendingView(null);
-    setCompanionRequest((prev) => ({ terminalId, view, entryId, seq: (prev?.seq ?? 0) + 1 }));
+    setCompanionRequest((prev) => ({ terminalId, view, entryId, pullRequest, seq: (prev?.seq ?? 0) + 1 }));
   }, [pendingView, activeTerminalId]);
+
+  // The Projects panel's ticket pipeline (#651). A ticket picked with no terminal, or a lane's
+  // blocker, opens in the companion; picking a terminal leaves it.
+  const [companionTicket, setCompanionTicket] = useState<CompanionTicket | null>(null);
+  const selectFromPanel = (id: string) => {
+    setCompanionTicket(null);
+    inFront(setActiveTerminalId)(id);
+  };
+  const pipelineMoves = useMemo<PipelineMoves>(
+    () => ({
+      onOpenTicket: (repoPath, ref) =>
+        setCompanionTicket((prev) => ({ repoPath, repo: ref.repo, number: ref.number, seq: (prev?.seq ?? 0) + 1 })),
+      // A lane's Merge selects its terminal, so the companion follows, then starts the Merge undo
+      // window; with the window Off the pull request view's confirm step opens instead.
+      onMerge: (terminal, location, pr) => {
+        if (!canMerge(pr)) return;
+        setCompanionTicket(null);
+        setFrontToolId(null);
+        setActiveTerminalId(terminal.id);
+        if (shellPrefsRef.current.mergeUndoSeconds === 0) {
+          setPendingView({ terminalId: terminal.id, view: "pull-request", pullRequest: { kind: "confirm-merge", method: DEFAULT_MERGE_METHOD } });
+        } else {
+          mergeUndoRef.current.start({ location, pr, method: DEFAULT_MERGE_METHOD });
+        }
+      },
+      start: ticketActions,
+      onMore: () => setOpenModule("source-control"),
+    }),
+    // The setters are stable, and the refs carry the latest merge window and its setting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ticketActions]
+  );
+  const shellPrefsRef = useRef(shellPrefs);
+  shellPrefsRef.current = shellPrefs;
+  const mergeUndoRef = useRef(mergeUndo);
+  mergeUndoRef.current = mergeUndo;
+  const isWaiting = useCallback((terminal: TerminalInfo) => terminalDot(terminal, asking) === "waiting", [asking]);
+  const { pipeline: projectsPipeline, reload: reloadPipeline } = useProjectsPipeline(
+    terminals,
+    projects,
+    projectWorktrees,
+    linking,
+    isWaiting,
+    pipelineMoves
+  );
+  pipelineReload.current = reloadPipeline;
   const showCompanionView = (terminalId: string, view: CompanionViewId, entryId?: string) => {
     if (terminalId !== activeTerminalId) showTerminal(terminalId);
     setPendingView({ terminalId, view, entryId });
@@ -1104,7 +1158,7 @@ export function App() {
               bridgePort={bridgePort}
               projectWorktrees={projectWorktrees}
               claudeStats={claudeStats}
-              onSelectTerminal={inFront(setActiveTerminalId)}
+              onSelectTerminal={selectFromPanel}
               onCloseTerminal={(id) => killTerminal(id)}
               onNewTerminal={(projPath) => {
                 if (projPath) setActiveProject(projPath);
@@ -1128,6 +1182,7 @@ export function App() {
               onOpenInVsCode={handleOpenInVsCode}
               onRelaunchTerminal={relaunchTerminal}
               onToggleTerminalAsk={toggleTerminalLiveMode}
+              pipeline={projectsPipeline}
             />
           ),
           "source-control": (
@@ -1277,6 +1332,10 @@ export function App() {
         run={companionRun}
         inspector={companionInspector}
         toast={<MergeUndoToast undo={mergeUndo} />}
+        ticket={companionTicket}
+        onShowTicket={(ref) =>
+          companionTicket && pipelineMoves.onOpenTicket(companionTicket.repoPath, ref)
+        }
       />
 
       {/* The pie menu, opened at the pointer per surface: middle-click, Alt+Right-click, and plain right-click on the companion, empty stage and module bar */}

@@ -568,3 +568,48 @@ test("the slot switch shows only when both slots are filled", async () => {
   assert.equal(shownView(pr.container), "pull-request");
   assert.equal(slotSwitch(pr.container), null);
 });
+
+test("a ticket handed to the companion shows in the Ticket view over the terminal's views, and Show the blocker opens the blocker there", async () => {
+  const shown: LinkRef[] = [];
+  const blocker: IssueRef = { repo: "o/r", number: 4, title: "Blocker", state: "OPEN", url: "" };
+  const { container, calls } = await render(github({ number: 9, blockedBy: [blocker], openBlockerCount: 1 }), {
+    link: { ticket: null, pull_request: null, candidates: [] },
+    ticket: { repoPath: "E:/alpha", repo: null, number: 9, seq: 1 },
+    onShowTicket: (ref: LinkRef) => shown.push(ref),
+  });
+  assert.equal(container.querySelector("[data-companion-view]")?.getAttribute("data-companion-view"), "ticket");
+  assert.deepEqual(calls[0], ["get_github_issue_status", { repoPath: "E:/alpha", repo: null, number: 9 }]);
+  const show = [...container.querySelectorAll("button")].find((b) => b.textContent === "Show the blocker");
+  assert.ok(show);
+  act(() => show.click());
+  assert.deepEqual(shown, [{ repo: "o/r", number: 4 }]);
+});
+
+test("a ticket handed to the companion shows with no terminal selected, and Back leaves it", async () => {
+  const { container } = await render(github({ number: 9 }), {
+    selectedTerminal: null,
+    ticket: { repoPath: "E:/alpha", repo: null, number: 9, seq: 1 },
+  });
+  assert.equal(card(container)?.querySelector("h3")?.textContent, "Ready to start");
+  const back = container.querySelector<HTMLButtonElement>('button[aria-label="Close this ticket"]');
+  assert.ok(back);
+  act(() => back.click());
+  assert.equal(container.querySelector("[data-companion-view]"), null);
+});
+
+test("a ticket handed to the companion gives way once another terminal is selected", async () => {
+  const props = {
+    projects: [{ path: "E:/alpha", name: "Alpha", terminal_ids: [] }],
+    projectWorktrees: {},
+    views: COMPANION_VIEWS,
+    prefs: companionPrefs(memoryStorage()),
+    ticket: { repoPath: "E:/alpha", repo: null, number: 9, seq: 1 },
+  };
+  const { container } = await render(github({ number: 9 }), { link: { ticket: null, pull_request: null, candidates: [] }, ticket: props.ticket });
+  assert.ok(container.querySelector('button[aria-label="Close this ticket"]'));
+  const other: TerminalInfo = { ...terminalInfo("b", "E:/alpha"), link: { ticket: null, pull_request: null, candidates: [] } };
+  act(() => mounted!.root.render(createElement(Companion, { ...props, selectedTerminal: other })));
+  await settle();
+  assert.equal(container.querySelector('button[aria-label="Close this ticket"]'), null);
+  assert.equal(container.querySelector("[data-companion-view]")?.getAttribute("data-companion-view"), "repository");
+});

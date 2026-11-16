@@ -48,6 +48,12 @@ pub struct GithubIssue {
     /// when the issue has more blockers than one query page returns.
     #[serde(rename = "openBlockerCount", default)]
     pub open_blocker_count: u32,
+    /// When it was closed; None while open.
+    #[serde(rename = "closedAt", default)]
+    pub closed_at: Option<String>,
+    /// Why it was closed (COMPLETED, NOT_PLANNED, DUPLICATE) or REOPENED; None when GitHub gives none.
+    #[serde(rename = "stateReason", default)]
+    pub state_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

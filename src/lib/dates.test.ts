@@ -4,6 +4,8 @@ import {
   epochMsFromLocalParts,
   formatLocalDateTimeInput,
   formatUtcDateTime,
+  formatUtcTimestamp,
+  startOfLocalDay,
   localPartsOf,
   localTimeZoneName,
   parseUtcTimestamp,
@@ -55,4 +57,12 @@ test("a moment shows as local input text and as UTC", () => {
   assert.equal(formatUtcDateTime(ms), "2026-10-21 18:06 UTC");
   assert.deepEqual(wallClockPartsOf(Date.UTC(2026, 9, 21, 14, 6)), { year: 2026, month: 10, day: 21, hour: 14, minute: 6 });
   assert.equal(localTimeZoneName(), "America/New_York");
+});
+
+test("a moment writes as the UTC timestamp GitHub takes, and its local day starts at local midnight", () => {
+  process.env.TZ = "America/New_York";
+  const ms = Date.UTC(2026, 10, 15, 3, 4, 5, 678);
+  assert.equal(formatUtcTimestamp(ms), "2026-11-15T03:04:05Z");
+  // 03:04 UTC on the 15th is 22:04 on the 14th in New York, whose midnight is 05:00 UTC.
+  assert.equal(startOfLocalDay(ms), Date.UTC(2026, 10, 14, 5, 0));
 });

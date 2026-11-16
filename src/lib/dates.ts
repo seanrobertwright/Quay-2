@@ -171,3 +171,19 @@ export function formatUtcDateTime(ms: number): string {
 export function localTimeZoneName(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
 }
+
+/** A moment as a UTC timestamp to the second, e.g. "2026-10-21T19:03:04Z", as GitHub's `since` filters take it. */
+export function formatUtcTimestamp(ms: number): string {
+  const d = new Date(ms);
+  return `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1, 2)}-${pad(d.getUTCDate(), 2)}T${pad(d.getUTCHours(), 2)}:${pad(
+    d.getUTCMinutes(),
+    2
+  )}:${pad(d.getUTCSeconds(), 2)}Z`;
+}
+
+/** The moment this machine's local day holding `ms` began: its local midnight. */
+export function startOfLocalDay(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
