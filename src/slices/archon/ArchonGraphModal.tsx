@@ -22,6 +22,7 @@ import { ArchonIcon } from "./ArchonIcon";
 import { ArchonServiceStatus, ArchonWorkflow, ArchonRun, RepoSpecSummary } from "./types";
 import { computeDagLayout } from "./dagLayout";
 import { ArchonRunMonitor } from "./ArchonRunMonitor";
+import { workflowTerminalName } from "./workflowName";
 import { TerminalInfo } from "../terminal/types";
 import { submitPromptToTerminal } from "../terminal/submitPrompt";
 
@@ -34,9 +35,12 @@ interface ArchonGraphModalProps {
   onSelectTerminal: (id: string) => void;
   onSpawnTerminal: (request: any) => void;
   onWritePty: (terminalId: string, data: string) => void;
+  /** The tab it shows each time it opens; the workflow DAGs when absent. */
+  openOn?: ArchonTab;
 }
 
-type TabType = "dag" | "sdd" | "adrs" | "runs";
+/** The modal's tabs: workflow DAGs, spec tasks, ADRs and runs. */
+export type ArchonTab = "dag" | "sdd" | "adrs" | "runs";
 
 export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   isOpen,
@@ -47,8 +51,12 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   onSelectTerminal,
   onSpawnTerminal,
   onWritePty,
+  openOn = "dag",
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>("dag");
+  const [activeTab, setActiveTab] = useState<ArchonTab>(openOn);
+  useEffect(() => {
+    if (isOpen) setActiveTab(openOn);
+  }, [isOpen, openOn]);
   const [serviceStatus, setServiceStatus] = useState<ArchonServiceStatus | null>(null);
   const [workflows, setWorkflows] = useState<ArchonWorkflow[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>("");
@@ -253,7 +261,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
       onSpawnTerminal({
         project_path: activeProject,
         run_kind: "archon",
-        name: `archon-${workflowName.split("/").pop()?.split(":").pop() || "run"}`,
+        name: workflowTerminalName(workflowName),
         command_text: cmd,
         custom_flags: "",
       });

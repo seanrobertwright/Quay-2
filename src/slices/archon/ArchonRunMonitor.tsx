@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useId, FC } from "react";
+import { useState, useEffect, useMemo, useRef, useId, type FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Activity,
@@ -24,7 +24,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import {
+import type {
   ArchonChatMessage,
   ArchonLogEntry,
   ArchonNodeState,
@@ -33,9 +33,10 @@ import {
   ArchonRunAction,
   ArchonRunDetail,
   ArchonWorkflow,
-} from "./types";
-import { computeDagLayout, COMPACT_DAG_SIZING } from "./dagLayout";
-import { formatClock, formatDateTime, formatDuration, formatRelative } from "../../lib/dates";
+} from "./types.ts";
+import { computeDagLayout, COMPACT_DAG_SIZING } from "./dagLayout.ts";
+import { shortWorkflowName } from "./workflowName.ts";
+import { formatClock, formatDateTime, formatDuration, formatRelative } from "../../lib/dates.ts";
 
 const POLL_MS = 3000;
 const ACTIVE_STATUSES = new Set(["running", "pending", "paused"]);
@@ -46,6 +47,8 @@ interface ArchonRunMonitorProps {
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
   serviceOnline: boolean;
+  /** Whether the list of runs shows beside the run; the run lens shows the one run alone. */
+  showRunList?: boolean;
 }
 
 type LogFilter = "all" | "node" | "tool" | "task" | "issues";
@@ -84,9 +87,6 @@ const NODE_STYLE: Record<string, { card: string; badge: string; label: string }>
 };
 const PENDING_NODE = { card: "bg-[#0d1117] border-[#30363d]", badge: "bg-[#21262d] text-[#6e7681] border-[#30363d]", label: "WAITING" };
 
-/** "owner/lril-sdlc:implement" -> "lril-sdlc:implement" */
-const shortWorkflow = (name: string) => name.split("/").pop() || name;
-
 const formatTokens = (n?: number | null) => {
   if (n == null) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -100,6 +100,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
   selectedRunId,
   onSelectRun,
   serviceOnline,
+  showRunList = true,
 }) => {
   const [detail, setDetail] = useState<ArchonRunDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -242,7 +243,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
 
   const runAction = async (action: ArchonRunAction) => {
     if (!run) return;
-    if (action === "cancel" && !window.confirm(`Cancel run ${run.id.slice(0, 8)} (${shortWorkflow(run.workflow_name)})?`)) return;
+    if (action === "cancel" && !window.confirm(`Cancel run ${run.id.slice(0, 8)} (${shortWorkflowName(run.workflow_name)})?`)) return;
     if (action === "abandon" && !window.confirm(`Abandon run ${run.id.slice(0, 8)}? It cannot be resumed afterwards.`)) return;
     setActionBusy(action);
     setActionError(null);
@@ -280,6 +281,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
   return (
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
       {/* Run list */}
+      {showRunList && (
       <aside className="w-[280px] shrink-0 border-r border-[#30363d] bg-[#0d1117] flex flex-col min-h-0">
         <div className="px-3 py-2 border-b border-[#30363d] text-[11px] font-semibold uppercase tracking-wider text-[#8b949e] flex items-center justify-between">
           <span>Runs</span>
@@ -305,7 +307,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} aria-hidden="true" />
                   <span className="font-mono text-[11px] font-semibold text-white truncate">
-                    {shortWorkflow(r.workflow_name)}
+                    {shortWorkflowName(r.workflow_name)}
                   </span>
                   <span className="ml-auto text-[10px] text-[#8b949e] shrink-0">{st.label}</span>
                 </div>
@@ -328,6 +330,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
           })}
         </nav>
       </aside>
+      )}
 
       {/* Run detail */}
       {!run ? (

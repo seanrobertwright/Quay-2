@@ -2,7 +2,7 @@
 
 **Machina is Quay's local factory.** It runs inside Quay 2 on this machine, with no host, no sign-in and no browser. An agent does each piece of work, a **work order**, in its own git worktree; your project's own checks gate it; and you **Accept** it to squash-merge it into its base branch. Every decision on a work order is made in Quay.
 
-The **Factory Station** (`Ctrl+Shift+B F`) is Machina's cockpit. Its title reads **Machina: local**. Open it with the shortcut or **Machina Factory Station...** in the command palette.
+Machina lives in the **Workflows panel** (`Ctrl+Shift+B R`). Its engine strip (`Ctrl+Shift+B F` focuses it) holds the Factory's **Active** or **Paused** switch, **Halt**, which needs a second press, and today's Factory spend. Work orders list under **Needs you** (on hold, awaiting merge, interrupted or failed), **Running** and **Recent**, each row with a segment bar of its stages. Picking one shows its decision in the companion's **Run** view; **Graph and log** opens its stages, gate report and events as the run lens. **New work order** and **Factory config** open in stage tabs from the panel's **Start** or the command palette.
 
 ## Machina is not Praxis
 
@@ -13,10 +13,10 @@ The **Factory Station** (`Ctrl+Shift+B F`) is Machina's cockpit. Its title reads
 | Where it runs | In Quay, on this machine | On a Praxis host |
 | Sign-in | None | `praxis login` |
 | Its words | Work order, hold, Accept | Run, decision |
-| Where you decide | In the Factory Station | In the host's browser page |
-| Its surface in Quay | The Factory Station | The Praxis Builder |
+| Where you decide | In the companion's Run view | In the host's browser page |
+| Its surface in Quay | The Workflows panel and the Run view | The Praxis Builder; its runs also list in the Workflows panel |
 
-A Machina work order never becomes a Praxis run, and neither surface lists or links to the other's work.
+A Machina work order never becomes a Praxis run. The Workflows panel lists both engines' work side by side, each row marked with its engine, but a Praxis run's decision still opens in the browser.
 
 ---
 
@@ -43,8 +43,8 @@ Each repository describes its gate in `.machina/factory.json`. Its commands run 
 
 ## Holds
 
-A hold stops a work order until you resolve it in the Factory Station. Machina raises one only for a real condition: scope drift, an overlap with a protected path, too many corrections, a gate that couldn't judge, a spent budget, or a work order an agent submitted that waits for you to admit it.
+A hold stops a work order until you resolve it with one of its options in the companion's Run view. Machina raises one only for a real condition: scope drift, an overlap with a protected path, too many corrections, a gate that couldn't judge, a spent budget, or a work order an agent submitted that waits for you to admit it.
 
 ## Where Machina keeps its state
 
-Work orders are kept in `%LOCALAPPDATA%\Quay2\machina\state.json`, and holdback vaults under `%LOCALAPPDATA%\Quay2\machina\vault\`. The **Epoch** chip counts Quay starts: work cut off by a restart is marked **Interrupted** and can be resumed.
+Work orders are kept in `%LOCALAPPDATA%\Quay2\machina\state.json`, and holdback vaults under `%LOCALAPPDATA%\Quay2\machina\vault\`. Machina counts Quay starts as epochs: work cut off by a restart is marked **Interrupted**, lists under **Needs you**, and can be resumed from the Run view.

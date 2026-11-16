@@ -46,9 +46,20 @@ import { getGlobalTerminalDimensions } from "./slices/terminal/useTerminal";
 import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
 import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
-import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
-import { ArchonWorkflow } from "./slices/archon/types";
-import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
+import { ArchonGraphModal, type ArchonTab } from "./slices/archon/ArchonGraphModal";
+import { ArchonWorkflow, type SpecTask } from "./slices/archon/types";
+import { workflowTerminalName } from "./slices/archon/workflowName";
+import { WorkflowsPanel, type StartActions } from "./slices/workflows/WorkflowsPanel";
+import { RunView } from "./slices/workflows/RunView";
+import { RunLens } from "./slices/workflows/RunLens";
+import { FactoryConfigTab, NewWorkOrderTab } from "./slices/workflows/FactoryTabs";
+import { lookupGraphRunPage, useWorkflowsData } from "./slices/workflows/useWorkflowsData";
+import { runSources } from "./slices/workflows/workflowsData";
+import { rowOf, runTerminalId, type RunSource } from "./slices/workflows/workflowRuns";
+import { workflowPrefs } from "./slices/workflows/workflowPrefs";
+import { openRunPageOf } from "./slices/praxis-builder/runPage";
+import type { MachinaWorkOrder } from "./slices/machina/types";
+import type { CompanionViewId } from "./slices/companion/companionViews";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
 import { Topos, type ToposTarget } from "./slices/git/topos/Topos";
 import { ToposLayer, ToposLens, useToposDock } from "./slices/companion/ToposDock";
@@ -61,7 +72,7 @@ import { UpdateModal } from "./slices/updater/UpdateModal";
 import { checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
 import { isSamePath, resolveRootRepo } from "./utils/paths";
-import { AlertCircle, X, Zap } from "lucide-react";
+import { AlertCircle, Cpu, FileCode2, X, Zap } from "lucide-react";
 import type { StageTool } from "./slices/stage/Stage";
 
 /** What starting work on a ticket needs to know about it. */
@@ -75,8 +86,10 @@ interface WorkPlace {
   isWorktree: boolean;
 }
 
-/** The swarm builder's stage tab id. */
+/** The stage tabs of full-stage tools, by id. */
 const SWARM_BUILDER_TOOL = "swarm-builder";
+const NEW_WORK_ORDER_TOOL = "new-work-order";
+const FACTORY_CONFIG_TOOL = "factory-config";
 
 export function App() {
   const {
@@ -134,8 +147,6 @@ export function App() {
     setIsTokenSpendOpen,
     isArchonGraphOpen,
     setIsArchonGraphOpen,
-    isFactoryStationOpen,
-    setIsFactoryStationOpen,
     isPraxisBuilderOpen,
     setIsPraxisBuilderOpen,
     isUpdateModalOpen,
@@ -155,6 +166,7 @@ export function App() {
     sourceControlOpener,
     toposOpener,
     agentOpeners,
+    workflowOpeners,
     openRepoDiffs,
     openPrePrAudit,
   } = useWorkspace();
@@ -254,12 +266,15 @@ export function App() {
     return null;
   }, [projects, projectWorktrees, activeProject]);
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
-  // The diff lens and the Topos lens open over the stage one at a time: opening one closes the other.
+  // The diff lens, the Topos lens and the run lens open over the stage one at a time: opening one
+  // closes the others.
   const companionLens = useDiffLens(activeTerminalId);
+  const [isRunLensOpen, setIsRunLensOpen] = useState(false);
   // Each open of Topos by a chord, the palette or its Wide toggle moves focus into it.
   const [toposFocus, setToposFocus] = useState(0);
   const toposDock = useToposDock(activeTerminalId, () => {
     companionLens.dismiss();
+    setIsRunLensOpen(false);
     setToposFocus((n) => n + 1);
   });
   const dismissTopos = toposDock.dismiss;
@@ -581,6 +596,7 @@ export function App() {
       ...companionLens,
       openDiff: (target: DiffLensTarget) => {
         dismissTopos();
+        setIsRunLensOpen(false);
         companionLens.openDiff(target);
       },
     }),
@@ -661,57 +677,41 @@ export function App() {
     openToposView();
   };
 
-  // The swarm builder's stage tab, open or not, and whether it is in front of the terminals. Picking
-  // a terminal anywhere brings the terminals back in front; the tab stays open until closed.
-  const [isSwarmBuilderOpen, setIsSwarmBuilderOpen] = useState(false);
+  // The open stage tabs, in the order they opened, and the one in front of the terminals. Picking
+  // a terminal anywhere brings the terminals back in front; a tab stays open until closed.
+  const [openToolIds, setOpenToolIds] = useState<readonly string[]>([]);
   const [frontToolId, setFrontToolId] = useState<string | null>(null);
-  const openSwarmBuilder = () => {
-    setIsSwarmBuilderOpen(true);
-    setFrontToolId(SWARM_BUILDER_TOOL);
+  const openTool = (id: string) => {
+    setOpenToolIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
+    setFrontToolId(id);
   };
-  const closeSwarmBuilder = useCallback(() => {
-    setIsSwarmBuilderOpen(false);
-    setFrontToolId((front) => (front === SWARM_BUILDER_TOOL ? null : front));
+  const closeTool = useCallback((id: string) => {
+    setOpenToolIds((ids) => ids.filter((open) => open !== id));
+    setFrontToolId((front) => (front === id ? null : front));
   }, []);
+  const openSwarmBuilder = () => openTool(SWARM_BUILDER_TOOL);
+  const closeSwarmBuilder = useCallback(() => closeTool(SWARM_BUILDER_TOOL), [closeTool]);
   // `select` with the terminals brought back in front of any tool tab
   const inFront = (select: (id: string) => void) => (id: string) => {
     setFrontToolId(null);
     select(id);
   };
   const showTerminal = inFront(selectTerminal);
-  const stageTools: StageTool[] = isSwarmBuilderOpen
-    ? [
-        {
-          id: SWARM_BUILDER_TOOL,
-          label: "Swarm builder",
-          icon: <Zap className="w-3.5 h-3.5 text-[#d29922]" />,
-          content: (
-            <SwarmBuilder
-              activeProject={activeProject}
-              onClose={closeSwarmBuilder}
-              onLaunchSwarm={launchSwarm}
-              savedSwarms={savedSwarms}
-              onSaveSwarm={saveSwarm}
-              onRemoveSwarm={removeSwarm}
-            />
-          ),
-        },
-      ]
-    : [];
 
-  // The Activity view for a terminal, once it is the selected one: selecting a terminal in another
+  // A companion view for a terminal, once it is the selected one: selecting a terminal in another
   // project lands a moment later, and the companion takes a request only for the selected terminal.
-  const [pendingActivity, setPendingActivity] = useState<{ terminalId: string; entryId?: string } | null>(null);
+  const [pendingView, setPendingView] = useState<{ terminalId: string; view: CompanionViewId; entryId?: string } | null>(null);
   useEffect(() => {
-    if (!pendingActivity || pendingActivity.terminalId !== activeTerminalId) return;
-    const { terminalId, entryId } = pendingActivity;
-    setPendingActivity(null);
-    setCompanionRequest((prev) => ({ terminalId, view: "activity", entryId, seq: (prev?.seq ?? 0) + 1 }));
-  }, [pendingActivity, activeTerminalId]);
-  const openActivity = (terminalId: string, entryId?: string) => {
+    if (!pendingView || pendingView.terminalId !== activeTerminalId) return;
+    const { terminalId, view, entryId } = pendingView;
+    setPendingView(null);
+    setCompanionRequest((prev) => ({ terminalId, view, entryId, seq: (prev?.seq ?? 0) + 1 }));
+  }, [pendingView, activeTerminalId]);
+  const showCompanionView = (terminalId: string, view: CompanionViewId, entryId?: string) => {
     if (terminalId !== activeTerminalId) showTerminal(terminalId);
-    setPendingActivity({ terminalId, entryId });
+    setPendingView({ terminalId, view, entryId });
   };
+  const openActivity = (terminalId: string, entryId?: string) => showCompanionView(terminalId, "activity", entryId);
   // A Waiting on you row selects its terminal; a permission request opens in Activity to answer.
   const openWaiting = (item: AttentionItem) => {
     if (!item.terminalId) return;
@@ -731,15 +731,167 @@ export function App() {
     if (activeTerminalId) openActivity(activeTerminalId);
   };
   agentOpeners.current = { openSwarmBuilder, openSessionHistory, selectNextWaiting, openActivity: openSelectedActivity };
+
+  // The Workflows panel, and the run or work order picked in it, which the companion's Run view and
+  // the run lens show. The engines are read while either the panel or a picked run is on screen.
+  const workflowStore = useMemo(() => workflowPrefs(window.localStorage), []);
+  const [pinnedWorkflows, setPinnedWorkflows] = useState<string[]>(() => workflowStore.readPins());
+  const builderPath = builderProject?.path ?? null;
+  const [recentGraphIds, setRecentGraphIds] = useState<string[]>([]);
+  useEffect(() => setRecentGraphIds(builderPath ? workflowStore.readRecentGraphs(builderPath) : []), [builderPath, workflowStore]);
+  const onGraphOpened = useCallback(
+    (projectPath: string, id: string) => {
+      workflowStore.graphOpened(projectPath, id);
+      if (builderPath && isSamePath(projectPath, builderPath)) setRecentGraphIds(workflowStore.readRecentGraphs(builderPath));
+    },
+    [workflowStore, builderPath],
+  );
+  const [picked, setPicked] = useState<{ key: string; source: RunSource } | null>(null);
+  const workflows = useWorkflowsData({
+    active: openModule === "workflows" || picked !== null,
+    project: activeProject,
+    praxisProject: builderPath,
+    recentGraphs: recentGraphIds,
+  });
+  // The picked run as last read, or as it was picked until the engines are read again.
+  const pickedSource = picked
+    ? (runSources(workflows.data).find((source) => rowOf(source, workflows.now).key === picked.key) ?? picked.source)
+    : null;
+  // Picking a run shows it in the Run view; a run with its own terminal selects that terminal too.
+  const pickRun = (source: RunSource) => {
+    setPicked({ key: rowOf(source, workflows.now).key, source });
+    const terminalId = runTerminalId(source, terminals) ?? activeTerminalId;
+    if (terminalId) showCompanionView(terminalId, "run");
+  };
+  const openRunInBrowser = (source: RunSource) => {
+    if (source.engine !== "praxis" || !builderPath) return;
+    const projectPath = builderPath;
+    void openRunPageOf(source.workflow, source.run.runPageAddress, () => lookupGraphRunPage(projectPath, source.run.workOrderId)).then(
+      (problem) => {
+        if (problem) alert(problem);
+      },
+    );
+  };
+  const openRunLens = () => {
+    companionLens.dismiss();
+    dismissTopos();
+    setIsRunLensOpen(true);
+  };
+  const [engineFocus, setEngineFocus] = useState<{ seq: number } | null>(null);
+  const openWorkflows = () => setOpenModule("workflows");
+  workflowOpeners.current = {
+    openWorkflows,
+    openEngineStrip: () => {
+      setOpenModule("workflows");
+      setEngineFocus((prev) => ({ seq: (prev?.seq ?? 0) + 1 }));
+    },
+  };
+  const [archonOpenOn, setArchonOpenOn] = useState<ArchonTab>("dag");
+  const openArchonGraph = (tab: ArchonTab = "dag") => {
+    setArchonOpenOn(tab);
+    setIsArchonGraphOpen(true);
+  };
+  // A pinned workflow's chip types its `archon workflow run` into a new shell terminal without
+  // pressing Enter, so the operator adds the message or inputs the workflow takes.
+  const typeArchonWorkflow = async (name: string) => {
+    const { targetDir, isWorktree } = activePlace;
+    const argv = ["archon", "workflow", "run", name, "--cwd", targetDir, ...(isWorktree ? ["--no-worktree"] : [])];
+    const line = commandLine(argv, shellFor(navigator.userAgent));
+    if (line === null) return;
+    const terminal = await spawnTerminal({ project_path: targetDir, run_kind: "powershell", name: workflowTerminalName(name) });
+    if (terminal) await invoke("write_pty", { terminalId: terminal.id, data: `${line} ` });
+  };
+  // A spec task's Agent button hands the task to a new Claude Code terminal.
+  const startSpecTask = async (task: SpecTask) => {
+    const terminal = await spawnTerminal({ project_path: activeProject, run_kind: "claude", name: `task-${task.id}`.slice(0, 24) });
+    if (!terminal) return;
+    const prompt = `Implement task from ${task.file_name}:${task.line_number}: "${task.title}" using test-driven development.`;
+    submitPromptToTerminal(terminal.id, prompt, { awaitStartup: true }).catch(console.error);
+  };
+  const startActions: StartActions = {
+    pinned: pinnedWorkflows,
+    onRunWorkflow: (name) => void typeArchonWorkflow(name).catch((err) => alert(`Couldn't start ${name}: ${err}`)),
+    onPin: (name) => {
+      workflowStore.pin(name);
+      setPinnedWorkflows(workflowStore.readPins());
+    },
+    onUnpin: (name) => {
+      workflowStore.unpin(name);
+      setPinnedWorkflows(workflowStore.readPins());
+    },
+    onAgentTask: (task) => void startSpecTask(task).catch(console.error),
+    onAllTasks: () => openArchonGraph("sdd"),
+    onOpenGraph: (id) => {
+      setIsPraxisBuilderOpen(true);
+      praxisBuilder.current?.openGraph(id);
+    },
+    onNewWorkOrder: () => openTool(NEW_WORK_ORDER_TOOL),
+    onFactoryConfig: () => openTool(FACTORY_CONFIG_TOOL),
+  };
+  const workOrderCreated = (wo: MachinaWorkOrder) => {
+    closeTool(NEW_WORK_ORDER_TOOL);
+    setOpenModule("workflows");
+    void workflows.refresh();
+    pickRun({ engine: "factory", workOrder: wo });
+  };
+  const companionRun = pickedSource && picked
+    ? {
+        key: picked.key,
+        content: (
+          <RunView
+            key={picked.key}
+            source={pickedSource}
+            now={workflows.now}
+            onChanged={() => void workflows.refresh()}
+            onOpenLens={openRunLens}
+            onOpenInBrowser={() => openRunInBrowser(pickedSource)}
+          />
+        ),
+      }
+    : null;
+
+  const STAGE_TOOLS: Record<string, Omit<StageTool, "id">> = {
+    [SWARM_BUILDER_TOOL]: {
+      label: "Swarm builder",
+      icon: <Zap className="w-3.5 h-3.5 text-[#d29922]" />,
+      content: (
+        <SwarmBuilder
+          activeProject={activeProject}
+          onClose={closeSwarmBuilder}
+          onLaunchSwarm={launchSwarm}
+          savedSwarms={savedSwarms}
+          onSaveSwarm={saveSwarm}
+          onRemoveSwarm={removeSwarm}
+        />
+      ),
+    },
+    [NEW_WORK_ORDER_TOOL]: {
+      label: "New work order",
+      icon: <Cpu className="w-3.5 h-3.5 text-[#58a6ff]" />,
+      content: (
+        <NewWorkOrderTab
+          activeProject={activeProject}
+          workOrders={workflows.data.factory.workOrders}
+          onCreated={workOrderCreated}
+          onClose={() => closeTool(NEW_WORK_ORDER_TOOL)}
+          onOpenConfig={() => openTool(FACTORY_CONFIG_TOOL)}
+        />
+      ),
+    },
+    [FACTORY_CONFIG_TOOL]: {
+      label: "Factory config",
+      icon: <FileCode2 className="w-3.5 h-3.5 text-[#58a6ff]" />,
+      content: <FactoryConfigTab activeProject={activeProject} />,
+    },
+  };
+  const stageTools: StageTool[] = openToolIds.flatMap((id) => (STAGE_TOOLS[id] ? [{ id, ...STAGE_TOOLS[id] }] : []));
+
   const companionActivity = useMemo<CompanionActivity>(
     () => ({ events, messages: trailMessages, waiting: waitingItems, answer: attentionQueue.answerPermission }),
     [events, trailMessages, waitingItems, attentionQueue.answerPermission]
   );
 
   const launchers = placeholderLaunchers({
-    openArchon: () => setIsArchonGraphOpen(true),
-    openFactory: () => setIsFactoryStationOpen(true),
-    openPraxisBuilder: () => setIsPraxisBuilderOpen(true),
     // A worktree's settings are its project's, so the selected worktree resolves to its root repo.
     openWorkspaceSettings: () => openWorkspaceSettings(activeRootRepo),
     openInVsCode: () => void handleOpenInVsCode(activeProject),
@@ -843,7 +995,18 @@ export function App() {
               onResumeSession={(sessionId, projectPath) => void resumeSession(sessionId, projectPath)}
             />
           ),
-          workflows: launcherPanel("workflows"),
+          workflows: (
+            <WorkflowsPanel
+              data={workflows.data}
+              now={workflows.now}
+              pickedKey={picked?.key ?? null}
+              engineFocus={engineFocus}
+              onPickRun={pickRun}
+              onRefresh={() => void workflows.refresh()}
+              onOpenInBrowser={openRunInBrowser}
+              start={startActions}
+            />
+          ),
           project: launcherPanel("project"),
         }}
       />
@@ -880,9 +1043,7 @@ export function App() {
         tools={stageTools}
         frontToolId={frontToolId}
         onSelectTool={setFrontToolId}
-        onCloseTool={(id) => {
-          if (id === SWARM_BUILDER_TOOL) closeSwarmBuilder();
-        }}
+        onCloseTool={closeTool}
       />
       {diffLens && selectedTerminal && (
         <DiffLens
@@ -890,6 +1051,23 @@ export function App() {
           target={diffLens}
           onClose={companionLens.dismiss}
           replyStrip={replyStrip}
+        />
+      )}
+      {isRunLensOpen && picked && pickedSource && (
+        <RunLens
+          key={picked.key}
+          source={pickedSource}
+          now={workflows.now}
+          terminalId={activeTerminalId ?? ""}
+          projectPath={builderPath ?? activeProject}
+          archonOnline={workflows.data.archon.online === true}
+          workflows={workflows.data.archon.workflows}
+          terminals={terminals}
+          onChanged={() => void workflows.refresh()}
+          onSelectTerminal={showTerminal}
+          onSpawnTerminal={spawnTerminal}
+          replyStrip={replyStrip}
+          onClose={() => setIsRunLensOpen(false)}
         />
       )}
       {toposDock.wide && selectedTerminal && (
@@ -914,6 +1092,7 @@ export function App() {
         topos={toposDock.companion}
         activity={companionActivity}
         showRequest={companionRequest}
+        run={companionRun}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
@@ -961,8 +1140,10 @@ export function App() {
         onOpenAttentionQueue={() => setOpenModule("agents")}
         onSelectNextWaiting={selectNextWaiting}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
-        onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
-        onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onOpenArchonGraph={() => openArchonGraph()}
+        onOpenWorkflows={openWorkflows}
+        onNewWorkOrder={() => openTool(NEW_WORK_ORDER_TOOL)}
+        onOpenFactoryConfig={() => openTool(FACTORY_CONFIG_TOOL)}
         onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
         onOpenTopos={openToposView}
         onOpenLogsFolder={() => {
@@ -1086,9 +1267,10 @@ export function App() {
         onClose={() => setIsTokenSpendOpen(false)}
       />
 
-      {/* Archon & SDD Spec Graph Inspector Modal (Ctrl+Shift+B r) */}
+      {/* Archon & SDD Spec Graph Inspector Modal, from the palette and Start's All tasks and ADRs */}
       <ArchonGraphModal
         isOpen={isArchonGraphOpen}
+        openOn={archonOpenOn}
         activeProject={activeProject}
         terminals={terminals}
         activeTerminalId={activeTerminalId}
@@ -1096,16 +1278,6 @@ export function App() {
         onSelectTerminal={selectTerminal}
         onSpawnTerminal={spawnTerminal}
         onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
-      />
-
-      {/* Machina software factory (Ctrl+Shift+B f) */}
-      <FactoryStationModal
-        isOpen={isFactoryStationOpen}
-        activeProject={activeProject}
-        terminals={terminals}
-        onClose={() => setIsFactoryStationOpen(false)}
-        onSelectTerminal={selectTerminal}
-        onSpawnTerminal={spawnTerminal}
       />
 
       {/* Praxis Builder (Ctrl+Shift+B p): hidden, never unmounted, when closed */}
@@ -1117,6 +1289,7 @@ export function App() {
         onAddProject={() => setIsAddProjectOpen(true)}
         onUnsavedProjectsChange={onPraxisUnsavedChange}
         onRunInTerminal={runInPraxisTerminal}
+        onGraphOpened={onGraphOpened}
       />
 
       {/* Topos git cockpit (Ctrl+Shift+B c), over the companion's Topos view or in the Topos lens:

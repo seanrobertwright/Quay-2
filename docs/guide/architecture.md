@@ -112,7 +112,8 @@ The frontend is constructed using **React 19**, **Tailwind CSS**, and `@xterm/xt
 - **`stage/`**: Viewport layout engine supporting single view, horizontal split, vertical split, and 2x2 quad grid. Keeps background terminals mounted to ensure seamless buffer preservation.
 - **`orchestrator/`**: UI modal for human operator task dispatch, broadcast management, and real-time message stream inspection.
 - **`archon/`**: SVG-powered DAG visualization canvas, live log viewer, and spec checklist.
-- **`machina/`**: The Factory Station (**Machina: local**): work orders, the project gate, holds and Accept.
+- **`machina/`**: Machina, Quay's local factory: the work order detail, the composer and the project gate config.
+- **`workflows/`**: The Workflows panel over Archon, the Machina Factory and Praxis. `workflowRuns.ts` turns each run or work order into a row: its section (Needs you, Running, Recent for 24 hours), action chip, decision and segment bar. `useWorkflowsData.ts` reads the engines while the panel or the Run view shows. `RunView.tsx` is the companion's Run view and `RunLens.tsx` the run lens.
 - **`lens/`**: The frame every lens shares (`Lens.tsx`), which covers the stage beside the companion, closes from its button or Escape and hands focus back to the selected terminal, and the reply strip at its foot (`ReplyStrip.tsx`).
 - **`github/`**: Slide-over companion drawer with filter chips, red `BLOCKED` dependency badges, and 1-click prompt submission.
 

@@ -35,7 +35,8 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 - **`orchestrator/`**: The A2A message trail, the Broadcast to all agents dialog, the swarm builder and its saved presets, and the live dispatch toasts.
 - **`github/`**: The Source control panel: the repository's pull requests and issues with state, search and label filters and capped paging, plus the Topos, Diffs and Pre-PR Audit tools.
 - **`archon/`**: Visual DAG execution canvas, live node status inspector, streaming execution logs, and spec task trackers.
-- **`machina/`**: The Factory Station (**Machina: local**): work order list and detail, the work order composer, the project gate config, holds and Accept.
+- **`machina/`**: Machina, Quay's local factory: the work order detail, the work order composer and the project gate config.
+- **`workflows/`**: The Workflows panel (engine strip, Needs you, Running, Start, Recent) over Archon, the Machina Factory and Praxis, the companion's Run view with each run's decision, the run lens, and the Factory's New work order and Factory config stage tabs.
 - **`sessions/`**: Types for the Claude Code sessions and token spend the backend reports, which Session history and the token spend meter show.
 
 > [!IMPORTANT]

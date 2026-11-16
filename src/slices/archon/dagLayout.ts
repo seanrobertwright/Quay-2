@@ -1,4 +1,4 @@
-import { ArchonPlanNode } from "./types";
+import type { ArchonPlanNode } from "./types.ts";
 
 export interface DagSizing {
   nodeWidth: number;
