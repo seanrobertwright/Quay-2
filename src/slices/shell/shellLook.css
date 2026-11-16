@@ -17,3 +17,14 @@
 [data-neon="module"] svg {
   filter: drop-shadow(0 0 4px var(--quay-neon, var(--quay-accent)));
 }
+
+/* A live terminal status dot glows in its own colour: green working, amber waiting. */
+[data-neon="dot"] {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* The picked companion view's underline, its bottom border. */
+[data-neon="underline"] {
+  border-bottom-color: var(--quay-accent);
+  box-shadow: 0 6px 8px -6px var(--quay-accent);
+}

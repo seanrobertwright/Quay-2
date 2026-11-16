@@ -20,13 +20,17 @@ const LIST_STYLE: CSSProperties = {
 };
 
 // Every state differs by shape or motion, never colour alone: a pulsing disc, a disc with a
-// halo, a hollow ring and a square.
+// halo, a hollow ring and a square. The two live states take their colour as `currentColor`, so
+// the shell look's glow is drawn in it.
 const DOT_CLASS: Record<DotStatus, string> = {
-  working: "w-2 h-2 rounded-full bg-[#3fb950] motion-safe:animate-pulse",
-  waiting: "w-2 h-2 rounded-full bg-[#d29922] shadow-[0_0_0_3px_rgba(210,153,34,0.35)]",
+  working: "w-2 h-2 rounded-full text-[#3fb950] bg-current motion-safe:animate-pulse",
+  waiting: "w-2 h-2 rounded-full text-[#d29922] bg-current shadow-[0_0_0_3px_rgba(210,153,34,0.35)]",
   idle: "w-2 h-2 rounded-full border-[1.5px] border-[#8b949e] bg-transparent",
   exited: "w-2 h-2 rounded-none bg-[#f85149]",
 };
+
+/** The dots that mark live state, and so glow. */
+const LIVE_DOTS: ReadonlySet<DotStatus> = new Set(["working", "waiting"]);
 
 interface TerminalStatusListProps {
   /** Every terminal's row, in the Projects panel's order; the list applies the cap. */
@@ -78,7 +82,7 @@ export const TerminalStatusList = ({
               {selected && (
                 <span aria-hidden="true" data-selected-bar className="absolute left-0 top-0.5 bottom-0.5 w-[2px] bg-[#e6edf3]" />
               )}
-              <span aria-hidden="true" className={DOT_CLASS[status]} />
+              <span aria-hidden="true" data-dot data-neon={LIVE_DOTS.has(status) ? "dot" : undefined} className={DOT_CLASS[status]} />
               <BarTooltip>{`${projectName} · ${terminal.name} · ${statusLabel}`}</BarTooltip>
             </button>
           </li>

@@ -2,6 +2,7 @@
 // Component tests for the stage tab bar (#634): a tab per terminal of the active project, one click
 // to show one, the layout switchers and Zoom on its right, and nothing else on it.
 import "../../test-support/dom.ts";
+import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -169,4 +170,24 @@ test("with the tool behind the terminals its tab is not current", () => {
   const toolTab = bar.querySelector('button[data-stage-tool="swarm-builder"]') as HTMLButtonElement;
   assert.equal(toolTab.getAttribute("aria-current"), null);
   assert.deepEqual(tabs().map((t) => t.getAttribute("aria-current")), [null, "true", null]);
+});
+
+test("the active stage tab's underline glows in the accent, for a terminal tab and a tool tab", () => {
+  installShellLook("tron");
+  const { bar } = render({ currentId: "b" });
+  const underline = (scope: Element | null) => {
+    const line = scope?.querySelector("[data-neon]");
+    assert.ok(line, "no underline");
+    return getComputedStyle(line);
+  };
+  const coder = bar.querySelector('[data-terminal-id="b"]');
+  assert.equal(underline(coder).backgroundColor, "#18e0ff");
+  assert.match(underline(coder).boxShadow, /#18e0ff/);
+  assert.equal(bar.querySelector('[data-terminal-id="a"] [data-neon]'), null, "only the active tab is lit");
+  act(() => mounted!.root.unmount());
+  mounted!.container.remove();
+  mounted = null;
+  const withTool = render({ tools: [{ id: "swarm", label: "Swarm builder" }], frontToolId: "swarm" });
+  const tool = withTool.bar.querySelector('[data-stage-tool="swarm"]')?.parentElement ?? null;
+  assert.equal(underline(tool).backgroundColor, "#18e0ff");
 });

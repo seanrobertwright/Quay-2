@@ -2,6 +2,7 @@
 // Component tests for the companion column (#636): its width and divider, following the selected
 // terminal, the Repository view, and the header's view switch.
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -217,6 +218,15 @@ test("arrow keys move the view switch's choice, as a radio group does", () => {
   assert.equal(body(container)?.dataset.companionView, "repository");
   key(radios(container)[0], "ArrowLeft");
   assert.equal(body(container)?.dataset.companionView, "ticket");
+});
+
+test("the picked companion view's underline glows in the accent; the others have none", () => {
+  installShellLook("sunset");
+  const { container } = render({ selected: terminal("linked", "E:/alpha"), views: laterViews });
+  const [repository, pullRequest] = radios(container).map((r) => getComputedStyle(r));
+  assert.equal(pullRequest.borderBottomColor, "#ff3d81");
+  assert.match(pullRequest.boxShadow, /#ff3d81/);
+  assert.equal(repository.boxShadow, "");
 });
 
 test("a request from outside the companion shows its view for its terminal, and a repeat shows it again", () => {

@@ -591,8 +591,9 @@ const ViewSwitch = ({
                 move(index, -1);
               }
             }}
+            data-neon={checked ? "underline" : undefined}
             className={`shrink-0 min-w-10 px-2.5 text-xs border-b-2 transition-colors ${
-              checked ? "border-[#58a6ff] text-white" : "border-transparent text-[#8b949e] hover:text-white"
+              checked ? "text-white" : "border-transparent text-[#8b949e] hover:text-white"
             }`}
           >
             {view.label}
