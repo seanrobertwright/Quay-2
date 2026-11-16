@@ -13,7 +13,7 @@ import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
 import { useShellPrefs } from "./slices/shell/useShellPrefs";
 import { PieMenuHost } from "./slices/pie/PieMenuHost";
-import type { PieAction, PieTarget } from "./slices/pie/pieRing";
+import { pieFolder, pieTerminalId, type PieAction, type PieTarget } from "./slices/pie/pieRing";
 import { requestTerminal } from "./slices/terminal/terminalRequests";
 import { revealFolder } from "./slices/overlay/menuActions";
 import { moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
@@ -943,7 +943,7 @@ export function App() {
   // A pie stroke (#648). N, E, S and W act on the selected terminal; the diagonals on the terminal
   // or row the pie opened over.
   const runPieStroke = (action: PieAction, target: PieTarget) => {
-    const terminalId = target.surface === "terminal" ? target.terminalId : target.surface === "panel" && target.row?.kind === "terminal" ? target.row.terminalId : null;
+    const terminalId = pieTerminalId(target);
     switch (action) {
       case "next-wait":
         return selectNextWaiting();
@@ -970,9 +970,11 @@ export function App() {
       case "show-in-pane":
         if (terminalId) showTerminal(terminalId);
         return;
-      case "open-folder":
-        if (target.surface === "panel" && target.row) revealFolder(target.row.folder);
+      case "open-folder": {
+        const folder = pieFolder(target);
+        if (folder) revealFolder(folder);
         return;
+      }
       case "agents-panel":
         return setOpenModule("agents");
     }

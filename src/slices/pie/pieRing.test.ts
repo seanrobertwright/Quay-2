@@ -4,7 +4,7 @@
 // companion's pull request wedges come with the Merge stroke ticket, so they stay empty here.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pieRing, type PieTarget } from "./pieRing.ts";
+import { pieFolder, pieRing, pieTerminalId, type PieTarget } from "./pieRing.ts";
 
 /** A ring as wedge → label, with empty wedges as null. */
 function labels(target: PieTarget) {
@@ -63,4 +63,19 @@ test("every surface keeps all eight wedges in order, and letters never repeat on
   // The letters the pie prototype settled on.
   const t = pieRing({ surface: "terminal", terminalId: "t1", zoomable: true });
   assert.deepEqual([t.N?.letter, t.E?.letter, t.SE?.letter, t.S?.letter, t.SW?.letter, t.W?.letter, t.NW?.letter], ["q", "s", "z", "p", "r", "n", "f"]);
+});
+
+test("the terminal a stroke acts on: the pane's, or a terminal row's; none elsewhere", () => {
+  assert.equal(pieTerminalId({ surface: "terminal", terminalId: "t1", zoomable: false }), "t1");
+  assert.equal(pieTerminalId({ surface: "panel", row: { kind: "terminal", terminalId: "t2", folder: "C:\r" } }), "t2");
+  assert.equal(pieTerminalId({ surface: "panel", row: { kind: "folder", folder: "C:\r" } }), null);
+  assert.equal(pieTerminalId({ surface: "panel", row: null }), null);
+  assert.equal(pieTerminalId({ surface: "companion" }), null);
+});
+
+test("the folder a stroke acts on: a row's; none off a row", () => {
+  assert.equal(pieFolder({ surface: "panel", row: { kind: "terminal", terminalId: "t2", folder: "C:\t" } }), "C:\t");
+  assert.equal(pieFolder({ surface: "panel", row: { kind: "folder", folder: "C:\r" } }), "C:\r");
+  assert.equal(pieFolder({ surface: "panel", row: null }), null);
+  assert.equal(pieFolder({ surface: "terminal", terminalId: "t1", zoomable: true }), null);
 });

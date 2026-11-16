@@ -78,3 +78,14 @@ export function pieRing(target: PieTarget): PieRing {
   const slots: Omit<PieRing, "NE"> = { N: NEXT_WAIT, E: SPLIT, S: PALETTE, W: NEW_TERM, ...diagonals(target) };
   return Object.fromEntries(WEDGES.map((wedge) => [wedge, wedge === "NE" ? null : slots[wedge]])) as PieRing;
 }
+
+/** The terminal a stroke acts on: the pane's, or a terminal row's; null elsewhere. */
+export function pieTerminalId(target: PieTarget): string | null {
+  if (target.surface === "terminal") return target.terminalId;
+  return target.surface === "panel" && target.row?.kind === "terminal" ? target.row.terminalId : null;
+}
+
+/** The folder a stroke acts on: a Projects panel or module bar row's; null off a row. */
+export function pieFolder(target: PieTarget): string | null {
+  return target.surface === "panel" && target.row ? target.row.folder : null;
+}
