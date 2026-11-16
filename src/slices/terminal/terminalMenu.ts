@@ -68,7 +68,7 @@ export type TerminalBodyMenuEntry = Omit<ContextMenuItem, "onChoose"> & { action
 const NO_SELECTION = "No selection";
 
 /**
- * The menu a right-click in a terminal's body opens, on a stage showing `paneCount` panes: the
+ * The menu Shift+right-click, Shift+F10 or the Menu key opens in a terminal's body, on a stage showing `paneCount` panes: the
  * clipboard group, then the pane's terminal menu. Find… sits in the clipboard group, so the
  * terminal menu below leaves its own out rather than show it twice.
  */
