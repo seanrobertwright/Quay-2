@@ -93,7 +93,7 @@ test("a failed Archon run offers Resume, and Abandon once pressed twice", async 
   await click(buttonNamed(container, "Abandon")!);
   assert.equal(calls.invoked.length, 1);
   await click(buttonNamed(container, "Press again to abandon")!);
-  assert.deepEqual(calls.invoked.at(-1), ["archon_run_action", { runId: "run-1", action: "abandon", text: null }]);
+  assert.deepEqual(calls.invoked[calls.invoked.length - 1], ["archon_run_action", { runId: "run-1", action: "abandon", text: null }]);
 });
 
 const workOrder = (over: Partial<MachinaWorkOrder>): MachinaWorkOrder => ({

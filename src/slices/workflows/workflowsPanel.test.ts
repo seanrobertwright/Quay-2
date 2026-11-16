@@ -162,7 +162,7 @@ test("Halt halts the Factory only on its second press; the switch pauses it", as
   await click(buttonNamed(strip, "Press again to halt")!);
   assert.deepEqual(calls.invoked, [["machina_set_loop_mode", { mode: "HALTED" }]]);
   await click(strip.querySelector('input[value="PAUSED"]')!);
-  assert.deepEqual(calls.invoked.at(-1), ["machina_set_loop_mode", { mode: "PAUSED" }]);
+  assert.deepEqual(calls.invoked[calls.invoked.length - 1], ["machina_set_loop_mode", { mode: "PAUSED" }]);
 });
 
 const praxisRun = (workOrderId: string, over: Record<string, unknown> = {}) => ({
