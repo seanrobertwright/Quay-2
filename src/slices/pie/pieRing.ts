@@ -100,6 +100,9 @@ const FIND = command("find", "Find", "f");
 const SHOW_IN_PANE = command("show-in-pane", "Show in pane", "o");
 const OPEN_FOLDER = command("open-folder", "Open folder", "e");
 const AGENTS_PANEL = command("agents-panel", "Agents panel", "a");
+/** The method each Merge stroke merges by: Merge itself and Squash squash, Commit merges, Rebase rebases. */
+export const MERGE_STROKE_METHOD = { merge: "squash", "merge-squash": "squash", "merge-commit": "merge", "merge-rebase": "rebase" } as const;
+
 const MERGE = command("merge", "Merge", "m", [slice("merge-squash", "Squash"), slice("merge-commit", "Commit"), slice("merge-rebase", "Rebase")]);
 const DIFF_LENS = command("diff-lens", "Diff lens", "d");
 const COMMENT = command("comment", "Comment", "c");

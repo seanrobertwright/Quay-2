@@ -13,7 +13,7 @@ import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
 import { useShellPrefs } from "./slices/shell/useShellPrefs";
 import { PieMenuHost } from "./slices/pie/PieMenuHost";
-import { pieFolder, pieTerminalId, type PieChoice, type PieTarget, type RecentPaletteCommand } from "./slices/pie/pieRing";
+import { MERGE_STROKE_METHOD, pieFolder, pieTerminalId, type PieChoice, type PieTarget, type RecentPaletteCommand } from "./slices/pie/pieRing";
 import { pieStrokeLog, type PieStrokeRecord } from "./slices/pie/pieStrokeLog";
 import { recentCommands } from "./slices/command-palette/recentCommands";
 import { requestTerminal } from "./slices/terminal/terminalRequests";
@@ -1052,11 +1052,9 @@ export function App() {
         return setOpenModule("agents");
       case "merge":
       case "merge-squash":
-        return startMerge("squash");
       case "merge-commit":
-        return startMerge("merge");
       case "merge-rebase":
-        return startMerge("rebase");
+        return startMerge(MERGE_STROKE_METHOD[choice.action]);
       case "diff-lens":
         diffLensOpener.current?.();
         return;
