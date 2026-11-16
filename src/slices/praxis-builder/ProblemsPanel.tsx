@@ -139,7 +139,7 @@ const ProblemRow: FC<{ diagnostic: Diagnostic; canSelect: boolean; onSelectNode:
       type="button"
       onClick={() => onSelectNode(nodeId)}
       title={`Select and zoom to ${nodeId}`}
-      className={`${className} hover:bg-[#161b22] focus-visible:bg-[#161b22] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#58a6ff] focus-visible:-outline-offset-2`}
+      className={`${className} hover:bg-[#161b22] focus-visible:bg-[#161b22] focus-visible:outline focus-visible:outline-2 focus-visible:outline-(--quay-accent) focus-visible:-outline-offset-2`}
     >
       {cells}
     </button>

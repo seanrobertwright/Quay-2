@@ -38,7 +38,7 @@ export const CONFIG_FORMS: Record<NodeKind, FC<ConfigFormProps> | null> = {
  * colour adds it to this rather than to `inputClass`.
  */
 export const inputBaseClass =
-  "bg-[#0d1117] border border-[#30363d] rounded-md px-2 py-1 text-xs focus:outline-none focus:border-[#58a6ff] aria-invalid:border-[#f85149]";
+  "bg-[#0d1117] border border-[#30363d] rounded-md px-2 py-1 text-xs focus:outline-none focus:border-(--quay-accent) aria-invalid:border-[#f85149]";
 export const inputClass = `${inputBaseClass} w-full text-[#c9d1d9]`;
 export const labelClass = "block text-[11px] font-medium text-[#8b949e] mb-1";
 const hintClass = "mt-1 text-[10px] text-[#6e7681]";
@@ -104,7 +104,7 @@ const RadioGroup: FC<{
         {options.map((option) => (
           <label
             key={option}
-            className="px-2 py-1 rounded-md text-[11px] font-mono border cursor-pointer bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:text-white has-checked:bg-[#1f6feb]/25 has-checked:border-[#58a6ff] has-checked:text-white has-focus-visible:outline has-focus-visible:outline-2 has-focus-visible:outline-[#58a6ff]"
+            className="px-2 py-1 rounded-md text-[11px] font-mono border cursor-pointer bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:text-white has-checked:bg-[#1f6feb]/25 has-checked:border-[#58a6ff] has-checked:text-white has-focus-visible:outline has-focus-visible:outline-2 has-focus-visible:outline-(--quay-accent)"
           >
             <input
               type="radio"

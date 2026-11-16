@@ -1,0 +1,60 @@
+/* The shell look (#652): neon in the pie palette's accent, with a soft glow, on live state only.
+   `--quay-accent` is set on the root from the pie palette (`shellAccent.ts`); a module icon sets
+   `--quay-neon` to its own hue under Spectrum. Each live part carries `data-neon` naming the part.
+   index.css imports this file into the base layer, so a Tailwind utility on the same element
+   wins over it. */
+
+/* The open module's edge on the module bar, and the active stage tab's underline. */
+[data-neon="edge"] {
+  background-color: var(--quay-neon, var(--quay-accent));
+  box-shadow: 0 0 6px var(--quay-neon, var(--quay-accent));
+}
+
+/* The open module's icon. */
+[data-neon="module"] {
+  color: var(--quay-neon, var(--quay-accent));
+}
+[data-neon="module"] svg {
+  filter: drop-shadow(0 0 4px var(--quay-neon, var(--quay-accent)));
+}
+
+/* A live terminal status dot glows in its own colour: green working, amber waiting. */
+[data-neon="dot"] {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* The picked companion view's underline, its bottom border. */
+[data-neon="underline"] {
+  border-bottom-color: var(--quay-accent);
+  box-shadow: 0 6px 8px -6px var(--quay-accent);
+}
+
+/* The selected terminal's row in the Projects panel. */
+[data-neon="row"] {
+  border-color: var(--quay-accent-line);
+  box-shadow: 0 0 3px var(--quay-accent), 0 0 9px var(--quay-accent-haze);
+}
+
+/* The selected terminal's pane in a split or grid, and its title, lit. */
+[data-neon="pane"] {
+  border-color: var(--quay-accent);
+  box-shadow: inset 0 0 14px var(--quay-accent-haze);
+}
+[data-neon="title"] {
+  color: var(--quay-accent);
+  text-shadow: 0 0 4px var(--quay-accent-haze);
+}
+
+/* The companion's ready card glows in the ready green, not the accent: green stays ready's colour. */
+[data-neon="ready"] {
+  border-color: rgba(63, 185, 80, 0.6);
+  box-shadow: 0 0 12px rgba(63, 185, 80, 0.3);
+}
+
+/* The focus ring, for every control that does not draw its own. In the base layer, so a control's
+   own focus utility (such as `focus-visible:outline-none`) still wins. */
+:focus-visible {
+  outline: 2px solid var(--quay-accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 3px var(--quay-accent), 0 0 9px var(--quay-accent-haze);
+}

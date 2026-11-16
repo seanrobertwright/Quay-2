@@ -77,7 +77,7 @@ export const GoToNode: FC<{
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          className="w-full px-2 py-1.5 rounded-md bg-[#0d1117] border border-[#30363d] text-xs font-mono focus:outline-none focus:border-[#58a6ff]"
+          className="w-full px-2 py-1.5 rounded-md bg-[#0d1117] border border-[#30363d] text-xs font-mono focus:outline-none focus:border-(--quay-accent)"
         />
         {matches.length > 0 ? (
           <ul id={listId} role="listbox" aria-label="Nodes" className="mt-2 max-h-72 overflow-y-auto text-xs">

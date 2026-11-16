@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Columns2, Grid2x2, Maximize2, Minimize2, Plus, Rows2, Square, X } from "lucide-react";
 import type { StageLayout, TerminalInfo } from "../terminal/types";
@@ -117,7 +118,7 @@ export const StageTabBar = ({
                 current ? "bg-[#0d1117] text-white" : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#21262d]"
               }`}
             >
-              {current && <span aria-hidden="true" className="absolute left-0 right-0 bottom-0 h-[2px] bg-[#58a6ff]" />}
+              {current && <span aria-hidden="true" data-neon={neonPart("edge", true)} className="absolute left-0 right-0 bottom-0 h-[2px]" />}
               <span className="truncate">{term.name}</span>
               <span aria-hidden="true" className="shrink-0 text-[10px] text-[#8b949e] font-mono">
                 {term.run_kind}
@@ -134,7 +135,7 @@ export const StageTabBar = ({
                 current ? "bg-[#0d1117] text-white" : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#21262d]"
               }`}
             >
-              {current && <span aria-hidden="true" className="absolute left-0 right-0 bottom-0 h-[2px] bg-[#58a6ff]" />}
+              {current && <span aria-hidden="true" data-neon={neonPart("edge", true)} className="absolute left-0 right-0 bottom-0 h-[2px]" />}
               <button
                 type="button"
                 data-stage-tool={tool.id}

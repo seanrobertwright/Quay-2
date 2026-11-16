@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { type PermissionMode, type TerminalInfo, isAgentRunKind, launchModel, relaunchLabel } from "../terminal/types.ts";
@@ -253,9 +254,10 @@ export const TerminalRow = ({
           }
           onKeyDown(e);
         }}
+        data-neon={neonPart("row", isActive)}
         className={`group flex flex-col gap-1 px-2.5 py-1.5 text-xs rounded-md cursor-pointer transition-colors ${
           isActive
-            ? "bg-[#21262d] text-white font-medium shadow-xs border border-[#30363d]/80"
+            ? "bg-[#21262d] text-white font-medium border"
             : "text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9] border border-transparent"
         }`}
       >

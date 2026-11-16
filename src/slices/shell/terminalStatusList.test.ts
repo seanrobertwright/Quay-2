@@ -3,6 +3,7 @@
 // px rows from x = 0, names a screen reader hears, the selected row's bar, the gap between
 // projects, clicks, and the +N row past the cap.
 import "../../test-support/dom.ts";
+import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -135,4 +136,18 @@ test("on a short window fewer rows show and the waiting terminal keeps its row",
     buttons().map((b) => b.getAttribute("aria-label")),
     ["term-3, waiting on you", "2 more terminals in the Projects panel"],
   );
+});
+
+test("working and waiting dots glow softly in their own colour; idle and exited dots do not", () => {
+  installShellLook("cyber");
+  const { container } = render([row("1", "working"), row("2", "waiting"), row("3", "idle"), row("4", "exited")]);
+  const glow = (status: string) => {
+    const dot = container.querySelector(`li[data-status="${status}"] [data-dot]`);
+    assert.ok(dot, `no ${status} dot`);
+    return getComputedStyle(dot).filter;
+  };
+  assert.match(glow("working"), /^drop-shadow\(0 0 [1-4]px currentcolor\)$/i);
+  assert.match(glow("waiting"), /^drop-shadow\(0 0 [1-4]px currentcolor\)$/i);
+  assert.equal(glow("idle"), "");
+  assert.equal(glow("exited"), "");
 });

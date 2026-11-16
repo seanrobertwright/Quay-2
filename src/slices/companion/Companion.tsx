@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
@@ -591,8 +592,9 @@ const ViewSwitch = ({
                 move(index, -1);
               }
             }}
+            data-neon={neonPart("underline", checked)}
             className={`shrink-0 min-w-10 px-2.5 text-xs border-b-2 transition-colors ${
-              checked ? "border-[#58a6ff] text-white" : "border-transparent text-[#8b949e] hover:text-white"
+              checked ? "text-white" : "border-transparent text-[#8b949e] hover:text-white"
             }`}
           >
             {view.label}
@@ -661,7 +663,7 @@ const CompanionDivider = ({
     >
       <div
         style={{ width: DIVIDER_LINE_WIDTH }}
-        className="h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:bg-[#58a6ff] group-focus-visible/handle:outline group-focus-visible/handle:outline-1 group-focus-visible/handle:outline-[#58a6ff]"
+        className="h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:bg-(--quay-accent) group-focus-visible/handle:outline group-focus-visible/handle:outline-1 group-focus-visible/handle:outline-(--quay-accent)"
       />
     </div>
   );

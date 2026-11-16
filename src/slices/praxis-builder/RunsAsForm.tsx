@@ -256,7 +256,7 @@ const Choice: FC<{
         {options.map((o) => (
           <label
             key={o.value}
-            className="px-2 py-1 rounded-md text-[11px] border cursor-pointer bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:text-white has-checked:bg-[#1f6feb]/25 has-checked:border-[#58a6ff] has-checked:text-white has-focus-visible:outline has-focus-visible:outline-2 has-focus-visible:outline-[#58a6ff]"
+            className="px-2 py-1 rounded-md text-[11px] border cursor-pointer bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:text-white has-checked:bg-[#1f6feb]/25 has-checked:border-[#58a6ff] has-checked:text-white has-focus-visible:outline has-focus-visible:outline-2 has-focus-visible:outline-(--quay-accent)"
           >
             <input
               type="radio"

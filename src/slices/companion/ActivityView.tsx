@@ -230,7 +230,7 @@ const MessageStrip = ({ terminal }: { terminal: TerminalInfo }) => {
           disabled={exited}
           aria-label={`Message to ${terminal.name}`}
           placeholder={exited ? `${terminal.name} has exited` : `Send ${terminal.name} a task`}
-          className="min-w-0 flex-1 resize-none rounded-md border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-xs text-white placeholder-[#8b949e] focus:border-[#58a6ff] focus:outline-hidden disabled:opacity-50"
+          className="min-w-0 flex-1 resize-none rounded-md border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-xs text-white placeholder-[#8b949e] focus:border-(--quay-accent) focus:outline-hidden disabled:opacity-50"
         />
         <button
           type="submit"

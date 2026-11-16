@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, useId } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
@@ -13,6 +13,7 @@ import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
 import { useShellPrefs } from "./slices/shell/useShellPrefs";
+import { applyShellAccent } from "./slices/shell/shellAccent";
 import { PieMenuHost } from "./slices/pie/PieMenuHost";
 import { MERGE_STROKE_METHOD, pieFolder, pieTerminalId, type PieChoice, type PieTarget, type RecentPaletteCommand } from "./slices/pie/pieRing";
 import { pieStrokeLog, type PieStrokeRecord } from "./slices/pie/pieStrokeLog";
@@ -610,6 +611,8 @@ export function App() {
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
   // The Project panel's Quay · every project settings, kept per machine in the same storage.
   const { prefs: shellPrefs, setPref: setShellPref } = useShellPrefs(window.localStorage);
+  // The pie palette sets the shell accent; before paint, so the first frame is already lit right.
+  useLayoutEffect(() => applyShellAccent(document.documentElement, shellPrefs.piePalette), [shellPrefs.piePalette]);
   const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
   const diffLens = companionLens.shown;
@@ -1129,6 +1132,7 @@ export function App() {
         openModule={openModule}
         onOpenModule={setOpenModule}
         panelId={modulePanelId}
+        palette={shellPrefs.piePalette}
         onOpenPalette={() => setIsCommandPaletteOpen(true)}
         renderTerminalList={(maxHeight) => (
           <TerminalStatusList

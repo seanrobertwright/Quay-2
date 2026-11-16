@@ -124,7 +124,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Find in terminal..."
-          className="w-44 px-2 py-1 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white placeholder:text-[#6e7681] focus:outline-hidden focus:border-[#58a6ff]"
+          className="w-44 px-2 py-1 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white placeholder:text-[#6e7681] focus:outline-hidden focus:border-(--quay-accent)"
         />
 
         {/* Counter Badge */}

@@ -19,3 +19,11 @@ export const PIE_PALETTES = [
 ] as const satisfies readonly PiePalette[];
 
 export type PiePaletteId = (typeof PIE_PALETTES)[number]["id"];
+
+/** The two colours of palette `id`, or the first palette's when no palette has that id. */
+export function paletteColors(id: PiePaletteId): PiePalette["colors"] {
+  return (PIE_PALETTES.find((p) => p.id === id) ?? PIE_PALETTES[0]).colors;
+}
+
+/** Spectrum's hue for the `index`th item clockwise from N (a wedge, or a module icon top down), in degrees. */
+export const spectrumHue = (index: number): number => (index * 45 + 170) % 360;

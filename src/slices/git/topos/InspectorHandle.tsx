@@ -37,7 +37,7 @@ export const InspectorHandle: React.FC<{ width: number; onWidth: (width: number)
       }}
       className="group/handle absolute top-0 bottom-0 left-0 z-20 w-[9px] -ml-[5px] cursor-col-resize flex justify-center outline-none touch-none"
     >
-      <div className="w-px h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:w-[2px] group-focus-visible/handle:bg-[#58a6ff]" />
+      <div className="w-px h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:w-[2px] group-focus-visible/handle:bg-(--quay-accent)" />
     </div>
   );
 };

@@ -246,7 +246,7 @@ const SessionHistory = ({
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search sessions"
           placeholder="Search sessions"
-          className="w-full h-7 px-2 rounded-md border border-[#30363d] bg-[#0d1117] text-xs text-white placeholder-[#8b949e] focus:border-[#58a6ff] focus:outline-hidden"
+          className="w-full h-7 px-2 rounded-md border border-[#30363d] bg-[#0d1117] text-xs text-white placeholder-[#8b949e] focus:border-(--quay-accent) focus:outline-hidden"
         />
       </div>
       {error && (

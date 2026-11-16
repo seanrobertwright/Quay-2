@@ -145,7 +145,7 @@ export const NewWorktreeModal: React.FC<NewWorktreeModalProps> = ({
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
                 placeholder="e.g. feat/issue-86 or fix/buffer-leak"
-                className="w-full pl-9 pr-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-white placeholder-[#8b949e] focus:outline-hidden focus:border-[#58a6ff]"
+                className="w-full pl-9 pr-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-white placeholder-[#8b949e] focus:outline-hidden focus:border-(--quay-accent)"
               />
             </div>
 

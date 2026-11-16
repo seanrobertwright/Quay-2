@@ -167,7 +167,7 @@ export const FactoryConfigPanel: FC<FactoryConfigPanelProps> = ({
               setSaved(false);
             }}
             spellCheck={false}
-            className="w-full min-h-96 px-3 py-2 rounded-lg bg-[#010409] border border-[#30363d] font-mono text-xs text-[#c9d1d9] focus:border-[#58a6ff] focus:outline-none"
+            className="w-full min-h-96 px-3 py-2 rounded-lg bg-[#010409] border border-[#30363d] font-mono text-xs text-[#c9d1d9] focus:border-(--quay-accent) focus:outline-none"
           />
           {error && (
             <div role="alert" className="mt-2 p-2 rounded border border-[#f85149]/50 bg-[#f85149]/10 text-xs text-[#ff7b72]">

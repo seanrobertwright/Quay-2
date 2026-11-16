@@ -6,7 +6,7 @@
 // at its three second-ring slices show on the outer ring, which the wire draws past its own box.
 // The live pie and the Project panel's preview both draw this.
 import type { CSSProperties } from "react";
-import { PIE_PALETTES, type PiePaletteId } from "./piePalettes.ts";
+import { paletteColors, spectrumHue, type PiePaletteId } from "./piePalettes.ts";
 import { WEDGES, sliceSpan, type Wedge } from "./pieRecognizer.ts";
 import type { PieRing } from "./pieRing.ts";
 
@@ -47,8 +47,8 @@ const sector = (r0: number, r1: number, a0: number, a1: number) =>
 
 /** The resting and aimed colours of wedge `index` (clockwise from N) in `palette`. */
 function wedgeColors(palette: PiePaletteId, index: number): [string, string] {
-  const colors = (PIE_PALETTES.find((p) => p.id === palette) ?? PIE_PALETTES[0]).colors;
-  if (palette === "spectrum") return [`hsl(${(index * 45 + 170) % 360} 100% 62%)`, colors[1]];
+  const colors = paletteColors(palette);
+  if (palette === "spectrum") return [`hsl(${spectrumHue(index)} 100% 62%)`, colors[1]];
   return [colors[0], colors[1]];
 }
 

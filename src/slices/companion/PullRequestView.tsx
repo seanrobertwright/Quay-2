@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MergeMethod, PullRequestReadiness, PullRequestState } from "../github/types.ts";
@@ -231,7 +232,11 @@ const ReadinessCard = ({
 }) => {
   const verdict = readiness(pr);
   return (
-    <section aria-label="Readiness" className="rounded-md border border-[#30363d] bg-[#161b22]">
+    <section
+      aria-label="Readiness"
+      data-neon={neonPart("ready", verdict.tone === "ready")}
+      className={`rounded-md border bg-[#161b22] ${verdict.tone === "ready" ? "" : "border-[#30363d]"}`}
+    >
       <div className="p-3 space-y-2">
         <h3 className={`text-sm font-semibold ${HEADLINE_TONE[verdict.tone]}`}>{verdict.headline}</h3>
         <p className="text-[#8b949e]">{verdict.reason}</p>

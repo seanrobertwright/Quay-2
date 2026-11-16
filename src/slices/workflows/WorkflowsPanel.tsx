@@ -238,7 +238,7 @@ const EngineStrip = ({
       ref={strip}
       tabIndex={-1}
       aria-label="Engines"
-      className="border-b border-[#30363d] px-3 py-2 space-y-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#58a6ff]"
+      className="border-b border-[#30363d] px-3 py-2 space-y-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--quay-accent)"
     >
       <div className="flex items-center gap-2">
         <span
@@ -255,7 +255,7 @@ const EngineStrip = ({
           {(["ACTIVE", "PAUSED"] as const).map((mode) => (
             <label
               key={mode}
-              className={`min-h-6 px-2 inline-flex items-center rounded cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#58a6ff] ${
+              className={`min-h-6 px-2 inline-flex items-center rounded cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--quay-accent) ${
                 loopMode === mode
                   ? mode === "ACTIVE"
                     ? "bg-[#238636] text-white font-bold"

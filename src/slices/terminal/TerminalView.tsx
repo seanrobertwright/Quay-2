@@ -1,3 +1,4 @@
+import { neonPart } from "../../lib/neon.ts";
 import { FC, CSSProperties, MouseEvent, useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -219,10 +220,11 @@ export const TerminalView: FC<TerminalViewProps> = ({
         } ${
           framed
             ? isFocused
-              ? "ring-1 ring-[#58a6ff] border border-[#58a6ff]/70 rounded-md shadow-md"
+              ? "border rounded-md"
               : "border border-[#30363d]/60 rounded-md"
             : "w-full h-full"
         } ${className}`}
+        data-neon={neonPart("pane", framed && isFocused)}
         style={{
           display: isVisible ? "flex" : "none",
           ...style,
@@ -252,7 +254,8 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   value={terminalId}
                   onChange={(e) => onSwitchTerminal(e.target.value)}
                   onClick={(e: MouseEvent<HTMLSelectElement>) => e.stopPropagation()}
-                  className="bg-transparent font-medium text-xs text-[#c9d1d9] hover:text-white border-none focus:outline-hidden cursor-pointer max-w-[140px] truncate"
+                  data-neon={neonPart("title", isFocused)}
+                  className={`bg-transparent font-medium text-xs ${isFocused ? "" : "text-[#c9d1d9] hover:text-white"} border-none focus:outline-hidden cursor-pointer max-w-[140px] truncate`}
                 >
                   {allTerminals.map((t) => (
                     <option key={t.id} value={t.id} className="bg-[#161b22] text-white">
@@ -261,7 +264,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   ))}
                 </select>
               ) : (
-                <span className="font-medium truncate max-w-[140px] text-xs">
+                <span data-neon={neonPart("title", isFocused)} className="font-medium truncate max-w-[140px] text-xs">
                   {terminal?.name || terminalId}
                 </span>
               )}
