@@ -934,6 +934,8 @@ export function App() {
     openThisProject: () => openProjectPanel("this-project"),
     openCheckForUpdates: () => openProjectPanel("check-for-updates"),
   };
+  const openUpdateModal = () => setIsUpdateModalOpen(true);
+
   const openLogsFolder = () => {
     invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
   };
@@ -1055,7 +1057,7 @@ export function App() {
               onOpenInVsCode={() => void handleOpenInVsCode(activeProject)}
               onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
               onOpenLogsFolder={openLogsFolder}
-              onCheckForUpdates={() => setIsUpdateModalOpen(true)}
+              onCheckForUpdates={openUpdateModal}
               onSetPref={setShellPref}
             />
           ),
@@ -1202,7 +1204,7 @@ export function App() {
         onOpenInVsCode={handleOpenInVsCode}
         toposTarget={toposTarget}
         onToposRequest={requestTopos}
-        onCheckForUpdates={() => setIsUpdateModalOpen(true)}
+        onCheckForUpdates={openUpdateModal}
         shellPrefs={shellPrefs}
         onSetShellPref={setShellPref}
         onToggleLiveMode={
