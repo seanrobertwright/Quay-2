@@ -1,3 +1,5 @@
+import { readShellPrefs } from "../shell/shellPrefs.ts";
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
@@ -14,14 +16,10 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+/** Whether Sound chime is on, as the Project panel stores it; an unknown stored value reads as on. */
 export function isChimeEnabled(): boolean {
   if (typeof window === "undefined") return false;
-  const val = localStorage.getItem("quay_chime_enabled");
-  return val === null ? true : val === "true";
-}
-
-export function setChimeEnabled(enabled: boolean): void {
-  localStorage.setItem("quay_chime_enabled", enabled.toString());
+  return readShellPrefs(localStorage).soundChime;
 }
 
 export function getChimeVolume(): number {

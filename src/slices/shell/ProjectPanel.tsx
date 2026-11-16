@@ -100,7 +100,7 @@ function ChoiceSetting<K extends ShellPrefKey>({
   const options = setting.options;
   const checked = Math.max(0, options.findIndex((option) => option.value === value));
   const palette = setting.key === "piePalette";
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     const step = NEXT_KEYS.has(e.key) ? 1 : PREVIOUS_KEYS.has(e.key) ? -1 : 0;
     if (step === 0) return;
     e.preventDefault();
@@ -114,7 +114,6 @@ function ChoiceSetting<K extends ShellPrefKey>({
       <div
         role="radiogroup"
         aria-label={setting.label}
-        onKeyDown={onKeyDown}
         className={palette ? "grid grid-cols-2 gap-1" : "flex rounded-md border border-[#30363d] bg-[#0d1117] p-0.5"}
       >
         {options.map((option, index) => {
@@ -131,6 +130,7 @@ function ChoiceSetting<K extends ShellPrefKey>({
               aria-checked={isChecked}
               tabIndex={isChecked ? 0 : -1}
               onClick={() => onSet(option.value)}
+              onKeyDown={onKeyDown}
               className={`min-h-6 flex items-center gap-1.5 rounded px-2 text-[11px] transition-colors ${palette ? "flex-none border" : "flex-1 justify-center"} ${
                 isChecked
                   ? `bg-[#21262d] text-white ${palette ? "border-[#58a6ff]" : ""}`

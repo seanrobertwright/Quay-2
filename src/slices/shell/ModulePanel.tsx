@@ -86,16 +86,3 @@ export const LauncherList = ({
     </ul>
   );
 };
-
-/**
- * A panel that lists the tools its module holds today, each opening that tool as before. The
- * Agents, Workflows and Project panels start as these until their own panels land.
- */
-export const LauncherPanel = ({ title, launchers }: { title: string; launchers: PanelLauncher[] }) => (
-  <div className="flex-1 min-h-0 flex flex-col select-none text-[#c9d1d9]">
-    <h2 className="h-12 shrink-0 px-4 flex items-center border-b border-[#30363d] bg-[#161b22] text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">
-      {title}
-    </h2>
-    <LauncherList launchers={launchers} className="flex-1 overflow-y-auto p-2 space-y-1" />
-  </div>
-);

@@ -179,8 +179,10 @@ test("arrow keys in a radio group pick the next or previous value, and only the 
   const delay = radioGroup(group(container, "Quay · every project"), "Pie display delay");
   const tabbable = [...delay.querySelectorAll<HTMLElement>("[role=radio]")].map((r) => r.tabIndex);
   assert.deepEqual(tabbable, [-1, 0, -1]);
-  await act(async () => delay.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-  await act(async () => delay.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+  // The checked radio, 150 ms, has the focus and takes the keys; the props stay put, so both start there.
+  const checked = delay.querySelector<HTMLElement>("[aria-checked=true]")!;
+  await act(async () => checked.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+  await act(async () => checked.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
   assert.deepEqual(set, [
     ["pieDisplayDelayMs", 300],
     ["pieDisplayDelayMs", 0],
