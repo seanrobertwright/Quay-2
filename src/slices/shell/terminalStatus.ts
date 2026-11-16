@@ -58,11 +58,15 @@ export interface StatusRow {
  * worktree (such as a worktree created a moment ago) is listed at the end of the deepest
  * project that holds it. The Projects panel does not list such a terminal yet; the bar still
  * gives every terminal a row.
+ *
+ * A terminal in `asking`, the terminals with a permission request waiting on the operator, shows
+ * the waiting dot whatever its status.
  */
 export function statusRows(
   terminals: readonly TerminalInfo[],
   projects: readonly Project[],
   projectWorktrees: Readonly<Record<string, readonly GitWorktree[]>>,
+  asking: ReadonlySet<string> = new Set(),
 ): StatusRow[] {
   // Each terminal's project: an exact project or worktree folder first, so a project nested
   // inside another keeps its own terminals, then the deepest project folder that holds it.
@@ -85,7 +89,7 @@ export function statusRows(
   const rows: StatusRow[] = [];
   const row = (terminal: TerminalInfo, projectName: string, group: string): StatusRow => ({
     terminal,
-    status: dotStatus(terminal),
+    status: asking.has(terminal.id) ? "waiting" : dotStatus(terminal),
     projectName,
     group,
   });
@@ -101,6 +105,20 @@ export function statusRows(
   }
   for (const t of terminals) if (!owner.has(t.id)) rows.push(row(t, OTHER_TERMINALS, ""));
   return rows;
+}
+
+/**
+ * The terminal `Ctrl+Shift+B q` selects: the first waiting row after the selected terminal's, in
+ * list order, wrapping to the top; the first waiting row when the selected terminal has no row.
+ * Null when no terminal waits.
+ */
+export function nextWaitingTerminal(rows: readonly StatusRow[], selectedId: string | null): string | null {
+  const from = rows.findIndex((r) => r.terminal.id === selectedId);
+  for (let step = 1; step <= rows.length; step++) {
+    const row = rows[(from + step + rows.length) % rows.length];
+    if (row.status === "waiting") return row.terminal.id;
+  }
+  return null;
 }
 
 const urgent = (row: StatusRow) => row.status === "waiting" || row.status === "exited";

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { TerminalInfo, ClaudeStatus } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
-import { capStatusRows, dotStatus, fitStatusRows, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
+import { capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
 
 const term = (id: string, project_path: string, claude_status: ClaudeStatus = "idle"): TerminalInfo => ({
   id,
@@ -132,4 +132,24 @@ test("a short window shows fewer rows, keeping waiting terminals, and never less
   assert.ok(ids(short.rows).includes("t19"));
   const none = fitStatusRows(rows, 0);
   assert.deepEqual(none, { rows: [], hidden: 20 });
+});
+
+test("a terminal with a permission request waiting shows the amber waiting dot whatever its status", () => {
+  const terminals = [term("asks", "C:/a", "working"), term("quiet", "C:/a", "working")];
+  const rows = statusRows(terminals, [project("C:/a", "A")], {}, new Set(["asks"]));
+  assert.deepEqual(rows.map((r) => [r.terminal.id, r.status]), [
+    ["asks", "waiting"],
+    ["quiet", "working"],
+  ]);
+});
+
+test("the next waiting terminal is the first waiting row after the selected one, wrapping, else none", () => {
+  const terminals = [term("a", "C:/a", "waiting"), term("b", "C:/a", "idle"), term("c", "C:/a", "waiting"), term("d", "C:/a")];
+  const rows = statusRows(terminals, [project("C:/a", "A")], {});
+  assert.equal(nextWaitingTerminal(rows, null), "a");
+  assert.equal(nextWaitingTerminal(rows, "a"), "c");
+  assert.equal(nextWaitingTerminal(rows, "b"), "c");
+  assert.equal(nextWaitingTerminal(rows, "c"), "a");
+  assert.equal(nextWaitingTerminal(rows, "gone"), "a");
+  assert.equal(nextWaitingTerminal(statusRows([term("x", "C:/a")], [project("C:/a", "A")], {}), null), null);
 });
