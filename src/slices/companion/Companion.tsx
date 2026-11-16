@@ -407,9 +407,13 @@ export const Companion = ({
         : run
           ? { view: RUN_VIEW, content: run.content }
           : null;
-  // A handed-in ticket shows until its Close; a new seq shows it again.
+  // A handed-in ticket shows until its Close or until another terminal is selected; a new seq
+  // shows it again.
   const [closedTicketSeq, setClosedTicketSeq] = useState<number | null>(null);
-  const looseTicket = ticket && ticket.seq !== closedTicketSeq ? ticket : null;
+  const [ticketOver, setTicketOver] = useState<{ seq: number; terminalId: string | null } | null>(null);
+  if (ticket && ticket.seq !== ticketOver?.seq) setTicketOver({ seq: ticket.seq, terminalId: selectedId });
+  const looseTicket =
+    ticket && ticket.seq !== closedTicketSeq && (ticket.seq !== ticketOver?.seq || ticketOver.terminalId === selectedId) ? ticket : null;
   const resize = (next: number) => {
     setWidth(next);
     prefs.writeWidth(next);

@@ -596,3 +596,20 @@ test("a ticket handed to the companion shows with no terminal selected, and Back
   act(() => back.click());
   assert.equal(container.querySelector("[data-companion-view]"), null);
 });
+
+test("a ticket handed to the companion gives way once another terminal is selected", async () => {
+  const props = {
+    projects: [{ path: "E:/alpha", name: "Alpha", terminal_ids: [] }],
+    projectWorktrees: {},
+    views: COMPANION_VIEWS,
+    prefs: companionPrefs(memoryStorage()),
+    ticket: { repoPath: "E:/alpha", repo: null, number: 9, seq: 1 },
+  };
+  const { container } = await render(github({ number: 9 }), { link: { ticket: null, pull_request: null, candidates: [] }, ticket: props.ticket });
+  assert.ok(container.querySelector('button[aria-label="Close this ticket"]'));
+  const other: TerminalInfo = { ...terminalInfo("b", "E:/alpha"), link: { ticket: null, pull_request: null, candidates: [] } };
+  act(() => mounted!.root.render(createElement(Companion, { ...props, selectedTerminal: other })));
+  await settle();
+  assert.equal(container.querySelector('button[aria-label="Close this ticket"]'), null);
+  assert.equal(container.querySelector("[data-companion-view]")?.getAttribute("data-companion-view"), "repository");
+});
