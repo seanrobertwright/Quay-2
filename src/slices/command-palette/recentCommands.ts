@@ -3,6 +3,7 @@
 import type { PrefsStorage } from "../companion/companionPrefs.ts";
 import { SLICE_COUNT } from "../pie/pieRecognizer.ts";
 import type { RecentPaletteCommand } from "../pie/pieRing.ts";
+import { parseStoredList } from "../../utils/storedList.ts";
 
 const KEY = "quay_recent_palette_commands";
 
@@ -24,16 +25,7 @@ const isCommand = (v: unknown): v is RecentPaletteCommand =>
   typeof (v as Record<string, unknown>).title === "string";
 
 function parse(raw: string | null): RecentPaletteCommand[] {
-  if (raw === null) return [];
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter(isCommand)
+  return parseStoredList(raw, isCommand)
     .map(({ id, title }) => ({ id, title }))
     .slice(0, MAX_RECENT_COMMANDS);
 }

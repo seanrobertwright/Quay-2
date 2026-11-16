@@ -4,6 +4,7 @@
 // a parent's second ring within 30° of a neighbouring parent, the strokes where a lock could have
 // gone either way. Kept in the WebView's localStorage under `quay_pie_stroke_log`.
 import type { PrefsStorage } from "../companion/companionPrefs.ts";
+import { parseStoredList } from "../../utils/storedList.ts";
 import { LOCK_WITHIN_DEG, WEDGES, bearingOf, offWedge, type PiePoint, type PieRingKeys, type Wedge } from "./pieRecognizer.ts";
 
 const KEY = "quay_pie_stroke_log";
@@ -86,15 +87,7 @@ function isRecord(v: unknown): v is PieStrokeRecord {
   );
 }
 
-function parse(raw: string | null): PieStrokeRecord[] {
-  if (raw === null) return [];
-  try {
-    const value: unknown = JSON.parse(raw);
-    return Array.isArray(value) ? value.filter(isRecord).slice(-MAX_LOGGED_STROKES) : [];
-  } catch {
-    return [];
-  }
-}
+const parse = (raw: string | null): PieStrokeRecord[] => parseStoredList(raw, isRecord).slice(-MAX_LOGGED_STROKES);
 
 /** The stroke log in `storage`. */
 export function pieStrokeLog(storage: PrefsStorage) {
