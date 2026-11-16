@@ -6,6 +6,7 @@ import {
   commitMessageDefaults,
   DEFAULT_MERGE_METHOD,
   MERGE_METHODS,
+  mergeArgs,
   mergeMethodLabel,
   readiness,
   readinessCells,
@@ -20,10 +21,14 @@ import { errorText, usePullRequestReadiness, type PullRequestLocation } from "./
 import { PRIMARY, SECONDARY } from "./buttonStyles.ts";
 
 /** What `merge_github_pr` reports once the pull request has merged. */
-interface MergeOutcome {
+export interface MergeOutcome {
   branchDeleted: boolean;
   branchError: string | null;
 }
+
+/** The warning a merge that went through still carries: Delete branch failing, or null. */
+export const mergeWarning = (outcome: MergeOutcome): string | null =>
+  outcome.branchError ? `Merged, but Delete branch failed: ${outcome.branchError}` : null;
 
 const PILL: Record<PullRequestState | "DRAFT", { label: string; className: string }> = {
   OPEN: { label: "Open", className: "bg-[#238636]" },
@@ -320,18 +325,8 @@ const MergeControl = ({
   };
   const merge = (title: string, message: string, deleteBranch: boolean) =>
     run("Merge", async () => {
-      const outcome = await invoke<MergeOutcome>("merge_github_pr", {
-        repoPath: location.repoPath,
-        repo: location.repo,
-        number: location.number,
-        method,
-        commitTitle: method === "rebase" ? null : title,
-        commitMessage: method === "rebase" ? null : message,
-        headSha: pr.headRefOid,
-        headBranch: pr.headRefName,
-        deleteBranch,
-      });
-      return outcome.branchError ? `Merged, but Delete branch failed: ${outcome.branchError}` : null;
+      const outcome = await invoke<MergeOutcome>("merge_github_pr", { ...mergeArgs(location, pr, method, { title, message, deleteBranch }) });
+      return mergeWarning(outcome);
     });
   return (
     <div className="space-y-2">
