@@ -78,11 +78,15 @@ interface CommandPaletteProps {
   onFocusNextPane: () => void;
   onNewTerminal: (runKind?: RunKind) => void;
   onOpenWorkspaceSettings: () => void;
-  onOpenSwarmModal: () => void;
+  /** Opens the swarm builder stage tab. */
+  onOpenSwarmBuilder: () => void;
   onLaunchSwarmPreset: (preset: SwarmPreset) => void;
   savedSwarms: SwarmPreset[];
   onOpenActionLog: () => void;
-  onOpenA2A: () => void;
+  /** Opens Broadcast to all agents, for a line to every running agent in the active project. */
+  onBroadcast: () => void;
+  /** Opens the companion's Activity view for the selected terminal. */
+  onOpenActivity?: () => void;
   onOpenDiffInspector: () => void;
   onToggleLiveMode?: () => void;
   onAddProject: () => void;
@@ -91,8 +95,12 @@ interface CommandPaletteProps {
   /** Opens the Source control panel, with its pull request and issue lists. */
   onOpenSourceControl?: () => void;
   onOpenPrePrAudit?: () => void;
+  /** Opens the Agents panel on Session history. */
   onOpenSessionHistory?: () => void;
+  /** Opens the Agents panel, whose Waiting on you lists every session waiting on the operator. */
   onOpenAttentionQueue?: () => void;
+  /** Selects the next terminal waiting on the operator. */
+  onSelectNextWaiting?: () => void;
   onOpenTokenSpend?: () => void;
   onOpenArchonGraph?: () => void;
   onOpenFactoryStation?: () => void;
@@ -121,17 +129,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onFocusNextPane,
   onNewTerminal,
   onOpenWorkspaceSettings,
-  onOpenSwarmModal,
+  onOpenSwarmBuilder,
   onLaunchSwarmPreset,
   savedSwarms,
   onOpenActionLog,
-  onOpenA2A,
+  onBroadcast,
+  onOpenActivity,
   onOpenDiffInspector,
   onOpenNewWorktree,
   onOpenSourceControl,
   onOpenPrePrAudit,
   onOpenSessionHistory,
   onOpenAttentionQueue,
+  onSelectNextWaiting,
   onOpenTokenSpend,
   onOpenArchonGraph,
   onOpenFactoryStation,
@@ -324,11 +334,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: "action-swarm-modal",
         category: "Tools & Actions",
-        title: "Open Swarm Preset Launcher...",
-        subtitle: "Multi-agent team orchestrator",
+        title: "Swarm builder",
+        subtitle: "Every swarm preset and the custom roster, in a stage tab",
         shortcut: "Ctrl+Shift+B s",
         icon: <Zap className="w-4 h-4 text-[#d29922]" />,
-        action: () => onOpenSwarmModal(),
+        action: () => onOpenSwarmBuilder(),
       },
       {
         id: "action-diff-inspector",
@@ -348,13 +358,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         action: () => onOpenActionLog(),
       },
       {
-        id: "action-a2a-bus",
+        id: "action-broadcast",
         category: "Tools & Actions",
-        title: "Mission Control",
-        subtitle: "Send messages to agents and read the A2A bus's message trail",
+        title: "Broadcast to all agents...",
+        subtitle: "Type one line into every running agent in this project",
         icon: <Network className="w-4 h-4 text-[#bc8cff]" />,
-        shortcut: "Ctrl+Shift+B m",
-        action: () => onOpenA2A(),
+        action: () => onBroadcast(),
       },
       {
         id: "action-workspace-settings",
@@ -428,7 +437,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-session-history",
         category: "Tools & Actions",
         title: "Session History & Auto-Resume...",
-        subtitle: "Browse past Claude sessions and resume with context restored",
+        subtitle: "The Agents panel's Session history: resume a past Claude session",
         icon: <History className="w-4 h-4 text-[#58a6ff]" />,
         shortcut: "Ctrl+Shift+B h",
         action: () => onOpenSessionHistory(),
@@ -440,10 +449,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-attention-queue",
         category: "Tools & Actions",
         title: "Waiting on You...",
-        subtitle: "Every session waiting on you, oldest first: permission requests and finished turns",
+        subtitle: "The Agents panel: every session waiting on you, oldest first",
         icon: <BellRing className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+Shift+B q",
         action: () => onOpenAttentionQueue(),
+      });
+    }
+
+    if (onSelectNextWaiting) {
+      items.push({
+        id: "action-next-waiting",
+        category: "Tools & Actions",
+        title: "Next Waiting Terminal",
+        subtitle: "Select the next terminal waiting on you",
+        icon: <BellRing className="w-4 h-4 text-[#d29922]" />,
+        shortcut: "Ctrl+Shift+B q",
+        action: () => onSelectNextWaiting(),
+      });
+    }
+
+    if (onOpenActivity) {
+      items.push({
+        id: "action-activity",
+        category: "Tools & Actions",
+        title: "Activity",
+        subtitle: "The selected terminal's tool calls and messages, in the companion",
+        icon: <ListOrdered className="w-4 h-4 text-[#bc8cff]" />,
+        shortcut: "Ctrl+Shift+B m",
+        action: () => onOpenActivity(),
       });
     }
 
@@ -643,15 +675,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onFocusNextPane,
     onNewTerminal,
     onOpenWorkspaceSettings,
-    onOpenSwarmModal,
+    onOpenSwarmBuilder,
     onLaunchSwarmPreset,
     savedSwarms,
     onOpenActionLog,
-    onOpenA2A,
+    onBroadcast,
+    onOpenActivity,
     onOpenDiffInspector,
     onOpenPrePrAudit,
     onOpenSessionHistory,
     onOpenAttentionQueue,
+    onSelectNextWaiting,
     onOpenTokenSpend,
     onOpenArchonGraph,
     onOpenFactoryStation,

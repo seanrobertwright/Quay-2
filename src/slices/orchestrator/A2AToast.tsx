@@ -26,7 +26,7 @@ export interface A2ADispatchPayload {
   response?: string | null;
 }
 
-/** The `a2a-toast` payload: a broadcast's notice and who sent it ("You" from Mission Control). */
+/** The `a2a-toast` payload: a broadcast's notice and who sent it ("You" from the broadcast palette command). */
 export interface BroadcastToastPayload {
   text: string;
   from_name: string;

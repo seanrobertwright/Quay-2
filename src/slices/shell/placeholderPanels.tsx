@@ -1,4 +1,4 @@
-import { Coins, History, Network, Settings, Zap } from "lucide-react";
+import { Coins, Settings } from "lucide-react";
 import { ArchonIcon } from "../archon/ArchonIcon.tsx";
 import { PraxisIcon } from "../praxis-builder/PraxisIcon.tsx";
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
@@ -7,9 +7,6 @@ import type { PanelLauncher } from "./ModulePanel.tsx";
 
 /** The tools the placeholder panels open, each as it opens today. */
 export interface PlaceholderHandlers {
-  openMissionControl: () => void;
-  openSessionHistory: () => void;
-  openSwarm: () => void;
   openArchon: () => void;
   openFactory: () => void;
   openPraxisBuilder: () => void;
@@ -21,7 +18,7 @@ export interface PlaceholderHandlers {
 }
 
 /** The modules whose panels are still placeholders. */
-export type PlaceholderModule = Exclude<ModuleId, "projects" | "source-control">;
+export type PlaceholderModule = Exclude<ModuleId, "projects" | "source-control" | "agents">;
 
 /**
  * What each placeholder module lists until its own panel lands: the tools the rail's toolbar and
@@ -29,11 +26,6 @@ export type PlaceholderModule = Exclude<ModuleId, "projects" | "source-control">
  */
 export function placeholderLaunchers(h: PlaceholderHandlers): Record<PlaceholderModule, PanelLauncher[]> {
   return {
-    agents: [
-      { id: "a2a", label: "Mission Control", shortcut: "Ctrl+Shift+B m", icon: <Network className="w-4 h-4 text-[#c9d1d9]" />, onClick: h.openMissionControl },
-      { id: "sessions", label: "Session History", shortcut: "Ctrl+Shift+B h", icon: <History className="w-4 h-4 text-[#58a6ff]" />, onClick: h.openSessionHistory },
-      { id: "swarm", label: "Swarm", shortcut: "Ctrl+Shift+B s", icon: <Zap className="w-4 h-4 text-[#d29922] fill-current" />, onClick: h.openSwarm },
-    ],
     workflows: [
       { id: "archon", label: "Archon & SDD Graph", shortcut: "Ctrl+Shift+B r", icon: <ArchonIcon className="w-4 h-4" />, onClick: h.openArchon },
       { id: "machina", label: "Machina", shortcut: "Ctrl+Shift+B f", icon: <PraxisIcon className="w-4 h-4" />, onClick: h.openFactory },

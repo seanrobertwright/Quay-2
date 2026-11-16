@@ -1,48 +1,34 @@
 /// <reference types="node" />
-// Component tests for answering permission requests from the attention drawer (#533): Allow and
-// Deny on a row, reopening a request deferred with Later from its row, and the count of older
-// requests a terminal's cap dropped. They render the real attention surfaces (drawer, permission
-// modal and undelivered-answer notice) over the real attention queue hook, and fake only Tauri's
-// `invoke`, the out-of-process boundary: `get_pending_permissions` lists the requests the backend
-// holds, and `resolve_permission` takes or refuses the user's answer.
+// Component tests for what the attention queue shows over the workspace (#644): no permission
+// modal, since a request is answered in the companion's Activity view, and the notice for an
+// answer that reached no agent. They render the real attention surfaces and the real companion
+// over the real attention queue hook, and fake only Tauri's `invoke`, the out-of-process boundary:
+// `get_pending_permissions` lists the requests the backend holds, and `resolve_permission` takes
+// or refuses the operator's answer.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement, type FC } from "react";
+import { act, createElement, Fragment, type FC } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { TerminalInfo } from "../terminal/types.ts";
+import { companionPrefs } from "../companion/companionPrefs.ts";
+import { memoryStorage } from "../companion/fixtures/companionFixtures.ts";
 
 const { AttentionSurfaces } = await import("./AttentionSurfaces.tsx");
 const { useAttentionQueue } = await import("./useAttentionQueue.ts");
+const { Companion, ACTIVITY_VIEW, REPOSITORY_VIEW } = await import("../companion/Companion.tsx");
 
 const PROJECT = "C:/work/repo";
-
-const terminal = (id: string, name: string): TerminalInfo => ({
-  id,
-  name,
+const AGENT: TerminalInfo = {
+  id: "term-a",
+  name: "Agent A",
   project_path: PROJECT,
   run_kind: "claude",
   permission_mode: "normal",
   live_mode: "normal",
   claude_status: "waiting",
   auto_approved_count: 0,
-});
-const TERMINALS = [terminal("term-a", "Agent A"), terminal("term-b", "Agent B")];
-
-interface BackendRequest {
-  requestId: string;
-  sessionId: string;
-  tag?: string;
-  tool: string;
-  input: unknown;
-}
-const request = (requestId: string, tag: string, tool: string): BackendRequest => ({
-  requestId,
-  sessionId: "session",
-  tag,
-  tool,
-  input: { command: `${tool} ${requestId}` },
-});
+};
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
 afterEach(() => {
@@ -54,188 +40,74 @@ afterEach(() => {
   }
 });
 
-interface Harness {
-  /** Every answer the backend was sent, in order. */
-  answers: Record<string, unknown>[];
-  /** The terminals the user asked to focus, in order. */
-  focused: string[];
-  /** Opens the drawer, as the badge or its chord does. */
-  openDrawer: () => Promise<void>;
-}
-
 /**
- * Renders the attention surfaces over a backend holding `pending`, with the drawer open. The
- * backend takes every answer, unless `undelivered` is set: then it refuses each one, as it does
- * when no agent waits for the answer any more.
+ * Renders the attention surfaces beside the companion on Agent A's Activity view, over a backend
+ * holding one Bash request from Agent A. The backend takes every answer, unless `undelivered` is
+ * set: then it refuses each one, as it does when no agent waits for the answer any more.
  */
-async function render(pending: BackendRequest[], { undelivered = false } = {}): Promise<Harness> {
-  const answers: Record<string, unknown>[] = [];
-  const focused: string[] = [];
-  fakeInvoke(async (command, args) => {
-    if (command === "get_pending_permissions") return pending;
+async function render({ undelivered = false } = {}) {
+  fakeInvoke(async (command) => {
+    if (command === "get_pending_permissions") {
+      return [{ requestId: "req-1", sessionId: "s", tag: AGENT.id, tool: "Bash", input: { command: "rm -rf dist" } }];
+    }
     if (command === "resolve_permission") {
-      answers.push(args);
-      if (undelivered) {
-        throw `The agent is no longer waiting for permission request ${String(args.requestId)}, so the answer was not delivered`;
-      }
+      if (undelivered) throw "The agent is no longer waiting for permission request req-1, so the answer was not delivered";
       return null;
     }
     throw new Error(`no fake for ${command}`);
   });
-  let isDrawerOpen = true;
+  const prefs = companionPrefs(memoryStorage({ quay_companion_opens_on: "activity" }));
   const App: FC = () => {
-    const queue = useAttentionQueue(TERMINALS);
-    return createElement(AttentionSurfaces, {
-      queue,
-      terminals: TERMINALS,
-      projects: [{ path: PROJECT, name: "repo", terminal_ids: ["term-a", "term-b"] }],
-      projectWorktrees: {},
-      isDrawerOpen,
-      onCloseDrawer: () => {
-        isDrawerOpen = false;
-        rerender();
-      },
-      onFocusTerminal: (terminalId: string) => focused.push(terminalId),
-    });
+    const queue = useAttentionQueue([AGENT]);
+    return createElement(
+      Fragment,
+      null,
+      createElement(AttentionSurfaces, { queue, terminals: [AGENT] }),
+      createElement(Companion, {
+        selectedTerminal: AGENT,
+        projects: [{ path: PROJECT, name: "repo", terminal_ids: [AGENT.id] }],
+        projectWorktrees: {},
+        views: [REPOSITORY_VIEW, ACTIVITY_VIEW],
+        prefs,
+        activity: { events: [], messages: [], waiting: queue.items, answer: queue.answerPermission },
+      }),
+    );
   };
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  const rerender = () => root.render(createElement(App));
   mounted = { root, container };
-  await act(async () => rerender());
+  await act(async () => root.render(createElement(App)));
   await settle();
-  return {
-    answers,
-    focused,
-    openDrawer: async () => {
-      isDrawerOpen = true;
-      await act(async () => rerender());
-    },
-  };
+  return container;
 }
 
 /** Lets the fake backend's answers and React's updates land. */
 const settle = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
-/** The button labelled `label`, which must be there. */
-function button(label: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll<HTMLButtonElement>("button")].filter(
-    (b) => b.getAttribute("aria-label") === label || (!b.hasAttribute("aria-label") && b.textContent?.trim() === label)
+const buttonNamed = (name: string) =>
+  [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+    (b) => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === name,
   );
-  assert.equal(found.length, 1, `one button labelled "${label}", found ${found.length}`);
-  return found[0];
-}
 
-async function click(label: string) {
-  await act(async () => button(label).click());
+test("a permission request opens no modal; it waits in the Activity view", async () => {
+  await render();
+  assert.equal(document.querySelector('[role="dialog"], [aria-modal="true"]'), null);
+  // Nothing lies over the workspace: the only fixed layer would be a notice, and none shows.
+  assert.equal(document.querySelector(".fixed"), null);
+  assert.equal(buttonNamed("Later"), undefined);
+  assert.ok(document.querySelector('[data-companion-view="activity"] [aria-label="Permission request"]'));
+});
+
+test("an answer from Activity that reaches no agent clears the request and says so", async () => {
+  await render({ undelivered: true });
+  await act(async () => buttonNamed("Allow once")!.click());
   await settle();
-}
 
-/** The text of each row in the drawer, oldest first. */
-const drawerRows = () =>
-  [...document.querySelectorAll('ul[aria-label="Sessions waiting on you, oldest first"] > li')].map(
-    (li) => li.textContent ?? ""
-  );
+  const notice = [...document.querySelectorAll('[role="alert"]')].find((a) => a.textContent?.includes("Answer not delivered"));
+  assert.match(notice?.textContent ?? "", /The Bash request in Agent A had stopped waiting/);
+  assert.equal(document.querySelector('[aria-label="Permission request"]'), null);
 
-/** The tool the permission modal shows, or null when it is closed. */
-const modalTool = () => {
-  const badge = [...document.querySelectorAll("span")].find((s) => s.textContent?.startsWith("Tool: "));
-  return badge ? badge.textContent!.slice("Tool: ".length) : null;
-};
-
-test("Allow on a permission row answers the request once and clears its row", async () => {
-  const app = await render([request("req-1", "term-a", "Bash")]);
-
-  await click("Allow Bash for Agent A");
-
-  assert.deepEqual(app.answers, [
-    { requestId: "req-1", decision: "allow", reason: null, rememberForSession: false },
-  ]);
-  assert.deepEqual(drawerRows(), []);
-  assert.equal(modalTool(), null);
-});
-
-test("Deny on a permission row sends the answer the modal's Deny sends, and both clear their item", async () => {
-  const app = await render([request("req-1", "term-a", "Bash"), request("req-2", "term-b", "Write")]);
-
-  // The modal opens on the oldest request; its Deny with no feedback typed
-  assert.equal(modalTool(), "Bash");
-  await click("Deny");
-  await click("Deny Write for Agent B");
-
-  const answer = { decision: "deny", reason: "User rejected tool execution", rememberForSession: false };
-  assert.deepEqual(app.answers, [
-    { requestId: "req-1", ...answer },
-    { requestId: "req-2", ...answer },
-  ]);
-  assert.deepEqual(drawerRows(), []);
-  assert.equal(modalTool(), null);
-});
-
-/** The text of the notice for an answer that reached no agent, or null when none shows. */
-const undeliveredNotice = () => {
-  const alert = [...document.querySelectorAll('[role="alert"]')].find((a) =>
-    a.textContent?.includes("Answer not delivered")
-  );
-  return alert ? alert.textContent : null;
-};
-
-test("an answer from a row that reaches no agent clears the row and says so, as the modal's does", async () => {
-  await render([request("req-1", "term-a", "Bash"), request("req-2", "term-b", "Write")], { undelivered: true });
-
-  await click("Allow Once");
-  const fromModal = undeliveredNotice();
-  await click("Dismiss undelivered answer notice");
-  await click("Allow Write for Agent B");
-  const fromRow = undeliveredNotice();
-
-  assert.match(fromModal ?? "", /The Bash request in Agent A had stopped waiting/);
-  assert.match(fromRow ?? "", /The Write request in Agent B had stopped waiting/);
-  assert.deepEqual(drawerRows(), []);
-});
-
-test("choosing a deferred request's row reopens the permission modal on that request", async () => {
-  const app = await render([request("req-1", "term-a", "Bash"), request("req-2", "term-b", "Write")]);
-  await click("Later");
-  assert.equal(modalTool(), null);
-
-  await click("Reopen Agent A's Bash request");
-  assert.equal(modalTool(), "Bash");
-  // The modal now shows the oldest request; the other deferred one still waits in the drawer
-  await app.openDrawer();
-  await click("Reopen Agent B's Write request");
-
-  assert.equal(modalTool(), "Write");
-  assert.equal(drawerRows().length, 0, "choosing the row closes the drawer");
-  assert.deepEqual(app.answers, []);
-  assert.deepEqual(app.focused, []);
-});
-
-test("focusing a deferred request's terminal from its row leaves the request waiting", async () => {
-  const app = await render([request("req-1", "term-a", "Bash")]);
-  await click("Later");
-
-  await click("Focus Agent A");
-
-  assert.deepEqual(app.focused, ["term-a"]);
-  await app.openDrawer();
-  assert.equal(drawerRows().length, 1);
-  assert.match(drawerRows()[0], /Permission request: Bash, deferred/);
-  assert.equal(modalTool(), null);
-});
-
-test("a terminal past its cap of 20 requests shows how many older ones are not shown, once", async () => {
-  const flood = Array.from({ length: 23 }, (_, i) => request(`flood-${i + 1}`, "term-a", "Bash"));
-  await render([...flood, request("quiet-1", "term-b", "Write")]);
-
-  const rows = drawerRows();
-  const agentA = rows.filter((row) => row.startsWith("Agent A"));
-  assert.equal(agentA.length, 20);
-  assert.deepEqual(
-    rows.filter((row) => row.includes("older not shown")).map((row) => row.match(/\+\d+ older not shown/)?.[0]),
-    ["+3 older not shown"]
-  );
-  assert.match(agentA[0], /\+3 older not shown/, "the count sits on the terminal's oldest row");
-  assert.doesNotMatch(rows.find((row) => row.startsWith("Agent B")) ?? "", /older not shown/);
+  await act(async () => buttonNamed("Dismiss undelivered answer notice")!.click());
+  assert.equal(document.querySelector('[role="alert"]'), null);
 });

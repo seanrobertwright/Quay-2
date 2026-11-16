@@ -35,9 +35,9 @@ const NoLaunchPromptNote: React.FC = () => (
   </span>
 );
 
-interface SwarmModalProps {
-  isOpen: boolean;
+interface SwarmBuilderProps {
   activeProject: string;
+  /** Closes the swarm builder's stage tab. */
   onClose: () => void;
   onLaunchSwarm: (preset: SwarmPreset) => Promise<void>;
   savedSwarms: SwarmPreset[];
@@ -74,8 +74,12 @@ const ROLE_PROMPT_PLACEHOLDER = [
 /** How long an armed Remove? stays armed before it reverts to Remove. */
 const REMOVE_CONFIRM_MS = 3000;
 
-export const SwarmModal: React.FC<SwarmModalProps> = ({
-  isOpen,
+/**
+ * The swarm builder, drawn in its own stage tab: every preset, saved and built in, and the custom
+ * roster form. Launching a swarm closes the tab so its terminals show. Closing the tab unmounts it,
+ * so the form opens on its defaults each time.
+ */
+export const SwarmBuilder: React.FC<SwarmBuilderProps> = ({
   activeProject,
   onClose,
   onLaunchSwarm,
@@ -107,28 +111,6 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   };
 
   useEffect(() => clearRemoveTimer, []);
-
-  // The form opens on its defaults each time the launcher does, not on the last swarm loaded.
-  useEffect(() => {
-    if (isOpen) return;
-    setCustomTitle(DEFAULT_TITLE);
-    setCustomLayout(DEFAULT_LAYOUT);
-    setCustomAgents(defaultRoster());
-    setNameError(null);
-  }, [isOpen]);
-
-  // Handle ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
 
   const presets = [...savedSwarms, ...BUILTIN_SWARM_PRESETS];
   const selectedPreset = presets.find((p) => p.id === selectedPresetId) || BUILTIN_SWARM_PRESETS[0];
@@ -324,8 +306,8 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-      <div className="w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+    <div className="flex-1 min-h-0 flex justify-center p-4 overflow-hidden">
+      <div className="w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-lg overflow-hidden flex flex-col max-h-full">
         {/* Header */}
         <div className="px-5 py-4 border-b border-[#30363d] flex items-center justify-between bg-[#0d1117]/80">
           <div className="flex items-center gap-3">
@@ -334,7 +316,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Multi-Agent Swarm Launcher</span>
+                <span>Swarm builder</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-[#21262d] text-[#58a6ff] font-mono">
                   {projectName}
                 </span>
@@ -347,6 +329,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close the swarm builder"
             className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md transition-colors"
           >
             <X className="w-5 h-5" />

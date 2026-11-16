@@ -2,8 +2,9 @@
  * The attention queue: every session waiting on the user, oldest first. It takes plain events
  * and returns the ordered list of waiting items. It knows nothing of Tauri or React; the hook
  * that feeds it (`useAttentionQueue`) turns bridge events into these events. The module bar's
- * Agents icon renders its count, the attention drawer its rows, and the permission modal its
- * `modalPermissions`.
+ * Agents icon renders its count, the Agents panel's Waiting on you its rows, and the companion's
+ * Activity view a terminal's permission requests. Deferral with Later (`permissionsDeferred`,
+ * `modalPermissions`) dates from the retired permission modal; no surface defers a request now.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */
@@ -14,7 +15,7 @@ export interface PendingPermission {
   /** The terminal's project, or null while the terminal is not known yet. */
   project: string | null;
   tool: string;
-  /** The tool's arguments as the agent sent them, for the permission modal to show. */
+  /** The tool's arguments as the agent sent them, for the Activity view to show. */
   input?: unknown;
   /** Why the agent asks, when it said. */
   reason?: string;
