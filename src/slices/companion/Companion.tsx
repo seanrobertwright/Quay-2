@@ -19,6 +19,7 @@ import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
 import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
+import { ActivityView, type ActivityFocus, type CompanionActivity } from "./ActivityView.tsx";
 
 /** What the companion reads and changes about terminal links. */
 export interface CompanionLinking {
@@ -54,6 +55,10 @@ export interface CompanionContext {
   ticketActions: TicketActions | null;
   /** Topos, or null where the companion shows none (as in some tests). */
   topos: CompanionTopos | null;
+  /** What the Activity view reads, or null where the companion shows none (as in some tests). */
+  activity: CompanionActivity | null;
+  /** The Activity entry the latest show request asked for, or null. */
+  focus: ActivityFocus | null;
   /** Shows `view` for the terminal, as the view switch does. */
   show: (view: CompanionViewId) => void;
 }
@@ -166,10 +171,29 @@ export const TOPOS_VIEW: CompanionView<CompanionContext> = {
 };
 
 /**
- * The views the companion registers, in the order its view switch lists them. Each later view
- * (Activity, Run, Inspector) is added here.
+ * The Activity view: the selected terminal's tool calls and message trail, a message strip to send
+ * it a task, and its pending permission requests answered in place. Keyed by the terminal, so
+ * another one starts with its outputs folded and an empty strip.
  */
-export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, TICKET_VIEW, REPOSITORY_VIEW, TOPOS_VIEW];
+export const ACTIVITY_VIEW: CompanionView<CompanionContext> = {
+  id: "activity",
+  label: "Activity",
+  available: ({ activity }) => activity !== null,
+  render: ({ terminal, activity, focus }) =>
+    activity && <ActivityView key={terminal.id} terminal={terminal} activity={activity} focus={focus} />,
+};
+
+/**
+ * The views the companion registers, in the order its view switch lists them. Each later view
+ * (Run, Inspector) is added here.
+ */
+export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
+  PULL_REQUEST_VIEW,
+  TICKET_VIEW,
+  REPOSITORY_VIEW,
+  ACTIVITY_VIEW,
+  TOPOS_VIEW,
+];
 
 /**
  * A request from outside the companion, such as a pick in the Source control panel, to show `view`
@@ -179,6 +203,8 @@ export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL
 export interface CompanionShowRequest {
   terminalId: string;
   view: CompanionViewId;
+  /** The Activity entry to show, such as the message an Agents panel reply preview names. */
+  entryId?: string;
   seq: number;
 }
 
@@ -202,6 +228,8 @@ interface CompanionProps {
   ticketActions?: TicketActions | null;
   /** Topos; without it the companion offers no Topos view. */
   topos?: CompanionTopos | null;
+  /** What the Activity view reads; without it the companion offers no Activity view. */
+  activity?: CompanionActivity | null;
   /** The latest request to show a view; one for a terminal other than the selected one is ignored. */
   showRequest?: CompanionShowRequest | null;
 }
@@ -217,12 +245,15 @@ export const Companion = ({
   lens = null,
   ticketActions = null,
   topos = null,
+  activity = null,
   showRequest = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
   // Selecting another terminal forgets it, so every selection starts from the first view.
   const [picked, setPicked] = useState<{ terminalId: string; view: CompanionViewId } | null>(null);
+  // The Activity entry the latest request asked for, while its terminal stays selected.
+  const [focus, setFocus] = useState<(ActivityFocus & { terminalId: string }) | null>(null);
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
@@ -234,17 +265,22 @@ export const Companion = ({
             lens,
             ticketActions,
             topos,
+            activity,
+            focus: focus?.terminalId === selectedTerminal.id ? focus : null,
             show: (view: CompanionViewId) => setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus],
   );
   const selectedId = context?.terminal.id ?? null;
   // Each request is taken once, when it arrives, as if its view were picked on the switch.
   const [takenSeq, setTakenSeq] = useState<number | null>(null);
   if (showRequest && showRequest.seq !== takenSeq) {
     setTakenSeq(showRequest.seq);
-    if (showRequest.terminalId === selectedId) setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
+    if (showRequest.terminalId === selectedId) {
+      setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
+      if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
+    }
   }
   if (picked && picked.terminalId !== selectedId) setPicked(null);
   const choices = context ? switchableViews(views, context) : [];
