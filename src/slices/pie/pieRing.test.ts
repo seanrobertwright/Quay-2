@@ -79,3 +79,34 @@ test("the folder a stroke acts on: a row's; none off a row", () => {
   assert.equal(pieFolder({ surface: "panel", row: null }), null);
   assert.equal(pieFolder({ surface: "terminal", terminalId: "t1", zoomable: true }), null);
 });
+
+// The second ring, from the spec's stroke table: Next wait, Split, Palette and New term are
+// parents of three slices each, on every surface; Merge's slot (NE) waits for the Merge ticket.
+const slices = (ring: ReturnType<typeof pieRing>) =>
+  Object.fromEntries(Object.entries(ring).flatMap(([wedge, c]) => (c?.slices ? [[wedge, c.slices.map((s) => s && [s.label, s.action])]] : [])));
+
+test("second ring: Prev, Next and Waiting list; Side, Stack and Grid; Claude, Codex and Pwsh", () => {
+  for (const target of [{ surface: "terminal", terminalId: "t1", zoomable: true }, { surface: "empty-stage" }, { surface: "companion" }] as PieTarget[]) {
+    const ring = slices(pieRing(target));
+    assert.deepEqual(Object.keys(ring), ["N", "E", "S", "W"], target.surface);
+    assert.deepEqual(ring.N, [["Prev", "prev-wait"], ["Next", "next-wait"], ["Waiting list", "waiting-list"]]);
+    assert.deepEqual(ring.E, [["Side", "split-side"], ["Stack", "split-stack"], ["Grid", "split-grid"]]);
+    assert.deepEqual(ring.W, [["Claude", "new-claude"], ["Codex", "new-codex"], ["Pwsh", "new-pwsh"]]);
+  }
+});
+
+test("Palette's slices are copies of the three most recent palette commands, dim where there are fewer", () => {
+  const target: PieTarget = { surface: "companion" };
+  assert.deepEqual(pieRing(target).S?.slices, [null, null, null]);
+  const recent = [
+    { id: "layout-grid", title: "2x2 Quad Grid Layout" },
+    { id: "open-topos", title: "Open Topos" },
+  ];
+  assert.deepEqual(pieRing(target, recent).S?.slices, [
+    { action: "palette-command", label: "2x2 Quad Grid Layout", commandId: "layout-grid" },
+    { action: "palette-command", label: "Open Topos", commandId: "open-topos" },
+    null,
+  ]);
+  const four = [...recent, { id: "a", title: "A" }, { id: "b", title: "B" }];
+  assert.deepEqual(pieRing(target, four).S?.slices?.map((s) => s?.commandId), ["layout-grid", "open-topos", "a"]);
+});
