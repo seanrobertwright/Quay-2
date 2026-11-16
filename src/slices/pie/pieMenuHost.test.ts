@@ -150,3 +150,18 @@ test("with mouse reporting on, middle-click is the program's and Shift+Middle-cl
   assert.equal((await fire(el(".reporting"), "mousedown", { button: 2, altKey: true })).reached, false);
   assert.ok(pie());
 });
+
+test("near a window edge the pie draws moved in, but strokes still count from where the button went down", async () => {
+  const chosen = await mount(0);
+  await fire(el(".row"), "mousedown", { button: 1, clientX: 10, clientY: 300 });
+  await fire(document.body, "mouseup", { button: 1, clientX: 10, clientY: 300 });
+  assert.ok(pie(), "a plain click by the edge leaves the pie open to read");
+  assert.deepEqual(chosen, []);
+  await act(async () => void document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+
+  await fire(el(".row"), "mousedown", { button: 1, clientX: 10, clientY: 300 });
+  await fire(document.body, "mousemove", { button: 1, clientX: 10, clientY: 240 });
+  await fire(document.body, "mouseup", { button: 1, clientX: 10, clientY: 240 });
+  assert.equal(chosen.length, 1);
+  assert.equal(chosen[0][0], "next-wait", "a stroke straight up from the press is N");
+});

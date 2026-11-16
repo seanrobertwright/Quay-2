@@ -1,16 +1,18 @@
 // The pie menu host: one set of capture-phase listeners on the document opens the pie wherever
 // a surface's rules say (pieTriggers.ts), feeds the recognizer (pieRecognizer.ts) and draws the
-// wire at the pointer once the display delay passes. Listening in the capture phase on the
-// document runs before any surface's own handlers, so a press that opens the pie never reaches
-// xterm (and the program behind mouse reporting) or a list menu, and the contextmenu and auxclick
-// that follow it are cancelled too, which keeps WebView2's native menu and middle-click
-// auto-scroll away. Presses that do not open the pie pass through untouched.
+// wire at the pointer once the display delay passes. Near a window edge the wire is moved in so
+// the whole ring shows, and strokes still count from where the button went down. Listening in the
+// capture phase on the document runs before any surface's own handlers, so a press that opens the
+// pie never reaches xterm (and the program behind mouse reporting) or a list menu, and the
+// contextmenu and auxclick that follow it are cancelled too, which keeps WebView2's native menu
+// and middle-click auto-scroll away. Presses that do not open the pie pass through untouched.
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { PiePaletteId } from "../shell/shellPrefs.ts";
+import { elementOf } from "../overlay/contextMenuPolicy.ts";
 import { CLOSED, aimedWedge, stepPie, type PieEvent, type PiePoint, type PieState } from "./pieRecognizer.ts";
 import { pieRing, type PieAction, type PieRing, type PieTarget } from "./pieRing.ts";
 import { opensPie, piePlaceAt } from "./pieTriggers.ts";
+import type { PiePaletteId } from "./piePalettes.ts";
 import { PIE_WIRE_SIZE, PieWire } from "./PieWire.tsx";
 
 interface PieMenuHostProps {
@@ -28,9 +30,6 @@ function centreFor(at: PiePoint): PiePoint {
   const clamp = (v: number, room: number) => (room < PIE_WIRE_SIZE ? room / 2 : Math.min(Math.max(v, half), room - half));
   return { x: clamp(at.x, window.innerWidth), y: clamp(at.y, window.innerHeight) };
 }
-
-const elementOf = (target: EventTarget | null): Element | null =>
-  target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
 
 /** Cancels an event and keeps it from every listener after this one. */
 function swallow(e: Event) {
@@ -50,6 +49,9 @@ export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, onChoose }:
     let ring: PieRing | null = null;
     let target: PieTarget = { surface: "other" };
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // How far the pie's centre was moved in from the press point. Every pointer is moved by the
+    // same amount, so strokes still count from where the button went down.
+    let shift: PiePoint = { x: 0, y: 0 };
     // The events still to come from a press the pie took: its contextmenu, auxclick or click.
     let swallowFollowers = false;
 
@@ -66,7 +68,7 @@ export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, onChoose }:
       const command = next.chosen ? ring[next.chosen] : null;
       if (command) props.current.onChoose(command.action, target);
     };
-    const pointOf = (e: MouseEvent): PiePoint => ({ x: e.clientX, y: e.clientY });
+    const pointOf = (e: MouseEvent): PiePoint => ({ x: e.clientX + shift.x, y: e.clientY + shift.y });
 
     const onMouseDown = (e: MouseEvent) => {
       if (state.phase === "open" && e.button === 0) {
@@ -86,7 +88,10 @@ export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, onChoose }:
       ring = pieRing(target);
       const now = performance.now();
       clearTimer();
-      step({ type: "press", at: centreFor(pointOf(e)), time: now });
+      const pressedAt = { x: e.clientX, y: e.clientY };
+      const centre = centreFor(pressedAt);
+      shift = { x: centre.x - pressedAt.x, y: centre.y - pressedAt.y };
+      step({ type: "press", at: centre, time: now });
       const delay = props.current.displayDelayMs;
       if (delay > 0) timer = setTimeout(() => step({ type: "tick", time: now + delay }), delay);
     };
