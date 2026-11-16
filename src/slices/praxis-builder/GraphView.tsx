@@ -1,5 +1,6 @@
 // One graph in the work area: the canvas with its palette strip, the Problems list under it,
-// and the inspector beside them. The graph's content is validated by the backend's
+// and the inspector beside them, or in the companion while the builder's stage tab is in front
+// (#646). The graph's content is validated by the backend's
 // `praxis_validate`, never in the frontend (#220). The builder owns the selection, so undo
 // and its keys can set it, and gets a `BuilderCanvas` to run the canvas keys (#248). A
 // right-click on a card, or Shift+F10 on a focused one, opens its context menu, with the align
@@ -9,7 +10,8 @@
 // validated against the graph draft, its attach checks' warnings under the graph's contracts
 // are added (#274), its problems join the graph's, its marks show on the cards, and the
 // inspector edits it.
-import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
 import { ContextMenu } from "../overlay/ContextMenu.tsx";
 import { useContextMenu } from "../overlay/useContextMenu.ts";
@@ -17,6 +19,7 @@ import { ArrangeMenu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
 import type { ArrangeAction } from "./arrange.ts";
 import { GraphCanvas, type CanvasControls } from "./GraphCanvas.tsx";
 import { Inspector } from "./Inspector.tsx";
+import { InspectorSlotContext } from "./inspectorSlot.ts";
 import { Palette } from "./Palette.tsx";
 import { ProblemsPanel } from "./ProblemsPanel.tsx";
 import { getClipboard, pasteFits } from "./clipboard.ts";
@@ -201,6 +204,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
     requestAnimationFrame(attempt);
   }, []);
   const inspectorRef = useRef<HTMLElement | null>(null);
+  const inspectorSlot = useContext(InspectorSlotContext);
   const graphStatus = useValidation("graphs", content);
   const verdict = graphStatus.state === "done" ? graphStatus.validation.verdict : undefined;
   const bindingCheck = useValidation("graph-bindings", binding?.content ?? null, content);
@@ -381,6 +385,29 @@ const GraphViewInner: FC<GraphViewProps> = ({
     reveal(canvasBox.current, flow, cardRect(flow, position));
   };
 
+  // Beside the canvas, or in the slot the companion's Inspector view gives it while the builder
+  // is a stage tab in front (#646).
+  const inspector = (
+    <Inspector
+      fill={inspectorSlot != null}
+      rootRef={inspectorRef}
+      selectionKey={selectionKey}
+      graph={graph}
+      node={selectedNode}
+      selectionCount={selected.size}
+      diagnostics={graphDiagnostics}
+      onEdit={onEdit}
+      onRenamed={(id) => onSelect([id], true)}
+      onGoToNode={goToNode}
+      binding={shownBinding}
+      onDeleted={() => {
+        choose(null);
+        // The delete button is gone; focus stays in the builder, so its keys still work.
+        inspectorRef.current?.focus();
+      }}
+    />
+  );
+
   return (
     <div className="flex-1 min-h-0 flex">
       <div className="flex-1 min-w-0 flex flex-col">
@@ -447,23 +474,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
           beside={runContext}
         />
       </div>
-      <Inspector
-        rootRef={inspectorRef}
-        selectionKey={selectionKey}
-        graph={graph}
-        node={selectedNode}
-        selectionCount={selected.size}
-        diagnostics={graphDiagnostics}
-        onEdit={onEdit}
-        onRenamed={(id) => onSelect([id], true)}
-        onGoToNode={goToNode}
-        binding={shownBinding}
-        onDeleted={() => {
-          choose(null);
-          // The delete button is gone; focus stays in the builder, so its keys still work.
-          inspectorRef.current?.focus();
-        }}
-      />
+      {inspectorSlot === undefined ? inspector : inspectorSlot && createPortal(inspector, inspectorSlot)}
     </div>
   );
 };
