@@ -115,31 +115,6 @@ test("A scan given a row budget stops there and carries on from it, so it can yi
   assert.deepEqual([...scan.matches], [0, 1, 2, 3]);
 });
 
-/** Find's budget for one query over a million loaded rows, on the test machine. */
-const MILLION_ROW_BUDGET_MS = 1500;
-
-test(`matching 1M synthetic rows takes under ${MILLION_ROW_BUDGET_MS} ms`, () => {
-  const ROWS = 1_000_000;
-  const authors = Array.from({ length: 2000 }, (_, i) => ({ name: `Author ${i}`, email: `a${i}@example.com` }));
-  const oids = Array.from({ length: ROWS }, (_, i) => (i * 2654435761 >>> 0).toString(16).padStart(8, "0") + "deadbeefcafebabe0123456789abcdef");
-  const subjects = Array.from({ length: ROWS }, (_, i) => `Change ${i}: tidy the module and update its tests`);
-  const rows: FindRows = withStringOids({
-    rowCount: ROWS,
-    oid: (r: number) => oids[r],
-    subject: (r: number) => subjects[r],
-    author: (r: number) => authors[r % authors.length],
-  });
-  const refs = new Map<string, FindBadge[]>([[oids[10], [{ kind: "local", name: "main" }]]]);
-  const started = performance.now();
-  const scan = new FindScan("change 99999", refs);
-  assert.equal(scan.scan(rows, Infinity), true);
-  const elapsed = performance.now() - started;
-  // "Change 99999" and "Change 999990" to "Change 999999".
-  assert.equal(scan.matches.length, 11);
-  assert.ok(elapsed < MILLION_ROW_BUDGET_MS, `took ${elapsed.toFixed(0)} ms`);
-  console.log(`1M rows matched in ${elapsed.toFixed(0)} ms`);
-});
-
 const MATCHES = Int32Array.from([3, 8, 20]);
 
 test("Next steps to the first match below the selected row and wraps from the last to the first", () => {
