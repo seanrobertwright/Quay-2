@@ -1,7 +1,8 @@
-// The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
-// definitions and shows a graph on the canvas, with its validation problems, where it can
-// be edited, undone and saved. The list creates, renames and deletes definitions (#222).
-// Closing only hides it, so each project's session, drafts and undo histories included,
+// The Praxis Builder (#221), drawn in its own stage tab (#646): it lists the active project's
+// `.praxis/` definitions in a list that folds to a rail, and shows a graph on the canvas, with its
+// validation problems, where it can be edited, undone and saved; the graph's inspector draws in the
+// companion. The list creates, renames and deletes definitions (#222).
+// Closing its tab only hides it, so each project's session, drafts and undo histories included,
 // survives until Quay quits. Quitting with unsaved drafts asks first.
 // The canvas works from the keyboard alone (#264): Tab reaches the nodes, then the edges, and
 // a polite live region announces undo, redo, paste, delete and save. A graph's row expands to
@@ -45,7 +46,6 @@ import {
   TriangleAlert,
   Undo2,
   Workflow,
-  X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
 import { MAX_NODES, hasOwn, layoutIgnoredText, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
@@ -140,6 +140,7 @@ import { hostGroupHeader, hostOnlySection, rowBadges, withHostBadge, type RowBad
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
+import { InspectorSlotContext, type InspectorSlot } from "./inspectorSlot.ts";
 import {
   addNewDraft,
   applyDiskRead,
@@ -212,7 +213,10 @@ interface Selection {
 
 const NO_IDS: ReadonlySet<string> = new Set();
 
-interface PraxisBuilderModalProps {
+/** The width of the rail the definitions list folds to, in CSS px. */
+export const DEFINITIONS_RAIL_WIDTH = 40;
+
+interface PraxisBuilderProps {
   isOpen: boolean;
   /** The active project, or null when no registered project (or its worktree) is active. */
   project: BuilderProject | null;
@@ -224,6 +228,11 @@ interface PraxisBuilderModalProps {
   onRunInTerminal?: RunInTerminal;
   /** Called with the project and graph id each time the builder opens a graph. */
   onGraphOpened?: (projectPath: string, id: string) => void;
+  /**
+   * Where the graph's inspector draws: the companion's Inspector view's element, null to draw
+   * none, or left out to draw it beside the canvas.
+   */
+  inspectorSlot?: InspectorSlot;
   ref?: Ref<PraxisBuilderHandle>;
 }
 
@@ -336,7 +345,7 @@ function trapTab(root: HTMLElement, e: { shiftKey: boolean; preventDefault: () =
   return false;
 }
 
-export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
+export const PraxisBuilder: FC<PraxisBuilderProps> = ({
   isOpen,
   project,
   onClose,
@@ -344,11 +353,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   onUnsavedProjectsChange,
   onRunInTerminal,
   onGraphOpened,
+  inspectorSlot,
   ref,
 }) => {
-  const titleId = useId();
   const listId = useId();
-  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const builderRef = useRef<HTMLElement | null>(null);
   const conflictRef = useRef<HTMLDivElement | null>(null);
   const helpRef = useRef<HTMLDivElement | null>(null);
   const goToRef = useRef<HTMLDivElement | null>(null);
@@ -804,7 +813,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const previous = focusedElement();
-    dialogRef.current?.focus();
+    builderRef.current?.focus();
     return () => previous?.focus();
   }, [isOpen]);
 
@@ -815,11 +824,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!hasConflict) return;
     const previous = focusedElement();
-    const dialog = dialogRef.current;
+    const builder = builderRef.current;
     conflictRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
     return () => {
       if (previous?.isConnected) previous.focus();
-      else dialog?.focus();
+      else builder?.focus();
     };
   }, [hasConflict]);
 
@@ -828,11 +837,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!hasPending) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
+    const builder = builderRef.current;
     pendingRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
     return () => {
       if (previous?.isConnected) previous.focus();
-      else dialog?.focus();
+      else builder?.focus();
     };
   }, [hasPending]);
 
@@ -1004,6 +1013,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     changeSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
   };
   openDefinitionLatest.current = openDefinition;
+  /** A definition picked in the list, which closes the list over the canvas. */
+  const pickFromList = (ref: DefinitionRef) => {
+    setListShown(false);
+    openDefinition(ref);
+  };
 
   const importHostTemplateToProject = async (name: string): Promise<ImportHostTemplateOutcome> => {
     if (!projectPath) {
@@ -1355,7 +1369,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     announce(`${direction === "undo" ? "Undid" : "Redid"} ${moved.label}`);
     // The step may take away the focused card; focus stays in the builder, so its keys still work.
     requestAnimationFrame(() => {
-      if (!dialogRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? dialogRef.current)?.focus();
+      if (!builderRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? builderRef.current)?.focus();
     });
   };
 
@@ -1486,7 +1500,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (isTextField(target) && target instanceof HTMLElement) {
       target.blur();
       if (canvas) canvas.focus();
-      else dialogRef.current?.focus();
+      else builderRef.current?.focus();
       return;
     }
     if (selected.size > 0) return selectNodes([]);
@@ -1564,8 +1578,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // its text back on Escape, prevents its default to keep it. While a prompt or the help is
   // shown only Escape and Mod+S apply, and Tab cycles inside it.
   const handleKey = (e: KeyboardEvent, target: EventTarget | null) => {
-    const dialog = dialogRef.current;
-    if (e.defaultPrevented || !dialog || !(target instanceof Node) || !dialog.contains(target)) return;
+    const builder = builderRef.current;
+    if (e.defaultPrevented || !builder || !(target instanceof Node) || !builder.contains(target)) return;
     const overlay = helpShown
       ? helpRef.current
       : diffShown
@@ -1592,7 +1606,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           (e.shiftKey && (order.lastNode.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0));
       const next =
         nearEdges && order && current
-          ? tabTarget<HTMLElement | SVGElement>(tabStops(dialog), order.lastNode, order.edges, current, e.shiftKey)
+          ? tabTarget<HTMLElement | SVGElement>(tabStops(builder), order.lastNode, order.edges, current, e.shiftKey)
           : null;
       if (next) {
         e.preventDefault();
@@ -1600,7 +1614,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         next.focus({ preventScroll: true });
         return;
       }
-      trapTab(overlay ?? dialog, e);
+      // The builder is a stage tab, so Tab leaves it as from any part of the shell; only a dialog
+      // over it keeps Tab inside.
+      if (overlay) trapTab(overlay, e);
       return;
     }
     const region = focusRegion(target, canvasFor(viewKey));
@@ -1610,7 +1626,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     e.preventDefault();
     runCommand(command, e, target);
   };
-  const onDialogKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => handleKey(e.nativeEvent, e.target);
+  const onBuilderKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => handleKey(e.nativeEvent, e.target);
 
   // A key that lands on the page itself, because the element that had focus went away, is
   // the builder's while it is shown: focus comes back to it and the key is handled there.
@@ -1620,10 +1636,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   useEffect(() => {
     if (!isOpen || quitPrompt) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      const dialog = dialogRef.current;
-      if (!dialog || (e.target !== document.body && e.target !== document.documentElement)) return;
-      dialog.focus();
-      strayKeyRef.current(e, dialog);
+      const builder = builderRef.current;
+      if (!builder || (e.target !== document.body && e.target !== document.documentElement)) return;
+      builder.focus();
+      strayKeyRef.current(e, builder);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -1631,22 +1647,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
 
   // Once the list read after an import is drawn, focus that the Import to project button took with
   // it goes to the imported template's row, or to the builder when that read doesn't have the
-  // template. Focus the user has put elsewhere in the builder meanwhile, or that a dialog over the
-  // builder holds, stays where it is.
+  // template. Focus the user has put anywhere else meanwhile, in the builder, in a dialog over it or
+  // elsewhere in the shell, stays where it is.
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!rowFocus || !dialog) return;
-    const focused = document.activeElement;
-    if (!focusLost(focused) && focused?.closest('[aria-modal="true"]')) return;
+    const builder = builderRef.current;
+    if (!rowFocus || !builder) return;
+    if (!focusLost(document.activeElement)) return;
     const rowKey = definitionKey({ kind: "templates", id: rowFocus.name });
     const row = rowFocus.listed
-      ? [...dialog.querySelectorAll<HTMLElement>("[data-definition-row]")].find((el) => el.dataset.definitionRow === rowKey)
+      ? [...builder.querySelectorAll<HTMLElement>("[data-definition-row]")].find((el) => el.dataset.definitionRow === rowKey)
       : undefined;
-    (row ?? dialog).focus();
+    (row ?? builder).focus();
   }, [rowFocus]);
 
   // A text field losing focus ends its typing step.
-  const onDialogBlur = (e: ReactFocusEvent<HTMLDivElement>) => {
+  const onBuilderBlur = (e: ReactFocusEvent<HTMLElement>) => {
     if (isTextField(e.target)) endTyping();
   };
 
@@ -2050,7 +2065,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             crossIssues={false}
             draft={session?.drafts[key]}
             current={isCurrent}
-            onOpen={() => openBinding(row.id, attached ? row.graphId : undefined)}
+            onOpen={() => {
+              setListShown(false);
+              openBinding(row.id, attached ? row.graphId : undefined);
+            }}
           />
           {changed && <ChangedBadge id={row.id} status={changed} onClick={() => setDiffShown(ref)} />}
           <RowAction label={`Rename ${row.id}`} shown={isCurrent} onClick={() => startRename(ref)}>
@@ -2076,30 +2094,29 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     : "";
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the backdrop only keeps focus in the builder; it does nothing a user acts on
-    <div
-      className={isOpen ? "fixed inset-0 z-40 flex bg-black/75 backdrop-blur-xs p-3" : "hidden"}
-      // A press on the backdrop would drop focus to the page, out of reach of the builder's keys.
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) e.preventDefault();
-      }}
-    >
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a modal dialog owns its keyboard shortcuts (#248); every control inside it is native */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
+    <InspectorSlotContext.Provider value={inspectorSlot}>
+    <div className={isOpen ? "flex-1 min-h-0 flex" : "hidden"}>
+      {/* A graph's view draws its inspector into the slot; anything else leaves it this line. */}
+      {inspectorSlot &&
+        !(openDraft && open?.kind === "graphs") &&
+        createPortal(
+          <p className="p-4 text-xs text-[#8b949e]">Open a graph and select a node to inspect it.</p>,
+          inspectorSlot
+        )}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- the builder's stage tab owns its keyboard shortcuts (#248); every control inside it is native */}
+      <section
+        ref={builderRef}
+        aria-label="Praxis Builder"
         tabIndex={-1}
-        onKeyDown={onDialogKeyDown}
-        onBlur={onDialogBlur}
-        className="relative flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
+        onKeyDown={onBuilderKeyDown}
+        onBlur={onBuilderBlur}
+        className="relative flex flex-col w-full h-full bg-[#0d1117] overflow-hidden text-[#c9d1d9] outline-none"
       >
         <header className="h-12 px-4 bg-[#161b22] border-b border-[#30363d] flex items-center gap-3 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-[#58a6ff]/15 border border-[#58a6ff]/40 flex items-center justify-center shrink-0">
             <Workflow className="w-4 h-4 text-[#58a6ff]" aria-hidden="true" />
           </div>
-          <h2 id={titleId} className="text-sm font-bold text-white shrink-0">
+          <h2 className="text-sm font-bold text-white shrink-0">
             Praxis Builder
           </h2>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d] shrink-0">
@@ -2159,7 +2176,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     type="button"
                     onClick={saveOpen}
                     // Not `disabled`: that would blur the focused button and send keys to
-                    // the app behind the builder. `saveOpen` ignores presses while saving.
+                    // the rest of the shell. `saveOpen` ignores presses while saving.
                     aria-disabled={saving}
                     aria-keyshortcuts={ariaKeyShortcuts("save")}
                     title={`Save (${shortcutLabel("save")})`}
@@ -2169,21 +2186,6 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     {saving ? "Saving…" : "Save"}
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-expanded={listShown}
-                  aria-controls={listId}
-                  aria-label={listShown ? "Hide the definitions list" : "Show the definitions list"}
-                  title={listShown ? "Hide the definitions list" : "Show the definitions list"}
-                  onClick={() => setListShown((v) => !v)}
-                  className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md"
-                >
-                  {listShown ? (
-                    <PanelLeftClose className="w-4 h-4" aria-hidden="true" />
-                  ) : (
-                    <PanelLeftOpen className="w-4 h-4" aria-hidden="true" />
-                  )}
-                </button>
                 <button
                   type="button"
                   aria-label="Keyboard shortcuts"
@@ -2207,14 +2209,6 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                 </button>
               </>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close Praxis Builder"
-              className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md"
-            >
-              <X className="w-4 h-4" aria-hidden="true" />
-            </button>
           </div>
         </header>
 
@@ -2244,12 +2238,36 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex-1 flex min-h-0">
+          <div className="flex-1 flex min-h-0 relative">
+            {/* The definitions list folds to a rail, so the canvas keeps the stage's width; its
+                button opens the list over the canvas, and picking a definition closes it again. */}
+            <div
+              data-definitions-rail
+              style={{ width: DEFINITIONS_RAIL_WIDTH }}
+              className="shrink-0 border-r border-[#30363d] bg-[#161b22] flex flex-col items-center py-1"
+            >
+              <button
+                type="button"
+                aria-expanded={listShown}
+                aria-controls={listId}
+                aria-label={listShown ? "Hide the definitions list" : "Show the definitions list"}
+                title={listShown ? "Hide the definitions list" : "Show the definitions list"}
+                onClick={() => setListShown((v) => !v)}
+                className="w-8 h-8 grid place-items-center text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md"
+              >
+                {listShown ? (
+                  <PanelLeftClose className="w-4 h-4" aria-hidden="true" />
+                ) : (
+                  <PanelLeftOpen className="w-4 h-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
             <nav
               id={listId}
               aria-label="Definitions"
               hidden={!listShown}
-              className="w-56 shrink-0 border-r border-[#30363d] overflow-y-auto py-2"
+              style={{ left: DEFINITIONS_RAIL_WIDTH }}
+              className="absolute top-0 bottom-0 z-20 w-56 border-r border-[#30363d] bg-[#0d1117] shadow-2xl overflow-y-auto py-2"
             >
               <div
                 className="relative px-1.5 pb-2"
@@ -2415,7 +2433,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                     crossIssues={crossErrors.has(key)}
                                     draft={draft}
                                     current={isOpenDef}
-                                    onOpen={() => openDefinition(ref)}
+                                    onOpen={() => pickFromList(ref)}
                                   />
                                   {badgesOf ? (
                                     badgesOf(def.id, changed).map((badge) =>
@@ -2806,7 +2824,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             onCancel={() => setConflict(null)}
           />
         )}
-      </div>
+      </section>
       {/* Portalled, so it shows while the builder itself is hidden. */}
       {quitPrompt &&
         createPortal(
@@ -2821,6 +2839,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           document.body
         )}
     </div>
+    </InspectorSlotContext.Provider>
   );
 };
 

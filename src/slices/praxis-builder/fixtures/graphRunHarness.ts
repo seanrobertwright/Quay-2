@@ -121,8 +121,8 @@ export const READS: ReadonlySet<string> = new Set([
 /**
  * How many Escapes reached the builder since the form was rendered. It runs its keys on its root, in
  * the bubble phase, and skips a key whose default a control inside it prevented
- * (PraxisBuilderModal.tsx). An Escape it runs with nothing smaller to close, such as the graph
- * canvas's selection, hides the builder. A live binding: an importer reads the count as it is now.
+ * (PraxisBuilder.tsx). An Escape it runs with nothing smaller to close, such as the graph
+ * canvas's selection, closes the builder's stage tab. A live binding: an importer reads the count as it is now.
  */
 export let builderEscapes = 0;
 

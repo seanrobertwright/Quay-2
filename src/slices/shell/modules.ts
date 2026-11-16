@@ -20,3 +20,12 @@ export const MODULE_NAMES: Record<ModuleId, string> = {
 export function moduleAfterClick(open: ModuleId | null, clicked: ModuleId): ModuleId | null {
   return open === clicked ? null : clicked;
 }
+
+/**
+ * The module whose panel shows once a stage tab that folds the panel, the Praxis Builder's, leaves
+ * the front: a panel the operator opened on demand meanwhile stays, else `folded`, the one that
+ * was open when the tab came in front, comes back.
+ */
+export function moduleAfterUnfold(folded: ModuleId | null, open: ModuleId | null): ModuleId | null {
+  return open ?? folded;
+}

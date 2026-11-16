@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-const { PraxisBuilderModal } = await import("./PraxisBuilderModal.tsx");
+const { PraxisBuilder } = await import("./PraxisBuilder.tsx");
 
 const PROJECT = "C:/project";
 /** The template the project already has, which the host has too. */
@@ -117,11 +117,11 @@ function announced(root: HTMLElement): string {
   return (region.textContent ?? "").replace(/\u00a0/g, "");
 }
 
-/** The builder's dialog, where focus goes when the element that had it is gone. */
-function dialogOf(root: HTMLElement): HTMLElement {
-  const dialog = root.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
-  assert.ok(dialog, "the builder is a dialog");
-  return dialog;
+/** The builder's region in its stage tab, where focus goes when the element that had it is gone. */
+function builderOf(root: HTMLElement): HTMLElement {
+  const builder = root.querySelector<HTMLElement>('section[aria-label="Praxis Builder"]');
+  assert.ok(builder, "the builder is a region named Praxis Builder");
+  return builder;
 }
 
 /** The button that opens a project's template, in its row of the Workflow templates group. */
@@ -147,7 +147,7 @@ async function importFromHost(): Promise<HTMLElement> {
   document.body.appendChild(container);
   const root = createRoot(container);
   mounted = { root, container };
-  const builder = createElement(PraxisBuilderModal, { isOpen: true, project: { path: PROJECT, name: "project" }, onClose: () => {}, onAddProject: () => {} });
+  const builder = createElement(PraxisBuilder, { isOpen: true, project: { path: PROJECT, name: "project" }, onClose: () => {}, onAddProject: () => {} });
   await act(async () => root.render(builder));
 
   const subsection = buttons(templatesGroup(container)).find((b) => b.textContent === "On host only (1)");
@@ -230,7 +230,7 @@ test("when the project's list can't be read after an import, focus is in the bui
   fakeBackend("plan", "fails");
   const root = await importFromHost();
   assert.ok(notices(root).some((text) => text.includes("can't read .praxis")), JSON.stringify(notices(root)));
-  assertFocusOn(dialogOf(root));
+  assertFocusOn(builderOf(root));
 });
 
 test("focus the user moved to another control while the list was read stays there", async () => {

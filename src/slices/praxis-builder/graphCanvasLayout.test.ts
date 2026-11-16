@@ -11,7 +11,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FileProblem } from "./types.ts";
 
-const { PraxisBuilderModal } = await import("./PraxisBuilderModal.tsx");
+const { PraxisBuilder } = await import("./PraxisBuilder.tsx");
 
 const PROJECT = "C:/project";
 const GRAPH = "release-review";
@@ -76,7 +76,7 @@ async function openGraph(): Promise<HTMLElement> {
   document.body.appendChild(container);
   const root = createRoot(container);
   mounted = { root, container };
-  const builder = createElement(PraxisBuilderModal, { isOpen: true, project: { path: PROJECT, name: "project" }, onClose: () => {}, onAddProject: () => {} });
+  const builder = createElement(PraxisBuilder, { isOpen: true, project: { path: PROJECT, name: "project" }, onClose: () => {}, onAddProject: () => {} });
   await act(async () => root.render(builder));
   const row = [...container.querySelectorAll("button")].find((b) => b.title === GRAPH);
   assert.ok(row, "the list has a row for the graph");

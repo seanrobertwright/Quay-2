@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import { SlotLayer } from "../stage/SlotLayer.tsx";
 import { Lens } from "../lens/Lens.tsx";
 import { focusTerminal } from "../terminal/terminalRequests.ts";
 
@@ -73,58 +74,21 @@ export function useToposDock(activeTerminalId: string | null, onOpenWide?: () =>
   );
 }
 
-interface Box {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-const sameBox = (a: Box | null, b: Box) =>
-  !!a && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
-
 /**
  * The layer Topos draws in, laid over the dock's slot and hidden while it has none. It stays in
  * one place in the page whatever it draws over, so Topos inside it is never remounted and keeps
  * its scroll position. Over the companion it sits under the companion's popups; over the lens, on
  * top of the lens frame.
  */
-export const ToposLayer = ({ dock, children }: { dock: ToposDock; children: ReactNode }) => {
-  const [box, setBox] = useState<Box | null>(null);
-  const slot = dock.slot;
-  // Measured after every render as well as on resize, so a slot that moves without resizing,
-  // such as the companion's view under a new link bar, is followed too.
-  const measure = useRef(() => {});
-  measure.current = () => {
-    if (!slot) return;
-    const r = slot.getBoundingClientRect();
-    const next = { left: r.left, top: r.top, width: r.width, height: r.height };
-    setBox((prev) => (sameBox(prev, next) ? prev : next));
-  };
-  useLayoutEffect(() => measure.current());
-  useLayoutEffect(() => {
-    if (!slot) return;
-    const remeasure = () => measure.current();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(remeasure);
-    observer?.observe(slot);
-    window.addEventListener("resize", remeasure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", remeasure);
-    };
-  }, [slot]);
-  return (
-    <div
-      data-topos-layer
-      data-placement={dock.placement ?? undefined}
-      hidden={!slot}
-      style={slot && box ? box : undefined}
-      className={slot ? `fixed ${dock.placement === "lens" ? "z-30" : "z-10"} flex flex-col` : "hidden"}
-    >
-      {children}
-    </div>
-  );
-};
+export const ToposLayer = ({ dock, children }: { dock: ToposDock; children: ReactNode }) => (
+  <SlotLayer
+    slot={dock.slot}
+    layerClass={`${dock.placement === "lens" ? "z-30" : "z-10"} flex flex-col`}
+    data={{ "data-topos-layer": true, "data-placement": dock.placement ?? undefined }}
+  >
+    {children}
+  </SlotLayer>
+);
 
 /**
  * The Topos lens: the lens frame over the stage, whose body Topos draws over. It closes like every

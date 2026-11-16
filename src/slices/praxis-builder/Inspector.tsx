@@ -38,6 +38,8 @@ interface InspectorProps {
   onGoToNode: (nodeId: string) => void;
   /** The graph binding chosen in the Binding picker, or null for None. */
   binding: ShownBinding | null;
+  /** Fills the element it is drawn in, such as the companion's Inspector view, instead of its 288 px column. */
+  fill?: boolean;
 }
 
 const sectionClass = "px-4 py-3 border-b border-[#21262d] space-y-2";
@@ -55,12 +57,13 @@ export const Inspector: FC<InspectorProps> = ({
   onDeleted,
   onGoToNode,
   binding,
+  fill = false,
 }) => (
   <aside
     ref={rootRef}
     aria-label="Inspector"
     tabIndex={-1}
-    className="w-72 shrink-0 border-l border-[#30363d] bg-[#0d1117] overflow-y-auto outline-none"
+    className={`${fill ? "w-full h-full" : "w-72 shrink-0 border-l border-[#30363d]"} bg-[#0d1117] overflow-y-auto outline-none`}
   >
     {node ? (
       <NodeInspector
