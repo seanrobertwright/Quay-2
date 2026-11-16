@@ -161,6 +161,9 @@ export const ModuleBar = ({
     <nav
       ref={navRef}
       aria-label="Module bar"
+      // The module bar is a pie surface: plain right-click opens the pie (#648).
+      data-pie-surface="pie"
+      data-pie-target="panel"
       style={BAR_STYLE}
       className="shrink-0 h-full flex flex-col bg-[#161b22] shadow-[inset_-1px_0_0_#30363d] select-none"
     >

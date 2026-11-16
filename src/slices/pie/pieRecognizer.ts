@@ -28,9 +28,9 @@ export interface PiePoint {
 
 /**
  * What the recognizer needs of a ring: the wedges that apply, each with the letter that chooses
- * it. A wedge left out is dim and empty, and is never chosen.
+ * it. A wedge left out or null is dim and empty, and is never chosen.
  */
-export type PieRingKeys = Readonly<Partial<Record<Wedge, { letter: string }>>>;
+export type PieRingKeys = Readonly<Partial<Record<Wedge, { letter: string } | null>>>;
 
 /** The menu: closed, held (the button still down, drawn once the display delay passes) or open to read. */
 export type PieState =

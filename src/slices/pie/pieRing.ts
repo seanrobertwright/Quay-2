@@ -31,7 +31,8 @@ export type PieRow = { kind: "terminal"; terminalId: string; folder: string } | 
 
 /** What the pie opened over. "panel" is the module bar or a panel; "other" is any other surface. */
 export type PieTarget =
-  | { surface: "terminal"; terminalId: string }
+  /** A terminal's pane; `zoomable` is false for a lone pane that is not zoomed, which has nothing to zoom. */
+  | { surface: "terminal"; terminalId: string; zoomable: boolean }
   | { surface: "panel"; row: PieRow | null }
   | { surface: "empty-stage" }
   | { surface: "companion" }
@@ -60,7 +61,7 @@ const NONE: Diagonals = { SE: null, SW: null, NW: null };
 function diagonals(target: PieTarget): Diagonals {
   switch (target.surface) {
     case "terminal":
-      return { SE: ZOOM, SW: RENAME, NW: FIND };
+      return { SE: target.zoomable ? ZOOM : null, SW: RENAME, NW: FIND };
     case "panel":
       if (target.row?.kind === "terminal") return { SE: SHOW_IN_PANE, SW: RENAME, NW: OPEN_FOLDER };
       return target.row ? { ...NONE, NW: OPEN_FOLDER } : NONE;

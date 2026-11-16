@@ -294,6 +294,9 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                   tabIndex={0}
                   onClick={() => onSelectProject(proj.path)}
                   onContextMenu={(e) => rowMenu.onContextMenu(e, { kind: "project", path: proj.path })}
+                  data-pie-surface="list"
+                  data-pie-row
+                  data-pie-folder={proj.path}
                   onKeyDown={(e) => onRowKeyDown(e, { kind: "project", path: proj.path }, () => onSelectProject(proj.path))}
                   className={`group flex items-center justify-between px-2.5 py-1.5 text-xs rounded-t cursor-pointer transition-colors ${
                     isProjectActive
@@ -497,6 +500,9 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                                   tabIndex={0}
                                   onClick={selectWorktree}
                                   onContextMenu={(e) => rowMenu.onContextMenu(e, wtMenuTarget)}
+                                  data-pie-surface="list"
+                                  data-pie-row
+                                  data-pie-folder={wt.path}
                                   onKeyDown={(e) => onRowKeyDown(e, wtMenuTarget, selectWorktree)}
                                   className={`group/wt flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer transition-colors ${
                                     isWtActive

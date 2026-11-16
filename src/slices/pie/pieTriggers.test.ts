@@ -61,18 +61,18 @@ function placeOf(html: string, selector: string) {
 }
 
 test("the terminal body is a terminal surface acting on its pane's terminal, with mouse reporting read from xterm", () => {
-  const pane = (cls: string) => `<div data-pie-terminal="t1"><div class="${cls}"><textarea class="xterm-helper-textarea"></textarea><div class="screen"></div></div></div>`;
-  assert.deepEqual(placeOf(pane("xterm"), ".screen"), { rules: "terminal", mouseReporting: false, target: { surface: "terminal", terminalId: "t1" } });
+  const pane = (cls: string) => `<div data-pie-terminal="t1" data-pie-zoomable><div class="${cls}"><textarea class="xterm-helper-textarea"></textarea><div class="screen"></div></div></div>`;
+  assert.deepEqual(placeOf(pane("xterm"), ".screen"), { rules: "terminal", mouseReporting: false, target: { surface: "terminal", terminalId: "t1", zoomable: true } });
   assert.deepEqual(placeOf(pane("xterm enable-mouse-events"), "textarea"), {
     rules: "terminal",
     mouseReporting: true,
-    target: { surface: "terminal", terminalId: "t1" },
+    target: { surface: "terminal", terminalId: "t1", zoomable: true },
   });
 });
 
 test("a pane header keeps its list menu and acts on its terminal", () => {
   const html = `<div data-pie-terminal="t1"><div data-pie-surface="list"><span class="name">claude-1</span></div></div>`;
-  assert.deepEqual(placeOf(html, ".name"), { rules: "list", mouseReporting: false, target: { surface: "terminal", terminalId: "t1" } });
+  assert.deepEqual(placeOf(html, ".name"), { rules: "list", mouseReporting: false, target: { surface: "terminal", terminalId: "t1", zoomable: false } });
 });
 
 test("a Projects row acts on its terminal or folder; the module bar is a pie surface", () => {

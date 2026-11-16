@@ -487,6 +487,8 @@ export const Topos: React.FC<ToposProps> = ({
       <section
         ref={panel}
         tabIndex={-1}
+        // The graph and the refs keep their list menus on right-click; middle-click opens the pie (#648).
+        data-pie-surface="list"
         aria-labelledby={titleId}
         onFocus={() => setFocusWithin(true)}
         onBlur={(e) => {

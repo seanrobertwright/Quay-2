@@ -9,7 +9,8 @@
 // - `data-pie-target`: what a region is, "companion", "empty-stage" or "panel" (the module bar
 //   and the panel beside it).
 // - `data-pie-terminal` and `data-pie-folder`: the terminal and the folder a pane or row is for;
-//   `data-pie-row` marks a Projects panel or module bar row.
+//   `data-pie-row` marks a Projects panel or module bar row, and `data-pie-zoomable` a pane that
+//   can zoom.
 import { TERMINAL_BODY, TEXT_FIELD } from "../overlay/contextMenuPolicy.ts";
 import type { PieTarget } from "./pieRing.ts";
 
@@ -66,7 +67,7 @@ function targetAt(el: Element): PieTarget {
   }
   const pane = el.closest("[data-pie-terminal]");
   const terminalId = pane?.getAttribute("data-pie-terminal");
-  if (terminalId) return { surface: "terminal", terminalId };
+  if (terminalId) return { surface: "terminal", terminalId, zoomable: pane?.hasAttribute("data-pie-zoomable") === true };
   switch (el.closest("[data-pie-target]")?.getAttribute("data-pie-target")) {
     case "companion":
       return { surface: "companion" };

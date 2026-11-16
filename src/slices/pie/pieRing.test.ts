@@ -15,7 +15,11 @@ function labels(target: PieTarget) {
 const FIXED = { N: "Next wait", NE: null, E: "Split", S: "Palette", W: "New term" };
 
 test("over a terminal: Zoom, Rename and Find on the diagonals", () => {
-  assert.deepEqual(labels({ surface: "terminal", terminalId: "t1" }), { ...FIXED, SE: "Zoom", SW: "Rename", NW: "Find" });
+  assert.deepEqual(labels({ surface: "terminal", terminalId: "t1", zoomable: true }), { ...FIXED, SE: "Zoom", SW: "Rename", NW: "Find" });
+});
+
+test("a lone pane that is not zoomed has nothing to zoom, so Zoom's wedge is empty", () => {
+  assert.deepEqual(labels({ surface: "terminal", terminalId: "t1", zoomable: false }), { ...FIXED, SE: null, SW: "Rename", NW: "Find" });
 });
 
 test("over a terminal row on the module bar or a panel: Show in pane, Rename and Open folder", () => {
@@ -45,7 +49,7 @@ test("over the companion and anywhere else, only the fixed strokes", () => {
 
 test("every surface keeps all eight wedges in order, and letters never repeat on one ring", () => {
   const targets: PieTarget[] = [
-    { surface: "terminal", terminalId: "t1" },
+    { surface: "terminal", terminalId: "t1", zoomable: true },
     { surface: "panel", row: { kind: "terminal", terminalId: "t1", folder: "C:\\r" } },
     { surface: "empty-stage" },
     { surface: "companion" },
@@ -57,6 +61,6 @@ test("every surface keeps all eight wedges in order, and letters never repeat on
     assert.equal(new Set(letters).size, letters.length, target.surface);
   }
   // The letters the pie prototype settled on.
-  const t = pieRing({ surface: "terminal", terminalId: "t1" });
+  const t = pieRing({ surface: "terminal", terminalId: "t1", zoomable: true });
   assert.deepEqual([t.N?.letter, t.E?.letter, t.SE?.letter, t.S?.letter, t.SW?.letter, t.W?.letter, t.NW?.letter], ["q", "s", "z", "p", "r", "n", "f"]);
 });

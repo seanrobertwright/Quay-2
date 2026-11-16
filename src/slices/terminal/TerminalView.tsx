@@ -202,6 +202,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
       <div
         data-terminal-pane
         data-pie-terminal={terminalId}
+        data-pie-zoomable={onZoomPane ? "" : undefined}
         onClick={(e) => {
           onSelect?.();
           if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {

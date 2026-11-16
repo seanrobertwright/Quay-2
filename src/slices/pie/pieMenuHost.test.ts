@@ -24,7 +24,7 @@ afterEach(() => {
 
 const PAGE = `
   <section data-pie-surface="pie" data-pie-target="companion"><p class="companion">PR</p><input class="field"></section>
-  <div data-pie-terminal="t1"><div class="xterm"><div class="screen"></div></div></div>
+  <div data-pie-terminal="t1" data-pie-zoomable><div class="xterm"><div class="screen"></div></div></div>
   <div data-pie-terminal="t2"><div class="xterm enable-mouse-events"><div class="reporting"></div></div></div>
   <nav data-pie-target="panel"><div data-pie-surface="list" data-pie-row data-pie-folder="C:\\repo"><span class="row">repo</span></div></nav>`;
 
@@ -94,7 +94,7 @@ test("with a display delay the pie draws only once the delay passes, and a strok
 
   await fire(el(".companion"), "mousedown", { button: 1 });
   await fire(document.body, "mouseup", { button: 1, clientX: 400, clientY: 240 });
-  assert.deepEqual(chosen.at(-1), ["next-wait", { surface: "companion" }]);
+  assert.deepEqual(chosen[chosen.length - 1], ["next-wait", { surface: "companion" }]);
 });
 
 test("a plain click leaves the pie open; a letter then chooses, and Escape closes", async () => {
@@ -105,7 +105,7 @@ test("a plain click leaves the pie open; a letter then chooses, and Escape close
   const key = new KeyboardEvent("keydown", { key: "z", bubbles: true, cancelable: true });
   await act(async () => void document.body.dispatchEvent(key));
   assert.equal(key.defaultPrevented, true);
-  assert.deepEqual(chosen, [["zoom", { surface: "terminal", terminalId: "t1" }]]);
+  assert.deepEqual(chosen, [["zoom", { surface: "terminal", terminalId: "t1", zoomable: true }]]);
 
   await fire(el(".screen"), "mousedown", { button: 1 });
   await fire(document.body, "mouseup", { button: 1 });
@@ -120,7 +120,7 @@ test("an open pie takes the next left click: on a wedge it chooses, and the clic
   await fire(document.body, "mouseup", { button: 1 });
   const click = await fire(el(".screen"), "mousedown", { button: 0, clientX: 300, clientY: 300 });
   assert.equal(click.reached, false);
-  assert.deepEqual(chosen, [["new-term", { surface: "terminal", terminalId: "t1" }]]);
+  assert.deepEqual(chosen, [["new-term", { surface: "terminal", terminalId: "t1", zoomable: true }]]);
 });
 
 test("terminal right-click, Shift+right-click and text fields are left alone", async () => {

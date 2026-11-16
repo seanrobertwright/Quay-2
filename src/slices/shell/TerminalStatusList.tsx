@@ -69,6 +69,9 @@ export const TerminalStatusList = ({
               aria-label={`${terminal.name}, ${statusLabel}`}
               aria-current={selected ? "true" : undefined}
               onClick={() => onSelectTerminal(terminal.id)}
+              data-pie-row
+              data-pie-terminal={terminal.id}
+              data-pie-folder={terminal.project_path}
               style={ROW_STYLE}
               className={BAR_BUTTON_CLASS}
             >

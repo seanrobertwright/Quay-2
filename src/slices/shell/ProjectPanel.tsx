@@ -171,7 +171,7 @@ function SettingControl<K extends ShellPrefKey>({ setting, prefs, onSetPref }: {
 }
 
 /** What the preview pie shows: the ring over a terminal, which fills every wedge but Merge's. */
-const PREVIEW_RING = pieRing({ surface: "terminal", terminalId: "" });
+const PREVIEW_RING = pieRing({ surface: "terminal", terminalId: "", zoomable: true });
 
 /**
  * The Project module's panel: the This project group, which acts on the open project, and the

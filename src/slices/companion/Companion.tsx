@@ -380,6 +380,9 @@ export const Companion = ({
   return (
     <aside
       aria-label="Companion"
+      // The companion is a pie surface: plain right-click opens the pie (#648).
+      data-pie-surface="pie"
+      data-pie-target="companion"
       style={{ width }}
       className="relative shrink-0 h-full min-h-0 flex flex-col bg-[#0d1117] border-l border-[#30363d]"
     >
