@@ -47,6 +47,8 @@ const VIEW_SAVE_DEBOUNCE_MS = 500;
 export type AgentOpeners = Pick<CtrlBActions, "openSwarmBuilder" | "openSessionHistory" | "selectNextWaiting" | "openActivity">;
 /** What chords `r` and `f` open, owned by the app. */
 export type WorkflowOpeners = Pick<CtrlBActions, "openWorkflows" | "openEngineStrip">;
+/** What chords `t`, `$` and `u` open in the Project panel, owned by the app. */
+export type ProjectOpeners = Pick<CtrlBActions, "openThisProject" | "openCheckForUpdates">;
 
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1266,6 +1268,9 @@ export function useWorkspace() {
   // Chords `r` and `f` open the Workflows panel, `f` with its engine strip focused. The app sets
   // the openers each render.
   const workflowOpeners = useRef<WorkflowOpeners | null>(null);
+  // Chords `t` and `$` open the Project panel's This project group, `u` its Check for updates. The
+  // app sets the openers each render.
+  const projectOpeners = useRef<ProjectOpeners | null>(null);
   // The repo-wide Diffs and the Pre-PR Audit open with the Source control panel, their home. The
   // chords and the app's palette and panel share these.
   const openSourceControl = useCallback(() => sourceControlOpener.current?.(), []);
@@ -1293,12 +1298,12 @@ export function useWorkspace() {
       openSourceControl,
       openPrePrAudit,
       openSessionHistory: () => agentOpeners.current?.openSessionHistory(),
-      toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
+      openThisProject: () => projectOpeners.current?.openThisProject(),
       openWorkflows: () => workflowOpeners.current?.openWorkflows(),
       openEngineStrip: () => workflowOpeners.current?.openEngineStrip(),
       openPraxisBuilder: () => praxisBuilderOpener.current?.(),
       openTopos: () => toposOpener.current?.(),
-      toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
+      openCheckForUpdates: () => projectOpeners.current?.openCheckForUpdates(),
       selectNextWaiting: () => agentOpeners.current?.selectNextWaiting(),
       openActivity: () => agentOpeners.current?.openActivity(),
       focusNextPane,
@@ -1449,6 +1454,7 @@ export function useWorkspace() {
     praxisBuilderOpener,
     agentOpeners,
     workflowOpeners,
+    projectOpeners,
     openRepoDiffs,
     openPrePrAudit,
     projectWorktrees,
