@@ -6,7 +6,10 @@ import {
   commitMessageDefaults,
   DEFAULT_MERGE_METHOD,
   MERGE_METHODS,
+  mergeArgs,
   mergeMethodLabel,
+  mergeWarning,
+  type MergeOutcome,
   readiness,
   readinessCells,
   type ReadinessCell,
@@ -18,12 +21,6 @@ import { CellDetail } from "./CellDetail.tsx";
 import { usePopupLayer } from "../overlay/useOverlay.ts";
 import { errorText, usePullRequestReadiness, type PullRequestLocation } from "./usePullRequestReadiness.ts";
 import { PRIMARY, SECONDARY } from "./buttonStyles.ts";
-
-/** What `merge_github_pr` reports once the pull request has merged. */
-interface MergeOutcome {
-  branchDeleted: boolean;
-  branchError: string | null;
-}
 
 const PILL: Record<PullRequestState | "DRAFT", { label: string; className: string }> = {
   OPEN: { label: "Open", className: "bg-[#238636]" },
@@ -58,10 +55,35 @@ export interface PullRequestLens {
 }
 
 /**
+ * What the pie asks of the pull request view (#650): NW opens Checks, SW opens Comments with focus
+ * in the comment box, and a Merge stroke with the Merge undo window Off opens the confirm step on
+ * the stroke's method. After the Merge undo window's merge, a reload reads the pull request again.
+ */
+export type PullRequestAsk =
+  | { kind: "checks" }
+  | { kind: "comment" }
+  | { kind: "confirm-merge"; method: MergeMethod }
+  | { kind: "reload" };
+
+/** A pull request ask numbered by `seq`, so the same ask sent twice is acted on twice. */
+export type NumberedPullRequestAsk = PullRequestAsk & { seq: number };
+
+/** The confirm step asked open on `method`, numbered by `seq`. */
+type ConfirmAsk = { method: MergeMethod; seq: number };
+
+interface PullRequestViewProps extends PullRequestLocation {
+  lens?: PullRequestLens | null;
+  /** An ask to act on once the pull request is read, numbered by `seq`. */
+  ask?: NumberedPullRequestAsk | null;
+  /** Called with the ask's `seq` once the view has acted on it. */
+  onAskTaken?: (seq: number) => void;
+}
+
+/**
  * The companion's pull request view: GitHub's header, then the readiness card, then the open
  * cell's detail, or the description while no cell is open.
  */
-export const PullRequestView = ({ lens = null, ...location }: PullRequestLocation & { lens?: PullRequestLens | null }) => {
+export const PullRequestView = ({ lens = null, ask = null, onAskTaken, ...location }: PullRequestViewProps) => {
   const { pr, loading, error, reload } = usePullRequestReadiness(location);
   if (!pr) {
     return (
@@ -70,7 +92,7 @@ export const PullRequestView = ({ lens = null, ...location }: PullRequestLocatio
       </p>
     );
   }
-  return <PullRequestBody pr={pr} error={error} location={location} lens={lens} onChanged={reload} />;
+  return <PullRequestBody pr={pr} error={error} location={location} lens={lens} ask={ask} onAskTaken={onAskTaken} onChanged={reload} />;
 };
 
 /**
@@ -82,17 +104,35 @@ const PullRequestBody = ({
   error,
   location,
   lens,
+  ask,
+  onAskTaken,
   onChanged,
 }: {
   pr: PullRequestReadiness;
   error: string | null;
   location: PullRequestLocation;
   lens: PullRequestLens | null;
+  ask: NumberedPullRequestAsk | null;
+  onAskTaken?: (seq: number) => void;
   onChanged: () => void;
 }) => {
   const [arrival] = useState(() => arrivalCell(pr));
   const [open, setOpen] = useState<ReadinessCellId | null>(arrival);
+  // The latest Comment ask, which puts focus in the comment box, and the latest confirm-step ask.
+  const [commentFocus, setCommentFocus] = useState<number | null>(null);
+  const [confirmAsk, setConfirmAsk] = useState<ConfirmAsk | null>(null);
   const detailId = useId();
+  useEffect(() => {
+    if (!ask) return;
+    if (ask.kind === "checks") setOpen("checks");
+    if (ask.kind === "comment") {
+      setOpen("comments");
+      setCommentFocus(ask.seq);
+    }
+    if (ask.kind === "confirm-merge") setConfirmAsk({ method: ask.method, seq: ask.seq });
+    if (ask.kind === "reload") onChanged();
+    onAskTaken?.(ask.seq);
+  }, [ask, onAskTaken, onChanged]);
   return (
     <div className="p-3 space-y-3 text-xs">
       <PullRequestHeader pr={pr} />
@@ -107,6 +147,7 @@ const PullRequestBody = ({
         onChanged={onChanged}
         open={open}
         detailId={detailId}
+        confirmAsk={confirmAsk}
         onToggle={(cell) => {
           lens?.closeIfOpen();
           setOpen((current) => (current === cell ? null : cell));
@@ -118,6 +159,7 @@ const PullRequestBody = ({
           cell={open}
           id={detailId}
           arrived={open === arrival}
+          focusComment={commentFocus}
           pr={pr}
           location={location}
           onChanged={onChanged}
@@ -176,6 +218,7 @@ const ReadinessCard = ({
   onChanged,
   open,
   detailId,
+  confirmAsk,
   onToggle,
 }: {
   pr: PullRequestReadiness;
@@ -183,6 +226,7 @@ const ReadinessCard = ({
   onChanged: () => void;
   open: ReadinessCellId | null;
   detailId: string;
+  confirmAsk: ConfirmAsk | null;
   onToggle: (cell: ReadinessCellId) => void;
 }) => {
   const verdict = readiness(pr);
@@ -192,7 +236,7 @@ const ReadinessCard = ({
         <h3 className={`text-sm font-semibold ${HEADLINE_TONE[verdict.tone]}`}>{verdict.headline}</h3>
         <p className="text-[#8b949e]">{verdict.reason}</p>
         {verdict.control.kind === "merge" ? (
-          <MergeControl pr={pr} location={location} enabled={verdict.control.enabled} onChanged={onChanged} />
+          <MergeControl pr={pr} location={location} enabled={verdict.control.enabled} confirmAsk={confirmAsk} onChanged={onChanged} />
         ) : (
           <AfterControls
             pr={pr}
@@ -294,22 +338,33 @@ export const Failure = ({ text }: { text: string | null }) =>
  * The merge split button. The main button starts the confirm step for the picked method; the
  * arrow beside it opens a menu of merge commit, squash and rebase, on squash at first. The confirm
  * step shows the commit title and message and Delete branch after merge, ticked, then merges
- * through `merge_github_pr`.
+ * through `merge_github_pr`. Each new `confirmAsk`, a Merge stroke's while the Merge undo window
+ * is Off, opens the confirm step on its method, when the merge is enabled.
  */
 const MergeControl = ({
   pr,
   location,
   enabled,
+  confirmAsk,
   onChanged,
 }: {
   pr: PullRequestReadiness;
   location: PullRequestLocation;
   enabled: boolean;
+  confirmAsk: ConfirmAsk | null;
   onChanged: () => void;
 }) => {
   const [method, setMethod] = useState<MergeMethod>(DEFAULT_MERGE_METHOD);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [askedSeq, setAskedSeq] = useState<number | null>(null);
+  if (confirmAsk && confirmAsk.seq !== askedSeq) {
+    setAskedSeq(confirmAsk.seq);
+    if (enabled) {
+      setMethod(confirmAsk.method);
+      setConfirming(true);
+    }
+  }
   const { busy, failure, run } = useAction(onChanged);
   const menuId = useId();
   const toggle = useRef<HTMLButtonElement>(null);
@@ -320,18 +375,8 @@ const MergeControl = ({
   };
   const merge = (title: string, message: string, deleteBranch: boolean) =>
     run("Merge", async () => {
-      const outcome = await invoke<MergeOutcome>("merge_github_pr", {
-        repoPath: location.repoPath,
-        repo: location.repo,
-        number: location.number,
-        method,
-        commitTitle: method === "rebase" ? null : title,
-        commitMessage: method === "rebase" ? null : message,
-        headSha: pr.headRefOid,
-        headBranch: pr.headRefName,
-        deleteBranch,
-      });
-      return outcome.branchError ? `Merged, but Delete branch failed: ${outcome.branchError}` : null;
+      const outcome = await invoke<MergeOutcome>("merge_github_pr", { ...mergeArgs(location, pr, method, { title, message, deleteBranch }) });
+      return mergeWarning(outcome);
     });
   return (
     <div className="space-y-2">

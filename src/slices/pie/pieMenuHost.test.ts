@@ -225,3 +225,46 @@ test("a stroke past the second ring's start runs a slice: Split's Grid, Palette'
     ]
   );
 });
+
+// Merge through the host (#650): NE is Merge only while the selected terminal's pull request can merge.
+async function mountMergeable(mergeable: boolean) {
+  const chosen: PieAction[] = [];
+  document.body.innerHTML = PAGE;
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mounted = { root, container };
+  await act(async () =>
+    root.render(
+      createElement(PieMenuHost, {
+        palette: "cyber",
+        labelOutline: true,
+        displayDelayMs: 0,
+        mergeable,
+        onChoose: (choice: PieChoice) => chosen.push(choice.action),
+      })
+    )
+  );
+  return chosen;
+}
+
+const dragFromCompanion = async (deg: number, px: number) => {
+  const x = 400 + px * Math.sin((deg * Math.PI) / 180);
+  const y = 300 - px * Math.cos((deg * Math.PI) / 180);
+  await fire(el(".companion"), "mousedown", { button: 1 });
+  await fire(document.body, "mousemove", { button: 1, clientX: x, clientY: y });
+  await fire(document.body, "mouseup", { button: 1, clientX: x, clientY: y });
+};
+
+test("with a mergeable pull request, NE runs Merge, and past the second ring its slice: Rebase", async () => {
+  const chosen = await mountMergeable(true);
+  await dragFromCompanion(45, 80);
+  await dragFromCompanion(65, 150);
+  assert.deepEqual(chosen, ["merge", "merge-rebase"]);
+});
+
+test("with no mergeable pull request, a stroke at NE runs nothing", async () => {
+  const chosen = await mountMergeable(false);
+  await dragFromCompanion(45, 80);
+  assert.deepEqual(chosen, []);
+});

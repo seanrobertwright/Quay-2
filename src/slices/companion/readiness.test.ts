@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { PullRequestReadiness } from "../github/types.ts";
-import { arrivalCell, commitMessageDefaults, DEFAULT_MERGE_METHOD, MERGE_METHODS, readiness, readinessCells } from "./readiness.ts";
+import { arrivalCell, canMerge, commitMessageDefaults, DEFAULT_MERGE_METHOD, MERGE_METHODS, mergeArgs, readiness, readinessCells } from "./readiness.ts";
 
 const open = (over: Partial<PullRequestReadiness> = {}): PullRequestReadiness => ({
   repo: "o/r",
@@ -184,4 +184,40 @@ test("arrival follows the same rule on a merged or closed pull request", () => {
   assert.equal(arrivalCell(open({ ...failing, state: "MERGED" })), "checks");
   assert.equal(arrivalCell(open({ comments: { total: 1, unresolved: 1 }, state: "CLOSED" })), "comments");
   assert.equal(arrivalCell(open({ state: "CLOSED" })), null);
+});
+
+// ---- What a merge started without the confirm step sends (#650) ----
+
+const location = { repoPath: "E:/alpha", repo: "o/r", number: 12 };
+
+test("a pull request can merge while the readiness card's merge button is enabled", () => {
+  assert.equal(canMerge(open()), true);
+  assert.equal(canMerge(open({ mergeStateStatus: "UNSTABLE", checks: { failing: 1, pending: 0, skipped: 0, passing: 3 } })), true);
+  assert.equal(canMerge(open({ isDraft: true })), false);
+  assert.equal(canMerge(open({ mergeStateStatus: "BLOCKED" })), false);
+  assert.equal(canMerge(open({ state: "MERGED" })), false);
+});
+
+test("a squash merge sends GitHub's squash title and message, the head it was read at, and Delete branch on", () => {
+  const pr = open({ title: "Add the thing", body: "Closes #5" });
+  assert.deepEqual(mergeArgs(location, pr, "squash"), {
+    repoPath: "E:/alpha",
+    repo: "o/r",
+    number: 12,
+    method: "squash",
+    commitTitle: "Add the thing (#12)",
+    commitMessage: "Closes #5",
+    headSha: "0123456789abcdef0123456789abcdef01234567",
+    headBranch: "ticket-12",
+    deleteBranch: true,
+  });
+});
+
+test("a merge commit names the branch, a rebase writes no message, and a fork's branch is never deleted", () => {
+  const merge = mergeArgs(location, open(), "merge");
+  assert.equal(merge.commitTitle, "Merge pull request #12 from ticket-12");
+  const rebase = mergeArgs(location, open(), "rebase");
+  assert.equal(rebase.commitTitle, null);
+  assert.equal(rebase.commitMessage, null);
+  assert.equal(mergeArgs(location, open({ isCrossRepository: true }), "squash").deleteBranch, false);
 });

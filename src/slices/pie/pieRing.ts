@@ -2,9 +2,9 @@
 // keep one command everywhere and act on the selected terminal; SE (look closer), SW (write) and
 // NW (inspect) act on the thing under the pointer. A command that does not apply leaves its wedge
 // empty, and the others never shift. N, E, S and W are parents: a stroke that goes on past the
-// first ring picks one of their three second-ring slices. NE is Merge, and the companion's pull
-// request diagonals (Diff lens, Comment, Checks) need a pull request; both come with the Merge
-// stroke, so their wedges stay empty for now.
+// first ring picks one of their three second-ring slices. NE is Merge, a parent too, on the
+// selected terminal's pull request: it shows wherever that pull request can merge, except on the
+// empty stage. Over the companion's pull request the diagonals are Diff lens, Comment and Checks.
 import { SLICE_COUNT, WEDGES, type Wedge } from "./pieRecognizer.ts";
 
 /** What a stroke can do. */
@@ -27,7 +27,14 @@ export type PieAction =
   | "palette-command"
   | "new-claude"
   | "new-codex"
-  | "new-pwsh";
+  | "new-pwsh"
+  | "merge"
+  | "merge-squash"
+  | "merge-commit"
+  | "merge-rebase"
+  | "diff-lens"
+  | "comment"
+  | "checks";
 
 /** What a wedge's own command does: any action but running a palette command, which only a slice can. */
 export type PieCommandAction = Exclude<PieAction, "palette-command">;
@@ -65,6 +72,8 @@ export type PieTarget =
   | { surface: "panel"; row: PieRow | null }
   | { surface: "empty-stage" }
   | { surface: "companion" }
+  /** The companion's pull request view. */
+  | { surface: "companion-pr" }
   | { surface: "other" };
 
 /** A ring: each wedge's command, or null where none applies. Keys are in `WEDGES` order. */
@@ -91,6 +100,13 @@ const FIND = command("find", "Find", "f");
 const SHOW_IN_PANE = command("show-in-pane", "Show in pane", "o");
 const OPEN_FOLDER = command("open-folder", "Open folder", "e");
 const AGENTS_PANEL = command("agents-panel", "Agents panel", "a");
+/** The method each Merge stroke merges by: Merge itself and Squash squash, Commit merges, Rebase rebases. */
+export const MERGE_STROKE_METHOD = { merge: "squash", "merge-squash": "squash", "merge-commit": "merge", "merge-rebase": "rebase" } as const;
+
+const MERGE = command("merge", "Merge", "m", [slice("merge-squash", "Squash"), slice("merge-commit", "Commit"), slice("merge-rebase", "Rebase")]);
+const DIFF_LENS = command("diff-lens", "Diff lens", "d");
+const COMMENT = command("comment", "Comment", "c");
+const CHECKS = command("checks", "Checks", "k");
 
 type Diagonals = Pick<PieRing, "SE" | "SW" | "NW">;
 
@@ -105,16 +121,28 @@ function diagonals(target: PieTarget): Diagonals {
       return target.row ? { ...NONE, NW: OPEN_FOLDER } : NONE;
     case "empty-stage":
       return { ...NONE, NW: AGENTS_PANEL };
+    case "companion-pr":
+      return { SE: DIFF_LENS, SW: COMMENT, NW: CHECKS };
     case "companion":
     case "other":
       return NONE;
   }
 }
 
-/** The ring over `target`, with Palette's slices copying `recent`, the palette's most recent commands, newest first. */
-export function pieRing(target: PieTarget, recent: readonly RecentPaletteCommand[] = []): PieRing {
-  const slots: Omit<PieRing, "NE"> = { N: NEXT_WAIT, E: SPLIT, S: palette(recent), W: NEW_TERM, ...diagonals(target) };
-  return Object.fromEntries(WEDGES.map((wedge) => [wedge, wedge === "NE" ? null : slots[wedge]])) as PieRing;
+/**
+ * The ring over `target`, with Palette's slices copying `recent`, the palette's most recent
+ * commands, newest first. `mergeable` is whether the selected terminal's pull request can merge.
+ */
+export function pieRing(target: PieTarget, recent: readonly RecentPaletteCommand[] = [], mergeable = false): PieRing {
+  const slots: PieRing = {
+    N: NEXT_WAIT,
+    NE: mergeable && target.surface !== "empty-stage" ? MERGE : null,
+    E: SPLIT,
+    S: palette(recent),
+    W: NEW_TERM,
+    ...diagonals(target),
+  };
+  return Object.fromEntries(WEDGES.map((wedge) => [wedge, slots[wedge]])) as PieRing;
 }
 
 /** The terminal a stroke acts on: the pane's, or a terminal row's; null elsewhere. */

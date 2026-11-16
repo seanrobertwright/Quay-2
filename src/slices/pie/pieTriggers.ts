@@ -6,8 +6,8 @@
 //   right-click opens the pie), "list" (Projects rows, pane headers, Topos: right-click keeps the
 //   list menu) or "praxis-canvas" (middle-click keeps pan). The terminal body is found by xterm's
 //   own root, and a text field by the native menu's own rule.
-// - `data-pie-target`: what a region is, "companion", "empty-stage" or "panel" (the module bar
-//   and the panel beside it).
+// - `data-pie-target`: what a region is, "companion", "companion-pr" (the companion's pull
+//   request view), "empty-stage" or "panel" (the module bar and the panel beside it).
 // - `data-pie-terminal` and `data-pie-folder`: the terminal and the folder a pane or row is for;
 //   `data-pie-row` marks a Projects panel or module bar row, and `data-pie-zoomable` a pane that
 //   can zoom.
@@ -71,6 +71,8 @@ function targetAt(el: Element): PieTarget {
   switch (el.closest("[data-pie-target]")?.getAttribute("data-pie-target")) {
     case "companion":
       return { surface: "companion" };
+    case "companion-pr":
+      return { surface: "companion-pr" };
     case "empty-stage":
       return { surface: "empty-stage" };
     case "panel":

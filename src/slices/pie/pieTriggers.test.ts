@@ -103,3 +103,10 @@ test("a text input wins over the surface around it; the companion and the empty 
   assert.deepEqual(placeOf(html, ".n"), { rules: "praxis-canvas", mouseReporting: false, target: { surface: "other" } });
   assert.deepEqual(placeOf(html, ".x"), { rules: "elsewhere", mouseReporting: false, target: { surface: "other" } });
 });
+
+test("the companion's pull request view is its own pie target inside the companion", () => {
+  const html = `<aside data-pie-surface="pie" data-pie-target="companion"><header class="h">Pull request</header>
+    <section data-pie-target="companion-pr"><h2 class="t">Add the thing</h2></section></aside>`;
+  assert.deepEqual(placeOf(html, ".t"), { rules: "pie", mouseReporting: false, target: { surface: "companion-pr" } });
+  assert.deepEqual(placeOf(html, ".h").target, { surface: "companion" });
+});

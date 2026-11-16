@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CheckLog,
@@ -32,12 +32,19 @@ interface DetailProps {
 /**
  * The open cell's detail, under the readiness card. `id` is what the cell's `aria-controls`
  * names. `arrived` is set when the view opened the cell itself on arrival, so Comments starts on
- * the unresolved threads that brought it there.
+ * the unresolved threads that brought it there. Each new `focusComment` number, a pie Comment
+ * stroke's, puts focus in the Comments detail's comment box.
  */
-export const CellDetail = ({ cell, id, arrived, ...props }: DetailProps & { cell: ReadinessCellId; id: string; arrived: boolean }) => (
+export const CellDetail = ({
+  cell,
+  id,
+  arrived,
+  focusComment = null,
+  ...props
+}: DetailProps & { cell: ReadinessCellId; id: string; arrived: boolean; focusComment?: number | null }) => (
   <section id={id} data-cell-detail aria-label={LABELS[cell]} className="space-y-2">
     {cell === "checks" && <ChecksDetail {...props} />}
-    {cell === "comments" && <CommentsDetail {...props} initialFilter={arrived ? "unresolved" : "all"} />}
+    {cell === "comments" && <CommentsDetail {...props} initialFilter={arrived ? "unresolved" : "all"} focusComment={focusComment} />}
     {cell === "files" && <FilesDetail {...props} />}
     {cell === "commits" && <CommitsDetail {...props} />}
   </section>
@@ -164,7 +171,13 @@ const REVIEW_VERDICT: Record<string, string> = {
  * comment box whose Comment posts a conversation comment and whose Close pull request closes it,
  * posting what is typed first.
  */
-const CommentsDetail = ({ pr, location, onChanged, initialFilter }: DetailProps & { initialFilter: CommentFilter }) => {
+const CommentsDetail = ({
+  pr,
+  location,
+  onChanged,
+  initialFilter,
+  focusComment,
+}: DetailProps & { initialFilter: CommentFilter; focusComment: number | null }) => {
   const read = useGithubRead<PullRequestTimeline>("get_github_pr_timeline", target(location));
   const [filter, setFilter] = useState<CommentFilter>(initialFilter);
   const [newestFirst, setNewestFirst] = useState(false);
@@ -175,6 +188,7 @@ const CommentsDetail = ({ pr, location, onChanged, initialFilter }: DetailProps 
       <CommentBox
         pr={pr}
         location={location}
+        focus={focusComment}
         onPosted={() => {
           read.reload();
           onChanged();
@@ -243,8 +257,23 @@ const TimelineEntry = ({ item }: { item: TimelineItem }) => (
 );
 
 /** The comment box above the timeline: Comment, and Close pull request beside it while it is open. */
-const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; location: PullRequestLocation; onPosted: () => void }) => {
+const CommentBox = ({
+  pr,
+  location,
+  focus,
+  onPosted,
+}: {
+  pr: PullRequestReadiness;
+  location: PullRequestLocation;
+  /** Each new number puts focus in the box. */
+  focus: number | null;
+  onPosted: () => void;
+}) => {
   const [body, setBody] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (focus !== null) box.current?.focus();
+  }, [focus]);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const typed = body.trim() !== "";
@@ -274,6 +303,7 @@ const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; loca
       }}
     >
       <textarea
+        ref={box}
         aria-label="Comment"
         value={body}
         rows={3}

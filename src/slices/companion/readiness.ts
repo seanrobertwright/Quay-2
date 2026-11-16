@@ -1,4 +1,5 @@
 import type { MergeMethod, MergeStateStatus, PullRequestReadiness } from "../github/types.ts";
+import type { PullRequestLocation } from "./usePullRequestReadiness.ts";
 
 /** The colour family the readiness card's headline takes. */
 export type ReadinessTone = "ready" | "failing" | "blocked" | "pending" | "merged" | "closed";
@@ -195,3 +196,58 @@ export function commitMessageDefaults(
   if (method === "merge") return { title: `Merge pull request #${pr.number} from ${pr.headRefName}`, message: pr.title };
   return null;
 }
+
+/** Whether GitHub would take a merge of `pr` now: the readiness card's merge button is enabled. */
+export function canMerge(pr: PullRequestReadiness): boolean {
+  const { control } = readiness(pr);
+  return control.kind === "merge" && control.enabled;
+}
+
+/** What `merge_github_pr` is sent to merge the pull request at `location`. */
+export interface MergeArgs {
+  repoPath: string;
+  repo: string | null;
+  number: number;
+  method: MergeMethod;
+  commitTitle: string | null;
+  commitMessage: string | null;
+  /** The head the merge was decided on; GitHub refuses the merge if the branch has moved since. */
+  headSha: string;
+  headBranch: string;
+  deleteBranch: boolean;
+}
+
+/**
+ * What a merge of `pr` by `method` sends with the pull request view's defaults, as a merge that
+ * skips the confirm step does: GitHub's commit title and message for the method, and Delete branch
+ * on, except for a fork's branch, which is not Quay's to delete. `edits` are the confirm step's.
+ */
+export function mergeArgs(
+  location: PullRequestLocation,
+  pr: Pick<PullRequestReadiness, "number" | "title" | "body" | "headRefName" | "headRefOid" | "isCrossRepository">,
+  method: MergeMethod,
+  edits: { title?: string; message?: string; deleteBranch?: boolean } = {},
+): MergeArgs {
+  const defaults = commitMessageDefaults(pr, method);
+  return {
+    repoPath: location.repoPath,
+    repo: location.repo,
+    number: location.number,
+    method,
+    commitTitle: defaults ? (edits.title ?? defaults.title) : null,
+    commitMessage: defaults ? (edits.message ?? defaults.message) : null,
+    headSha: pr.headRefOid,
+    headBranch: pr.headRefName,
+    deleteBranch: !pr.isCrossRepository && (edits.deleteBranch ?? true),
+  };
+}
+
+/** What `merge_github_pr` reports once the pull request has merged. */
+export interface MergeOutcome {
+  branchDeleted: boolean;
+  branchError: string | null;
+}
+
+/** The warning a merge that went through still carries: Delete branch failing, or null. */
+export const mergeWarning = (outcome: MergeOutcome): string | null =>
+  outcome.branchError ? `Merged, but Delete branch failed: ${outcome.branchError}` : null;
