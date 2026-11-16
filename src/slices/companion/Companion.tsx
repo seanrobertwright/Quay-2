@@ -49,6 +49,15 @@ export interface CompanionRun {
   content: ReactNode;
 }
 
+/**
+ * The Praxis Builder's inspector as the companion sees it, while the builder's stage tab is in
+ * front: the Inspector view hands the builder the element to draw it into.
+ */
+export interface CompanionInspector {
+  /** Takes the element the Inspector view gives the builder, or null when the view goes. */
+  slot: (el: HTMLElement | null) => void;
+}
+
 /** What the companion knows about the selected terminal, handed to each view. */
 export interface CompanionContext {
   terminal: TerminalInfo;
@@ -69,6 +78,8 @@ export interface CompanionContext {
   focus: ActivityFocus | null;
   /** The run picked in the Workflows panel, or null while none is. */
   run: CompanionRun | null;
+  /** The Praxis Builder's inspector while its stage tab is in front, or null. */
+  inspector: CompanionInspector | null;
   /** Shows `view` for the terminal, as the view switch does. */
   show: (view: CompanionViewId) => void;
 }
@@ -205,10 +216,24 @@ export const RUN_VIEW: CompanionView<CompanionContext> = {
   render: ({ run }) => run?.content ?? null,
 };
 
+/** The element the Inspector view hands the builder, which draws the selected node's Inspector into it. */
+const InspectorSlot = ({ inspector }: { inspector: CompanionInspector }) => (
+  <div ref={inspector.slot} data-inspector-slot className="h-full min-h-0 flex flex-col" />
+);
+
 /**
- * The views the companion registers, in the order its view switch lists them. A later view
- * (Inspector) is added here.
+ * The Inspector view: the Praxis Builder's inspector for its selected node, only while the
+ * builder's stage tab is in front. Like the Run view it is not the selected terminal's own, so it
+ * shows whatever terminal is selected, and with none.
  */
+export const INSPECTOR_VIEW: CompanionView<CompanionContext> = {
+  id: "inspector",
+  label: "Inspector",
+  available: ({ inspector }) => inspector !== null,
+  render: ({ inspector }) => inspector && <InspectorSlot inspector={inspector} />,
+};
+
+/** The views the companion registers, in the order its view switch lists them. */
 export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
   PULL_REQUEST_VIEW,
   TICKET_VIEW,
@@ -216,6 +241,7 @@ export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
   ACTIVITY_VIEW,
   RUN_VIEW,
   TOPOS_VIEW,
+  INSPECTOR_VIEW,
 ];
 
 /**
@@ -257,6 +283,11 @@ interface CompanionProps {
   showRequest?: CompanionShowRequest | null;
   /** The run picked in the Workflows panel; without it the companion offers no Run view. */
   run?: CompanionRun | null;
+  /**
+   * The Praxis Builder's inspector while its stage tab is in front. While it is given the
+   * companion shows the Inspector view, and once it goes, the view it showed before.
+   */
+  inspector?: CompanionInspector | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
@@ -273,11 +304,16 @@ export const Companion = ({
   activity = null,
   showRequest = null,
   run = null,
+  inspector = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
   // Selecting another terminal forgets it, so every selection starts from the first view.
   const [picked, setPicked] = useState<{ terminalId: string; view: CompanionViewId } | null>(null);
+  // While the builder's inspector is given, the Inspector view shows, unless a view is picked over
+  // it; `picked` keeps the view from before, which comes back once the inspector goes.
+  const [overInspector, setOverInspector] = useState<CompanionViewId | null>(null);
+  if (!inspector && overInspector !== null) setOverInspector(null);
   // The Activity entry the latest request asked for, while its terminal stays selected.
   const [focus, setFocus] = useState<(ActivityFocus & { terminalId: string }) | null>(null);
   const context = useMemo<CompanionContext | null>(
@@ -294,10 +330,12 @@ export const Companion = ({
             activity,
             focus: focus?.terminalId === selectedTerminal.id ? focus : null,
             run,
-            show: (view: CompanionViewId) => setPicked({ terminalId: selectedTerminal.id, view }),
+            inspector,
+            show: (view: CompanionViewId) =>
+              inspector ? setOverInspector(view) : setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run, inspector],
   );
   const selectedId = context?.terminal.id ?? null;
   // Each request is taken once, when it arrives, as if its view were picked on the switch.
@@ -306,6 +344,7 @@ export const Companion = ({
     setTakenSeq(showRequest.seq);
     if (showRequest.terminalId === selectedId) {
       setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
+      if (inspector) setOverInspector(showRequest.view);
       if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
     }
   }
@@ -315,8 +354,14 @@ export const Companion = ({
   // view switch lists the pull request alone for the pair.
   const bothSlots = !!(context?.link?.ticket && context.link.pull_request);
   const viewChoices = bothSlots ? choices.filter((view) => view.id !== TICKET_VIEW.id) : choices;
-  const pickedView =
-    context && picked?.terminalId === context.terminal.id ? choices.find((view) => view.id === picked.view) : undefined;
+  const pickedView = !context
+    ? undefined
+    : inspector
+      ? choices.find((view) => view.id === (overInspector ?? INSPECTOR_VIEW.id))
+      : picked?.terminalId === context.terminal.id
+        ? choices.find((view) => view.id === picked.view)
+        : undefined;
+  const pick = (view: CompanionViewId) => context?.show(view);
   const shownId = pickedView?.id ?? (context ? firstView(views, context, prefs.readOpensOn()) : null);
   const shown = views.find((view) => view.id === shownId) ?? null;
   const resize = (next: number) => {
@@ -336,7 +381,7 @@ export const Companion = ({
             <ViewSwitch
               views={viewChoices}
               shown={shown.id}
-              onPick={(view) => setPicked({ terminalId: context.terminal.id, view })}
+              onPick={pick}
             />
             <div className="ml-auto shrink-0 flex items-center gap-2 pl-2">
               {lens && <DiffLensToggle context={context} lens={lens} />}
@@ -352,8 +397,7 @@ export const Companion = ({
                 bothSlots
                   ? {
                       shown: shown.id === "ticket" ? "ticket" : shown.id === PULL_REQUEST_VIEW.id ? "pull_request" : null,
-                      onPick: (slot) =>
-                        setPicked({ terminalId: context.terminal.id, view: slot === "ticket" ? "ticket" : PULL_REQUEST_VIEW.id }),
+                      onPick: (slot) => pick(slot === "ticket" ? "ticket" : PULL_REQUEST_VIEW.id),
                     }
                   : null
               }
@@ -368,6 +412,10 @@ export const Companion = ({
           className="flex-1 min-h-0 overflow-y-auto"
         >
           {shown.render(context)}
+        </section>
+      ) : inspector ? (
+        <section data-companion-view={INSPECTOR_VIEW.id} aria-label={INSPECTOR_VIEW.label} className="flex-1 min-h-0 overflow-y-auto">
+          <InspectorSlot inspector={inspector} />
         </section>
       ) : run ? (
         <section data-companion-view={RUN_VIEW.id} aria-label={RUN_VIEW.label} className="flex-1 min-h-0 overflow-y-auto">

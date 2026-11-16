@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** The companion's views. This build registers Pull request, Ticket and Repository; later builds register the others. */
+/** The companion's views. */
 export type CompanionViewId = "pull-request" | "ticket" | "repository" | "activity" | "run" | "topos" | "inspector";
 
 /** The Repository view's id: the view the companion falls back to. */
