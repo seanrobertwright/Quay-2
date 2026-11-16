@@ -150,14 +150,27 @@ const AUTHOR_FIELDS: &str = "author { login ... on User { name } }";
 const LABEL_FIELDS: &str = "labels(first: 20) { nodes { name color description } }";
 
 /// Builds the query for one page of issues, newest first (the `gh issue list` order).
-fn build_issues_page_query(states: Option<&str>) -> String {
+fn build_issues_page_query(states: Option<&str>, since: bool) -> String {
     let states_arg = states.map(|s| format!(", states: {s}")).unwrap_or_default();
+    let (since_var, since_arg) = if since { (", $since: DateTime", ", filterBy: { since: $since }") } else { ("", "") };
     format!(
-        "query($owner: String!, $name: String!, $first: Int!, $after: String) {{ repository(owner: $owner, name: $name) {{ \
-         issues(first: $first, after: $after{states_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{ \
-         pageInfo {{ endCursor hasNextPage }} \
-         nodes {{ number title state url updatedAt {AUTHOR_FIELDS} {LABEL_FIELDS} assignees(first: 10) {{ nodes {{ login name }} }} }} }} }} }}"
+        "query($owner: String!, $name: String!, $first: Int!, $after: String{since_var}) {{ repository(owner: $owner, name: $name) {{          issues(first: $first, after: $after{states_arg}{since_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{          pageInfo {{ endCursor hasNextPage }}          nodes {{ number title state url updatedAt closedAt stateReason {AUTHOR_FIELDS} {LABEL_FIELDS} assignees(first: 10) {{ nodes {{ login name }} }} }} }} }} }}"
     )
+}
+
+/// Checks that `since` is a UTC timestamp written `YYYY-MM-DDTHH:MM:SSZ`, the form the issues
+/// filter takes, and returns it.
+fn parse_since(since: &str) -> Result<&str, String> {
+    let b = since.as_bytes();
+    let digits = |r: std::ops::Range<usize>| r.clone().all(|i| b[i].is_ascii_digit());
+    let num = |r: std::ops::Range<usize>| since[r].parse::<u32>().unwrap_or(u32::MAX);
+    let shaped = b.len() == 20
+        && digits(0..4) && b[4] == b'-' && digits(5..7) && b[7] == b'-' && digits(8..10) && b[10] == b'T'
+        && digits(11..13) && b[13] == b':' && digits(14..16) && b[16] == b':' && digits(17..19) && b[19] == b'Z';
+    if !shaped || !(1..=12).contains(&num(5..7)) || !(1..=31).contains(&num(8..10)) || num(11..13) > 23 || num(14..16) > 59 || num(17..19) > 59 {
+        return Err(format!("since must be a UTC timestamp such as 2026-11-15T05:00:00Z, not {:?}", since));
+    }
+    Ok(since)
 }
 
 /// Builds the query for one page of pull requests, newest first (the `gh pr list` order).
@@ -179,6 +192,7 @@ fn run_page_query(
     query: &str,
     page_size: u32,
     after: Option<&str>,
+    vars: &[(&str, &str)],
 ) -> Result<serde_json::Value, String> {
     let mut cmd = create_gh_command(repo_path);
     // gh fills {owner} and {repo} from the repository of the working directory.
@@ -196,6 +210,9 @@ fn run_page_query(
     ]);
     if let Some(cursor) = after {
         cmd.args(["-f", &format!("after={}", cursor)]);
+    }
+    for (name, value) in vars {
+        cmd.args(["-f", &format!("{}={}", name, value)]);
     }
     let output = cmd
         .output()
@@ -341,22 +358,53 @@ pub async fn get_github_repo_info(repo_path: String) -> Result<Option<GithubRepo
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// How long reading the signed-in login may take before `gh` is killed.
+const VIEWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// The login `gh` is signed in as for the repository at `repo_path`, or None when it is not
+/// signed in or GitHub cannot be reached.
+#[tauri::command]
+pub async fn get_github_viewer(repo_path: String) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut cmd = create_gh_command(&repo_path);
+        cmd.args(["api", "user", "--jq", ".login"]);
+        let out = match output_within(&mut cmd, VIEWER_TIMEOUT) {
+            Ok(out) if out.success => out,
+            _ => return Ok(None),
+        };
+        Ok(parse_viewer(&out.stdout))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// The login `gh api user --jq .login` printed, or None when it printed none.
+fn parse_viewer(stdout: &[u8]) -> Option<String> {
+    let login = String::from_utf8_lossy(stdout).trim().to_string();
+    (!login.is_empty() && !login.contains(char::is_whitespace)).then_some(login)
+}
+
 /// One page of issues. `after` is the previous page's `endCursor`; omit it for the
-/// first page. Blockers are looked up in one batched query per page.
+/// first page. `since`, a UTC timestamp such as `2026-11-15T05:00:00Z`, keeps only the issues
+/// updated since then. Blockers are looked up in one batched query per page.
 #[tauri::command]
 pub async fn list_github_issues(
     repo_path: String,
     state: Option<String>,
     after: Option<String>,
     page_size: Option<u32>,
+    since: Option<String>,
 ) -> Result<GithubPage<GithubIssue>, String> {
     tokio::task::spawn_blocking(move || {
         let states = issue_states(state.as_deref().unwrap_or("open"))?;
+        let since = since.as_deref().map(parse_since).transpose()?;
+        let vars: Vec<(&str, &str)> = since.map(|s| ("since", s)).into_iter().collect();
         let json = run_page_query(
             &repo_path,
-            &build_issues_page_query(states),
+            &build_issues_page_query(states, since.is_some()),
             page_size.unwrap_or(DEFAULT_PAGE_SIZE),
             after.as_deref(),
+            &vars,
         )?;
         let mut page = parse_issues_page(&json)?;
         let issues = &mut page.items;
@@ -439,6 +487,7 @@ pub async fn list_github_prs(
             &build_prs_page_query(states),
             page_size.unwrap_or(DEFAULT_PAGE_SIZE),
             after.as_deref(),
+            &[],
         )?;
         parse_prs_page(&json)
     })
@@ -631,7 +680,7 @@ mod tests {
         if let Ok(dir) = std::env::var("QUAY_DUMP_DIR") {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let issues = rt
-                .block_on(list_github_issues(repo.clone(), Some("open".into()), None, Some(30)))
+                .block_on(list_github_issues(repo.clone(), Some("open".into()), None, Some(30), None))
                 .unwrap()
                 .items;
             std::fs::write(
@@ -675,13 +724,55 @@ mod tests {
 
     #[test]
     fn page_queries_take_a_cursor_and_omit_states_for_all() {
-        let open = build_issues_page_query(Some("[OPEN]"));
+        let open = build_issues_page_query(Some("[OPEN]"), false);
         assert!(open.contains("$after: String"));
         assert!(open.contains("issues(first: $first, after: $after, states: [OPEN],"));
         assert!(open.contains("pageInfo { endCursor hasNextPage }"));
         let all = build_prs_page_query(None);
         assert!(all.contains("pullRequests(first: $first, after: $after, orderBy:"));
         assert!(!all.contains("states:"));
+    }
+
+    #[test]
+    fn an_issues_query_since_a_moment_filters_by_it_and_reads_when_and_why_each_closed() {
+        let since = build_issues_page_query(Some("[CLOSED]"), true);
+        assert!(since.contains("$since: DateTime"));
+        assert!(since.contains("filterBy: { since: $since }"));
+        assert!(since.contains("closedAt stateReason"));
+        assert!(!build_issues_page_query(Some("[OPEN]"), false).contains("$since"));
+    }
+
+    #[test]
+    fn the_viewer_is_the_one_login_gh_printed() {
+        assert_eq!(parse_viewer(b"octocat
+").as_deref(), Some("octocat"));
+        assert_eq!(parse_viewer(b""), None);
+        assert_eq!(parse_viewer(b"not a login"), None);
+    }
+
+    #[test]
+    fn since_takes_only_a_utc_timestamp() {
+        assert_eq!(parse_since("2026-11-15T05:00:00Z").unwrap(), "2026-11-15T05:00:00Z");
+        for bad in ["", "today", "2026-11-15", "2026-11-15T05:00:00", "2026-13-15T05:00:00Z", "2026-11-15T05:00:00Z;x"] {
+            assert!(parse_since(bad).is_err(), "{bad:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn parse_issues_page_reads_closed_at_and_state_reason() {
+        let json = serde_json::json!({
+            "data": { "repository": { "issues": {
+                "pageInfo": { "endCursor": null, "hasNextPage": false },
+                "nodes": [{
+                    "number": 7, "title": "Done", "state": "CLOSED", "url": "", "updatedAt": "2026-11-15T10:00:00Z",
+                    "closedAt": "2026-11-15T09:00:00Z", "stateReason": "COMPLETED",
+                    "author": null, "labels": { "nodes": [] }, "assignees": { "nodes": [] }
+                }]
+            }}}
+        });
+        let page = parse_issues_page(&json).unwrap();
+        assert_eq!(page.items[0].closed_at.as_deref(), Some("2026-11-15T09:00:00Z"));
+        assert_eq!(page.items[0].state_reason.as_deref(), Some("COMPLETED"));
     }
 
     #[test]

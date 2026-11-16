@@ -26,7 +26,7 @@ use slices::git::{
 use slices::github::{
     check_gh_cli_installed, close_github_pr, comment_on_github_pr, count_open_github_prs, delete_github_branch,
     get_github_check_log, get_github_issue, get_github_pr_checks, get_github_pr_commits, get_github_pr_files,
-    get_github_pr_readiness, get_github_pr_timeline, get_github_repo_info, list_github_issues, list_github_prs,
+    get_github_pr_readiness, get_github_pr_timeline, get_github_repo_info, get_github_viewer, list_github_issues, list_github_prs,
     merge_github_pr, reopen_github_pr, restore_github_branch, close_github_issue, comment_on_github_issue,
     edit_github_issue_assignees, edit_github_issue_labels, get_github_issue_choices, get_github_issue_status,
     reopen_github_issue, set_github_issue_type,
@@ -286,6 +286,7 @@ pub fn run() {
             topos_repo_filters,
             check_gh_cli_installed,
             get_github_repo_info,
+            get_github_viewer,
             list_github_issues,
             get_github_issue,
             list_github_prs,
