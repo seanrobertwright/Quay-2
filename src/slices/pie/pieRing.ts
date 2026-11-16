@@ -1,10 +1,11 @@
-// What the pie menu's first ring holds over each surface: fixed axes, family diagonals. N, E, S
-// and W keep one command everywhere and act on the selected terminal; SE (look closer), SW
-// (write) and NW (inspect) act on the thing under the pointer. A command that does not apply
-// leaves its wedge empty, and the others never shift. NE is Merge, and the companion's pull
+// What the pie menu's rings hold over each surface: fixed axes, family diagonals. N, E, S and W
+// keep one command everywhere and act on the selected terminal; SE (look closer), SW (write) and
+// NW (inspect) act on the thing under the pointer. A command that does not apply leaves its wedge
+// empty, and the others never shift. N, E, S and W are parents: a stroke that goes on past the
+// first ring picks one of their three second-ring slices. NE is Merge, and the companion's pull
 // request diagonals (Diff lens, Comment, Checks) need a pull request; both come with the Merge
 // stroke, so their wedges stay empty for now.
-import { WEDGES, type Wedge } from "./pieRecognizer.ts";
+import { SLICE_COUNT, WEDGES, type Wedge } from "./pieRecognizer.ts";
 
 /** What a stroke can do. */
 export type PieAction =
@@ -17,13 +18,41 @@ export type PieAction =
   | "find"
   | "show-in-pane"
   | "open-folder"
-  | "agents-panel";
+  | "agents-panel"
+  | "prev-wait"
+  | "waiting-list"
+  | "split-side"
+  | "split-stack"
+  | "split-grid"
+  | "palette-command"
+  | "new-claude"
+  | "new-codex"
+  | "new-pwsh";
 
-/** One wedge's command: what it does, its label and the letter that chooses it. */
+/** What a wedge's own command does: any action but running a palette command, which only a slice can. */
+export type PieCommandAction = Exclude<PieAction, "palette-command">;
+
+/** What a chosen stroke does: an action, or running palette command `commandId`. */
+export type PieChoice = { action: PieCommandAction } | { action: "palette-command"; commandId: string };
+
+/** One second-ring slice: what it does and its label. */
+export type PieSlice = PieChoice & { label: string };
+
+/**
+ * One wedge's command: what it does, its label and the letter that chooses it. A parent also has
+ * three second-ring slices, anticlockwise to clockwise, null where a slice is dim.
+ */
 export interface PieCommand {
-  action: PieAction;
+  action: PieCommandAction;
   label: string;
   letter: string;
+  slices?: readonly (PieSlice | null)[];
+}
+
+/** A command the palette ran, as the pie's Palette slices copy it. */
+export interface RecentPaletteCommand {
+  id: string;
+  title: string;
 }
 
 /** A Projects panel or module bar row the pie opened over. */
@@ -41,12 +70,21 @@ export type PieTarget =
 /** A ring: each wedge's command, or null where none applies. Keys are in `WEDGES` order. */
 export type PieRing = Record<Wedge, PieCommand | null>;
 
-const command = (action: PieAction, label: string, letter: string): PieCommand => ({ action, label, letter });
+const command = (action: PieCommandAction, label: string, letter: string, slices?: readonly (PieSlice | null)[]): PieCommand =>
+  slices ? { action, label, letter, slices } : { action, label, letter };
+const slice = (action: PieCommandAction, label: string): PieSlice => ({ action, label });
 
-const NEXT_WAIT = command("next-wait", "Next wait", "q");
-const SPLIT = command("split", "Split", "s");
-const PALETTE = command("palette", "Palette", "p");
-const NEW_TERM = command("new-term", "New term", "n");
+const NEXT_WAIT = command("next-wait", "Next wait", "q", [slice("prev-wait", "Prev"), slice("next-wait", "Next"), slice("waiting-list", "Waiting list")]);
+const SPLIT = command("split", "Split", "s", [slice("split-side", "Side"), slice("split-stack", "Stack"), slice("split-grid", "Grid")]);
+const NEW_TERM = command("new-term", "New term", "n", [slice("new-claude", "Claude"), slice("new-codex", "Codex"), slice("new-pwsh", "Pwsh")]);
+
+/** Palette, whose slices copy the three most recent palette commands, newest first; dim where there are fewer. */
+function palette(recent: readonly RecentPaletteCommand[]): PieCommand {
+  const slices = Array.from({ length: SLICE_COUNT }, (_, i): PieSlice | null =>
+    recent[i] ? { action: "palette-command", label: recent[i].title, commandId: recent[i].id } : null
+  );
+  return command("palette", "Palette", "p", slices);
+}
 const ZOOM = command("zoom", "Zoom", "z");
 const RENAME = command("rename", "Rename", "r");
 const FIND = command("find", "Find", "f");
@@ -73,9 +111,9 @@ function diagonals(target: PieTarget): Diagonals {
   }
 }
 
-/** The first ring over `target`. */
-export function pieRing(target: PieTarget): PieRing {
-  const slots: Omit<PieRing, "NE"> = { N: NEXT_WAIT, E: SPLIT, S: PALETTE, W: NEW_TERM, ...diagonals(target) };
+/** The ring over `target`, with Palette's slices copying `recent`, the palette's most recent commands, newest first. */
+export function pieRing(target: PieTarget, recent: readonly RecentPaletteCommand[] = []): PieRing {
+  const slots: Omit<PieRing, "NE"> = { N: NEXT_WAIT, E: SPLIT, S: palette(recent), W: NEW_TERM, ...diagonals(target) };
   return Object.fromEntries(WEDGES.map((wedge) => [wedge, wedge === "NE" ? null : slots[wedge]])) as PieRing;
 }
 

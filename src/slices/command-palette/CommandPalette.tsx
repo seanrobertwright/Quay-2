@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { TerminalInfo, StageLayout, RunKind } from "../terminal/types";
-import { Project } from "../workspace/types";
-import { GitWorktree } from "../git/types";
-import { SwarmPreset, BUILTIN_SWARM_PRESETS } from "../orchestrator/swarmTypes";
+import React, { useState, useEffect, useRef, useMemo, useImperativeHandle } from "react";
+import type { TerminalInfo, StageLayout, RunKind } from "../terminal/types.ts";
+import type { Project } from "../workspace/types.ts";
+import type { GitWorktree } from "../git/types.ts";
+import { type SwarmPreset, BUILTIN_SWARM_PRESETS } from "../orchestrator/swarmTypes.ts";
 import {
   AgentIcon,
   ClaudeIcon,
@@ -17,7 +17,7 @@ import {
   OpenCodeIcon,
   PigIcon,
   PowerShellIcon,
-} from "../terminal/AgentIcons";
+} from "../terminal/AgentIcons.tsx";
 import {
   Search,
   FolderGit2,
@@ -45,14 +45,14 @@ import {
   FolderOpen,
   X,
 } from "lucide-react";
-import { useOverlay } from "../overlay/useOverlay";
-import { GithubIcon } from "../github/GithubIcon";
-import { ArchonIcon } from "../archon/ArchonIcon";
-import { VsCodeIcon } from "../workspace/VsCodeIcon";
-import { APP_CURRENT_VERSION } from "../updater/updaterService";
-import { isSamePath } from "../../utils/paths";
-import { toposPaletteEntries, type ToposRequestKind } from "../git/topos/toposPalette";
-import { preferenceCommands, type SetShellPref, type ShellPrefs } from "../shell/shellPrefs";
+import { useOverlay } from "../overlay/useOverlay.ts";
+import { GithubIcon } from "../github/GithubIcon.tsx";
+import { ArchonIcon } from "../archon/ArchonIcon.tsx";
+import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
+import { APP_CURRENT_VERSION } from "../updater/updaterService.ts";
+import { isSamePath } from "../../utils/paths.ts";
+import { toposPaletteEntries, type ToposRequestKind } from "../git/topos/toposPalette.ts";
+import { preferenceCommands, type SetShellPref, type ShellPrefs } from "../shell/shellPrefs.ts";
 
 export interface CommandItem {
   id: string;
@@ -121,6 +121,10 @@ interface CommandPaletteProps {
   /** The shell settings, each a `Preferences: …` command when set with `onSetShellPref`. */
   shellPrefs?: ShellPrefs;
   onSetShellPref?: SetShellPref;
+  /** Called with each command the operator runs from the palette, so the pie's Palette slices can copy it. */
+  onRanCommand?: (command: { id: string; title: string }) => void;
+  /** Set to a function that runs the command with an id, open or closed, and says whether one had it. */
+  runnerRef?: React.MutableRefObject<((id: string) => boolean) | null>;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -167,6 +171,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSetShellPref,
   onToggleLiveMode,
   onAddProject,
+  onRanCommand,
+  runnerRef,
 }) => {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -753,6 +759,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onSelectTerminal,
   ]);
 
+  // A pie Palette slice runs its command by id, with the palette closed.
+  useImperativeHandle(
+    runnerRef,
+    () => (id: string) => {
+      const command = allCommands.find((c) => c.id === id);
+      command?.action();
+      return command !== undefined;
+    },
+    [allCommands]
+  );
+  const run = (command: CommandItem) => {
+    command.action();
+    onRanCommand?.({ id: command.id, title: command.title });
+    onClose();
+  };
+
   // Filter commands by query
   const filteredCommands = useMemo(() => {
     if (!query.trim()) return allCommands;
@@ -790,8 +812,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         if (document.activeElement instanceof HTMLElement) {
           document.activeElement.blur();
         }
-        target.action();
-        onClose();
+        run(target);
       }
     }
   };
@@ -857,10 +878,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   key={item.id}
                   type="button"
                   data-index={idx}
-                  onClick={() => {
-                    item.action();
-                    onClose();
-                  }}
+                  onClick={() => run(item)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors ${
                     isSelected

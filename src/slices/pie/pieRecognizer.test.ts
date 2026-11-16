@@ -3,7 +3,9 @@
 // a 26 px dead zone and eight 45° wedges with N straight up.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CLOSED, DEAD_ZONE_PX, aimedWedge, stepPie, wedgeAt } from "./pieRecognizer.ts";
+import { CLOSED, DEAD_ZONE_PX, SECOND_RING_PX, SLICE_COUNT, aimedSlice, aimedWedge, sliceSpan, stepPie, wedgeAt, type PieRingKeys, type PieStep } from "./pieRecognizer.ts";
+
+const pick = (s: PieStep) => [s.chosen, s.slice];
 
 test("inside the 26 px dead zone a stroke points at no wedge", () => {
   assert.equal(DEAD_ZONE_PX, 26);
@@ -111,4 +113,87 @@ test("the aimed wedge follows the pointer, and is null in the dead zone or on a 
   assert.equal(aimedWedge(s.state, RING), "S");
   s = stepPie(s.state, { type: "move", at: { x: 560, y: 240 } }, RING, 0);
   assert.equal(aimedWedge(s.state, RING), null, "NE is dim");
+});
+
+// The second ring, from the spec's Pie menu section and the second-ring prototype: it starts at
+// 132 px, each parent has three 20° slices spanning its direction ±30°, and on crossing the first
+// ring the stroke locks to the nearest parent within 30°, holding it until the pointer is more
+// than 32° off it. Here N (Next wait), NE (Merge) and E (Split) are parents, side by side.
+const SLICES = [{}, {}, {}];
+const PARENTS = { N: { letter: "q", slices: SLICES }, NE: { letter: "m", slices: SLICES }, E: { letter: "s", slices: SLICES }, SE: { letter: "z" }, S: { letter: "p" } };
+
+/** The point `r` px from `at` at `deg` clockwise from N. */
+const out = (r: number, deg: number) => {
+  const rad = (deg * Math.PI) / 180;
+  return { x: at.x + r * Math.sin(rad), y: at.y - r * Math.cos(rad) };
+};
+
+/** Presses at `at`, moves through `path` and releases at its last point. */
+function stroke(path: { x: number; y: number }[], ring: PieRingKeys = PARENTS) {
+  let s = stepPie(CLOSED, { type: "press", at, time: 0 }, ring, 0);
+  for (const p of path) s = stepPie(s.state, { type: "move", at: p }, ring, 0);
+  return stepPie(s.state, { type: "release", at: path[path.length - 1], time: 500 }, ring, 0);
+}
+
+test("the second ring starts at 132 px: short of it a stroke picks the parent, past it one of its three 20° slices", () => {
+  assert.equal(SECOND_RING_PX, 132);
+  assert.deepEqual(pick(stroke([out(131, 0)])), ["N", null]);
+  assert.deepEqual(pick(stroke([out(132, 0)])), ["N", 1]);
+  assert.deepEqual(pick(stroke([out(160, -25)])), ["N", 0]);
+  assert.deepEqual(pick(stroke([out(160, -9)])), ["N", 1]);
+  assert.deepEqual(pick(stroke([out(160, 11)])), ["N", 2]);
+  assert.deepEqual(pick(stroke([out(160, 90)])), ["E", 1]);
+});
+
+test("a parent's three slices tile its direction ±30°, 20° each, anticlockwise to clockwise", () => {
+  assert.equal(SLICE_COUNT, 3);
+  assert.deepEqual(sliceSpan("E", 0), [60, 80]);
+  assert.deepEqual(sliceSpan("E", 1), [80, 100]);
+  assert.deepEqual(sliceSpan("E", 2), [100, 120]);
+  assert.deepEqual(sliceSpan("N", 0), [-30, -10]);
+});
+
+test("a stroke at a Merge-side slice locks to Merge on crossing and never picks Next wait", () => {
+  // Aimed at Merge, it crosses the first ring, then drifts toward N into Merge's first slice:
+  // 18° from N but 27° from Merge. The wedge under the pointer is N's; the lock holds Merge.
+  const s = stroke([out(100, 40), out(140, 40), out(150, 18)]);
+  assert.deepEqual(pick(s), ["NE", 0]);
+  assert.equal(aimedWedge(stepPie(CLOSED, { type: "press", at, time: 0 }, PARENTS, 0).state, PARENTS), null);
+});
+
+test("on crossing, the ring locks to the nearest parent within 30°, not the wedge under the pointer", () => {
+  // 115° is SE's wedge (Zoom, no second ring), 25° from E: the lock goes to E, its last slice.
+  assert.deepEqual(pick(stroke([out(150, 115)])), ["E", 2]);
+  // 165° is 15° from S, which has no second ring, and 75° from E: no parent within 30°, so the
+  // first ring's wedge under the pointer is picked.
+  assert.deepEqual(pick(stroke([out(150, 165)])), ["S", null]);
+});
+
+test("the lock holds to 32° off its parent, then goes to the nearest parent within 30°", () => {
+  // Locked to N, the pointer swings to 31° (N's wedge no longer; NE is 14° away): still N's last slice.
+  assert.deepEqual(pick(stroke([out(150, 0), out(150, 31)])), ["N", 2]);
+  // At 33° the lock lets go and Merge, 12° away, takes it: its first slice.
+  assert.deepEqual(pick(stroke([out(150, 0), out(150, 33)])), ["NE", 0]);
+  // Back short of the second ring the lock is gone: crossing again locks afresh.
+  assert.deepEqual(pick(stroke([out(150, 40), out(100, 5), out(150, 5)])), ["N", 1]);
+});
+
+test("the aimed wedge and slice follow the lock; a dim slice is never chosen and leaves the menu open", () => {
+  let s = stepPie(CLOSED, { type: "press", at, time: 0 }, PARENTS, 0);
+  s = stepPie(s.state, { type: "move", at: out(140, 40) }, PARENTS, 0);
+  s = stepPie(s.state, { type: "move", at: out(150, 18) }, PARENTS, 0);
+  assert.equal(aimedWedge(s.state, PARENTS), "NE");
+  assert.equal(aimedSlice(s.state, PARENTS), 0);
+  const ring = { ...PARENTS, N: { letter: "q", slices: [{}, null, null] } };
+  const dim = stroke([out(150, 0)], ring);
+  assert.deepEqual([dim.state.phase, dim.chosen], ["open", null]);
+  assert.deepEqual(pick(stroke([out(150, -20)], ring)), ["N", 0]);
+});
+
+test("a click on a slice of the open menu chooses it", () => {
+  let s = stepPie(CLOSED, { type: "press", at, time: 0 }, PARENTS, 0);
+  s = stepPie(s.state, { type: "release", at, time: 50 }, PARENTS, 0);
+  s = stepPie(s.state, { type: "move", at: out(150, 95) }, PARENTS, 0);
+  s = stepPie(s.state, { type: "click", at: out(150, 95) }, PARENTS, 0);
+  assert.deepEqual(pick(s), ["E", 1]);
 });

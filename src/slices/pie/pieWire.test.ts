@@ -86,3 +86,41 @@ test("as a menu its wedges are menu items named by direction, label and letter; 
   assert.deepEqual(items, ["N: Next wait (Q)", "E: Split (S)", "S: Palette (P)", "W: New term (N)", "NW: Agents panel (A)"]);
   assert.equal(wedge(svg, "NE").getAttribute("aria-hidden"), "true");
 });
+
+// The second ring, as the second-ring prototype draws it: a short tab past each parent's outer
+// edge, and the aimed parent's three slices on the outer ring, the aimed slice lit.
+const ringWithRecent = pieRing({ surface: "empty-stage" }, [{ id: "layout-grid", title: "2x2 Quad Grid Layout" }]);
+const slicesOf = (svg: SVGElement) => [...svg.querySelectorAll("[data-slice]")];
+
+test("parents carry a tab; aiming at one draws its three slices, the aimed slice lit and named as a menu item", async () => {
+  const { svg, rerender } = await render({ ring: ringWithRecent });
+  assert.deepEqual(
+    [...svg.querySelectorAll("[data-wedge] [data-tab]")].map((t) => t.closest("[data-wedge]")!.getAttribute("data-wedge")),
+    ["N", "E", "S", "W"]
+  );
+  assert.equal(slicesOf(svg).length, 0, "no second ring until a parent is aimed at");
+
+  await rerender({ aimed: "W", aimedSlice: 0 });
+  assert.deepEqual(
+    slicesOf(svg).map((s) => [s.getAttribute("aria-label"), s.getAttribute("data-aimed")]),
+    [
+      ["W: New term › Claude", "true"],
+      ["W: New term › Codex", null],
+      ["W: New term › Pwsh", null],
+    ]
+  );
+  assert.equal(slicesOf(svg)[0].querySelector("path")!.getAttribute("stroke"), "#ffd60a", "lit in the palette's second colour");
+  for (const shape of svg.querySelectorAll("path, circle")) assert.equal(shape.getAttribute("fill"), "none");
+});
+
+test("Palette's slices show the recent commands' titles, shortened to fit; an empty slice is dim with no label", async () => {
+  const { svg } = await render({ ring: ringWithRecent, aimed: "S", aimedSlice: null });
+  const [first, second, third] = slicesOf(svg);
+  assert.equal(first.getAttribute("aria-label"), "S: Palette › 2x2 Quad Grid Layout");
+  assert.equal(first.querySelector("text")!.textContent, "2X2 QUAD GR…");
+  for (const dim of [second, third]) {
+    assert.equal(dim.getAttribute("data-dim"), "true");
+    assert.equal(dim.getAttribute("aria-hidden"), "true");
+    assert.equal(dim.querySelectorAll("text").length, 0);
+  }
+});

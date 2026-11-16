@@ -8,7 +8,8 @@ import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { PieAction, PieTarget } from "./pieRing.ts";
+import type { PieAction, PieChoice, PieTarget } from "./pieRing.ts";
+import type { PieStrokeRecord } from "./pieStrokeLog.ts";
 
 const { PieMenuHost } = await import("./PieMenuHost.tsx");
 
@@ -41,7 +42,7 @@ async function mount(delayMs = 0) {
         palette: "cyber",
         labelOutline: true,
         displayDelayMs: delayMs,
-        onChoose: (action: PieAction, target: PieTarget) => chosen.push([action, target]),
+        onChoose: (choice: PieChoice, target: PieTarget) => chosen.push([choice.action, target]),
       })
     )
   );
@@ -164,4 +165,63 @@ test("near a window edge the pie draws moved in, but strokes still count from wh
   await fire(document.body, "mouseup", { button: 1, clientX: 10, clientY: 240 });
   assert.equal(chosen.length, 1);
   assert.equal(chosen[0][0], "next-wait", "a stroke straight up from the press is N");
+});
+
+// The second ring through the host: past 132 px a stroke runs the locked parent's slice, Palette's
+// slices run the recent palette commands, and each stroke is handed on for the stroke log.
+async function mountWith(recent: { id: string; title: string }[]) {
+  const chosen: [PieAction, PieTarget, string | undefined][] = [];
+  const strokes: PieStrokeRecord[] = [];
+  document.body.innerHTML = PAGE;
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mounted = { root, container };
+  await act(async () =>
+    root.render(
+      createElement(PieMenuHost, {
+        palette: "cyber",
+        labelOutline: true,
+        displayDelayMs: 0,
+        recentCommands: recent,
+        onChoose: (choice: PieChoice, target: PieTarget) =>
+          chosen.push([choice.action, target, choice.action === "palette-command" ? choice.commandId : undefined]),
+        onStroke: (record: PieStrokeRecord) => strokes.push(record),
+      })
+    )
+  );
+  return { chosen, strokes };
+}
+
+test("a stroke past the second ring's start runs a slice: Split's Grid, Palette's recent command, New term's Codex", async () => {
+  const { chosen, strokes } = await mountWith([{ id: "layout-grid", title: "2x2 Quad Grid Layout" }]);
+  const drag = async (x: number, y: number) => {
+    await fire(el(".companion"), "mousedown", { button: 1 });
+    await fire(document.body, "mousemove", { button: 1, clientX: x, clientY: y });
+    await fire(document.body, "mouseup", { button: 1, clientX: x, clientY: y });
+  };
+  // 150 px out at 110°: SE's wedge, but 20° from E, so Split's last slice.
+  await drag(400 + 150 * Math.sin((110 * Math.PI) / 180), 300 - 150 * Math.cos((110 * Math.PI) / 180));
+  // 150 px out at 160°: Palette's first slice, the most recent palette command.
+  await drag(400 + 150 * Math.sin((160 * Math.PI) / 180), 300 - 150 * Math.cos((160 * Math.PI) / 180));
+  await drag(250, 300); // New term's middle slice is Codex; 150 px straight left
+  await drag(400, 200); // short of the second ring: Next wait itself
+  assert.deepEqual(
+    chosen.map(([action, , id]) => [action, id]),
+    [
+      ["split-grid", undefined],
+      ["palette-command", "layout-grid"],
+      ["new-codex", undefined],
+      ["next-wait", undefined],
+    ]
+  );
+  assert.deepEqual(
+    strokes.map((s) => [s.wedge, s.slice, s.distancePx]),
+    [
+      ["E", 2, 150],
+      ["S", 0, 150],
+      ["W", 1, 150],
+      ["N", null, 100],
+    ]
+  );
 });

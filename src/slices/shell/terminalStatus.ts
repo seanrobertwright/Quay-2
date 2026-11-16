@@ -132,6 +132,21 @@ export function nextWaitingTerminal(rows: readonly StatusRow[], selectedId: stri
   return null;
 }
 
+/**
+ * The terminal the pie's Next wait › Prev slice selects: the first waiting row before the selected
+ * terminal's, in list order, wrapping to the bottom; the last waiting row when the selected
+ * terminal has no row. Null when no terminal waits.
+ */
+export function prevWaitingTerminal(rows: readonly StatusRow[], selectedId: string | null): string | null {
+  const found = rows.findIndex((r) => r.terminal.id === selectedId);
+  const from = found === -1 ? rows.length : found;
+  for (let step = 1; step <= rows.length; step++) {
+    const row = rows[(from - step + rows.length) % rows.length];
+    if (row.status === "waiting") return row.terminal.id;
+  }
+  return null;
+}
+
 const urgent = (row: StatusRow) => row.status === "waiting" || row.status === "exited";
 
 /**

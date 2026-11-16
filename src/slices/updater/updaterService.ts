@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { UpdateInfo, UpdateProgress } from "./types";
+import type { UpdateInfo, UpdateProgress } from "./types.ts";
 
 export const APP_CURRENT_VERSION = "0.7.0";
 const GITHUB_REPO = "seanrobertwright/Quay-2";
