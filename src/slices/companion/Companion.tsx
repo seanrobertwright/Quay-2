@@ -13,7 +13,7 @@ import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, typ
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
 import { PullRequestView, type NumberedPullRequestAsk, type PullRequestAsk } from "./PullRequestView.tsx";
-import { TicketView, type TicketActions } from "./TicketView.tsx";
+import { TicketView, type TicketActions, type TicketLocation } from "./TicketView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
@@ -265,6 +265,14 @@ export interface CompanionShowRequest {
   seq: number;
 }
 
+/**
+ * A ticket to show that is not the selected terminal's, such as a Ready to start ticket picked in
+ * the Projects panel or the blocker a lane jumps to. Each new `seq` shows it again after Close.
+ */
+export interface CompanionTicket extends TicketLocation {
+  seq: number;
+}
+
 /** The divider's hit area and the line it draws, in CSS px. */
 const DIVIDER_HIT_WIDTH = 9;
 const DIVIDER_LINE_WIDTH = 1;
@@ -298,6 +306,13 @@ interface CompanionProps {
   inspector?: CompanionInspector | null;
   /** A toast at the foot of the companion, such as the Merge undo window's; none when null. */
   toast?: ReactNode;
+  /**
+   * A ticket that is not the selected terminal's. Until it is closed it shows in the Ticket view
+   * over the terminal's views, with no terminal selected too.
+   */
+  ticket?: CompanionTicket | null;
+  /** Shows another ticket the handed-in one names, such as its blocker; without it none is offered. */
+  onShowTicket?: ((ref: LinkRef) => void) | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
@@ -316,6 +331,8 @@ export const Companion = ({
   run = null,
   inspector = null,
   toast = null,
+  ticket = null,
+  onShowTicket = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
@@ -390,6 +407,9 @@ export const Companion = ({
         : run
           ? { view: RUN_VIEW, content: run.content }
           : null;
+  // A handed-in ticket shows until its Close; a new seq shows it again.
+  const [closedTicketSeq, setClosedTicketSeq] = useState<number | null>(null);
+  const looseTicket = ticket && ticket.seq !== closedTicketSeq ? ticket : null;
   const resize = (next: number) => {
     setWidth(next);
     prefs.writeWidth(next);
@@ -404,7 +424,36 @@ export const Companion = ({
       className="relative shrink-0 h-full min-h-0 flex flex-col bg-[#0d1117] border-l border-[#30363d]"
     >
       <CompanionDivider width={width} onResize={setWidth} onCommit={resize} />
-      {context && shown && (
+      {looseTicket && (
+        <header className="shrink-0 h-12 px-3 flex items-center gap-2 border-b border-[#30363d] bg-[#161b22]">
+          <span className="min-w-0 flex-1 truncate text-xs text-[#c9d1d9]">
+            Ticket #{looseTicket.number}
+            {selectedTerminal && <span className="text-[#8b949e]"> · not {selectedTerminal.name}'s</span>}
+          </span>
+          <button
+            type="button"
+            aria-label="Close this ticket"
+            title={selectedTerminal ? `Back to ${selectedTerminal.name}` : "Close this ticket"}
+            onClick={() => setClosedTicketSeq(looseTicket.seq)}
+            className={headerToggleClass(false)}
+          >
+            Close
+          </button>
+        </header>
+      )}
+      {looseTicket ? (
+        <section data-companion-view={TICKET_VIEW.id} aria-label={TICKET_VIEW.label} className="flex-1 min-h-0 overflow-y-auto">
+          <TicketView
+            key={`${looseTicket.repoPath}|${looseTicket.repo ?? ""}#${looseTicket.number}|${looseTicket.seq}`}
+            repoPath={looseTicket.repoPath}
+            repo={looseTicket.repo}
+            number={looseTicket.number}
+            actions={ticketActions}
+            showTicket={onShowTicket}
+          />
+        </section>
+      ) : null}
+      {!looseTicket && context && shown && (
         <header className="shrink-0 flex flex-col border-b border-[#30363d] bg-[#161b22]">
           <div className="h-12 px-3 flex items-center">
             <ViewSwitch
@@ -434,7 +483,7 @@ export const Companion = ({
           )}
         </header>
       )}
-      {body ? (
+      {looseTicket ? null : body ? (
         <section
           data-companion-view={body.view.id}
           // Over the pull request view the pie's diagonals are Diff lens, Comment and Checks (#650).
