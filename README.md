@@ -79,8 +79,8 @@ flowchart LR
 - 1-click **"Implement with Archon"** integration directly from GitHub issues.
 
 ### 🏭 Machina: Quay's Local Factory
-- **Machina is Quay's local factory.** It runs inside Quay on this machine, with no host, no sign-in and no browser, and every decision is made in Quay. The Factory Station's title reads **Machina: local**. It is not Praxis: a Machina work order never becomes a Praxis run (see ADR 0006 in `.scratch/machina-praxis/adr/`).
-- Opens with `Ctrl+Shift+B F` or **Machina Factory Station...** in the command palette.
+- **Machina is Quay's local factory.** It runs inside Quay on this machine, with no host, no sign-in and no browser, and every decision is made in Quay. It is not Praxis: a Machina work order never becomes a Praxis run (see ADR 0006 in `.scratch/machina-praxis/adr/`).
+- Lives in the **Workflows panel** (`Ctrl+Shift+B R`, or `Ctrl+Shift+B F` with the engine strip focused): the Factory's Active or Paused switch, Halt and today's spend in the engine strip, its work orders beside Archon and Praxis runs, and **New work order** and **Factory config** as stage tabs. Picking a work order shows its decision in the companion's **Run** view; **Graph and log** opens its stages, gate report and events as the run lens.
 - Each work order gets its own git worktree, is gated by the project's own checks in `.machina/factory.json` with hidden holdbacks, and is squash-merged into its base branch only when you **Accept** it. Holds stop a work order until you resolve them.
 - State is kept in `%LOCALAPPDATA%\Quay2\machina\state.json`.
 
@@ -180,8 +180,8 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |
 | `Ctrl+Shift+B H` | **Session History** | Search and resume past Claude sessions in the Agents panel |
 | `Ctrl+Shift+B T` | **Token Spend** | View token meter & turn chime settings |
-| `Ctrl+Shift+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
-| `Ctrl+Shift+B F` | **Machina** | Open the Factory Station, Quay's local factory |
+| `Ctrl+Shift+B R` | **Workflows** | Open the Workflows panel: Archon runs, Machina work orders and Praxis runs |
+| `Ctrl+Shift+B F` | **Engine strip** | Open the Workflows panel with its engine strip focused: Archon, the Factory switch and Halt, Praxis sign-in |
 | `Ctrl+Shift+B P` | **Praxis Builder** | Browse the project's Praxis definitions and graphs |
 | `Ctrl+Shift+B C` | **Topos** | Open the Git cockpit for the active project |
 | `Ctrl+Shift+P` | **Command Palette** | Global searchable command palette. `Ctrl+K` also opens it when a terminal does not have focus |
