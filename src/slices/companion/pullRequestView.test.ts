@@ -716,3 +716,9 @@ test("the companion shows the Merge undo toast it is handed", async () => {
   const { container } = await render(github(), { toast });
   assert.match(container.querySelector('[role="status"]')?.textContent ?? "", /Squash and merge #12 in 5 s/);
 });
+
+test("after the undo window's merge, a reload ask reads the pull request again", async () => {
+  const { calls } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), ask({ kind: "reload" }));
+  const reads = calls.filter(([cmd]) => cmd === "get_github_pr_readiness");
+  assert.equal(reads.length, 2, "read on arrival, then again for the ask");
+});

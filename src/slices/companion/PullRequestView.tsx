@@ -57,9 +57,13 @@ export interface PullRequestLens {
 /**
  * What the pie asks of the pull request view (#650): NW opens Checks, SW opens Comments with focus
  * in the comment box, and a Merge stroke with the Merge undo window Off opens the confirm step on
- * the stroke's method.
+ * the stroke's method. After the Merge undo window's merge, a reload reads the pull request again.
  */
-export type PullRequestAsk = { kind: "checks" } | { kind: "comment" } | { kind: "confirm-merge"; method: MergeMethod };
+export type PullRequestAsk =
+  | { kind: "checks" }
+  | { kind: "comment" }
+  | { kind: "confirm-merge"; method: MergeMethod }
+  | { kind: "reload" };
 
 interface PullRequestViewProps extends PullRequestLocation {
   lens?: PullRequestLens | null;
@@ -120,8 +124,9 @@ const PullRequestBody = ({
       setCommentFocus(ask.seq);
     }
     if (ask.kind === "confirm-merge") setConfirmAsk({ method: ask.method, seq: ask.seq });
+    if (ask.kind === "reload") onChanged();
     onAskTaken?.(ask.seq);
-  }, [ask, onAskTaken]);
+  }, [ask, onAskTaken, onChanged]);
   return (
     <div className="p-3 space-y-3 text-xs">
       <PullRequestHeader pr={pr} />
