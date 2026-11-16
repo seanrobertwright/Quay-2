@@ -230,7 +230,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
               value={defaultFlags}
               onChange={(e) => setDefaultFlags(e.target.value)}
               placeholder="e.g. --model claude-sonnet-5-5 --dangerously-skip-permissions"
-              className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-[#c9d1d9] placeholder-[#484f58] focus:outline-hidden focus:border-[#58a6ff] focus:ring-1 focus:ring-(--quay-accent)"
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-[#c9d1d9] placeholder-[#484f58] focus:outline-hidden focus:border-(--quay-accent) focus:ring-1 focus:ring-(--quay-accent)"
             />
 
             {/* Quick Flag Badges */}
@@ -312,7 +312,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                       value={row.key}
                       onChange={(e) => handleRowChange(row.id, "key", e.target.value)}
                       placeholder="VARIABLE_NAME"
-                      className="w-1/3 px-2.5 py-1.5 bg-[#0d1117] border border-[#30363d] rounded text-xs font-mono text-[#58a6ff] placeholder-[#484f58] focus:outline-hidden focus:border-[#58a6ff]"
+                      className="w-1/3 px-2.5 py-1.5 bg-[#0d1117] border border-[#30363d] rounded text-xs font-mono text-[#58a6ff] placeholder-[#484f58] focus:outline-hidden focus:border-(--quay-accent)"
                     />
 
                     {/* Value Input */}
@@ -322,7 +322,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                         value={row.value}
                         onChange={(e) => handleRowChange(row.id, "value", e.target.value)}
                         placeholder="value..."
-                        className="w-full px-2.5 py-1.5 pr-8 bg-[#0d1117] border border-[#30363d] rounded text-xs font-mono text-[#c9d1d9] placeholder-[#484f58] focus:outline-hidden focus:border-[#58a6ff]"
+                        className="w-full px-2.5 py-1.5 pr-8 bg-[#0d1117] border border-[#30363d] rounded text-xs font-mono text-[#c9d1d9] placeholder-[#484f58] focus:outline-hidden focus:border-(--quay-accent)"
                       />
                       <button
                         type="button"

@@ -585,7 +585,7 @@ export const OpenProjectDialog: React.FC<OpenProjectDialogProps> = ({
                 }}
                 onBlur={() => setSuggestionsOpen(false)}
                 onKeyDown={handleInputKeyDown}
-                className="w-full px-3 py-1.5 bg-[#0d1117] border border-[#30363d] rounded text-sm font-mono text-white placeholder-[#484f58] outline-none focus:border-[#58a6ff]"
+                className="w-full px-3 py-1.5 bg-[#0d1117] border border-[#30363d] rounded text-sm font-mono text-white placeholder-[#484f58] outline-none focus:border-(--quay-accent)"
               />
             </div>
             <VerdictChip verdict={verdict} />

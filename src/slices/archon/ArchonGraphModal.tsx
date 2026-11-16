@@ -426,7 +426,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                       setSelectedWorkflowId(e.target.value);
                       setSelectedNodeId(null);
                     }}
-                    className="px-3 py-1.5 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-white focus:outline-hidden focus:border-[#58a6ff] min-w-[280px]"
+                    className="px-3 py-1.5 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-white focus:outline-hidden focus:border-(--quay-accent) min-w-[280px]"
                   >
                     {workflows.map((wf) => (
                       <option key={wf.id} value={wf.id}>

@@ -15,7 +15,7 @@ interface WorkOrderComposerProps {
 }
 
 const field =
-  "w-full px-2.5 py-1.5 rounded-md bg-[#0d1117] border border-[#30363d] text-xs text-white focus:border-[#58a6ff] focus:outline-none";
+  "w-full px-2.5 py-1.5 rounded-md bg-[#0d1117] border border-[#30363d] text-xs text-white focus:border-(--quay-accent) focus:outline-none";
 const label = "block text-[11px] font-semibold text-[#c9d1d9] mb-1";
 const hint = "mt-1 text-[11px] text-[#8b949e]";
 

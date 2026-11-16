@@ -1095,7 +1095,7 @@ export const GraphList: React.FC<GraphListProps> = ({
           className="group/handle absolute top-0 bottom-0 z-20 w-[9px] -ml-[4px] cursor-col-resize flex justify-center outline-none touch-none"
           style={{ left: layout.width }}
         >
-          <div className="w-px h-full bg-[#30363d]/60 group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:w-[2px] group-focus-visible/handle:bg-[#58a6ff]" />
+          <div className="w-px h-full bg-[#30363d]/60 group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:w-[2px] group-focus-visible/handle:bg-(--quay-accent)" />
         </div>
       </div>
       <footer className="h-7 px-3 shrink-0 flex items-center gap-3 border-t border-[#30363d] bg-[#161b22] text-[11px] text-[#8b949e]">

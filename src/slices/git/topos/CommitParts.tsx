@@ -87,7 +87,7 @@ export const MessageInputs: React.FC<MessageInputsProps> = ({ fields, setFields,
     onSubmit();
   };
   const inputClass =
-    "w-full px-2 py-1 rounded border border-[#30363d] bg-[#010409] text-xs text-[#c9d1d9] placeholder-[#6e7681] outline-none focus:border-[#58a6ff] disabled:opacity-60";
+    "w-full px-2 py-1 rounded border border-[#30363d] bg-[#010409] text-xs text-[#c9d1d9] placeholder-[#6e7681] outline-none focus:border-(--quay-accent) disabled:opacity-60";
   return (
     <>
       <div className="flex items-baseline justify-between gap-2">

@@ -413,7 +413,7 @@ export const SwarmBuilder: React.FC<SwarmBuilderProps> = ({
                   placeholder="e.g. Audit & Refactor Pair"
                   aria-invalid={nameError ? true : undefined}
                   aria-describedby={nameError ? nameErrorId : undefined}
-                  className={`w-full px-3 py-2 bg-[#0d1117] border rounded-md text-xs text-white focus:outline-hidden focus:border-[#58a6ff] ${
+                  className={`w-full px-3 py-2 bg-[#0d1117] border rounded-md text-xs text-white focus:outline-hidden focus:border-(--quay-accent) ${
                     nameError ? "border-[#f85149]" : "border-[#30363d]"
                   }`}
                 />

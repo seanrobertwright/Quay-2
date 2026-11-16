@@ -269,7 +269,7 @@ export const ActionLogDrawer: FC<ActionLogDrawerProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search tool names, commands, file paths, outputs..."
-            className="w-full pl-8 pr-8 py-1.5 bg-[#161b22] border border-[#30363d] rounded-md text-xs text-white placeholder-[#8b949e] focus:outline-none focus:border-[#58a6ff] transition-colors"
+            className="w-full pl-8 pr-8 py-1.5 bg-[#161b22] border border-[#30363d] rounded-md text-xs text-white placeholder-[#8b949e] focus:outline-none focus:border-(--quay-accent) transition-colors"
           />
           {searchQuery && (
             <button

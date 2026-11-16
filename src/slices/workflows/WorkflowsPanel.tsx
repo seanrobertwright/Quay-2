@@ -255,7 +255,7 @@ const EngineStrip = ({
           {(["ACTIVE", "PAUSED"] as const).map((mode) => (
             <label
               key={mode}
-              className={`min-h-6 px-2 inline-flex items-center rounded cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#58a6ff] ${
+              className={`min-h-6 px-2 inline-flex items-center rounded cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-(--quay-accent) ${
                 loopMode === mode
                   ? mode === "ACTIVE"
                     ? "bg-[#238636] text-white font-bold"

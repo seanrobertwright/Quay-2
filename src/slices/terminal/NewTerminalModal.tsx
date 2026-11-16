@@ -613,7 +613,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                   id={modelSelectId}
                   value={selectedModelFlag}
                   onChange={(e) => setSelectedModelFlag(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
+                  className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-(--quay-accent)"
                 >
                   {renderModelOptions(AGENT_MODELS[runKind] ?? [])}
                 </select>
@@ -645,7 +645,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                       ? "e.g. --search -s danger-full-access"
                       : "e.g. --verbose"
                   }
-                  className="w-full px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-xs text-white placeholder-[#8b949e] font-mono focus:outline-hidden focus:border-[#58a6ff]"
+                  className="w-full px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-xs text-white placeholder-[#8b949e] font-mono focus:outline-hidden focus:border-(--quay-accent)"
                 />
               </div>
             </div>
@@ -667,7 +667,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                 value={commandText}
                 onChange={(e) => setCommandText(e.target.value)}
                 placeholder="e.g. git status, cargo test, npm run dev"
-                className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs text-white focus:outline-hidden focus:border-[#58a6ff] transition-colors"
+                className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs text-white focus:outline-hidden focus:border-(--quay-accent) transition-colors"
               />
             </div>
           )}
@@ -694,7 +694,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                   ? "Feature Implementer"
                   : "Build Watcher"
               }`}
-              className="w-full px-3 py-1.5 bg-[#0d1117] border border-[#30363d] rounded-md text-xs text-white focus:outline-hidden focus:border-[#58a6ff] transition-colors"
+              className="w-full px-3 py-1.5 bg-[#0d1117] border border-[#30363d] rounded-md text-xs text-white focus:outline-hidden focus:border-(--quay-accent) transition-colors"
             />
           </div>
 

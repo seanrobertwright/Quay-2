@@ -284,7 +284,7 @@ export const SourceControlPanel = ({
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Filter by title, number, branch or label"
             placeholder="Filter by title, #, branch or label"
-            className="w-full h-8 pl-8 pr-2.5 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white placeholder-[#8b949e] focus:outline-hidden focus:border-[#58a6ff]"
+            className="w-full h-8 pl-8 pr-2.5 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white placeholder-[#8b949e] focus:outline-hidden focus:border-(--quay-accent)"
           />
         </div>
         {kind === "issues" && labels.length > 0 && (
@@ -292,7 +292,7 @@ export const SourceControlPanel = ({
             aria-label="Label"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="w-full h-8 px-2 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
+            className="w-full h-8 px-2 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-(--quay-accent)"
           >
             <option value="">All labels</option>
             {labels.map((name) => (

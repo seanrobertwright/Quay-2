@@ -52,7 +52,7 @@ export const BroadcastDialog = ({ isOpen, project, onClose }: BroadcastDialogPro
             onChange={(e) => setText(e.target.value)}
             aria-label="Broadcast message"
             placeholder="Message every agent"
-            className="min-w-0 flex-1 h-8 px-2 rounded-md border border-[#30363d] bg-[#0d1117] text-xs text-white placeholder-[#8b949e] focus:border-[#58a6ff] focus:outline-hidden"
+            className="min-w-0 flex-1 h-8 px-2 rounded-md border border-[#30363d] bg-[#0d1117] text-xs text-white placeholder-[#8b949e] focus:border-(--quay-accent) focus:outline-hidden"
           />
           <button
             type="submit"
