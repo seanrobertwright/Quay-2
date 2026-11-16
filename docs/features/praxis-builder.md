@@ -12,7 +12,7 @@ Press `Ctrl+Shift+B P`, choose **Praxis Builder...** in the command palette, or 
 
 While the builder's tab is in front:
 
-- **The panel folds**, so the canvas gets the stage's width: about 1,490 px on a 1920 px window. The module bar and its badges stay, and a module icon still opens its panel on demand.
+- **The panel folds**, so the canvas gets the stage's width: the window less the module bar, the companion and the definitions rail. The module bar and its badges stay, and a module icon still opens its panel on demand.
 - **The companion shows the Inspector** for the selected node, in place of an inspector beside the canvas.
 - **The definitions list folds to a 40 px rail** at the stage's left edge. The rail's button opens the list over the canvas, and picking a definition closes it again.
 
