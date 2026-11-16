@@ -364,6 +364,15 @@ export const Companion = ({
   const pick = (view: CompanionViewId) => context?.show(view);
   const shownId = pickedView?.id ?? (context ? firstView(views, context, prefs.readOpensOn()) : null);
   const shown = views.find((view) => view.id === shownId) ?? null;
+  // With no terminal selected, the Inspector and Run views still show while they are given.
+  const body: { view: CompanionView<CompanionContext>; content: ReactNode } | null =
+    context && shown
+      ? { view: shown, content: shown.render(context) }
+      : inspector
+        ? { view: INSPECTOR_VIEW, content: <InspectorSlot inspector={inspector} /> }
+        : run
+          ? { view: RUN_VIEW, content: run.content }
+          : null;
   const resize = (next: number) => {
     setWidth(next);
     prefs.writeWidth(next);
@@ -405,21 +414,9 @@ export const Companion = ({
           )}
         </header>
       )}
-      {context && shown ? (
-        <section
-          data-companion-view={shown.id}
-          aria-label={shown.label}
-          className="flex-1 min-h-0 overflow-y-auto"
-        >
-          {shown.render(context)}
-        </section>
-      ) : inspector ? (
-        <section data-companion-view={INSPECTOR_VIEW.id} aria-label={INSPECTOR_VIEW.label} className="flex-1 min-h-0 overflow-y-auto">
-          <InspectorSlot inspector={inspector} />
-        </section>
-      ) : run ? (
-        <section data-companion-view={RUN_VIEW.id} aria-label={RUN_VIEW.label} className="flex-1 min-h-0 overflow-y-auto">
-          {run.content}
+      {body ? (
+        <section data-companion-view={body.view.id} aria-label={body.view.label} className="flex-1 min-h-0 overflow-y-auto">
+          {body.content}
         </section>
       ) : (
         <p className="p-4 text-xs text-[#8b949e]">Select a terminal to see what it is working on.</p>
