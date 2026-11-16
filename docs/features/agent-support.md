@@ -67,7 +67,7 @@ In the Projects panel and each terminal's pane header, Quay 2 displays live agen
 - **`Waiting ◆`** (Purple): Agent has paused awaiting operator approval or input. An Antigravity terminal shows it while Antigravity reports itself blocked, on a tool approval, the folder-trust prompt or signing in. A Claude Code terminal shows it when Claude Code's notification is a permission prompt or a dialog, but not when it only says Claude Code has sat idle at its prompt for a minute: that terminal stays `Idle` and takes A2A messages.
 - **`Idle`** (Green): Agent turn completed and awaiting new task prompt.
 - **`Exited`** (Gray): Process terminated.
-- **`Unknown`**: Quay can't read whether the agent is working. A listener shows this from its first output. A Claude Code terminal shows it after sending no plugin event for 30 seconds after its first output, and its pane shows the plugin hint. A PiG terminal shows it after its PiG extension sends no event for 30 seconds after its first output; Mission Control then tags it **Listener** and names the PiG version Quay was tested with. An OpenCode terminal shows it when Quay can't reach the server its TUI runs for 60 seconds.
+- **`Unknown`**: Quay can't read whether the agent is working. A listener shows this from its first output. A Claude Code terminal shows it after sending no plugin event for 30 seconds after its first output, and its pane shows the plugin hint. A PiG terminal shows it after its PiG extension sends no event for 30 seconds after its first output; the Agents panel then lists it as a listener. An OpenCode terminal shows it when Quay can't reach the server its TUI runs for 60 seconds.
 
 ---
 

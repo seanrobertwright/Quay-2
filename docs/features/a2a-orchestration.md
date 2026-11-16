@@ -1,6 +1,6 @@
 # Agent-to-Agent (A2A) Orchestration Bus
 
-The A2A bus lets the agents in Quay's terminals message each other. Quay's bridge, on `127.0.0.1` only, runs an MCP server. The agents that have its tools can list their peers, send one of them a message, wait for its reply and broadcast a notice. **Mission Control** shows every message on the bus and lets you send your own.
+The A2A bus lets the agents in Quay's terminals message each other. Quay's bridge, on `127.0.0.1` only, runs an MCP server. The agents that have its tools can list their peers, send one of them a message, wait for its reply and broadcast a notice. The companion's **Activity** view shows a terminal's messages on the bus and lets you send it your own.
 
 ---
 
@@ -89,7 +89,7 @@ The sender waits at most 60 seconds from its call. A peer that takes longer is t
 
 A peer's message arrives in its target's terminal as `[Peer agent (<sender>)]: <message>`, typed in with its Enter.
 
-- Quay types a message into a Claude Code, Codex, Antigravity, OpenCode or PiG terminal only between turns, one message per turn. A message sent while that terminal is starting, working or waiting on a tool approval or another prompt waits in the terminal's queue and shows **Queued** in the Mission Control trail. When the turn ends, Quay types the next queued message and its entry moves on to **Dispatched**.
+- Quay types a message into a Claude Code, Codex, Antigravity, OpenCode or PiG terminal only between turns, one message per turn. A message sent while that terminal is starting, working or waiting on a tool approval or another prompt waits in the terminal's queue and shows **queued** in the Activity view. When the turn ends, Quay types the next queued message and its entry moves on to **Dispatched**.
 - Quay doesn't see a Codex turn start, so a message can still reach a Codex turn you started by typing into its pane. That turn doesn't answer it; the message's own turn does.
 - A message to a listener, to a Claude Code terminal whose event-bridge plugin isn't reporting, to a PiG terminal whose PiG extension isn't reporting, or to an OpenCode terminal whose server Quay couldn't reach, is typed at once.
 - If Quay can't type a message it sends at once, the call fails. A queued message Quay can't type shows **Failed** in the trail.
@@ -229,7 +229,7 @@ Launch the **TDD Swarm** preset (see [Swarm Presets](./swarm-presets.md)). Its a
 3. `feature-impl` gets the hand-off when its turn ends, makes the tests pass and sends `GREEN` back as a new message.
 4. `test-architect` gets `GREEN`, re-runs the tests and ends with `RELAY DONE`.
 
-Neither hand-off waits for a reply, because neither job fits in 60 seconds. Each peer passes the next step on with a new message, and the Mission Control trail shows both.
+Neither hand-off waits for a reply, because neither job fits in 60 seconds. Each peer passes the next step on with a new message, and each peer's Activity view shows its own.
 
 ### Recipe 2: A Review Before the PR
 
@@ -248,20 +248,16 @@ Neither hand-off waits for a reply, because neither job fits in 60 seconds. Each
 
 ---
 
-## Mission Control
+## Messaging an agent yourself
 
-Besides the agents' own messages, you can send messages yourself:
+Besides the agents' own messages, you can send messages yourself, from the companion's **Activity** view:
 
-1. Click **Mission Control** in the **Agents** panel (the robot icon on the module bar), press `Ctrl+Shift+B M`, or press `Ctrl+Shift+P` and choose **Mission Control**. Press `Esc` to close it.
-2. **From Agent**: select any running agent, or check **Dispatch as User**.
-3. **To Agent**: select the recipient.
-4. Type the message.
-5. Click **Dispatch Task**. The trail shows the delivery, the time it has waited and the response, which you can copy.
+1. Select the agent's terminal, then pick **Activity** in the companion's view switch, or press `Ctrl+Shift+B M`.
+2. Type the task in the message strip at the foot of the view.
+3. Press `Enter` or click **Send**. Quay sends it as you, and it joins the view's list. `Shift+Enter` starts a new line.
 
-Mission Control's agent list tags a responder **Responder** and a listener **Listener**. A Claude Code terminal whose event-bridge plugin isn't reporting is tagged **Listener**, with a tooltip saying so.
+The Activity view lists the terminal's tool calls and its messages, sent and received, oldest first. A message joins it as soon as Quay types it into its target, or as **queued** when it waits in the target's queue. Each message shows its status (**queued**, **dispatched**, **completed** or **failed**) and, once the peer responds, its reply under it.
 
-The **Broadcast** box sends a notice to every running peer in the active project, as `quay_broadcast` does for an agent. Its trail entries and toast credit **You**.
+The **Agents** panel (the robot icon on the module bar) lists each agent in the project with its CLI and its level on the bus, such as `claude · full peer` or `gemini · listener`, and a one-line preview of its latest reply. A Claude Code or PiG terminal whose plugin or extension isn't reporting shows as a listener. Clicking the preview opens that message in the Activity view.
 
-The trail lists the newest entry first. A message to one agent joins it as soon as Quay types it into its target, or as **Queued** when it waits in the target's queue, and its toast appears when it is typed in. A `quay_send_message` that waits for a reply shows the same way, when its message is delivered rather than when the reply lands; the reply fills in its entry when the target's turn ends.
-
-Each entry shows its status: **Queued**, **Dispatched** once Quay types it in, **Completed** when the turn it started ends, or **Failed**. A Dispatched entry counts up from delivery, a Queued entry shows no timer, and a Completed entry shows how long its turn took. A Dispatched entry to a peer whose turn end Quay can't see, such as a listener, shows no timer either. The peer's response is labelled by whether anyone waited on it. A `quay_send_message` that waits for a reply, or a message dispatched from Mission Control, shows **Reply:**. A message nobody waited on, a `quay_send_message` with `wait_for_reply: false` or a broadcast notice, shows **Answer:**, and so does the late answer to a wait that ran out.
+**Broadcast to all agents**, from the command palette (`Ctrl+Shift+P`), sends a notice to every running peer in the active project, as `quay_broadcast` does for an agent. Its toast credits **You**.

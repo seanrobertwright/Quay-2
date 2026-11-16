@@ -70,7 +70,7 @@ flowchart LR
   - `quay_send_message`: Delegate subtasks or hand off diffs to peer agents with optional synchronous response blocking (up to 60s).
   - `quay_broadcast`: Send a notice to every other running peer in the caller's project, with a toast that names the sender. A worktree counts as its own project, and shell and Archon terminals are skipped.
   - `quay_get_agent_status`: Inspect health, auto-approved tool count, and active command state.
-- **Operator Mission Control**: Dispatch tasks manually as the human supervisor or monitor autonomous conversations in real time.
+- **Activity view**: Send an agent a task from the companion's message strip and follow its tool calls and messages in real time; broadcast to every agent from the command palette.
 
 ### 📐 Archon & Spec-Driven Development (SDD) Inspector
 - Embedded visual DAG canvas displaying live workflow execution nodes, dependencies, and state (`Pending`, `Running`, `Passed`, `Failed`).
@@ -173,12 +173,12 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+Shift+B Z` | **Toggle Zoom** | Maximize/restore active pane |
 | `Ctrl+Shift+B O` | **Cycle Focus** | Move focus to next pane |
 | `Ctrl+Shift+B X` | **Close / Unsplit** | Return to single active terminal |
-| `Ctrl+Shift+B S` | **Swarm Presets** | Launch multi-agent swarm arrangements |
+| `Ctrl+Shift+B S` | **Swarm builder** | Launch multi-agent swarm arrangements from the swarm builder stage tab |
 | `Ctrl+Shift+B D` | **Diffs** | Open the diff lens on the selected terminal's pull request, else the repo-wide Diffs |
 | `Ctrl+Shift+B W` | **New Worktree** | Create an isolated branch worktree |
 | `Ctrl+Shift+B I` | **Source control** | Open the Source control panel's pull requests and issues |
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |
-| `Ctrl+Shift+B H` | **Session History** | Search and auto-resume past Claude sessions |
+| `Ctrl+Shift+B H` | **Session History** | Search and resume past Claude sessions in the Agents panel |
 | `Ctrl+Shift+B T` | **Token Spend** | View token meter & turn chime settings |
 | `Ctrl+Shift+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
 | `Ctrl+Shift+B F` | **Machina** | Open the Factory Station, Quay's local factory |
