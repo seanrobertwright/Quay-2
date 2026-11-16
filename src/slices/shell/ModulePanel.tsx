@@ -22,6 +22,7 @@ export const ModulePanel = ({ id, openModule, panels }: ModulePanelProps) => (
     id={id}
     aria-label={openModule ? `${MODULE_NAMES[openModule]} panel` : undefined}
     hidden={openModule === null}
+    data-pie-target="panel"
     style={{ width: PANEL_WIDTH }}
     className="shrink-0 h-full min-h-0 flex flex-col bg-[#0d1117] border-r border-[#30363d]"
   >

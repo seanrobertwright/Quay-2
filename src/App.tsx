@@ -12,6 +12,10 @@ import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
 import { useShellPrefs } from "./slices/shell/useShellPrefs";
+import { PieMenuHost } from "./slices/pie/PieMenuHost";
+import { pieFolder, pieTerminalId, type PieAction, type PieTarget } from "./slices/pie/pieRing";
+import { requestTerminal } from "./slices/terminal/terminalRequests";
+import { revealFolder } from "./slices/overlay/menuActions";
 import { moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS, type CompanionInspector, type CompanionShowRequest } from "./slices/companion/Companion";
@@ -936,6 +940,46 @@ export function App() {
   };
   const openUpdateModal = () => setIsUpdateModalOpen(true);
 
+  // A pie stroke (#648). N, E, S and W act on the selected terminal; the diagonals on the terminal
+  // or row the pie opened over.
+  const runPieStroke = (action: PieAction, target: PieTarget) => {
+    const terminalId = pieTerminalId(target);
+    switch (action) {
+      case "next-wait":
+        return selectNextWaiting();
+      case "split":
+        return void splitHorizontal();
+      case "palette":
+        return setIsCommandPaletteOpen(true);
+      case "new-term":
+        return setIsNewTerminalOpen(true);
+      case "zoom":
+        if (!terminalId) return;
+        showTerminal(terminalId);
+        return toggleZoom();
+      case "find":
+        if (terminalId) requestTerminal(terminalId, "find");
+        return;
+      case "rename":
+        if (!terminalId) return;
+        // Over a row, its own rename box; a module bar row, or a row of a collapsed project, has none, so the pane header's opens.
+        if (target.surface === "panel" && requestTerminal(terminalId, "rename", "row")) return;
+        showTerminal(terminalId);
+        requestTerminal(terminalId, "rename");
+        return;
+      case "show-in-pane":
+        if (terminalId) showTerminal(terminalId);
+        return;
+      case "open-folder": {
+        const folder = pieFolder(target);
+        if (folder) revealFolder(folder);
+        return;
+      }
+      case "agents-panel":
+        return setOpenModule("agents");
+    }
+  };
+
   const openLogsFolder = () => {
     invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
   };
@@ -1147,6 +1191,14 @@ export function App() {
         showRequest={companionRequest}
         run={companionRun}
         inspector={companionInspector}
+      />
+
+      {/* The pie menu, opened at the pointer per surface: middle-click, Alt+Right-click, and plain right-click on the companion, empty stage and module bar */}
+      <PieMenuHost
+        palette={shellPrefs.piePalette}
+        labelOutline={shellPrefs.pieLabelOutline}
+        displayDelayMs={shellPrefs.pieDisplayDelayMs}
+        onChoose={runPieStroke}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}

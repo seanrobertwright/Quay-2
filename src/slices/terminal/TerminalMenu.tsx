@@ -56,7 +56,7 @@ interface TerminalBodyMenuProps {
   handlers: Partial<TerminalMenuHandlers>;
 }
 
-/** The menu a right-click in a terminal's body opens. Copy reads whether there is a selection as the menu opens. */
+/** The menu Shift+right-click, Shift+F10 or the Menu key opens in a terminal's body. Copy reads whether there is a selection as the menu opens. */
 export const TerminalBodyMenu: FC<TerminalBodyMenuProps> = ({ terminal, paneCount, term, scrollback, at, onClose, handlers }) => {
   const items = bindMenuItems<TerminalMenuAction | ClipboardMenuAction>(terminalBodyMenu(terminal, paneCount, term.hasSelection()), {
     ...handlers,

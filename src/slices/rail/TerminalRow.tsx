@@ -4,7 +4,7 @@ import { type PermissionMode, type TerminalInfo, isAgentRunKind, launchModel, re
 import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import { TerminalMenu } from "../terminal/TerminalMenu.tsx";
 import { RenameInput } from "../terminal/RenameInput.tsx";
-import { requestTerminal } from "../terminal/terminalRequests.ts";
+import { onTerminalRequest, requestTerminal } from "../terminal/terminalRequests.ts";
 import { useTerminalMenu } from "../terminal/useTerminalMenu.ts";
 import {
   Terminal as TerminalIcon,
@@ -45,6 +45,19 @@ export const TerminalRow = ({
   const { menu, isRenaming, startRename, renameDone, onContextMenu, onKeyDown } = useTerminalMenu(
     terminal.id,
     onRename && ((newName) => onRename(terminal.id, newName)),
+  );
+
+  // The pie's Rename, stroked over this row, opens the row's rename box.
+  useEffect(
+    () =>
+      onTerminalRequest(
+        terminal.id,
+        (request) => {
+          if (request === "rename") startRename();
+        },
+        "row"
+      ),
+    [terminal.id, startRename]
   );
 
   const isAgent = isAgentRunKind(terminal.run_kind);
@@ -228,6 +241,10 @@ export const TerminalRow = ({
         onClick={onSelect}
         // Right-click opens the terminal menu and leaves the selection as it is.
         onContextMenu={onContextMenu}
+        data-pie-surface="list"
+        data-pie-row
+        data-pie-terminal={terminal.id}
+        data-pie-folder={terminal.project_path}
         onKeyDown={(e) => {
           if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();

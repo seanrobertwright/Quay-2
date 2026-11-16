@@ -278,6 +278,8 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   };
   return (
     <ReactFlow
+      // The canvas keeps its menus on right-click and pan on middle-click; Alt+Right-click opens the pie (#648).
+      data-pie-surface="praxis-canvas"
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}

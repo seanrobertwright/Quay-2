@@ -6,7 +6,8 @@ interface PlaceholderProps {
 
 export const Placeholder: React.FC<PlaceholderProps> = ({ onNewTerminal }) => {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0d1117] text-[#8b949e] select-none">
+    // The empty stage is a pie surface: plain right-click opens the pie (#648).
+    <div data-pie-surface="pie" data-pie-target="empty-stage" className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0d1117] text-[#8b949e] select-none">
       <div className="w-16 h-16 rounded-full bg-[#161b22] border border-[#30363d] flex items-center justify-center mb-4 text-[#58a6ff]">
         <Terminal className="w-8 h-8" />
       </div>

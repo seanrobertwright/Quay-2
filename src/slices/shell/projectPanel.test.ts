@@ -198,3 +198,16 @@ test("every control in the panel has a programmatic label", async () => {
     assert.ok(name, control.outerHTML);
   }
 });
+
+test("the preview pie redraws live as the pie palette and label outline change", async () => {
+  const { container, rerender } = await render();
+  const preview = () => container.querySelector('svg[role="img"][aria-label="Pie preview"]');
+  assert.ok(preview(), "a preview pie in Quay · every project");
+  const north = () => preview()!.querySelector('[data-wedge="N"] path')!.getAttribute("stroke");
+  const label = () => preview()!.querySelector('[data-wedge="E"] text')!;
+  assert.equal(north(), "hsl(170 100% 62%)", "Spectrum");
+  assert.equal(label().getAttribute("stroke"), "#0d1117");
+  await rerender({ prefs: { ...DEFAULTS, piePalette: "acid", pieLabelOutline: false } });
+  assert.equal(label().getAttribute("stroke"), null);
+  assert.equal(preview()!.querySelector('[data-wedge="E"] path')!.getAttribute("stroke"), "#b6ff1a");
+});
