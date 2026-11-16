@@ -14,6 +14,7 @@ import {
 } from "./ticketStatus.ts";
 import { errorText } from "./usePullRequestReadiness.ts";
 import { SplitButton } from "./SplitButton.tsx";
+import { closeTicket } from "./closeTicket.ts";
 import type { Acting, TicketLocation } from "./TicketView.tsx";
 import { Failure, useAction } from "./PullRequestView.tsx";
 import { useGithubRead, type GithubRead } from "./useGithubRead.ts";
@@ -117,7 +118,7 @@ const CommentBox = ({ issue, acting }: DetailProps) => {
     }
   };
   const close = () =>
-    void act("Close", () => invoke("close_github_issue", { ...acting.location, reason, comment: typed ? body : null }));
+    void act("Close", () => closeTicket(acting.location, reason, typed ? body : null));
   return (
     <form
       aria-label="Add a comment"

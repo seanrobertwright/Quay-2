@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
 import type { LinkRef, TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
@@ -7,6 +6,7 @@ import type { GitWorktree } from "../git/types.ts";
 import type { CompanionLinking } from "../companion/Companion.tsx";
 import type { PullRequestLocation } from "../companion/usePullRequestReadiness.ts";
 import type { CloseReason } from "../companion/ticketStatus.ts";
+import { closeTicket } from "../companion/closeTicket.ts";
 import { terminalRepository } from "../companion/terminalRepository.ts";
 import { isSamePath } from "../../utils/paths.ts";
 import { blockerRef, pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
@@ -107,7 +107,7 @@ export function useProjectsPipeline(
       },
       onOpenTicket: moves.onOpenTicket,
       onClose: (repoPath: string, ref: LinkRef, reason: CloseReason) => {
-        invoke("close_github_issue", { repoPath, repo: ref.repo, number: ref.number, reason, comment: null })
+        closeTicket({ repoPath, ...ref }, reason, null)
           .then(reload)
           .catch((err) => {
             console.error(`Could not close #${ref.number}:`, err);
