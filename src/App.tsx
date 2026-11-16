@@ -8,7 +8,7 @@ import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
 import { useProjectsPipeline, type PipelineMoves } from "./slices/rail/useProjectsPipeline";
 import { ModuleBar } from "./slices/shell/ModuleBar";
 import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
-import { askingTerminals, nextWaitingTerminal, prevWaitingTerminal, statusRows, terminalDot } from "./slices/shell/terminalStatus";
+import { waitingTerminals, nextWaitingTerminal, prevWaitingTerminal, statusRows, terminalDot } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
@@ -594,8 +594,8 @@ export function App() {
     }
   };
 
-  // A terminal with a permission request waiting shows the amber waiting dot.
-  const asking = useMemo(() => askingTerminals(waitingItems), [waitingItems]);
+  // A terminal with a permission request or a finished turn waiting shows the amber waiting dot.
+  const asking = useMemo(() => waitingTerminals(waitingItems), [waitingItems]);
   const terminalStatusRows = useMemo(
     () => statusRows(terminals, projects, projectWorktrees, asking),
     [terminals, projects, projectWorktrees, asking]

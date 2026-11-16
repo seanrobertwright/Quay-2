@@ -30,7 +30,7 @@ export interface AgentRow {
 /**
  * One row per agent terminal in `project`, in `terminals` order: every terminal on the A2A bus,
  * so not a plain shell or an Archon runner. A worktree is its own project, as on the stage.
- * `messages` is the trail, newest first. A terminal in `asking` has a permission request waiting,
+ * `messages` is the trail, newest first. A terminal in `asking` has a permission request or a finished turn waiting,
  * so it shows as waiting, as its dot in the status list does.
  */
 export function agentRows(

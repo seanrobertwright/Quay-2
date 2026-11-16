@@ -42,12 +42,12 @@ export function dotStatus(terminal: Pick<TerminalInfo, "claude_status">): DotSta
   }
 }
 
-/** The terminals with a permission request waiting among `items`. */
-export function askingTerminals(items: readonly AttentionItem[]): Set<string> {
-  return new Set(items.flatMap((item) => (item.kind === "permission" && item.terminalId ? [item.terminalId] : [])));
+/** The terminals with anything waiting on the operator among `items`: a permission request or a finished turn. */
+export function waitingTerminals(items: readonly AttentionItem[]): Set<string> {
+  return new Set(items.flatMap((item) => (item.terminalId ? [item.terminalId] : [])));
 }
 
-/** A terminal's dot: amber waiting while it has a permission request in `asking`, else its status. */
+/** A terminal's dot: amber waiting while it is in `asking` (an attention item waits on it), else its status. */
 export function terminalDot(terminal: Pick<TerminalInfo, "id" | "claude_status">, asking: ReadonlySet<string>): DotStatus {
   return asking.has(terminal.id) ? "waiting" : dotStatus(terminal);
 }
@@ -70,7 +70,7 @@ export interface StatusRow {
  * project that holds it. The Projects panel does not list such a terminal yet; the bar still
  * gives every terminal a row.
  *
- * A terminal in `asking`, the terminals with a permission request waiting on the operator, shows
+ * A terminal in `asking`, the terminals with an attention item waiting on the operator (a permission request or a finished turn), shows
  * the waiting dot whatever its status.
  */
 export function statusRows(
