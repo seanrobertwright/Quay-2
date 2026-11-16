@@ -48,6 +48,7 @@ import { AuditViolation } from "./slices/audit/types";
 import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal, type ArchonTab } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow, type SpecTask } from "./slices/archon/types";
+import { workflowTerminalName } from "./slices/archon/workflowName";
 import { WorkflowsPanel, type StartActions } from "./slices/workflows/WorkflowsPanel";
 import { RunView } from "./slices/workflows/RunView";
 import { RunLens } from "./slices/workflows/RunLens";
@@ -797,8 +798,7 @@ export function App() {
     const argv = ["archon", "workflow", "run", name, "--cwd", targetDir, ...(isWorktree ? ["--no-worktree"] : [])];
     const line = commandLine(argv, shellFor(navigator.userAgent));
     if (line === null) return;
-    const short = name.split("/").pop()?.split(":").pop() || "run";
-    const terminal = await spawnTerminal({ project_path: targetDir, run_kind: "powershell", name: `archon-${short}` });
+    const terminal = await spawnTerminal({ project_path: targetDir, run_kind: "powershell", name: workflowTerminalName(name) });
     if (terminal) await invoke("write_pty", { terminalId: terminal.id, data: `${line} ` });
   };
   // A spec task's Agent button hands the task to a new Claude Code terminal.

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Bot, FileCode2, OctagonAlert, Plus, X } from "lucide-react";
 import type { ArchonWorkflow, SpecTask } from "../archon/types.ts";
+import { shortWorkflowName } from "../archon/workflowName.ts";
 import { formatUsd } from "../machina/format.ts";
 import type { FactoryLoopMode } from "../machina/types.ts";
 import { hostConditionView } from "../praxis-builder/hostCondition.ts";
@@ -312,9 +313,6 @@ const EngineStrip = ({
   );
 };
 
-/** "owner/lril-sdlc:implement" -> "lril-sdlc:implement" */
-const shortWorkflow = (name: string) => name.split("/").pop() || name;
-
 const startButton =
   "min-h-7 px-2 inline-flex items-center gap-1.5 rounded-md border border-[#30363d] bg-[#21262d] text-[11px] text-[#c9d1d9] hover:bg-[#30363d]";
 
@@ -352,11 +350,11 @@ const StartSection = ({
                 onClick={() => actions.onRunWorkflow(name)}
                 className="min-h-7 px-2 text-[11px] text-[#c9d1d9] hover:bg-[#30363d] rounded-l-md"
               >
-                {shortWorkflow(name)}
+                {shortWorkflowName(name)}
               </button>
               <button
                 type="button"
-                aria-label={`Unpin ${shortWorkflow(name)}`}
+                aria-label={`Unpin ${shortWorkflowName(name)}`}
                 onClick={() => actions.onUnpin(name)}
                 className="min-h-7 min-w-6 px-1 border-l border-[#30363d] text-[#8b949e] hover:text-white hover:bg-[#30363d] rounded-r-md"
               >
@@ -381,7 +379,7 @@ const StartSection = ({
               <option value="">Choose a workflow</option>
               {pinnable.map((w) => (
                 <option key={w.name} value={w.name}>
-                  {shortWorkflow(w.name)}
+                  {shortWorkflowName(w.name)}
                 </option>
               ))}
             </select>

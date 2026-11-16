@@ -35,6 +35,7 @@ import type {
   ArchonWorkflow,
 } from "./types.ts";
 import { computeDagLayout, COMPACT_DAG_SIZING } from "./dagLayout.ts";
+import { shortWorkflowName } from "./workflowName.ts";
 import { formatClock, formatDateTime, formatDuration, formatRelative } from "../../lib/dates.ts";
 
 const POLL_MS = 3000;
@@ -85,9 +86,6 @@ const NODE_STYLE: Record<string, { card: string; badge: string; label: string }>
   cancelled: { card: "bg-[#0d1117] border-[#484f58] opacity-75", badge: "bg-[#21262d] text-[#8b949e] border-[#30363d]", label: "STOPPED" },
 };
 const PENDING_NODE = { card: "bg-[#0d1117] border-[#30363d]", badge: "bg-[#21262d] text-[#6e7681] border-[#30363d]", label: "WAITING" };
-
-/** "owner/lril-sdlc:implement" -> "lril-sdlc:implement" */
-const shortWorkflow = (name: string) => name.split("/").pop() || name;
 
 const formatTokens = (n?: number | null) => {
   if (n == null) return "—";
@@ -245,7 +243,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
 
   const runAction = async (action: ArchonRunAction) => {
     if (!run) return;
-    if (action === "cancel" && !window.confirm(`Cancel run ${run.id.slice(0, 8)} (${shortWorkflow(run.workflow_name)})?`)) return;
+    if (action === "cancel" && !window.confirm(`Cancel run ${run.id.slice(0, 8)} (${shortWorkflowName(run.workflow_name)})?`)) return;
     if (action === "abandon" && !window.confirm(`Abandon run ${run.id.slice(0, 8)}? It cannot be resumed afterwards.`)) return;
     setActionBusy(action);
     setActionError(null);
@@ -309,7 +307,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} aria-hidden="true" />
                   <span className="font-mono text-[11px] font-semibold text-white truncate">
-                    {shortWorkflow(r.workflow_name)}
+                    {shortWorkflowName(r.workflow_name)}
                   </span>
                   <span className="ml-auto text-[10px] text-[#8b949e] shrink-0">{st.label}</span>
                 </div>

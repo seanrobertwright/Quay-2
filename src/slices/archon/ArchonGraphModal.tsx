@@ -22,6 +22,7 @@ import { ArchonIcon } from "./ArchonIcon";
 import { ArchonServiceStatus, ArchonWorkflow, ArchonRun, RepoSpecSummary } from "./types";
 import { computeDagLayout } from "./dagLayout";
 import { ArchonRunMonitor } from "./ArchonRunMonitor";
+import { workflowTerminalName } from "./workflowName";
 import { TerminalInfo } from "../terminal/types";
 import { submitPromptToTerminal } from "../terminal/submitPrompt";
 
@@ -40,7 +41,6 @@ interface ArchonGraphModalProps {
 
 /** The modal's tabs: workflow DAGs, spec tasks, ADRs and runs. */
 export type ArchonTab = "dag" | "sdd" | "adrs" | "runs";
-type TabType = ArchonTab;
 
 export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   isOpen,
@@ -53,7 +53,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   onWritePty,
   openOn = "dag",
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>(openOn);
+  const [activeTab, setActiveTab] = useState<ArchonTab>(openOn);
   useEffect(() => {
     if (isOpen) setActiveTab(openOn);
   }, [isOpen, openOn]);
@@ -261,7 +261,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
       onSpawnTerminal({
         project_path: activeProject,
         run_kind: "archon",
-        name: `archon-${workflowName.split("/").pop()?.split(":").pop() || "run"}`,
+        name: workflowTerminalName(workflowName),
         command_text: cmd,
         custom_flags: "",
       });

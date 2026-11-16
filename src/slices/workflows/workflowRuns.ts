@@ -1,6 +1,7 @@
 // The Workflows panel's run rows (#645): every Archon run, Machina Factory work order and Praxis
 // run as one row shape, with the section it lands in, its action chip and its segment bar.
 import type { ArchonRun } from "../archon/types.ts";
+import { shortWorkflowName } from "../archon/workflowName.ts";
 import { STATUS_LABEL } from "../machina/format.ts";
 import type { MachinaWorkOrder, StageStatus } from "../machina/types.ts";
 import type { RunRow } from "../praxis-builder/runsList.ts";
@@ -65,9 +66,6 @@ export interface WorkflowRunRow {
 /** Finished runs older than this leave the Recent list. */
 export const RECENT_WINDOW_MS = 24 * 3_600_000;
 
-/** "owner/lril-sdlc:implement" -> "lril-sdlc:implement" */
-const shortWorkflow = (name: string) => name.split("/").pop() || name;
-
 const ARCHON_STATUS: Record<string, string> = {
   running: "Running",
   pending: "Pending",
@@ -118,7 +116,7 @@ export function archonRunRow(run: ArchonRun, now: number): WorkflowRunRow {
     key: `archon:${run.id}`,
     engine: "archon",
     id: run.id,
-    name: shortWorkflow(run.workflow_name),
+    name: shortWorkflowName(run.workflow_name),
     status: ARCHON_STATUS[run.status] ?? run.status,
     spendUsd: run.total_cost_usd ?? null,
     segments: archonSegments(run).map((state, i) => ({ id: `node-${i + 1}`, state })),
