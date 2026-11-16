@@ -19,3 +19,6 @@ export const PIE_PALETTES = [
 ] as const satisfies readonly PiePalette[];
 
 export type PiePaletteId = (typeof PIE_PALETTES)[number]["id"];
+
+/** Spectrum's hue for the `index`th item clockwise from N (a wedge, or a module icon top down), in degrees. */
+export const spectrumHue = (index: number): number => (index * 45 + 170) % 360;

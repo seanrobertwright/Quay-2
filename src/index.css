@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
+@import "./slices/shell/shellLook.css" layer(base);
 
 /* Topos graph track colors (#348): 12 OKLCH hues 30° apart from 255°, gamut-clipped by reducing
    chroma, as sRGB hex. Slot 0 is the default branch. Dark: L 0.76, C ≤ 0.14, each at least

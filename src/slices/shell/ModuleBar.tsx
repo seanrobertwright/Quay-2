@@ -2,6 +2,8 @@ import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNo
 import { Bot, Command, FolderTree, GitPullRequest, Settings2, Workflow } from "lucide-react";
 import { MODULES, MODULE_NAMES, moduleAfterClick, type ModuleId } from "./modules.ts";
 import { badgeText, spendText } from "./barBadges.ts";
+import { moduleAccent } from "./shellAccent.ts";
+import type { PiePaletteId } from "../pie/piePalettes.ts";
 
 /** The module bar's width, in CSS px. */
 export const MODULE_BAR_WIDTH = 48;
@@ -56,6 +58,8 @@ interface ModuleBarProps {
   spendTodayUsd?: number | null;
   /** Opens the token spend window from the spend ticker, which shows only when this is set. */
   onOpenSpend?: () => void;
+  /** The pie palette, which colours the open module; with Spectrum each module has its own hue. */
+  palette?: PiePaletteId;
 }
 
 /** A module icon's badge: its count and the words a screen reader hears after the module name. */
@@ -76,9 +80,11 @@ interface BarButtonProps {
   /** Set on module icons, which show and fold the panel. */
   controls?: string;
   badge?: Badge;
+  /** The colour the button lights in while current, in place of the accent. */
+  neon?: string | null;
 }
 
-const BarButton = ({ label, shortcut, keyShortcuts, icon, onClick, current, controls, badge }: BarButtonProps) => {
+const BarButton = ({ label, shortcut, keyShortcuts, icon, onClick, current, controls, badge, neon }: BarButtonProps) => {
   const badgeLabel = badge ? badgeText(badge.count) : null;
   return (
     <button
@@ -91,11 +97,12 @@ const BarButton = ({ label, shortcut, keyShortcuts, icon, onClick, current, cont
       aria-current={current ? "true" : undefined}
       aria-controls={controls}
       aria-keyshortcuts={keyShortcuts}
-      style={BUTTON_STYLE}
-      className={`${BAR_BUTTON_CLASS} ${current ? "text-white" : "text-[#8b949e] hover:text-white"}`}
+      data-neon={current ? "module" : undefined}
+      style={neon ? ({ ...BUTTON_STYLE, "--quay-neon": neon } as CSSProperties) : BUTTON_STYLE}
+      className={`${BAR_BUTTON_CLASS} ${current ? "" : "text-[#8b949e] hover:text-white"}`}
     >
       {/* The open module's edge, drawn inside the button so the box still starts at x = 0. */}
-      {current && <span aria-hidden="true" className="absolute left-0 top-2.5 bottom-2.5 w-[2px] bg-[#58a6ff]" />}
+      {current && <span aria-hidden="true" data-neon="edge" className="absolute left-0 top-2.5 bottom-2.5 w-[2px]" />}
       {icon}
       {badge && badgeLabel && (
         <span
@@ -141,6 +148,7 @@ export const ModuleBar = ({
   openPrCount = null,
   spendTodayUsd = null,
   onOpenSpend,
+  palette,
 }: ModuleBarProps) => {
   const badges = moduleBadges(waitingCount, openPrCount);
   const navRef = useRef<HTMLElement>(null);
@@ -175,6 +183,7 @@ export const ModuleBar = ({
             current={openModule === module}
             controls={panelId}
             badge={badges[module]}
+            neon={palette ? moduleAccent(palette, module) : null}
             onClick={() => onOpenModule(moduleAfterClick(openModule, module))}
           />
           {module === "projects" && renderTerminalList?.(listHeight)}

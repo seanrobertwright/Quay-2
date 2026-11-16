@@ -3,6 +3,7 @@
 // puts every button's box at x = 0 with nothing outside it; folding and switching the panel;
 // and the names and current state a screen reader hears.
 import "../../test-support/dom.ts";
+import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -140,4 +141,41 @@ test("the spend ticker at the bottom shows today's spend and opens the spend win
 test("the terminal status list sits directly under the Projects icon", () => {
   const { named } = render("projects", { renderTerminalList: () => createElement("ul", { "aria-label": "Terminals" }) });
   assert.equal(named("Projects").nextElementSibling?.getAttribute("aria-label"), "Terminals");
+});
+
+/** The open module's edge, the bar drawn inside its button. */
+const edgeOf = (button: HTMLElement) => {
+  const edge = button.querySelector("[data-neon]") as HTMLElement | null;
+  assert.ok(edge, `no edge on ${button.getAttribute("aria-label")}`);
+  return getComputedStyle(edge);
+};
+
+test("the open module's edge glows in the pie palette's accent, and follows a palette change live", () => {
+  installShellLook("cyber");
+  const { named } = render("agents", { palette: "cyber" });
+  assert.equal(edgeOf(named("Agents")).backgroundColor, "#00f0ff");
+  assert.match(edgeOf(named("Agents")).boxShadow, /#00f0ff/);
+  installShellLook("sunset");
+  assert.equal(edgeOf(named("Agents")).backgroundColor, "#ff3d81");
+  assert.equal(named("Projects").querySelector("[data-neon]"), null, "only the open module has an edge");
+});
+
+test("with Spectrum the open module's icon and edge take its own hue, the pie's N wedge hue for Projects", () => {
+  installShellLook("spectrum");
+  const { named } = render("projects", { palette: "spectrum" });
+  const projects = named("Projects");
+  assert.equal(edgeOf(projects).backgroundColor, "hsl(170 100% 62%)");
+  assert.equal(getComputedStyle(projects).color, "hsl(170 100% 62%)");
+  act(() => projects.click());
+  act(() => named("Workflows").click());
+  const workflows = named("Workflows");
+  assert.notEqual(edgeOf(workflows).backgroundColor, "hsl(170 100% 62%)");
+  assert.equal(getComputedStyle(workflows).color, edgeOf(workflows).backgroundColor);
+});
+
+test("with another palette the open module's icon takes the accent", () => {
+  installShellLook("acid");
+  const { named } = render("workflows", { palette: "acid" });
+  assert.equal(getComputedStyle(named("Workflows")).color, "#b6ff1a");
+  assert.equal(edgeOf(named("Workflows")).backgroundColor, "#b6ff1a");
 });

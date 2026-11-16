@@ -1,0 +1,19 @@
+/* The shell look (#652): neon in the pie palette's accent, with a soft glow, on live state only.
+   `--quay-accent` is set on the root from the pie palette (`shellAccent.ts`); a module icon sets
+   `--quay-neon` to its own hue under Spectrum. Each live part carries `data-neon` naming the part.
+   index.css imports this file into the base layer, so a Tailwind utility on the same element
+   wins over it. */
+
+/* The open module's edge on the module bar, and the active stage tab's underline. */
+[data-neon="edge"] {
+  background-color: var(--quay-neon, var(--quay-accent));
+  box-shadow: 0 0 6px var(--quay-neon, var(--quay-accent));
+}
+
+/* The open module's icon. */
+[data-neon="module"] {
+  color: var(--quay-neon, var(--quay-accent));
+}
+[data-neon="module"] svg {
+  filter: drop-shadow(0 0 4px var(--quay-neon, var(--quay-accent)));
+}
