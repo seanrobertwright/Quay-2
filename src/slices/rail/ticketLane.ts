@@ -1,4 +1,5 @@
-import type { PullRequestReadiness } from "../github/types.ts";
+import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
+import { epochMsFromLocalParts, localPartsOf, parseUtcTimestamp } from "../../lib/dates.ts";
 import type { TerminalLink } from "../terminal/types.ts";
 import { readiness } from "../companion/readiness.ts";
 
@@ -116,4 +117,64 @@ export function ticketLane({ link, ticket, pullRequest, waiting, now }: LaneInpu
     age: stepAge(now - since),
     canMerge,
   };
+}
+
+/** The most tickets Ready to start and Blocked each show before their +N link. */
+export const PIPELINE_LIST_CAP = 3;
+
+/** One of the lists under the terminals: the tickets shown, and how many more there are. */
+export interface PipelineList {
+  shown: GithubIssue[];
+  more: number;
+}
+
+/** What the Projects panel shows under a project's terminals. */
+export interface PipelineLists {
+  ready: PipelineList;
+  blocked: PipelineList;
+  /** Tickets closed as completed since local midnight that no terminal holds. */
+  mergedToday: number;
+}
+
+/** What the lists are read from. */
+export interface PipelineListsInput {
+  /** The open tickets read, perhaps only the first pages. */
+  open: readonly GithubIssue[];
+  /** Whether `open` holds every open ticket, or stopped at the read cap. */
+  openComplete: boolean;
+  /** Closed tickets, such as those updated since local midnight. */
+  closed: readonly GithubIssue[];
+  /** The signed-in login, or null while it is not known. */
+  viewer: string | null;
+  /** The numbers of the tickets a terminal holds, which show as lanes instead. */
+  linked: ReadonlySet<number>;
+  now: number;
+}
+
+const cap = (items: GithubIssue[]): PipelineList => ({ shown: items.slice(0, PIPELINE_LIST_CAP), more: Math.max(0, items.length - PIPELINE_LIST_CAP) });
+
+/**
+ * Ready to start and Blocked: the open tickets no terminal holds that are assigned to the operator
+ * or to no one, lowest number first (a spec's tickets are cut in build order), Blocked while one
+ * has an open blocker. Each shows three, then counts the rest. Merged today counts the tickets
+ * closed as completed since local midnight that no terminal holds.
+ */
+export function pipelineLists({ open, closed, viewer, linked, now }: PipelineListsInput): PipelineLists {
+  const mine = open
+    .filter((i) => !linked.has(i.number))
+    .filter((i) => i.assignees.length === 0 || (viewer !== null && i.assignees.some((a) => a.login.toLowerCase() === viewer.toLowerCase())))
+    .sort((a, b) => a.number - b.number);
+  const isBlocked = (i: GithubIssue) => i.openBlockerCount > 0 || i.blockedBy.length > 0;
+  const midnight = epochMsFromLocalParts({ ...localPartsOf(now), hour: 0, minute: 0 }) ?? now;
+  const mergedToday = closed.filter((i) => {
+    if (linked.has(i.number) || i.stateReason !== "COMPLETED" || !i.closedAt) return false;
+    const at = parseUtcTimestamp(i.closedAt);
+    return at !== null && at >= midnight && at <= now;
+  }).length;
+  return { ready: cap(mine.filter((i) => !isBlocked(i))), blocked: cap(mine.filter(isBlocked)), mergedToday };
+}
+
+/** The +N link's words: "+4", or "+4 or more" when the open list stopped at its read cap. */
+export function moreLabel(more: number, complete: boolean): string {
+  return complete ? `+${more}` : `+${more} or more`;
 }

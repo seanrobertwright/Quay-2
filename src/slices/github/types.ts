@@ -32,6 +32,10 @@ export interface GithubIssue {
   blockedBy: GithubIssueRef[];
   /** GitHub's count of open blockers; can exceed `blockedBy.length`. */
   openBlockerCount: number;
+  /** GitHub's ISO 8601 UTC timestamp of the close; null while open. */
+  closedAt?: string | null;
+  /** Why it was closed (`COMPLETED`, `NOT_PLANNED`, `DUPLICATE`), or `REOPENED`; null when GitHub gives none. */
+  stateReason?: string | null;
 }
 
 export interface GithubIssueDetail {

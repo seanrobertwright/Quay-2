@@ -2,9 +2,10 @@
 // ticket, and the Ready to start and Blocked lists under the terminals.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { PullRequestReadiness } from "../github/types.ts";
+import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
+import { epochMsFromLocalParts, localPartsOf } from "../../lib/dates.ts";
 import type { LinkSlot, TerminalLink } from "../terminal/types.ts";
-import { ticketLane, type LaneInput } from "./ticketLane.ts";
+import { moreLabel, pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
 
 const MIN = 60_000;
 const NOW = Date.UTC(2026, 10, 15, 12, 0, 0);
@@ -137,4 +138,55 @@ test("a read of another pull request than the slot's is not used", () => {
   const lane = ticketLane(input({ link: link({ pull_request: slot(575, NOW) }), pullRequest: pr() }));
   assert.equal(lane?.stateLine, "PR #575");
   assert.equal(lane?.canMerge, false);
+});
+
+const issue = (number: number, over: Partial<GithubIssue> = {}): GithubIssue => ({
+  number,
+  title: `Ticket ${number}`,
+  state: "OPEN",
+  author: { login: "you" },
+  labels: [],
+  assignees: [],
+  updatedAt: "2026-11-15T10:00:00Z",
+  url: `https://github.com/o/r/issues/${number}`,
+  blockedBy: [],
+  openBlockerCount: 0,
+  ...over,
+});
+const blockedBy = (number: number) => ({ blockedBy: [{ number, title: "", state: "OPEN", url: "", repoNwo: "o/r" }], openBlockerCount: 1 });
+const numbers = (list: { shown: GithubIssue[] }) => list.shown.map((i) => i.number);
+
+test("Ready to start and Blocked list the operator's and unassigned open tickets, lowest number first, three each then +N", () => {
+  const open = [
+    issue(9),
+    issue(8, { assignees: [{ login: "someone" }] }),
+    issue(7, { assignees: [{ login: "you" }] }),
+    issue(6),
+    issue(5),
+    issue(4),
+    issue(3, blockedBy(1)),
+    issue(2, { ...blockedBy(1), assignees: [{ login: "you" }] }),
+    issue(1, { ...blockedBy(9), assignees: [{ login: "someone" }] }),
+  ];
+  const lists = pipelineLists({ open, openComplete: true, closed: [], viewer: "you", linked: new Set([6]), now: NOW });
+  assert.deepEqual(numbers(lists.ready), [4, 5, 7]);
+  assert.equal(lists.ready.more, 1);
+  assert.deepEqual(numbers(lists.blocked), [2, 3]);
+  assert.equal(lists.blocked.more, 0);
+  assert.equal(moreLabel(lists.ready.more, true), "+1");
+  assert.equal(moreLabel(2, false), "+2 or more");
+});
+
+test("Merged today counts tickets closed as completed since local midnight that no terminal holds", () => {
+  const midnight = epochMsFromLocalParts({ ...localPartsOf(NOW), hour: 0, minute: 0 })!;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const closed = [
+    issue(20, { state: "CLOSED", stateReason: "COMPLETED", closedAt: iso(midnight + MIN) }),
+    issue(21, { state: "CLOSED", stateReason: "COMPLETED", closedAt: iso(midnight + 2 * MIN) }),
+    issue(22, { state: "CLOSED", stateReason: "NOT_PLANNED", closedAt: iso(midnight + MIN) }),
+    issue(23, { state: "CLOSED", stateReason: "COMPLETED", closedAt: iso(midnight - MIN) }),
+    issue(24, { state: "CLOSED", stateReason: "COMPLETED", closedAt: iso(midnight + MIN) }),
+  ];
+  const lists = pipelineLists({ open: [], openComplete: true, closed, viewer: "you", linked: new Set([24]), now: NOW });
+  assert.equal(lists.mergedToday, 2);
 });
