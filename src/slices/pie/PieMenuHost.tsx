@@ -24,6 +24,8 @@ interface PieMenuHostProps {
   displayDelayMs: number;
   /** The palette's most recent commands, newest first, which Palette's slices copy. */
   recentCommands?: readonly RecentPaletteCommand[];
+  /** Whether the selected terminal's pull request can merge, which puts Merge on NE. */
+  mergeable?: boolean;
   /** Runs a chosen stroke on what the pie opened over. */
   onChoose: (choice: PieChoice, target: PieTarget) => void;
   /** Called with the record of each stroke chosen with the pointer, for the stroke log. */
@@ -43,11 +45,11 @@ function swallow(e: Event) {
   e.stopImmediatePropagation();
 }
 
-export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, recentCommands = [], onChoose, onStroke }: PieMenuHostProps) => {
+export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, recentCommands = [], mergeable = false, onChoose, onStroke }: PieMenuHostProps) => {
   const [view, setView] = useState<{ state: PieState; ring: PieRing } | null>(null);
   // Read by the listeners, which are installed once.
-  const props = useRef({ displayDelayMs, recentCommands, onChoose, onStroke });
-  props.current = { displayDelayMs, recentCommands, onChoose, onStroke };
+  const props = useRef({ displayDelayMs, recentCommands, mergeable, onChoose, onStroke });
+  props.current = { displayDelayMs, recentCommands, mergeable, onChoose, onStroke };
 
   useEffect(() => {
     let state: PieState = CLOSED;
@@ -98,7 +100,7 @@ export const PieMenuHost = ({ palette, labelOutline, displayDelayMs, recentComma
       swallow(e);
       swallowFollowers = true;
       target = place.target;
-      ring = pieRing(target, props.current.recentCommands);
+      ring = pieRing(target, props.current.recentCommands, props.current.mergeable);
       const now = performance.now();
       clearTimer();
       const pressedAt = { x: e.clientX, y: e.clientY };
