@@ -21,6 +21,12 @@ import { revealFolder } from "./slices/overlay/menuActions";
 import { moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS, type CompanionInspector, type CompanionShowRequest } from "./slices/companion/Companion";
+import { MergeUndoToast } from "./slices/companion/MergeUndoToast";
+import { useMergeUndo, type MergeJob } from "./slices/companion/useMergeUndo";
+import { useSelectedPullRequest } from "./slices/companion/useSelectedPullRequest";
+import { canMerge } from "./slices/companion/readiness";
+import type { PullRequestAsk } from "./slices/companion/PullRequestView";
+import type { MergeMethod } from "./slices/github/types";
 import { SlotLayer } from "./slices/stage/SlotLayer";
 import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
@@ -649,6 +655,14 @@ export function App() {
     }));
   };
 
+  // A pie stroke's ask of the companion's pull request view: show the view for the selected
+  // terminal and act on the ask there (#650).
+  const askPullRequestView = (pullRequest: PullRequestAsk) => {
+    if (!selectedTerminal) return;
+    const terminalId = selectedTerminal.id;
+    setCompanionRequest((prev) => ({ terminalId, view: "pull-request", pullRequest, seq: (prev?.seq ?? 0) + 1 }));
+  };
+
   // The reply strip at the foot of every lens: the selected terminal's last question.
   const replyStrip = selectedTerminal && (
     <ReplyStrip
@@ -676,6 +690,25 @@ export function App() {
         : null,
     [selectedTerminal, selectedRepository]
   );
+  // The selected terminal's pull request, read so the pie's Merge shows only while it can merge.
+  const selectedPrSlot = selectedTerminal ? linking.linkOf(selectedTerminal)?.pull_request : null;
+  const { selected: selectedPr, reload: reloadSelectedPr } = useSelectedPullRequest(
+    selectedPrSlot && selectedRepository ? { repoPath: selectedRepository.path, repo: selectedPrSlot.repo, number: selectedPrSlot.number } : null
+  );
+  const selectedPrMergeable = !!selectedPr && canMerge(selectedPr.pr);
+  // The Merge undo window (#650), started by the pie's Merge stroke: a countdown toast in the
+  // companion, then the merge. With the window Off, the pull request view's confirm step opens.
+  const mergeUndo = useMergeUndo(shellPrefs.mergeUndoSeconds, {
+    onConfirm: (job: MergeJob) => askPullRequestView({ kind: "confirm-merge", method: job.method }),
+    onMerged: () => {
+      reloadSelectedPr();
+      askPullRequestView({ kind: "reload" });
+    },
+  });
+  const startMerge = (method: MergeMethod) => {
+    if (selectedPr && canMerge(selectedPr.pr)) mergeUndo.start({ location: selectedPr.location, pr: selectedPr.pr, method });
+  };
+
   // Chord `c`, the palette and the panels' Topos buttons show the Topos view in the companion for
   // the selected terminal; with none selected there is no repository to show.
   const openToposView = () => {
@@ -959,8 +992,9 @@ export function App() {
   };
   const newTerminalOf = (runKind: RunKind) => spawnTerminal({ project_path: activeProject, run_kind: runKind, name: runKind });
 
-  // A pie stroke (#648, #649). N, E, S and W and their second-ring slices act on the selected
-  // terminal; the diagonals on the terminal or row the pie opened over.
+  // A pie stroke (#648, #649, #650). N, NE, E, S and W and their second-ring slices act on the
+  // selected terminal and its pull request; the diagonals on the terminal, row or companion pull
+  // request the pie opened over.
   const runPieStroke = (choice: PieChoice, target: PieTarget) => {
     const terminalId = pieTerminalId(target);
     switch (choice.action) {
@@ -1016,6 +1050,20 @@ export function App() {
       }
       case "agents-panel":
         return setOpenModule("agents");
+      case "merge":
+      case "merge-squash":
+        return startMerge("squash");
+      case "merge-commit":
+        return startMerge("merge");
+      case "merge-rebase":
+        return startMerge("rebase");
+      case "diff-lens":
+        diffLensOpener.current?.();
+        return;
+      case "comment":
+        return askPullRequestView({ kind: "comment" });
+      case "checks":
+        return askPullRequestView({ kind: "checks" });
     }
   };
 
@@ -1230,6 +1278,7 @@ export function App() {
         showRequest={companionRequest}
         run={companionRun}
         inspector={companionInspector}
+        toast={<MergeUndoToast undo={mergeUndo} />}
       />
 
       {/* The pie menu, opened at the pointer per surface: middle-click, Alt+Right-click, and plain right-click on the companion, empty stage and module bar */}
@@ -1238,6 +1287,7 @@ export function App() {
         labelOutline={shellPrefs.pieLabelOutline}
         displayDelayMs={shellPrefs.pieDisplayDelayMs}
         recentCommands={recentPaletteCommands}
+        mergeable={selectedPrMergeable}
         onChoose={runPieStroke}
         onStroke={logPieStroke}
       />
