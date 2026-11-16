@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import type { TerminalInfo, ClaudeStatus } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
-import { askingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, prevWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
+import type { AttentionItem } from "../attention/attentionQueue.ts";
+import { waitingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, prevWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
 
 const term = (id: string, project_path: string, claude_status: ClaudeStatus = "idle"): TerminalInfo => ({
   id,
@@ -143,13 +144,32 @@ test("a terminal with a permission request waiting shows the amber waiting dot w
   ]);
 });
 
-test("the asking terminals are those with a permission request waiting, not a finished turn", () => {
-  const asking = askingTerminals([
+test("the waiting terminals are those with a permission request or a finished turn waiting", () => {
+  const waiting = waitingTerminals([
     { kind: "permission", requestId: "r1", terminalId: "asks", project: "C:/a", tool: "Bash", waitingSince: 1 },
     { kind: "permission", requestId: "r2", terminalId: null, project: null, tool: "Bash", waitingSince: 2 },
     { kind: "finishedTurn", terminalId: "done", project: "C:/a", waitingSince: 3 },
   ]);
-  assert.deepEqual([...asking], ["asks"]);
+  assert.deepEqual([...waiting].sort(), ["asks", "done"]);
+});
+
+test("a terminal with a finished turn is waiting; once the item clears it is not", () => {
+  const terminals = [term("done", "C:/a", "idle"), term("other", "C:/a", "idle")];
+  const finished: AttentionItem[] = [{ kind: "finishedTurn", terminalId: "done", project: "C:/a", waitingSince: 1 }];
+  const statuses = (items: AttentionItem[]) =>
+    statusRows(terminals, [project("C:/a", "A")], {}, waitingTerminals(items)).map((r) => r.status);
+  assert.deepEqual(statuses(finished), ["waiting", "idle"]);
+  // The queue drops the item on user input or a new turn.
+  assert.deepEqual(statuses([]), ["idle", "idle"]);
+});
+
+test("next and prev waiting reach a terminal whose only wait is a finished turn", () => {
+  const terminals = [term("a", "C:/a"), term("done", "C:/a"), term("c", "C:/a")];
+  const items: AttentionItem[] = [{ kind: "finishedTurn", terminalId: "done", project: "C:/a", waitingSince: 1 }];
+  const rows = statusRows(terminals, [project("C:/a", "A")], {}, waitingTerminals(items));
+  assert.equal(nextWaitingTerminal(rows, "a"), "done");
+  assert.equal(prevWaitingTerminal(rows, "c"), "done");
+  assert.equal(rows.filter((r) => r.status === "waiting").length, waitingTerminals(items).size);
 });
 
 test("the next waiting terminal is the first waiting row after the selected one, wrapping, else none", () => {

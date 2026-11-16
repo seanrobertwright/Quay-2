@@ -6,7 +6,7 @@ import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { SwarmPreset } from "../orchestrator/swarmTypes.ts";
 import type { ClaudeSessionSummary } from "../sessions/types.ts";
 import { attentionItemKey, waitedLabel, type AttentionItem } from "../attention/attentionQueue.ts";
-import { askingTerminals, DOT_STATUS_LABELS } from "../shell/terminalStatus.ts";
+import { waitingTerminals, DOT_STATUS_LABELS } from "../shell/terminalStatus.ts";
 import { formatRelative } from "../../lib/dates.ts";
 import { agentRows, SESSIONS_SHOWN, sessionMatches, shownSavedSwarms, WAITING_ROWS_SHOWN } from "./agentRows.ts";
 
@@ -52,7 +52,7 @@ export const AgentsPanel = (props: AgentsPanelProps) => {
   const { terminals, waiting, project, messages } = props;
   const nameOf = (terminalId: string | null) => terminals.find((t) => t.id === terminalId)?.name ?? "Unknown terminal";
   const agents = useMemo(
-    () => agentRows(terminals, project, messages, askingTerminals(waiting)),
+    () => agentRows(terminals, project, messages, waitingTerminals(waiting)),
     [terminals, project, messages, waiting],
   );
   return (
