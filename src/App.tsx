@@ -7,13 +7,15 @@ import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
 import { ModuleBar } from "./slices/shell/ModuleBar";
 import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
-import { askingTerminals, nextWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
+import { askingTerminals, nextWaitingTerminal, prevWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { ModulePanel } from "./slices/shell/ModulePanel";
 import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
 import { useShellPrefs } from "./slices/shell/useShellPrefs";
 import { PieMenuHost } from "./slices/pie/PieMenuHost";
-import { pieFolder, pieTerminalId, type PieAction, type PieTarget } from "./slices/pie/pieRing";
+import { pieFolder, pieTerminalId, type PieAction, type PieTarget, type RecentPaletteCommand } from "./slices/pie/pieRing";
+import { pieStrokeLog, type PieStrokeRecord } from "./slices/pie/pieStrokeLog";
+import { recentCommands } from "./slices/command-palette/recentCommands";
 import { requestTerminal } from "./slices/terminal/terminalRequests";
 import { revealFolder } from "./slices/overlay/menuActions";
 import { moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
@@ -48,7 +50,7 @@ import { NewWorktreeModal } from "./slices/git/NewWorktreeModal";
 import { RemoveWorktreeDialog, WorktreeRemovalPrompt } from "./slices/git/RemoveWorktreeDialog";
 import { SourceControlPanel } from "./slices/github/SourceControlPanel";
 import { GithubIssue, GithubPullRequest } from "./slices/github/types";
-import type { LinkRef, LinkSlotName, TerminalInfo } from "./slices/terminal/types";
+import type { LinkRef, LinkSlotName, RunKind, TerminalInfo } from "./slices/terminal/types";
 import { getGlobalTerminalDimensions } from "./slices/terminal/useTerminal";
 import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
@@ -758,6 +760,10 @@ export function App() {
     const next = nextWaitingTerminal(terminalStatusRows, activeTerminalId);
     if (next) showTerminal(next);
   };
+  const selectPrevWaiting = () => {
+    const prev = prevWaitingTerminal(terminalStatusRows, activeTerminalId);
+    if (prev) showTerminal(prev);
+  };
   const openSelectedActivity = () => {
     if (activeTerminalId) openActivity(activeTerminalId);
   };
@@ -940,13 +946,46 @@ export function App() {
   };
   const openUpdateModal = () => setIsUpdateModalOpen(true);
 
-  // A pie stroke (#648). N, E, S and W act on the selected terminal; the diagonals on the terminal
-  // or row the pie opened over.
-  const runPieStroke = (action: PieAction, target: PieTarget) => {
+  // The palette's three most recent commands, which the pie's Palette slices copy and run (#649).
+  const recentCommandStore = useMemo(() => recentCommands(window.localStorage), []);
+  const [recentPaletteCommands, setRecentPaletteCommands] = useState<RecentPaletteCommand[]>(() => recentCommandStore.read());
+  const paletteRunner = useRef<((id: string) => boolean) | null>(null);
+  // Every pie stroke chosen with the pointer, kept so overshoot between neighbouring parents can be
+  // checked in use; a second-ring pick near a neighbouring parent is also written to the console.
+  const strokeLog = useMemo(() => pieStrokeLog(window.localStorage), []);
+  const logPieStroke = (record: PieStrokeRecord) => {
+    strokeLog.add(record);
+    if (record.neighbour) console.info("[pie] second-ring pick near a neighbouring parent", record);
+  };
+  const newTerminalOf = (runKind: RunKind) => spawnTerminal({ project_path: activeProject, run_kind: runKind, name: runKind });
+
+  // A pie stroke (#648, #649). N, E, S and W and their second-ring slices act on the selected
+  // terminal; the diagonals on the terminal or row the pie opened over.
+  const runPieStroke = (action: PieAction, target: PieTarget, commandId?: string) => {
     const terminalId = pieTerminalId(target);
     switch (action) {
       case "next-wait":
         return selectNextWaiting();
+      case "prev-wait":
+        return selectPrevWaiting();
+      case "waiting-list":
+        // The Agents panel opens on Waiting on you, which lists every terminal waiting on the operator.
+        return setOpenModule("agents");
+      case "split-side":
+        return void splitHorizontal();
+      case "split-stack":
+        return void splitVertical();
+      case "split-grid":
+        return void splitGrid();
+      case "palette-command":
+        if (commandId) paletteRunner.current?.(commandId);
+        return;
+      case "new-claude":
+        return void newTerminalOf("claude");
+      case "new-codex":
+        return void newTerminalOf("codex");
+      case "new-pwsh":
+        return void newTerminalOf("powershell");
       case "split":
         return void splitHorizontal();
       case "palette":
@@ -1198,7 +1237,9 @@ export function App() {
         palette={shellPrefs.piePalette}
         labelOutline={shellPrefs.pieLabelOutline}
         displayDelayMs={shellPrefs.pieDisplayDelayMs}
+        recentCommands={recentPaletteCommands}
         onChoose={runPieStroke}
+        onStroke={logPieStroke}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
@@ -1268,6 +1309,8 @@ export function App() {
             : undefined
         }
         onAddProject={() => setIsAddProjectOpen(true)}
+        onRanCommand={(command) => setRecentPaletteCommands(recentCommandStore.ran(command))}
+        runnerRef={paletteRunner}
       />
 
       {/* Workspace Settings Modal (Env Vars & Default Launch Flags) */}
