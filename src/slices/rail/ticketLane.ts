@@ -1,6 +1,6 @@
 import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
 import { epochMsFromLocalParts, localPartsOf, parseUtcTimestamp } from "../../lib/dates.ts";
-import type { TerminalLink } from "../terminal/types.ts";
+import type { LinkRef, TerminalLink } from "../terminal/types.ts";
 import { readiness } from "../companion/readiness.ts";
 
 /** A lane's four steps, in the order the bar draws them. */
@@ -25,7 +25,7 @@ export interface LaneInput {
   /** The terminal's link; a lane needs its ticket slot filled. */
   link: TerminalLink | null;
   /** What the open ticket list says about the ticket, or null while it has not been read. */
-  ticket: { title: string; assignee: string | null; blocker: number | null } | null;
+  ticket: { title: string; assignee: string | null; blocker: LinkRef | null } | null;
   /** The linked pull request as last read, or null while it has not been read or there is none. */
   pullRequest: PullRequestReadiness | null;
   /** Whether the terminal is waiting on the operator. */
@@ -41,8 +41,8 @@ export interface TicketLane {
   current: LaneStepId;
   stateLine: string;
   needsYou: NeedsYou | null;
-  /** The open blocker's number while one holds the ticket up. */
-  blocker: number | null;
+  /** The open blocker while one holds the ticket up. */
+  blocker: LinkRef | null;
   assignee: string | null;
   /** How long the ticket has been in its current step, such as "5m", "3h" or "2d". */
   age: string;
@@ -99,7 +99,7 @@ export function ticketLane({ link, ticket, pullRequest, waiting, now }: LaneInpu
     if (verdict.tone !== "failing" && verdict.tone !== "pending") parts.push(verdict.headline.toLowerCase());
     stateLine = parts.join(" · ");
   } else if (prSlot) stateLine = `PR #${prSlot.number}`;
-  else if (blocker !== null) stateLine = `Blocked by #${blocker}`;
+  else if (blocker !== null) stateLine = `Blocked by #${blocker.number}`;
   else stateLine = "No pull request yet";
 
   const canMerge = verdict?.headline === "Ready to merge";

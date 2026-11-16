@@ -104,10 +104,10 @@ test("a slot that last saw its pull request merged keeps Merged before any read"
 });
 
 test("a blocked ticket with no pull request names its blocker on a blocked Terminal step", () => {
-  const lane = ticketLane(input({ ticket: { title: "Lanes", assignee: null, blocker: 650 } }));
+  const lane = ticketLane(input({ ticket: { title: "Lanes", assignee: null, blocker: { repo: "o/r", number: 650 } } }));
   assert.ok(lane);
   assert.deepEqual(tones(lane), ["Ticket:done", "Terminal:blocked", "Pull request:todo", "Merged:todo"]);
-  assert.equal(lane.blocker, 650);
+  assert.deepEqual(lane.blocker, { repo: "o/r", number: 650 });
   assert.equal(lane.stateLine, "Blocked by #650");
   assert.equal(lane.age, "1h");
 });
