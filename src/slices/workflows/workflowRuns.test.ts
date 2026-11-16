@@ -32,14 +32,15 @@ test("an Archon run waiting for approval needs you, with Approve, and its nodes 
   assert.deepEqual(row.decision, { kind: "archon-approval" });
 });
 
-test("a failed Archon run needs you with Resume for a day, then drops off", () => {
+test("a failed Archon run needs you with Resume however long ago it failed", () => {
   const failed = archonRunRow(archon({ status: "failed", nodes_total: 3, nodes_completed: 1, completed_ms: NOW - 2 * HOUR }), NOW);
   assert.equal(failed.section, "needs-you");
   assert.equal(failed.chip, "Resume");
   assert.deepEqual(failed.segments.map((s) => s.state), ["done", "failed", "pending"]);
   assert.deepEqual(failed.decision, { kind: "archon-failed" });
   const old = archonRunRow(archon({ status: "failed", completed_ms: NOW - 25 * HOUR }), NOW);
-  assert.equal(old.section, null);
+  assert.equal(old.section, "needs-you");
+  assert.equal(old.chip, "Resume");
 });
 
 test("a running Archon run is Running; a completed one is Recent for 24 hours", () => {

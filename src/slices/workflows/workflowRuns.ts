@@ -11,7 +11,7 @@ import { isSamePath } from "../../utils/paths.ts";
 /** The three engines the Workflows panel lists. */
 export type Engine = "archon" | "factory" | "praxis";
 
-/** One segment of a run row's bar: an Archon node or a Factory stage. */
+/** The state of one segment of a run row's bar, which stands for an Archon node or a Factory stage. */
 export type SegmentState = "done" | "running" | "waiting" | "failed" | "pending";
 
 /** One segment of a row's bar, with the node or stage it stands for. */
@@ -20,7 +20,7 @@ export interface Segment {
   state: SegmentState;
 }
 
-/** The panel section a row lands in; null for a finished run older than the Recent window. */
+/** The panel section a row lands in. */
 export type RunSection = "needs-you" | "running" | "recent";
 
 /** The action chip on a Needs you row. */
@@ -53,6 +53,7 @@ export interface WorkflowRunRow {
   /** Spend in USD, or null when the engine doesn't say. */
   spendUsd: number | null;
   segments: Segment[];
+  /** Null for a finished run older than the Recent window that waits on nothing. */
   section: RunSection | null;
   chip: ActionChip | null;
   /** What the Run view offers, or null when nothing waits on the operator. */
@@ -104,7 +105,8 @@ export function archonRunRow(run: ArchonRun, now: number): WorkflowRunRow {
     chip = "Approve";
     decision = { kind: "archon-approval" };
   } else if (run.status === "failed") {
-    section = fresh ? "needs-you" : null;
+    // A failed run waits on Resume or Abandon however long ago it failed.
+    section = "needs-you";
     chip = "Resume";
     decision = { kind: "archon-failed" };
   } else if (finished) {
