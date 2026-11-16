@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { TerminalInfo, ClaudeStatus } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
-import { askingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
+import { askingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, prevWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
 
 const term = (id: string, project_path: string, claude_status: ClaudeStatus = "idle"): TerminalInfo => ({
   id,
@@ -161,4 +161,16 @@ test("the next waiting terminal is the first waiting row after the selected one,
   assert.equal(nextWaitingTerminal(rows, "c"), "a");
   assert.equal(nextWaitingTerminal(rows, "gone"), "a");
   assert.equal(nextWaitingTerminal(statusRows([term("x", "C:/a")], [project("C:/a", "A")], {}), null), null);
+});
+
+test("the previous waiting terminal is the first waiting row before the selected one, wrapping, else none", () => {
+  const terminals = [term("a", "C:/a", "waiting"), term("b", "C:/a", "idle"), term("c", "C:/a", "waiting"), term("d", "C:/a")];
+  const rows = statusRows(terminals, [project("C:/a", "A")], {});
+  assert.equal(prevWaitingTerminal(rows, null), "c");
+  assert.equal(prevWaitingTerminal(rows, "c"), "a");
+  assert.equal(prevWaitingTerminal(rows, "b"), "a");
+  assert.equal(prevWaitingTerminal(rows, "a"), "c");
+  assert.equal(prevWaitingTerminal(rows, "d"), "c");
+  assert.equal(prevWaitingTerminal(rows, "gone"), "c");
+  assert.equal(prevWaitingTerminal(statusRows([term("x", "C:/a")], [project("C:/a", "A")], {}), null), null);
 });
