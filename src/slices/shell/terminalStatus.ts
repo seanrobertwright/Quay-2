@@ -1,6 +1,7 @@
 import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
+import type { AttentionItem } from "../attention/attentionQueue.ts";
 import { isSamePath, isSubpathOf } from "../../utils/paths.ts";
 
 /** The four dots of the module bar's terminal status list. */
@@ -39,6 +40,16 @@ export function dotStatus(terminal: Pick<TerminalInfo, "claude_status">): DotSta
     default:
       return "idle";
   }
+}
+
+/** The terminals with a permission request waiting among `items`. */
+export function askingTerminals(items: readonly AttentionItem[]): Set<string> {
+  return new Set(items.flatMap((item) => (item.kind === "permission" && item.terminalId ? [item.terminalId] : [])));
+}
+
+/** A terminal's dot: amber waiting while it has a permission request in `asking`, else its status. */
+export function terminalDot(terminal: Pick<TerminalInfo, "id" | "claude_status">, asking: ReadonlySet<string>): DotStatus {
+  return asking.has(terminal.id) ? "waiting" : dotStatus(terminal);
 }
 
 /** One terminal's row: the terminal, its dot and the project group it sits in. */
@@ -89,7 +100,7 @@ export function statusRows(
   const rows: StatusRow[] = [];
   const row = (terminal: TerminalInfo, projectName: string, group: string): StatusRow => ({
     terminal,
-    status: asking.has(terminal.id) ? "waiting" : dotStatus(terminal),
+    status: terminalDot(terminal, asking),
     projectName,
     group,
   });

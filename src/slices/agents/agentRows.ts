@@ -1,7 +1,7 @@
 import { busLevel, type TerminalInfo } from "../terminal/types.ts";
 import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { ClaudeSessionSummary } from "../sessions/types.ts";
-import { dotStatus, type DotStatus } from "../shell/terminalStatus.ts";
+import { terminalDot, type DotStatus } from "../shell/terminalStatus.ts";
 import { isSamePath } from "../../utils/paths.ts";
 
 /** How many Waiting on you rows show before the section scrolls. */
@@ -30,14 +30,20 @@ export interface AgentRow {
 /**
  * One row per agent terminal in `project`, in `terminals` order: every terminal on the A2A bus,
  * so not a plain shell or an Archon runner. A worktree is its own project, as on the stage.
- * `messages` is the trail, newest first.
+ * `messages` is the trail, newest first. A terminal in `asking` has a permission request waiting,
+ * so it shows as waiting, as its dot in the status list does.
  */
-export function agentRows(terminals: readonly TerminalInfo[], project: string, messages: readonly TrailMessage[]): AgentRow[] {
+export function agentRows(
+  terminals: readonly TerminalInfo[],
+  project: string,
+  messages: readonly TrailMessage[],
+  asking: ReadonlySet<string> = new Set(),
+): AgentRow[] {
   const rows: AgentRow[] = [];
   for (const terminal of terminals) {
     const level = busLevel(terminal);
     if (level === null || !isSamePath(terminal.project_path, project)) continue;
-    rows.push({ terminal, role: `${terminal.run_kind} · ${level}`, status: dotStatus(terminal), preview: latestReply(terminal.id, messages) });
+    rows.push({ terminal, role: `${terminal.run_kind} · ${level}`, status: terminalDot(terminal, asking), preview: latestReply(terminal.id, messages) });
   }
   return rows;
 }

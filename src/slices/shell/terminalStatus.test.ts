@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { TerminalInfo, ClaudeStatus } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
-import { capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
+import { askingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
 
 const term = (id: string, project_path: string, claude_status: ClaudeStatus = "idle"): TerminalInfo => ({
   id,
@@ -141,6 +141,15 @@ test("a terminal with a permission request waiting shows the amber waiting dot w
     ["asks", "waiting"],
     ["quiet", "working"],
   ]);
+});
+
+test("the asking terminals are those with a permission request waiting, not a finished turn", () => {
+  const asking = askingTerminals([
+    { kind: "permission", requestId: "r1", terminalId: "asks", project: "C:/a", tool: "Bash", waitingSince: 1 },
+    { kind: "permission", requestId: "r2", terminalId: null, project: null, tool: "Bash", waitingSince: 2 },
+    { kind: "finishedTurn", terminalId: "done", project: "C:/a", waitingSince: 3 },
+  ]);
+  assert.deepEqual([...asking], ["asks"]);
 });
 
 test("the next waiting terminal is the first waiting row after the selected one, wrapping, else none", () => {

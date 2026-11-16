@@ -6,7 +6,7 @@ import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { SwarmPreset } from "../orchestrator/swarmTypes.ts";
 import type { ClaudeSessionSummary } from "../sessions/types.ts";
 import { attentionItemKey, waitedLabel, type AttentionItem } from "../attention/attentionQueue.ts";
-import { DOT_STATUS_LABELS } from "../shell/terminalStatus.ts";
+import { askingTerminals, DOT_STATUS_LABELS } from "../shell/terminalStatus.ts";
 import { formatRelative } from "../../lib/dates.ts";
 import { agentRows, SESSIONS_SHOWN, sessionMatches, shownSavedSwarms, WAITING_ROWS_SHOWN } from "./agentRows.ts";
 
@@ -51,7 +51,10 @@ interface AgentsPanelProps {
 export const AgentsPanel = (props: AgentsPanelProps) => {
   const { terminals, waiting, project, messages } = props;
   const nameOf = (terminalId: string | null) => terminals.find((t) => t.id === terminalId)?.name ?? "Unknown terminal";
-  const agents = useMemo(() => agentRows(terminals, project, messages), [terminals, project, messages]);
+  const agents = useMemo(
+    () => agentRows(terminals, project, messages, askingTerminals(waiting)),
+    [terminals, project, messages, waiting],
+  );
   return (
     <div className="flex-1 min-h-0 flex flex-col select-none text-[#c9d1d9] text-xs">
       <h2 className="h-12 shrink-0 px-4 flex items-center border-b border-[#30363d] bg-[#161b22] text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">

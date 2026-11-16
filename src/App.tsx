@@ -7,7 +7,7 @@ import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
 import { ModuleBar } from "./slices/shell/ModuleBar";
 import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
-import { nextWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
+import { askingTerminals, nextWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers, type PlaceholderModule } from "./slices/shell/placeholderPanels";
@@ -559,13 +559,10 @@ export function App() {
   };
 
   // A terminal with a permission request waiting shows the amber waiting dot.
-  const askingTerminals = useMemo(
-    () => new Set(waitingItems.flatMap((item) => (item.kind === "permission" && item.terminalId ? [item.terminalId] : []))),
-    [waitingItems]
-  );
+  const asking = useMemo(() => askingTerminals(waitingItems), [waitingItems]);
   const terminalStatusRows = useMemo(
-    () => statusRows(terminals, projects, projectWorktrees, askingTerminals),
-    [terminals, projects, projectWorktrees, askingTerminals]
+    () => statusRows(terminals, projects, projectWorktrees, asking),
+    [terminals, projects, projectWorktrees, asking]
   );
   const openPrCount = useOpenPrCount(activeRootRepo);
   const spendTodayUsd = claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? null;

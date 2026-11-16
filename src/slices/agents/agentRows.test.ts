@@ -47,6 +47,17 @@ test("an agent row is each agent terminal of the project, with its run kind and 
   );
 });
 
+test("an agent waiting on a permission request shows as waiting in its row, as its dot does", () => {
+  const terminals = [term("asks", "claude", "C:/repo", "working"), term("busy", "claude", "C:/repo", "working")];
+  assert.deepEqual(
+    agentRows(terminals, "C:/repo", [], new Set(["asks"])).map((r) => [r.terminal.id, r.status]),
+    [
+      ["asks", "waiting"],
+      ["busy", "working"],
+    ],
+  );
+});
+
 test("an agent row previews the newest reply the agent gave, and names the message it answered", () => {
   const messages = [
     message("m3", "claude-1", 3_000, null),
