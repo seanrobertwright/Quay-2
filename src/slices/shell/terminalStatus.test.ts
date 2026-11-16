@@ -6,7 +6,7 @@ import type { TerminalInfo, ClaudeStatus } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
 import type { AttentionItem } from "../attention/attentionQueue.ts";
-import { waitingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, prevWaitingTerminal, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
+import { waitingTerminals, capStatusRows, dotStatus, fitStatusRows, nextWaitingTerminal, prevWaitingTerminal, secondaryWorktrees, statusListHeight, statusRows, type StatusRow } from "./terminalStatus.ts";
 
 const term = (id: string, project_path: string, claude_status: ClaudeStatus = "idle"): TerminalInfo => ({
   id,
@@ -142,6 +142,26 @@ test("a terminal with a permission request waiting shows the amber waiting dot w
     ["asks", "waiting"],
     ["quiet", "working"],
   ]);
+});
+
+test("a project that is itself a linked worktree lists each terminal once, in order", () => {
+  const projects = [project("C:/linked", "linked"), project("C:/beta", "beta")];
+  const worktrees = {
+    "C:/linked": [worktree("C:/main"), worktree("C:/linked"), worktree("C:/linked/.wt/two")],
+  };
+  const terminals = [term("l1", "C:/linked"), term("w1", "C:/linked/.wt/two"), term("l2", "C:/linked"), term("b1", "C:/beta")];
+  const rows = statusRows(terminals, projects, worktrees);
+  assert.deepEqual(
+    rows.map((r) => r.terminal.id),
+    ["l1", "l2", "w1", "b1"],
+  );
+  assert.equal(rows.length, terminals.length);
+});
+
+test("a project's secondary worktrees leave out the main one and its own folder", () => {
+  const wts = [worktree("C:/main", true), worktree("C:/linked"), worktree("C:/linked/.wt/two")];
+  assert.deepEqual(secondaryWorktrees("C:/linked", wts).map((w) => w.path), ["C:/linked/.wt/two"]);
+  assert.deepEqual(secondaryWorktrees("C:/main", wts).map((w) => w.path), ["C:/linked", "C:/linked/.wt/two"]);
 });
 
 test("the waiting terminals are those with a permission request or a finished turn waiting", () => {

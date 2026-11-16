@@ -24,6 +24,7 @@ import {
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
 import type { ClaudeTokenStats } from "../sessions/types.ts";
 import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths.ts";
+import { secondaryWorktrees } from "../shell/terminalStatus.ts";
 import { useContextMenu } from "../overlay/useContextMenu.ts";
 import { ProjectMenu, WorktreeMenu } from "./RailRowMenus.tsx";
 import { worktreeRowName } from "./worktreeMenu.ts";
@@ -296,11 +297,11 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
             const isProjectActive = isSamePath(proj.path, activeProject);
             const projectTerminals = terminals.filter((t) => isSamePath(t.project_path, proj.path));
             const projectWts = projectWorktrees?.[proj.path] || [];
-            const secondaryWorktrees = projectWts.filter((wt) => !wt.is_main);
+            const secondaryWts = secondaryWorktrees(proj.path, projectWts);
             const wtCollapsed = isWorktreesCollapsed(proj.path);
             const wtListId = `${railId}-worktrees-${projIdx}`;
             // A collapsed header flags when it hides the active worktree or terminal
-            const wtHidesActive = secondaryWorktrees.some(
+            const wtHidesActive = secondaryWts.some(
               (wt) =>
                 isSamePath(wt.path, activeProject) ||
                 terminals.some((t) => isSamePath(t.project_path, wt.path) && t.id === activeTerminalId)
@@ -438,7 +439,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                     )}
 
                     {/* Secondary Git Worktrees under this repo */}
-                    {secondaryWorktrees.length > 0 && (
+                    {secondaryWts.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-[#30363d]/40">
                         <div className="flex items-center justify-between px-1 py-1 text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider">
                           <button
@@ -461,7 +462,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                               <ChevronDown className="w-3 h-3 text-[#8b949e]" />
                             )}
                             <GitBranch className="w-3 h-3" />
-                            <span>Worktrees ({secondaryWorktrees.length})</span>
+                            <span>Worktrees ({secondaryWts.length})</span>
                             {wtCollapsed && wtHidesActive && (
                               <span
                                 className="w-1.5 h-1.5 rounded-full bg-[#58a6ff]"
@@ -486,7 +487,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
 
                         {!wtCollapsed && (
                           <div id={wtListId} className="space-y-1 mt-1">
-                          {secondaryWorktrees.map((wt) => {
+                          {secondaryWts.map((wt) => {
                             const branchName = worktreeRowName(wt);
                             const wtMenuTarget: RowMenuTarget = { kind: "worktree", repoPath: proj.path, path: wt.path };
                             const isWtActive = isSamePath(activeProject, wt.path);
