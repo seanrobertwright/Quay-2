@@ -27,7 +27,6 @@ const permission: PermissionItem = {
   input: { command: "git push origin ticket-5" },
   reason: "Push the fix",
   waitingSince: 100,
-  deferred: false,
 };
 
 function render(props: { permission: PermissionItem | null }) {

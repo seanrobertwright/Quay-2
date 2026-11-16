@@ -124,7 +124,6 @@ const permission = (requestId: string, terminalId: string, waitingSince: number)
   tool: "Bash",
   input: { command: "rm -rf dist" },
   waitingSince,
-  deferred: false,
 });
 
 test("a permission request is a Waiting on you row; picking it opens it, and the rows scroll past five", async () => {

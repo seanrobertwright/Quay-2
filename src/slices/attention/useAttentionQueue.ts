@@ -56,7 +56,7 @@ export type AnswerPermission = (
 export interface AttentionQueueView {
   /** Every waiting item, oldest first. */
   items: AttentionItem[];
-  /** The ids of every permission request still waiting, deferred or not, oldest first. */
+  /** The ids of every permission request still waiting, oldest first. */
   pendingPermissionIds: string[];
   /**
    * Sends the user's answer to the backend and clears the request once the backend takes it. When
