@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useImperativeHandle } from "react";
 import type { TerminalInfo, StageLayout, RunKind } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
@@ -760,13 +760,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ]);
 
   // A pie Palette slice runs its command by id, with the palette closed.
-  if (runnerRef) {
-    runnerRef.current = (id) => {
+  useImperativeHandle(
+    runnerRef,
+    () => (id: string) => {
       const command = allCommands.find((c) => c.id === id);
       command?.action();
       return command !== undefined;
-    };
-  }
+    },
+    [allCommands]
+  );
   const run = (command: CommandItem) => {
     command.action();
     onRanCommand?.({ id: command.id, title: command.title });
