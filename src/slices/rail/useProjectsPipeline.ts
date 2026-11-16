@@ -9,7 +9,7 @@ import type { PullRequestLocation } from "../companion/usePullRequestReadiness.t
 import type { CloseReason } from "../companion/ticketStatus.ts";
 import { terminalRepository } from "../companion/terminalRepository.ts";
 import { isSamePath } from "../../utils/paths.ts";
-import { pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
+import { blockerRef, pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
 import { pullRequestKey, usePipelineReads, type RepoTickets } from "./pipelineReads.ts";
 import type { ProjectsPipeline } from "./TicketPipeline.tsx";
 
@@ -37,7 +37,7 @@ function laneTicket(issue: GithubIssue | undefined): LaneInput["ticket"] {
   return {
     title: issue.title,
     assignee: issue.assignees[0]?.login ?? null,
-    blocker: blocker ? { repo: blocker.repoNwo || null, number: blocker.number } : null,
+    blocker: blocker ? blockerRef(blocker) : null,
   };
 }
 

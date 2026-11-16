@@ -4,7 +4,7 @@ import type { LinkRef, TerminalInfo } from "../terminal/types.ts";
 import { SplitButton } from "../companion/SplitButton.tsx";
 import type { TicketActions, TicketToStart } from "../companion/TicketView.tsx";
 import { CLOSE_REASONS, CLOSE_REASON_TEXT, type CloseReason } from "../companion/ticketStatus.ts";
-import { moreLabel, type LaneStepTone, type NeedsYou, type PipelineList, type PipelineLists, type TicketLane } from "./ticketLane.ts";
+import { blockerRef, moreLabel, type LaneStepTone, type NeedsYou, type PipelineList, type PipelineLists, type TicketLane } from "./ticketLane.ts";
 
 /** What the Projects panel's ticket pipeline reads and does. */
 export interface ProjectsPipeline {
@@ -169,7 +169,7 @@ const START_ITEMS = [
 /** One ticket in Ready to start or Blocked: its number and title, then Implement or its blocker, and Close. */
 const ListedTicket = ({ repoPath, issue, ready, pipeline }: { repoPath: string; issue: GithubIssue; ready: boolean; pipeline: ProjectsPipeline }) => {
   const ticket: TicketToStart = { repoPath, repo: null, number: issue.number, title: issue.title };
-  const blocker = issue.blockedBy[0];
+  const blocker = issue.blockedBy[0] ? blockerRef(issue.blockedBy[0]) : null;
   return (
     <li data-ticket={issue.number} className="flex items-center gap-1 min-w-0 py-0.5">
       <button
@@ -193,7 +193,7 @@ const ListedTicket = ({ repoPath, issue, ready, pipeline }: { repoPath: string; 
         />
       )}
       {!ready && blocker && (
-        <BlockerButton blocker={{ repo: blocker.repoNwo || null, number: blocker.number }} onOpen={() => pipeline.onOpenTicket(repoPath, { repo: blocker.repoNwo || null, number: blocker.number })} />
+        <BlockerButton blocker={blocker} onOpen={() => pipeline.onOpenTicket(repoPath, blocker)} />
       )}
       <CloseSelect number={issue.number} onClose={(reason) => pipeline.onClose(repoPath, { repo: null, number: issue.number }, reason)} />
     </li>

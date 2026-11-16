@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
 import { formatUtcTimestamp, startOfLocalDay } from "../../lib/dates.ts";
 import type { LinkSlot, TerminalLink } from "../terminal/types.ts";
-import { moreLabel, pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
+import { blockerRef, moreLabel, pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
 
 const MIN = 60_000;
 const NOW = Date.UTC(2026, 10, 15, 12, 0, 0);
@@ -194,4 +194,10 @@ test("Merged today counts tickets closed as completed since local midnight that 
   ];
   const lists = pipelineLists({ open: [], openComplete: true, closed, viewer: "you", linked: new Set([24]), now: NOW });
   assert.equal(lists.mergedToday, 2);
+});
+
+test("a blocker's link names its repository, or null when GitHub gave none", () => {
+  const ref = { number: 650, title: "", state: "OPEN", url: "" };
+  assert.deepEqual(blockerRef({ ...ref, repoNwo: "o/r" }), { repo: "o/r", number: 650 });
+  assert.deepEqual(blockerRef({ ...ref, repoNwo: "" }), { repo: null, number: 650 });
 });

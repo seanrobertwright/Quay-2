@@ -1,7 +1,10 @@
-import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
+import type { GithubIssue, GithubIssueRef, PullRequestReadiness } from "../github/types.ts";
 import { parseUtcTimestamp, startOfLocalDay } from "../../lib/dates.ts";
 import type { LinkRef, TerminalLink } from "../terminal/types.ts";
 import { readiness } from "../companion/readiness.ts";
+
+/** A blocker as a ticket link: its repository, or null when GitHub named none, and its number. */
+export const blockerRef = (blocker: GithubIssueRef): LinkRef => ({ repo: blocker.repoNwo || null, number: blocker.number });
 
 /** A lane's four steps, in the order the bar draws them. */
 export type LaneStepId = "ticket" | "terminal" | "pull-request" | "merged";
