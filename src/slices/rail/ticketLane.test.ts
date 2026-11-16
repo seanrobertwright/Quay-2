@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
-import { epochMsFromLocalParts, localPartsOf } from "../../lib/dates.ts";
+import { formatUtcTimestamp, startOfLocalDay } from "../../lib/dates.ts";
 import type { LinkSlot, TerminalLink } from "../terminal/types.ts";
 import { moreLabel, pipelineLists, ticketLane, type LaneInput } from "./ticketLane.ts";
 
@@ -178,8 +178,8 @@ test("Ready to start and Blocked list the operator's and unassigned open tickets
 });
 
 test("Merged today counts tickets closed as completed since local midnight that no terminal holds", () => {
-  const midnight = epochMsFromLocalParts({ ...localPartsOf(NOW), hour: 0, minute: 0 })!;
-  const iso = (ms: number) => new Date(ms).toISOString();
+  const midnight = startOfLocalDay(NOW);
+  const iso = formatUtcTimestamp;
   const closed = [
     issue(20, { state: "CLOSED", stateReason: "COMPLETED", closedAt: iso(midnight + MIN) }),
     issue(21, { state: "CLOSED", stateReason: "COMPLETED", closedAt: iso(midnight + 2 * MIN) }),

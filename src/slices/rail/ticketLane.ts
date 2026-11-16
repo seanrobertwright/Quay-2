@@ -1,5 +1,5 @@
 import type { GithubIssue, PullRequestReadiness } from "../github/types.ts";
-import { epochMsFromLocalParts, localPartsOf, parseUtcTimestamp } from "../../lib/dates.ts";
+import { parseUtcTimestamp, startOfLocalDay } from "../../lib/dates.ts";
 import type { LinkRef, TerminalLink } from "../terminal/types.ts";
 import { readiness } from "../companion/readiness.ts";
 
@@ -165,7 +165,7 @@ export function pipelineLists({ open, closed, viewer, linked, now }: PipelineLis
     .filter((i) => i.assignees.length === 0 || (viewer !== null && i.assignees.some((a) => a.login.toLowerCase() === viewer.toLowerCase())))
     .sort((a, b) => a.number - b.number);
   const isBlocked = (i: GithubIssue) => i.openBlockerCount > 0 || i.blockedBy.length > 0;
-  const midnight = epochMsFromLocalParts({ ...localPartsOf(now), hour: 0, minute: 0 }) ?? now;
+  const midnight = startOfLocalDay(now);
   const mergedToday = closed.filter((i) => {
     if (linked.has(i.number) || i.stateReason !== "COMPLETED" || !i.closedAt) return false;
     const at = parseUtcTimestamp(i.closedAt);
