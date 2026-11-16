@@ -79,8 +79,10 @@ export interface CtrlBActions {
   /** The Agents panel, on Session history. */
   openSessionHistory(): void;
   toggleTokenSpend(): void;
-  toggleArchonGraph(): void;
-  toggleFactoryStation(): void;
+  /** The Workflows panel. */
+  openWorkflows(): void;
+  /** The Workflows panel, with its engine strip focused. */
+  openEngineStrip(): void;
   togglePraxisBuilder(): void;
   /** The Topos view in the companion, for the selected terminal's repository. */
   openTopos(): void;
@@ -125,8 +127,8 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["h", "openSessionHistory"],
   ["t", "toggleTokenSpend"],
   ["$", "toggleTokenSpend"],
-  ["r", "toggleArchonGraph"],
-  ["f", "toggleFactoryStation"],
+  ["r", "openWorkflows"],
+  ["f", "openEngineStrip"],
   ["p", "togglePraxisBuilder"],
   ["c", "openTopos"],
   ["u", "toggleUpdateModal"],

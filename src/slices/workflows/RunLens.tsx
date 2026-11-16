@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Lens } from "../lens/Lens.tsx";
+import { focusTerminal } from "../terminal/terminalRequests.ts";
 import { ArchonRunMonitor } from "../archon/ArchonRunMonitor.tsx";
 import type { ArchonWorkflow } from "../archon/types.ts";
 import { WorkOrderDetail, type RunAction } from "../machina/WorkOrderDetail.tsx";
 import type { MachinaWorkOrder } from "../machina/types.ts";
 import { GraphRunDetail } from "../praxis-builder/GraphRunDetail.tsx";
-import { praxisCall, outcomeMessage } from "../praxis-builder/praxisHost.ts";
-import type { RunPageLookup } from "../praxis-builder/runsList.ts";
 import type { SpawnTerminalRequest, TerminalInfo } from "../terminal/types.ts";
+import { lookupGraphRunPage } from "./useWorkflowsData.ts";
 import { rowOf, type RunSource } from "./workflowRuns.ts";
 
 interface RunLensProps {
@@ -39,7 +39,15 @@ export const RunLens = ({ source, now, terminalId, replyStrip, onClose, ...rest 
   const row = rowOf(source, now);
   return (
     <Lens label="Run lens" title={`Run · ${row.name}`} terminalId={terminalId} onClose={onClose} replyStrip={replyStrip}>
-      <RunLensBody source={source} now={now} {...rest} />
+      <RunLensBody
+        source={source}
+        now={now}
+        {...rest}
+        onClose={() => {
+          onClose();
+          focusTerminal(terminalId);
+        }}
+      />
     </Lens>
   );
 };
@@ -54,7 +62,8 @@ const RunLensBody = ({
   onChanged,
   onSelectTerminal,
   onSpawnTerminal,
-}: Omit<RunLensProps, "terminalId" | "replyStrip" | "onClose">) => {
+  onClose,
+}: Omit<RunLensProps, "terminalId" | "replyStrip">) => {
   switch (source.engine) {
     case "archon":
       return (
@@ -80,15 +89,10 @@ const RunLensBody = ({
       );
     case "praxis": {
       const { workflow, run } = source;
-      const runPage = async (workOrderId: string): Promise<RunPageLookup> => {
-        const outcome = await praxisCall("praxis_host_graph_status", { projectPath, workOrderId }, new AbortController().signal);
-        if (outcome.kind !== "record") return { problem: outcomeMessage(outcome) };
-        const address = outcome.record.runPageAddress;
-        return typeof address === "string" ? { address } : { problem: "praxis gave no address for this run's page." };
-      };
+      const runPage = (workOrderId: string) => lookupGraphRunPage(projectPath, workOrderId);
       return (
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <GraphRunDetail projectPath={projectPath} workflow={workflow} workOrderId={run.workOrderId} row={run} unlisted="complete" shown runPage={runPage} />
+          <GraphRunDetail projectPath={projectPath} workflow={workflow} workOrderId={run.workOrderId} row={run} unlisted="complete" shown runPage={runPage} onClose={onClose} />
         </div>
       );
     }

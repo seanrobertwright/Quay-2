@@ -45,6 +45,8 @@ const VIEW_SAVE_DEBOUNCE_MS = 500;
 
 /** The chords whose targets the app owns: the swarm builder tab, the Agents panel and the companion. */
 export type AgentOpeners = Pick<CtrlBActions, "openSwarmBuilder" | "openSessionHistory" | "selectNextWaiting" | "openActivity">;
+/** What chords `r` and `f` open, owned by the app. */
+export type WorkflowOpeners = Pick<CtrlBActions, "openWorkflows" | "openEngineStrip">;
 
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -70,7 +72,6 @@ export function useWorkspace() {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
-  const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
   const [isPraxisBuilderOpen, setIsPraxisBuilderOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [claudeStats, setClaudeStats] = useState<ClaudeTokenStats | null>(null);
@@ -1261,6 +1262,9 @@ export function useWorkspace() {
   // history, the next waiting terminal and the companion's Activity view, which the app owns. The
   // app sets the openers each render.
   const agentOpeners = useRef<AgentOpeners | null>(null);
+  // Chords `r` and `f` open the Workflows panel, `f` with its engine strip focused. The app sets
+  // the openers each render.
+  const workflowOpeners = useRef<WorkflowOpeners | null>(null);
   // The repo-wide Diffs and the Pre-PR Audit open with the Source control panel, their home. The
   // chords and the app's palette and panel share these.
   const openSourceControl = useCallback(() => sourceControlOpener.current?.(), []);
@@ -1289,8 +1293,8 @@ export function useWorkspace() {
       openPrePrAudit,
       openSessionHistory: () => agentOpeners.current?.openSessionHistory(),
       toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
-      toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
-      toggleFactoryStation: () => setIsFactoryStationOpen((prev) => !prev),
+      openWorkflows: () => workflowOpeners.current?.openWorkflows(),
+      openEngineStrip: () => workflowOpeners.current?.openEngineStrip(),
       togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
       openTopos: () => toposOpener.current?.(),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
@@ -1442,6 +1446,7 @@ export function useWorkspace() {
     sourceControlOpener,
     toposOpener,
     agentOpeners,
+    workflowOpeners,
     openRepoDiffs,
     openPrePrAudit,
     projectWorktrees,
@@ -1458,8 +1463,6 @@ export function useWorkspace() {
     setIsTokenSpendOpen,
     isArchonGraphOpen,
     setIsArchonGraphOpen,
-    isFactoryStationOpen,
-    setIsFactoryStationOpen,
     isPraxisBuilderOpen,
     setIsPraxisBuilderOpen,
     isUpdateModalOpen,

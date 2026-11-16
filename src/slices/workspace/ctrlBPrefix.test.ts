@@ -48,8 +48,8 @@ function recordingActions(calls: string[]): CtrlBActions {
     openPrePrAudit: record("openPrePrAudit"),
     openSessionHistory: record("openSessionHistory"),
     toggleTokenSpend: record("toggleTokenSpend"),
-    toggleArchonGraph: record("toggleArchonGraph"),
-    toggleFactoryStation: record("toggleFactoryStation"),
+    openWorkflows: record("openWorkflows"),
+    openEngineStrip: record("openEngineStrip"),
     togglePraxisBuilder: record("togglePraxisBuilder"),
     openTopos: record("openTopos"),
     toggleUpdateModal: record("toggleUpdateModal"),
@@ -168,7 +168,7 @@ test("unmounting clears the pending prefix and its timer", () => {
 
 test("every Ctrl+Shift+B chord keeps its key and is swallowed", () => {
   // The chord table as it stood in useWorkspace before the prefix moved into this module, with
-  // the targets the shell redesign moved (#644: `s`, `h`, `q`, `m`).
+  // the targets the shell redesign moved (#644: `s`, `h`, `q`, `m`; #645: `r`, `f`).
   const chords: [string, string][] = [
     ["n", "openNewTerminal"],
     ["%", "splitHorizontal"],
@@ -183,8 +183,8 @@ test("every Ctrl+Shift+B chord keeps its key and is swallowed", () => {
     ["h", "openSessionHistory"],
     ["t", "toggleTokenSpend"],
     ["$", "toggleTokenSpend"],
-    ["r", "toggleArchonGraph"],
-    ["f", "toggleFactoryStation"],
+    ["r", "openWorkflows"],
+    ["f", "openEngineStrip"],
     ["p", "togglePraxisBuilder"],
     ["P", "togglePraxisBuilder"],
     ["c", "openTopos"],

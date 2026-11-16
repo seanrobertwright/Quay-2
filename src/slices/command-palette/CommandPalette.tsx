@@ -103,7 +103,12 @@ interface CommandPaletteProps {
   onSelectNextWaiting?: () => void;
   onOpenTokenSpend?: () => void;
   onOpenArchonGraph?: () => void;
-  onOpenFactoryStation?: () => void;
+  /** The Workflows panel: Archon runs, Machina Factory work orders and Praxis runs. */
+  onOpenWorkflows?: () => void;
+  /** The Factory's New work order stage tab. */
+  onNewWorkOrder?: () => void;
+  /** The Factory's Factory config stage tab. */
+  onOpenFactoryConfig?: () => void;
   onOpenPraxisBuilder?: () => void;
   onOpenTopos?: () => void;
   onOpenLogsFolder?: () => void;
@@ -144,7 +149,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectNextWaiting,
   onOpenTokenSpend,
   onOpenArchonGraph,
-  onOpenFactoryStation,
+  onOpenWorkflows,
+  onNewWorkOrder,
+  onOpenFactoryConfig,
   onOpenPraxisBuilder,
   onOpenTopos,
   onOpenLogsFolder,
@@ -498,20 +505,41 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Archon & SDD Spec Graph Inspector...",
         subtitle: "Inspect Archon workflow DAGs, SDD tasks, and ADR decision trails",
         icon: <ArchonIcon className="w-4 h-4" />,
-        shortcut: "Ctrl+Shift+B r",
         action: () => onOpenArchonGraph(),
       });
     }
 
-    if (onOpenFactoryStation) {
+    if (onOpenWorkflows) {
       items.push({
-        id: "action-factory-station",
+        id: "action-workflows",
         category: "Tools & Actions",
-        title: "Machina Factory Station...",
-        subtitle: "Machina, local: Quay's factory on this machine. Work orders, holds and Accept, all decided in Quay",
+        title: "Workflows panel",
+        subtitle: "Archon runs, Machina Factory work orders and Praxis runs by state: Needs you, Running, Recent",
         icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+Shift+B f",
-        action: () => onOpenFactoryStation(),
+        shortcut: "Ctrl+Shift+B r",
+        action: () => onOpenWorkflows(),
+      });
+    }
+
+    if (onNewWorkOrder) {
+      items.push({
+        id: "action-new-work-order",
+        category: "Tools & Actions",
+        title: "Machina Factory: New work order",
+        subtitle: "Machina, local: Quay's factory on this machine. Opens the composer in a stage tab",
+        icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
+        action: () => onNewWorkOrder(),
+      });
+    }
+
+    if (onOpenFactoryConfig) {
+      items.push({
+        id: "action-factory-config",
+        category: "Tools & Actions",
+        title: "Machina Factory: Factory config",
+        subtitle: "The active project's .machina/factory.json, in a stage tab",
+        icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
+        action: () => onOpenFactoryConfig(),
       });
     }
 
@@ -688,7 +716,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onSelectNextWaiting,
     onOpenTokenSpend,
     onOpenArchonGraph,
-    onOpenFactoryStation,
+    onOpenWorkflows,
+    onNewWorkOrder,
+    onOpenFactoryConfig,
     onOpenPraxisBuilder,
     onOpenTopos,
     onOpenLogsFolder,

@@ -6,8 +6,8 @@ import { listen } from "@tauri-apps/api/event";
 import type { ArchonRun, ArchonServiceStatus, ArchonWorkflow, RepoSpecSummary } from "../archon/types.ts";
 import type { MachinaStatus, MachinaWorkOrder } from "../machina/types.ts";
 import { hostConditionView } from "../praxis-builder/hostCondition.ts";
-import { praxisCall } from "../praxis-builder/praxisHost.ts";
-import { GRAPH_RUNS, RUNS_FIRST_LIMIT, type RunRow } from "../praxis-builder/runsList.ts";
+import { outcomeMessage, praxisCall } from "../praxis-builder/praxisHost.ts";
+import { GRAPH_RUNS, RUNS_FIRST_LIMIT, type RunPageLookup, type RunRow } from "../praxis-builder/runsList.ts";
 import type { DefinitionList } from "../praxis-builder/types.ts";
 import { useHostCondition } from "../praxis-builder/useHostCondition.ts";
 import { recentGraphs as orderRecent } from "./workflowPrefs.ts";
@@ -102,6 +102,7 @@ export function useWorkflowsData({ active, project, praxisProject, recentGraphs 
 
   useEffect(() => {
     if (!active) return;
+    const seq = engineSeq;
     void readEngines();
     const timer = window.setInterval(() => void readEngines(), ENGINE_POLL_MS);
     let unlisten: (() => void) | null = null;
@@ -115,7 +116,7 @@ export function useWorkflowsData({ active, project, praxisProject, recentGraphs 
       window.clearInterval(timer);
       unlisten?.();
       // A read still in flight is dropped when it lands.
-      engineSeq.current++;
+      seq.current++;
     };
   }, [active, readEngines]);
 
@@ -141,4 +142,12 @@ export function useWorkflowsData({ active, project, praxisProject, recentGraphs 
     praxis: { condition, graphs: orderRecent(lists.graphs, recentGraphs), runs: lists.runs },
   };
   return { data, now, refresh: readEngines };
+}
+
+/** Where graph run `workOrderId`'s page is on the Praxis host, from `praxis status`, for a run whose list entry gave none. */
+export async function lookupGraphRunPage(projectPath: string, workOrderId: string): Promise<RunPageLookup> {
+  const outcome = await praxisCall("praxis_host_graph_status", { projectPath, workOrderId }, new AbortController().signal);
+  if (outcome.kind !== "record") return { problem: outcomeMessage(outcome) };
+  const address = outcome.record.runPageAddress;
+  return typeof address === "string" ? { address } : { problem: "praxis gave no address for this run's page." };
 }
