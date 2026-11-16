@@ -78,7 +78,8 @@ export interface CtrlBActions {
   openPrePrAudit(): void;
   /** The Agents panel, on Session history. */
   openSessionHistory(): void;
-  toggleTokenSpend(): void;
+  /** The Project panel, with its This project group focused. */
+  openThisProject(): void;
   /** The Workflows panel. */
   openWorkflows(): void;
   /** The Workflows panel, with its engine strip focused. */
@@ -87,7 +88,8 @@ export interface CtrlBActions {
   openPraxisBuilder(): void;
   /** The Topos view in the companion, for the selected terminal's repository. */
   openTopos(): void;
-  toggleUpdateModal(): void;
+  /** The Project panel, with its Check for updates button focused. */
+  openCheckForUpdates(): void;
   /** Selects the next terminal waiting on the operator. */
   selectNextWaiting(): void;
   /** The Activity view in the companion, for the selected terminal. */
@@ -126,13 +128,13 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["i", "openSourceControl"],
   ["a", "openPrePrAudit"],
   ["h", "openSessionHistory"],
-  ["t", "toggleTokenSpend"],
-  ["$", "toggleTokenSpend"],
+  ["t", "openThisProject"],
+  ["$", "openThisProject"],
   ["r", "openWorkflows"],
   ["f", "openEngineStrip"],
   ["p", "openPraxisBuilder"],
   ["c", "openTopos"],
-  ["u", "toggleUpdateModal"],
+  ["u", "openCheckForUpdates"],
   ["q", "selectNextWaiting"],
   ["m", "openActivity"],
   ["o", "focusNextPane"],

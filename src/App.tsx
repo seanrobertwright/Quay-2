@@ -9,9 +9,10 @@ import { ModuleBar } from "./slices/shell/ModuleBar";
 import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
 import { askingTerminals, nextWaitingTerminal, statusRows } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
-import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
-import { placeholderLaunchers, type PlaceholderModule } from "./slices/shell/placeholderPanels";
-import { MODULE_NAMES, moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
+import { ModulePanel } from "./slices/shell/ModulePanel";
+import { ProjectPanel, type ProjectPanelFocus } from "./slices/shell/ProjectPanel";
+import { useShellPrefs } from "./slices/shell/useShellPrefs";
+import { moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS, type CompanionInspector, type CompanionShowRequest } from "./slices/companion/Companion";
 import { SlotLayer } from "./slices/stage/SlotLayer";
@@ -71,7 +72,7 @@ import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
-import { checkForUpdates } from "./slices/updater/updaterService";
+import { APP_CURRENT_VERSION, checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
 import { isSamePath, resolveRootRepo } from "./utils/paths";
 import { AlertCircle, Cpu, FileCode2, X, Zap } from "lucide-react";
@@ -169,6 +170,7 @@ export function App() {
     praxisBuilderOpener,
     agentOpeners,
     workflowOpeners,
+    projectOpeners,
     openRepoDiffs,
     openPrePrAudit,
   } = useWorkspace();
@@ -593,6 +595,8 @@ export function App() {
   );
   // localStorage is the WebView's, so the companion's width is kept per machine.
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
+  // The Project panel's Quay · every project settings, kept per machine in the same storage.
+  const { prefs: shellPrefs, setPref: setShellPref } = useShellPrefs(window.localStorage);
   const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
   const diffLens = companionLens.shown;
@@ -920,16 +924,21 @@ export function App() {
     [events, trailMessages, waitingItems, attentionQueue.answerPermission]
   );
 
-  const launchers = placeholderLaunchers({
-    // A worktree's settings are its project's, so the selected worktree resolves to its root repo.
-    openWorkspaceSettings: () => openWorkspaceSettings(activeRootRepo),
-    openInVsCode: () => void handleOpenInVsCode(activeProject),
-    openTokenSpend: () => setIsTokenSpendOpen(true),
-    hasProject: activeProject !== "",
-  });
-  const launcherPanel = (module: PlaceholderModule) => (
-    <LauncherPanel title={MODULE_NAMES[module]} launchers={launchers[module]} />
-  );
+  // Chords `t` and `$` open the Project panel on This project, `u` on Check for updates.
+  const [projectFocus, setProjectFocus] = useState<ProjectPanelFocus | null>(null);
+  const openProjectPanel = (target: ProjectPanelFocus["target"]) => {
+    setOpenModule("project");
+    setProjectFocus((prev) => ({ target, seq: (prev?.seq ?? 0) + 1 }));
+  };
+  projectOpeners.current = {
+    openThisProject: () => openProjectPanel("this-project"),
+    openCheckForUpdates: () => openProjectPanel("check-for-updates"),
+  };
+  const openUpdateModal = () => setIsUpdateModalOpen(true);
+
+  const openLogsFolder = () => {
+    invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0d1117] text-[#c9d1d9]">
@@ -987,7 +996,6 @@ export function App() {
               onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
               onRemoveWorktree={handleRemoveWorktree}
               onOpenTopos={openToposView}
-              onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
               onOpenInVsCode={handleOpenInVsCode}
               onRelaunchTerminal={relaunchTerminal}
               onToggleTerminalAsk={toggleTerminalLiveMode}
@@ -1036,7 +1044,23 @@ export function App() {
               start={startActions}
             />
           ),
-          project: launcherPanel("project"),
+          project: (
+            <ProjectPanel
+              projectName={activeProjectObj?.name ?? null}
+              hasProject={activeProject !== ""}
+              spendTodayUsd={spendTodayUsd}
+              appVersion={APP_CURRENT_VERSION}
+              prefs={shellPrefs}
+              focusRequest={projectFocus}
+              // A worktree's settings are its project's, so the selected worktree resolves to its root repo.
+              onOpenWorkspaceSettings={() => openWorkspaceSettings(activeRootRepo)}
+              onOpenInVsCode={() => void handleOpenInVsCode(activeProject)}
+              onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
+              onOpenLogsFolder={openLogsFolder}
+              onCheckForUpdates={openUpdateModal}
+              onSetPref={setShellPref}
+            />
+          ),
         }}
       />
 
@@ -1176,13 +1200,13 @@ export function App() {
         onOpenFactoryConfig={() => openTool(FACTORY_CONFIG_TOOL)}
         onOpenPraxisBuilder={openPraxisBuilder}
         onOpenTopos={openToposView}
-        onOpenLogsFolder={() => {
-          invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
-        }}
+        onOpenLogsFolder={openLogsFolder}
         onOpenInVsCode={handleOpenInVsCode}
         toposTarget={toposTarget}
         onToposRequest={requestTopos}
-        onCheckForUpdates={() => setIsUpdateModalOpen(true)}
+        onCheckForUpdates={openUpdateModal}
+        shellPrefs={shellPrefs}
+        onSetShellPref={setShellPref}
         onToggleLiveMode={
           activeTerminalId
             ? () => {
@@ -1201,10 +1225,6 @@ export function App() {
         onClose={closeWorkspaceSettings}
         onSave={async (path, envVars, defaultFlags) => {
           await updateProjectSettings(path, envVars, defaultFlags);
-        }}
-        onOpenUpdater={() => {
-          closeWorkspaceSettings();
-          setIsUpdateModalOpen(true);
         }}
       />
 
@@ -1289,7 +1309,7 @@ export function App() {
         onFixWithClaude={handleFixAuditWithClaude}
       />
 
-      {/* Claude Live Token Spend & Background Turn Chime Modal (Ctrl+Shift+B t) */}
+      {/* Token spend window, from the Project panel, the module bar's spend ticker and the palette */}
       <TokenSpendModal
         isOpen={isTokenSpendOpen}
         stats={claudeStats}
@@ -1349,7 +1369,7 @@ export function App() {
         onSelectTerminal={selectTerminal}
       />
 
-      {/* Software Update Checker & Installer Modal (Ctrl+Shift+B u) */}
+      {/* Software Update Checker & Installer Modal, from the Project panel's Check for updates and the palette */}
       <UpdateModal
         isOpen={isUpdateModalOpen}
         onClose={() => setIsUpdateModalOpen(false)}

@@ -179,7 +179,8 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+Shift+B I` | **Source control** | Open the Source control panel's pull requests and issues |
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |
 | `Ctrl+Shift+B H` | **Session History** | Search and resume past Claude sessions in the Agents panel |
-| `Ctrl+Shift+B T` | **Token Spend** | View token meter & turn chime settings |
+| `Ctrl+Shift+B T` | **Project panel** | Open the Project panel on This project: workspace settings, Open in VS Code, token spend and the logs folder (`Ctrl+Shift+B $` too) |
+| `Ctrl+Shift+B U` | **Check for updates** | Open the Project panel with Check for updates focused |
 | `Ctrl+Shift+B R` | **Workflows** | Open the Workflows panel: Archon runs, Machina work orders and Praxis runs |
 | `Ctrl+Shift+B F` | **Engine strip** | Open the Workflows panel with its engine strip focused: Archon, the Factory switch and Halt, Praxis sign-in |
 | `Ctrl+Shift+B P` | **Praxis Builder** | Browse the project's Praxis definitions and graphs |

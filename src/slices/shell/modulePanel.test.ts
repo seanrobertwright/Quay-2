@@ -8,7 +8,7 @@ import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ModuleId } from "./modules.ts";
 
-const { ModulePanel, LauncherPanel } = await import("./ModulePanel.tsx");
+const { ModulePanel, LauncherList } = await import("./ModulePanel.tsx");
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
 afterEach(() => {
@@ -78,11 +78,12 @@ test("a module's panel keeps its state while another module shows or the panel f
   assert.deepEqual(shown(), ["Clicked 1"]);
 });
 
-test("a launcher panel lists its tools under its title, each opening its tool", () => {
+test("a launcher list names its tools, each opening its tool", () => {
   const opened: string[] = [];
   const container = mount(
-    createElement(LauncherPanel, {
-      title: "Workflows",
+    createElement(LauncherList, {
+      label: "Workflows",
+      className: "",
       launchers: [
         { id: "archon", label: "Archon & SDD Graph", shortcut: "Ctrl+Shift+B r", icon: null, onClick: () => opened.push("archon") },
         { id: "machina", label: "Machina", icon: null, onClick: () => opened.push("machina") },
@@ -90,7 +91,7 @@ test("a launcher panel lists its tools under its title, each opening its tool", 
       ],
     }),
   );
-  assert.equal(container.querySelector("h2")?.textContent, "Workflows");
+  assert.equal(container.querySelector("ul")?.getAttribute("aria-label"), "Workflows");
   const buttons = [...container.querySelectorAll("button")] as HTMLButtonElement[];
   assert.deepEqual(buttons.map((b) => b.getAttribute("aria-label")), ["Archon & SDD Graph", "Machina", "Open in VS Code"]);
   // The shortcut describes the button rather than running into its name.

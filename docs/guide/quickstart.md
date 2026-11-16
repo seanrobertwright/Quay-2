@@ -88,6 +88,6 @@ Every Claude Code session launched inside Quay 2 is automatically connected to t
 
 ## 7. Tracking Spend & Audio Chimes (`Ctrl+Shift+B T`)
 
-1. Check the status line at the bottom of the **Projects** panel to see your live all-time token spend.
-2. Press `Ctrl+Shift+B T` to open the **Token Spend & Audio Settings** dialog.
-3. Inspect model breakdowns (Opus 5.5, Sonnet 5.5, Haiku 5.5) and enable subtle audio chimes to notify you when long-running agent turns finish while you work in other applications.
+1. Check the spend ticker at the bottom of the module bar to see today's token spend.
+2. Press `Ctrl+Shift+B T` to open the **Project** panel, and pick **Token spend** to open the token spend window.
+3. Inspect model breakdowns (Opus 5.5, Sonnet 5.5, Haiku 5.5). Switch **Sound chime** on in the panel's **Quay · every project** group to hear a chime when long-running agent turns finish while you work in other applications.

@@ -77,8 +77,7 @@ The [CLI flags reference](../reference/cli-flags.md#how-a-command-line-is-built)
 
 Quay 2 can play a chime when an agent needs you:
 
-1. Press `Ctrl+Shift+B T` to open **Token Spend & Audio Chime Meter**.
-2. Under **Background Turn Chimes**, click the button to switch between **Chimes Active** and **Muted**.
-3. While chimes are active, set the **Volume** slider and try the sounds with **Test Completion Chime** and **Test Attention Ping**.
+1. Open the **Project** panel from the module bar, and switch **Sound chime** on or off under **Quay · every project**. The command palette's `Preferences: Sound chime` command does the same.
+2. While the chime is on, open **Token spend** from the panel's **This project** group to set the **Volume** slider and try the sounds with **Test Completion Chime** and **Test Attention Ping**.
 
 The completion chime plays when a Claude Code or Codex turn ends, as reported by Claude Code's event-bridge plugin or Codex's turn-end helper. The attention chime plays when Claude Code asks for a tool approval or raises any other notification that blocks it, such as a question in a dialog. It doesn't play for Claude Code's reminder that it has sat idle at its prompt, or for its sign-in notice.

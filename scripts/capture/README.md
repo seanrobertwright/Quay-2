@@ -180,7 +180,7 @@ pinned values and annotations. Selectors are Playwright selectors.
       "marker": "03-reply",
       "actions": [{ "press": "Enter", "in": ".xterm-helper-textarea >> nth=0" }],
       "realTime": true,
-      "shots": [{ "mask": [".elapsed"], "pin": [{ "selector": "button[aria-label=\"Token Spend & Chimes\"] >> text=$0.00", "text": "$0.42" }] }]
+      "shots": [{ "mask": [".elapsed"], "pin": [{ "selector": "button[aria-label^=\"Today's spend\"] >> text=$0.00", "text": "$0.42" }] }]
     },
     {
       "marker": "04-trail",

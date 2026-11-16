@@ -52,10 +52,11 @@ import { VsCodeIcon } from "../workspace/VsCodeIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
 import { isSamePath } from "../../utils/paths";
 import { toposPaletteEntries, type ToposRequestKind } from "../git/topos/toposPalette";
+import { preferenceCommands, type SetShellPref, type ShellPrefs } from "../shell/shellPrefs";
 
 export interface CommandItem {
   id: string;
-  category: "Terminals" | "Workspaces" | "Layouts" | "Swarms" | "Tools & Actions";
+  category: "Terminals" | "Workspaces" | "Layouts" | "Swarms" | "Tools & Actions" | "Preferences";
   title: string;
   subtitle?: string;
   icon: React.ReactNode;
@@ -117,6 +118,9 @@ interface CommandPaletteProps {
   toposTarget?: { path: string } | null;
   onToposRequest?: (kind: ToposRequestKind) => void;
   onCheckForUpdates?: () => void;
+  /** The shell settings, each a `Preferences: …` command when set with `onSetShellPref`. */
+  shellPrefs?: ShellPrefs;
+  onSetShellPref?: SetShellPref;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -159,6 +163,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   toposTarget = null,
   onToposRequest,
   onCheckForUpdates,
+  shellPrefs,
+  onSetShellPref,
   onToggleLiveMode,
   onAddProject,
 }) => {
@@ -490,10 +496,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       items.push({
         id: "action-token-spend",
         category: "Tools & Actions",
-        title: "Token Spend & Audio Turn Chimes...",
-        subtitle: "View live token usage, cache savings, and audio notification settings",
+        title: "Token Spend...",
+        subtitle: "View live token usage, cache savings and chime volume",
         icon: <Coins className="w-4 h-4 text-[#e3b341]" />,
-        shortcut: "Ctrl+Shift+B t",
         action: () => onOpenTokenSpend(),
       });
     }
@@ -602,14 +607,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
+    // The Project panel's Quay · every project settings: one command per value, each one pick.
+    if (shellPrefs && onSetShellPref) {
+      for (const command of preferenceCommands(shellPrefs)) {
+        items.push({
+          id: command.id,
+          category: "Preferences",
+          title: command.title,
+          subtitle: "Quay · every project, in the Project panel",
+          icon: <Settings className="w-4 h-4 text-[#8b949e]" />,
+          badge: command.current ? "Current" : undefined,
+          action: () => onSetShellPref(command.key, command.value),
+        });
+      }
+    }
+
     if (onCheckForUpdates) {
       items.push({
         id: "action-check-updates",
-        category: "Tools & Actions",
-        title: "Check for Updates...",
+        category: "Preferences",
+        title: "Preferences: Check for updates...",
         subtitle: `Quay v${APP_CURRENT_VERSION} — check GitHub releases and updater`,
         icon: <ArrowUpCircle className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+Shift+B u",
         action: () => onCheckForUpdates(),
       });
     }
@@ -726,6 +745,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     toposTarget,
     onToposRequest,
     onCheckForUpdates,
+    shellPrefs,
+    onSetShellPref,
     onToggleLiveMode,
     onAddProject,
     onSelectProject,

@@ -8,7 +8,8 @@ export const MAX_COMPANION_WIDTH = 560;
 import type { CompanionViewId } from "./companionViews.ts";
 
 const WIDTH_KEY = "quay_companion_width";
-const OPENS_ON_KEY = "quay_companion_opens_on";
+/** Where the Companion opens on setting is stored. */
+export const OPENS_ON_KEY = "quay_companion_opens_on";
 
 /** The companion views the Companion opens on setting can name. */
 export const OPENS_ON_VALUES = ["pull-request", "ticket", "activity"] as const satisfies readonly CompanionViewId[];

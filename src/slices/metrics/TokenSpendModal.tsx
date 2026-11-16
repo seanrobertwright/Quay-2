@@ -4,7 +4,6 @@ import {
   playTurnCompletedChime,
   playAttentionChime,
   isChimeEnabled,
-  setChimeEnabled,
   getChimeVolume,
   setChimeVolume,
 } from "./audioChime";
@@ -34,7 +33,6 @@ export const TokenSpendModal: FC<TokenSpendModalProps> = ({
   onRefresh,
   onClose,
 }) => {
-  const [chimeEnabled, setChimeState] = useState(isChimeEnabled());
   const [volume, setVolState] = useState(getChimeVolume());
 
   const [windowKey, setWindowKey] = useState<UsageWindowKey>("today");
@@ -59,14 +57,8 @@ export const TokenSpendModal: FC<TokenSpendModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleToggleChime = () => {
-    const next = !chimeEnabled;
-    setChimeEnabled(next);
-    setChimeState(next);
-    if (next) {
-      playTurnCompletedChime();
-    }
-  };
+  // Sound chime is set in the Project panel; read it on each opening.
+  const chimeEnabled = isChimeEnabled();
 
   const handleVolumeChange = (newVol: number) => {
     setChimeVolume(newVol);
@@ -273,18 +265,10 @@ export const TokenSpendModal: FC<TokenSpendModalProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleToggleChime}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
-                  chimeEnabled
-                    ? "bg-[#3fb950]/15 text-[#3fb950] border-[#3fb950]/40 hover:bg-[#3fb950]/25"
-                    : "bg-[#21262d] text-[#8b949e] border-[#30363d] hover:text-white"
-                }`}
-              >
-                {chimeEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-                <span>{chimeEnabled ? "Chimes Active" : "Muted"}</span>
-              </button>
+              <span className="flex items-center gap-1.5 text-xs text-[#8b949e]">
+                {chimeEnabled ? <Volume2 className="w-3.5 h-3.5 text-[#3fb950]" aria-hidden="true" /> : <VolumeX className="w-3.5 h-3.5" aria-hidden="true" />}
+                <span>{chimeEnabled ? "On" : "Off"} · set Sound chime in the Project panel</span>
+              </span>
             </div>
 
             {chimeEnabled && (

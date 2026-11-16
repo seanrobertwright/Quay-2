@@ -37,14 +37,10 @@ Quay 2 calculates costs using official Anthropic API pricing tiers:
 
 The bottom of the module bar shows today's spend, counted over the UTC day. Click it to open the same telemetry modal.
 
-## Live Spend Pill in the Projects Panel
+## Spend in the Module Bar and the Project Panel
 
-At the bottom of the Projects panel, Quay 2 displays your live cumulative spend:
-```text
-[🪙 $42.18]   ^⇧b n · ^⇧b 1..9   🟢 ConPTY
-```
-Clicking the spend pill (or pressing `Ctrl+Shift+B T`) opens the detailed telemetry modal, featuring:
+The spend ticker at the bottom of the module bar shows today's spend. Clicking it, or **Token spend** in the Project panel's **This project** group (`Ctrl+Shift+B T` opens the panel there), opens the detailed telemetry window, featuring:
 - Total sessions scanned.
 - Total input, output, and cached token counts.
 - Cost breakdown by model.
-- Turn audio chime configuration.
+- The chime's volume and test sounds. The chime itself is switched on or off with **Sound chime** in the Project panel.
