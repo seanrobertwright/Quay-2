@@ -1,7 +1,8 @@
-// The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
-// definitions and shows a graph on the canvas, with its validation problems, where it can
-// be edited, undone and saved. The list creates, renames and deletes definitions (#222).
-// Closing only hides it, so each project's session, drafts and undo histories included,
+// The Praxis Builder (#221), drawn in its own stage tab (#646): it lists the active project's
+// `.praxis/` definitions in a list that folds to a rail, and shows a graph on the canvas, with its
+// validation problems, where it can be edited, undone and saved; the graph's inspector draws in the
+// companion. The list creates, renames and deletes definitions (#222).
+// Closing its tab only hides it, so each project's session, drafts and undo histories included,
 // survives until Quay quits. Quitting with unsaved drafts asks first.
 // The canvas works from the keyboard alone (#264): Tab reaches the nodes, then the edges, and
 // a polite live region announces undo, redo, paste, delete and save. A graph's row expands to
@@ -2175,7 +2176,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     type="button"
                     onClick={saveOpen}
                     // Not `disabled`: that would blur the focused button and send keys to
-                    // the app behind the builder. `saveOpen` ignores presses while saving.
+                    // the rest of the shell. `saveOpen` ignores presses while saving.
                     aria-disabled={saving}
                     aria-keyshortcuts={ariaKeyShortcuts("save")}
                     title={`Save (${shortcutLabel("save")})`}

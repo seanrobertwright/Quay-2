@@ -83,7 +83,8 @@ export interface CtrlBActions {
   openWorkflows(): void;
   /** The Workflows panel, with its engine strip focused. */
   openEngineStrip(): void;
-  togglePraxisBuilder(): void;
+  /** The Praxis Builder stage tab, opened and brought in front of the terminals. */
+  openPraxisBuilder(): void;
   /** The Topos view in the companion, for the selected terminal's repository. */
   openTopos(): void;
   toggleUpdateModal(): void;
@@ -129,7 +130,7 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["$", "toggleTokenSpend"],
   ["r", "openWorkflows"],
   ["f", "openEngineStrip"],
-  ["p", "togglePraxisBuilder"],
+  ["p", "openPraxisBuilder"],
   ["c", "openTopos"],
   ["u", "toggleUpdateModal"],
   ["q", "selectNextWaiting"],

@@ -11,9 +11,11 @@ import { askingTerminals, nextWaitingTerminal, statusRows } from "./slices/shell
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers, type PlaceholderModule } from "./slices/shell/placeholderPanels";
-import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
+import { MODULE_NAMES, moduleAfterUnfold, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
-import { Companion, COMPANION_VIEWS, type CompanionShowRequest } from "./slices/companion/Companion";
+import { Companion, COMPANION_VIEWS, type CompanionInspector, type CompanionShowRequest } from "./slices/companion/Companion";
+import { SlotLayer } from "./slices/stage/SlotLayer";
+import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
 import { messageEntryId } from "./slices/companion/activity";
 import { AgentsPanel, type SessionHistoryRequest } from "./slices/agents/AgentsPanel";
@@ -90,6 +92,7 @@ interface WorkPlace {
 const SWARM_BUILDER_TOOL = "swarm-builder";
 const NEW_WORK_ORDER_TOOL = "new-work-order";
 const FACTORY_CONFIG_TOOL = "factory-config";
+const PRAXIS_BUILDER_TOOL = "praxis-builder";
 
 export function App() {
   const {
@@ -147,8 +150,6 @@ export function App() {
     setIsTokenSpendOpen,
     isArchonGraphOpen,
     setIsArchonGraphOpen,
-    isPraxisBuilderOpen,
-    setIsPraxisBuilderOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,
@@ -165,6 +166,7 @@ export function App() {
     diffLensOpener,
     sourceControlOpener,
     toposOpener,
+    praxisBuilderOpener,
     agentOpeners,
     workflowOpeners,
     openRepoDiffs,
@@ -254,6 +256,10 @@ export function App() {
     [activeProject, projects, projectWorktrees]
   );
 
+  // The open stage tabs, in the order they opened, and the one in front of the terminals.
+  const [openToolIds, setOpenToolIds] = useState<readonly string[]>([]);
+  const [frontToolId, setFrontToolId] = useState<string | null>(null);
+
   // The builder works on the active project when it is a registered project or one of its
   // worktrees, the same folders the backend's praxis commands accept. Topos targets the same.
   const builderProject = useMemo<BuilderProject | null>(() => {
@@ -265,7 +271,6 @@ export function App() {
     }
     return null;
   }, [projects, projectWorktrees, activeProject]);
-  const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
   // The diff lens, the Topos lens and the run lens open over the stage one at a time: opening one
   // closes the others.
   const companionLens = useDiffLens(activeTerminalId);
@@ -325,10 +330,10 @@ export function App() {
     [runInShellTerminal, dismissTopos]
   );
   // The Praxis host chip's actions (#448): `praxis setup`, `serve` or `login` typed in for the
-  // operator to answer. The builder hides so the terminal shows.
+  // operator to answer. The terminals come back in front of the builder's tab so the terminal shows.
   const runInPraxisTerminal = useCallback(
-    (cwd: string, argv: string[]) => runInShellTerminal(cwd, argv, "praxis", () => setIsPraxisBuilderOpen(false)),
-    [runInShellTerminal, setIsPraxisBuilderOpen]
+    (cwd: string, argv: string[]) => runInShellTerminal(cwd, argv, "praxis", () => setFrontToolId(null)),
+    [runInShellTerminal]
   );
   // A conflict handed to a new agent (#392) starts one in the worktree; Topos stays open on the hand-off.
   const startToposAgent = useCallback(
@@ -677,10 +682,8 @@ export function App() {
     openToposView();
   };
 
-  // The open stage tabs, in the order they opened, and the one in front of the terminals. Picking
-  // a terminal anywhere brings the terminals back in front; a tab stays open until closed.
-  const [openToolIds, setOpenToolIds] = useState<readonly string[]>([]);
-  const [frontToolId, setFrontToolId] = useState<string | null>(null);
+  // Picking a terminal anywhere brings the terminals back in front of a stage tab; a tab stays open
+  // until closed.
   const openTool = (id: string) => {
     setOpenToolIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
     setFrontToolId(id);
@@ -690,6 +693,26 @@ export function App() {
     setFrontToolId((front) => (front === id ? null : front));
   }, []);
   const openSwarmBuilder = () => openTool(SWARM_BUILDER_TOOL);
+  // The Praxis Builder's stage tab (chord `p`). The builder is drawn once and never unmounted, so
+  // its drafts and undo histories last while its tab is closed; it lays over its tab's slot.
+  const openPraxisBuilder = () => openTool(PRAXIS_BUILDER_TOOL);
+  praxisBuilderOpener.current = openPraxisBuilder;
+  const closePraxisBuilder = useCallback(() => closeTool(PRAXIS_BUILDER_TOOL), [closeTool]);
+  const [builderSlot, setBuilderSlot] = useState<HTMLElement | null>(null);
+  const [inspectorSlot, setInspectorSlot] = useState<HTMLElement | null>(null);
+  const builderInFront = frontToolId === PRAXIS_BUILDER_TOOL;
+  const companionInspector = useMemo<CompanionInspector | null>(
+    () => (builderInFront ? { slot: setInspectorSlot } : null),
+    [builderInFront]
+  );
+  // While the builder's tab is in front the panel folds, so the canvas has the stage's width; an
+  // icon on the module bar still opens a panel on demand. Leaving the tab brings back the panel it
+  // folded, and the companion its view from before.
+  const [fold, setFold] = useState<{ inFront: boolean; folded: ModuleId | null }>({ inFront: false, folded: null });
+  if (builderInFront !== fold.inFront) {
+    setFold({ inFront: builderInFront, folded: builderInFront ? openModule : null });
+    setOpenModule(builderInFront ? null : moduleAfterUnfold(fold.folded, openModule));
+  }
   const closeSwarmBuilder = useCallback(() => closeTool(SWARM_BUILDER_TOOL), [closeTool]);
   // `select` with the terminals brought back in front of any tool tab
   const inFront = (select: (id: string) => void) => (id: string) => {
@@ -822,7 +845,7 @@ export function App() {
     onAgentTask: (task) => void startSpecTask(task).catch(console.error),
     onAllTasks: () => openArchonGraph("sdd"),
     onOpenGraph: (id) => {
-      setIsPraxisBuilderOpen(true);
+      openPraxisBuilder();
       praxisBuilder.current?.openGraph(id);
     },
     onNewWorkOrder: () => openTool(NEW_WORK_ORDER_TOOL),
@@ -877,6 +900,12 @@ export function App() {
           onOpenConfig={() => openTool(FACTORY_CONFIG_TOOL)}
         />
       ),
+    },
+    [PRAXIS_BUILDER_TOOL]: {
+      label: "Praxis Builder",
+      icon: <CanvasHandlesIcon className="w-3.5 h-3.5" />,
+      // The slot the builder lays over; the builder itself is drawn below, never unmounted.
+      content: <div ref={setBuilderSlot} data-praxis-builder-slot className="flex-1 min-h-0" />,
     },
     [FACTORY_CONFIG_TOOL]: {
       label: "Factory config",
@@ -1093,6 +1122,7 @@ export function App() {
         activity={companionActivity}
         showRequest={companionRequest}
         run={companionRun}
+        inspector={companionInspector}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
@@ -1144,7 +1174,7 @@ export function App() {
         onOpenWorkflows={openWorkflows}
         onNewWorkOrder={() => openTool(NEW_WORK_ORDER_TOOL)}
         onOpenFactoryConfig={() => openTool(FACTORY_CONFIG_TOOL)}
-        onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
+        onOpenPraxisBuilder={openPraxisBuilder}
         onOpenTopos={openToposView}
         onOpenLogsFolder={() => {
           invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
@@ -1280,10 +1310,13 @@ export function App() {
         onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
       />
 
-      {/* Praxis Builder (Ctrl+Shift+B p): hidden, never unmounted, when closed */}
+      {/* Praxis Builder (Ctrl+Shift+B p), over its stage tab's slot while the tab is in front:
+          hidden, never unmounted, otherwise. Its inspector draws in the companion's Inspector view. */}
+      <SlotLayer slot={builderInFront ? builderSlot : null} layerClass="z-30 flex" data={{ "data-praxis-builder-layer": true }}>
       <PraxisBuilderModal
         ref={praxisBuilder}
-        isOpen={isPraxisBuilderOpen}
+        isOpen={builderInFront}
+        inspectorSlot={builderInFront ? inspectorSlot : undefined}
         project={builderProject}
         onClose={closePraxisBuilder}
         onAddProject={() => setIsAddProjectOpen(true)}
@@ -1291,6 +1324,7 @@ export function App() {
         onRunInTerminal={runInPraxisTerminal}
         onGraphOpened={onGraphOpened}
       />
+      </SlotLayer>
 
       {/* Topos git cockpit (Ctrl+Shift+B c), over the companion's Topos view or in the Topos lens:
           hidden, never unmounted, when neither shows */}

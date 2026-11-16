@@ -8,9 +8,17 @@ The **Praxis Builder** lets you author those definitions in Quay 2 as files in y
 
 ## Opening the builder (`Ctrl+Shift+B P`)
 
-Press `Ctrl+Shift+B P`, or choose **Praxis Builder...** in the command palette, to toggle the builder for the active project. It opens as a near full-window dialog with a list of the project's definitions on the left and the open definition beside it.
+Press `Ctrl+Shift+B P`, choose **Praxis Builder...** in the command palette, or pick a recent graph under **Start** in the Workflows panel to open the builder for the active project. It opens as a stage tab, marked with the Canvas Handles icon, and fills the stage beside the companion.
 
-Closing the builder only hides it. Each project keeps its open definition, its unsaved drafts and its undo history for as long as Quay runs, so the builder reopens where you left it. `Escape` hides the builder once there is nothing smaller for it to close: the shortcuts help, **Go to node**, a connection being drawn, a focused field or the selection.
+While the builder's tab is in front:
+
+- **The panel folds**, so the canvas gets the stage's width: about 1,490 px on a 1920 px window. The module bar and its badges stay, and a module icon still opens its panel on demand.
+- **The companion shows the Inspector** for the selected node, in place of an inspector beside the canvas.
+- **The definitions list folds to a 40 px rail** at the stage's left edge. The rail's button opens the list over the canvas, and picking a definition closes it again.
+
+Leaving the tab, by picking a terminal or another tab, brings back the panel it folded, unless you opened one meanwhile, and the companion's view from before.
+
+Closing the tab only hides the builder. Each project keeps its open definition, its unsaved drafts and its undo history for as long as Quay runs, so the builder reopens where you left it. `Escape` closes the tab once there is nothing smaller for it to close: the shortcuts help, **Go to node**, a connection being drawn, a focused field or the selection.
 
 The list groups definitions by kind: **Graphs** (each with its graph bindings nested under it), **Contracts**, **Grants**, **Triggers**, **Workflow templates** and **Graph workflows**.
 
@@ -56,7 +64,7 @@ The palette strip on the canvas holds the node kinds, grouped like this:
 - **Add a node** by dragging a kind from the palette onto the canvas.
 - **Add a dependency** by dragging from one card's handle to another. Dependencies are the node's `dependsOn`.
 - **Branch a decision** by dragging from a `DECISION`'s green `then` or red `else` handle. That sets the branch in its config and the target's `dependsOn` together.
-- **The inspector** beside the canvas edits the selected node: its id, its kind's config, its `dependsOn`, and its `inputSchema` and `outputSchema`. Each schema is a table of field name, type and required, or raw JSON for a schema the table can't show. The inspector shows the problems in each field and can delete the node.
+- **The inspector**, in the companion while the builder is in front, edits the selected node: its id, its kind's config, its `dependsOn`, and its `inputSchema` and `outputSchema`. Each schema is a table of field name, type and required, or raw JSON for a schema the table can't show. The inspector shows the problems in each field and can delete the node.
 - **Renaming or deleting a node** updates every `dependsOn`, decision branch and layout entry that names it. A rename also rewrites the node's key in every graph binding of the graph. A delete leaves the node's binding entries in place until a retarget drops them.
 
 ### Problems

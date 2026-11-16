@@ -10,7 +10,9 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-const { PraxisBuilderModal } = await import("./PraxisBuilderModal.tsx");
+const { PraxisBuilderModal, DEFINITIONS_RAIL_WIDTH } = await import("./PraxisBuilderModal.tsx");
+const { MODULE_BAR_WIDTH } = await import("../shell/ModuleBar.tsx");
+const { DEFAULT_COMPANION_WIDTH } = await import("../companion/companionPrefs.ts");
 
 const PROJECT = "C:/project";
 const GRAPH = "release-review";
@@ -157,5 +159,19 @@ test("with no graph open, the inspector slot says what the Inspector will show",
     assert.match(slot.textContent ?? "", /Open a graph and select a node to inspect it\./);
   } finally {
     slot.remove();
+  }
+});
+
+test("with the panel folded and the inspector in the companion, the canvas is about as wide as the spec's figures", () => {
+  // The spec's Stage section: about 1,492 px at 1920, 1,172 at 1600 and 852 at 1280. The canvas
+  // has the window less the module bar, the companion at its default width, and the rail with its
+  // 1 px border.
+  const canvas = (windowWidth: number) => windowWidth - MODULE_BAR_WIDTH - DEFAULT_COMPANION_WIDTH - DEFINITIONS_RAIL_WIDTH - 1;
+  for (const [windowWidth, spec] of [
+    [1920, 1492],
+    [1600, 1172],
+    [1280, 852],
+  ]) {
+    assert.ok(Math.abs(canvas(windowWidth) - spec) <= 2, `${canvas(windowWidth)} px at ${windowWidth}, not about ${spec}`);
   }
 });

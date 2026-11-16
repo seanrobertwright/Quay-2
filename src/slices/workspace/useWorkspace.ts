@@ -72,7 +72,6 @@ export function useWorkspace() {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
-  const [isPraxisBuilderOpen, setIsPraxisBuilderOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [claudeStats, setClaudeStats] = useState<ClaudeTokenStats | null>(null);
 
@@ -1258,6 +1257,8 @@ export function useWorkspace() {
   // Chord `c` opens the Topos view in the companion for the selected terminal, which the app owns.
   // The app sets the opener each render.
   const toposOpener = useRef<(() => void) | null>(null);
+  // The app opens the Praxis Builder stage tab, whose tabs it owns.
+  const praxisBuilderOpener = useRef<(() => void) | null>(null);
   // Chords `s`, `h`, `q` and `m` open the swarm builder stage tab, the Agents panel's Session
   // history, the next waiting terminal and the companion's Activity view, which the app owns. The
   // app sets the openers each render.
@@ -1295,7 +1296,7 @@ export function useWorkspace() {
       toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
       openWorkflows: () => workflowOpeners.current?.openWorkflows(),
       openEngineStrip: () => workflowOpeners.current?.openEngineStrip(),
-      togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
+      openPraxisBuilder: () => praxisBuilderOpener.current?.(),
       openTopos: () => toposOpener.current?.(),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
       selectNextWaiting: () => agentOpeners.current?.selectNextWaiting(),
@@ -1445,6 +1446,7 @@ export function useWorkspace() {
     diffLensOpener,
     sourceControlOpener,
     toposOpener,
+    praxisBuilderOpener,
     agentOpeners,
     workflowOpeners,
     openRepoDiffs,
@@ -1463,8 +1465,6 @@ export function useWorkspace() {
     setIsTokenSpendOpen,
     isArchonGraphOpen,
     setIsArchonGraphOpen,
-    isPraxisBuilderOpen,
-    setIsPraxisBuilderOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,
