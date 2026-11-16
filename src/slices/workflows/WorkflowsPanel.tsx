@@ -6,7 +6,7 @@ import { formatUsd } from "../machina/format.ts";
 import type { FactoryLoopMode } from "../machina/types.ts";
 import { hostConditionView } from "../praxis-builder/hostCondition.ts";
 import { factorySpendToday, panelSections, rowOf } from "./workflowRuns.ts";
-import type { Engine, RunSource, SegmentState, WorkflowRunRow } from "./workflowRuns.ts";
+import type { Engine, RunSource, Segment, SegmentState, WorkflowRunRow } from "./workflowRuns.ts";
 import { runSources, type WorkflowsData } from "./workflowsData.ts";
 
 /** How long Halt stays armed for its second press, in ms. */
@@ -105,11 +105,12 @@ const SEGMENT_CLASS: Record<SegmentState, string> = {
 const statusLine = (row: WorkflowRunRow) => (row.spendUsd === null ? row.status : `${row.status} · ${formatUsd(row.spendUsd)}`);
 
 /** How far a row's bar has come, in words, since its colours say it only to the eye. */
-function segmentsText(segments: readonly SegmentState[]): string {
+function segmentsText(segments: readonly Segment[]): string {
   if (segments.length === 0) return "";
-  const done = segments.filter((s) => s === "done").length;
-  const failed = segments.includes("failed") ? ", one failed" : "";
-  const waiting = segments.includes("waiting") ? ", waiting" : "";
+  const states = segments.map((s) => s.state);
+  const done = states.filter((s) => s === "done").length;
+  const failed = states.includes("failed") ? ", one failed" : "";
+  const waiting = states.includes("waiting") ? ", waiting" : "";
   return `${done} of ${segments.length} done${failed}${waiting}`;
 }
 
@@ -158,10 +159,8 @@ const RunRows = ({
               {statusLine(row)}
             </span>
             <span aria-hidden="true" className="mt-1 ml-[18px] flex gap-0.5">
-              {row.segments.map((segment, i) => (
-                // A run's segments never reorder, so their position is their identity.
-                // eslint-disable-next-line react/no-array-index-key
-                <span key={i} data-segment={segment} className={`h-1.5 flex-1 rounded-full ${SEGMENT_CLASS[segment]}`} />
+              {row.segments.map((segment) => (
+                <span key={segment.id} data-segment={segment.state} className={`h-1.5 flex-1 rounded-full ${SEGMENT_CLASS[segment.state]}`} />
               ))}
             </span>
           </button>

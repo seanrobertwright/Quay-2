@@ -28,7 +28,7 @@ test("an Archon run waiting for approval needs you, with Approve, and its nodes 
   assert.equal(row.name, "lril-sdlc:implement");
   assert.equal(row.status, "Awaiting approval");
   assert.equal(row.spendUsd, 1.5);
-  assert.deepEqual(row.segments, ["done", "done", "waiting", "pending"]);
+  assert.deepEqual(row.segments.map((s) => s.state), ["done", "done", "waiting", "pending"]);
   assert.deepEqual(row.decision, { kind: "archon-approval" });
 });
 
@@ -36,7 +36,7 @@ test("a failed Archon run needs you with Resume for a day, then drops off", () =
   const failed = archonRunRow(archon({ status: "failed", nodes_total: 3, nodes_completed: 1, completed_ms: NOW - 2 * HOUR }), NOW);
   assert.equal(failed.section, "needs-you");
   assert.equal(failed.chip, "Resume");
-  assert.deepEqual(failed.segments, ["done", "failed", "pending"]);
+  assert.deepEqual(failed.segments.map((s) => s.state), ["done", "failed", "pending"]);
   assert.deepEqual(failed.decision, { kind: "archon-failed" });
   const old = archonRunRow(archon({ status: "failed", completed_ms: NOW - 25 * HOUR }), NOW);
   assert.equal(old.section, null);
@@ -46,10 +46,10 @@ test("a running Archon run is Running; a completed one is Recent for 24 hours", 
   const running = archonRunRow(archon({ status: "running", nodes_total: 3, nodes_completed: 1, active_nodes: ["a"] }), NOW);
   assert.equal(running.section, "running");
   assert.equal(running.chip, null);
-  assert.deepEqual(running.segments, ["done", "running", "pending"]);
+  assert.deepEqual(running.segments.map((s) => s.state), ["done", "running", "pending"]);
   const done = archonRunRow(archon({ status: "completed", nodes_total: 2, nodes_completed: 2, completed_ms: NOW - 23 * HOUR }), NOW);
   assert.equal(done.section, "recent");
-  assert.deepEqual(done.segments, ["done", "done"]);
+  assert.deepEqual(done.segments.map((s) => s.state), ["done", "done"]);
   assert.equal(done.decision, null);
   assert.equal(archonRunRow(archon({ status: "completed", completed_ms: NOW - 25 * HOUR }), NOW).section, null);
 });
@@ -104,7 +104,7 @@ test("a work order on hold needs you with Hold, its stages coloured as segments"
   assert.equal(row.section, "needs-you");
   assert.equal(row.chip, "Hold");
   assert.deepEqual(row.decision, { kind: "factory-hold" });
-  assert.deepEqual(row.segments, ["done", "done", "running", "waiting", "failed", "pending"]);
+  assert.deepEqual(row.segments.map((s) => s.state), ["done", "done", "running", "waiting", "failed", "pending"]);
 });
 
 test("a work order awaiting merge needs you with Merge; running stages are Running; merged ones are Recent", () => {
@@ -155,14 +155,14 @@ test("a Praxis run that needs you opens in the browser; a finished one is Recent
   assert.equal(waiting.section, "needs-you");
   assert.equal(waiting.chip, "Browser");
   assert.deepEqual(waiting.decision, { kind: "praxis-browser" });
-  assert.deepEqual(waiting.segments, ["waiting"]);
+  assert.deepEqual(waiting.segments.map((s) => s.state), ["waiting"]);
   assert.equal(waiting.spendUsd, null);
   const running = praxisRunRow("review-graph", praxis({}), NOW);
   assert.equal(running.section, "running");
-  assert.deepEqual(running.segments, ["running"]);
+  assert.deepEqual(running.segments.map((s) => s.state), ["running"]);
   const failed = praxisRunRow("review-graph", praxis({ status: "FAILED" }), NOW);
   assert.equal(failed.section, "recent");
-  assert.deepEqual(failed.segments, ["failed"]);
+  assert.deepEqual(failed.segments.map((s) => s.state), ["failed"]);
   const done = praxisRunRow("review-graph", praxis({ status: "COMPLETED", createdAt: NOW - 30 * HOUR }), NOW);
   assert.equal(done.section, null);
 });

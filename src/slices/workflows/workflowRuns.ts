@@ -14,6 +14,12 @@ export type Engine = "archon" | "factory" | "praxis";
 /** One segment of a run row's bar: an Archon node or a Factory stage. */
 export type SegmentState = "done" | "running" | "waiting" | "failed" | "pending";
 
+/** One segment of a row's bar, with the node or stage it stands for. */
+export interface Segment {
+  id: string;
+  state: SegmentState;
+}
+
 /** The panel section a row lands in; null for a finished run older than the Recent window. */
 export type RunSection = "needs-you" | "running" | "recent";
 
@@ -46,7 +52,7 @@ export interface WorkflowRunRow {
   status: string;
   /** Spend in USD, or null when the engine doesn't say. */
   spendUsd: number | null;
-  segments: SegmentState[];
+  segments: Segment[];
   section: RunSection | null;
   chip: ActionChip | null;
   /** What the Run view offers, or null when nothing waits on the operator. */
@@ -113,7 +119,7 @@ export function archonRunRow(run: ArchonRun, now: number): WorkflowRunRow {
     name: shortWorkflow(run.workflow_name),
     status: ARCHON_STATUS[run.status] ?? run.status,
     spendUsd: run.total_cost_usd ?? null,
-    segments: archonSegments(run),
+    segments: archonSegments(run).map((state, i) => ({ id: `node-${i + 1}`, state })),
     section,
     chip,
     decision,
@@ -166,7 +172,7 @@ export function workOrderRow(wo: MachinaWorkOrder, now: number): WorkflowRunRow 
     name: `${wo.id} ${wo.title}`,
     status: STATUS_LABEL[wo.status],
     spendUsd: wo.spend.usd,
-    segments: wo.stages.map((st) => STAGE_SEGMENT[st.status]),
+    segments: wo.stages.map((st) => ({ id: st.id, state: STAGE_SEGMENT[st.status] })),
     section,
     chip,
     decision,
@@ -196,7 +202,7 @@ export function praxisRunRow(workflow: string, run: RunRow, now: number): Workfl
     name: workflow,
     status: run.status,
     spendUsd: null,
-    segments: [segment],
+    segments: [{ id: "run", state: segment }],
     section,
     chip: run.needsYou ? "Browser" : null,
     decision: run.needsYou ? { kind: "praxis-browser" } : null,
