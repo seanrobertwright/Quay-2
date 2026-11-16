@@ -34,9 +34,13 @@ interface ArchonGraphModalProps {
   onSelectTerminal: (id: string) => void;
   onSpawnTerminal: (request: any) => void;
   onWritePty: (terminalId: string, data: string) => void;
+  /** The tab it shows each time it opens; the workflow DAGs when absent. */
+  openOn?: ArchonTab;
 }
 
-type TabType = "dag" | "sdd" | "adrs" | "runs";
+/** The modal's tabs: workflow DAGs, spec tasks, ADRs and runs. */
+export type ArchonTab = "dag" | "sdd" | "adrs" | "runs";
+type TabType = ArchonTab;
 
 export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   isOpen,
@@ -47,8 +51,12 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   onSelectTerminal,
   onSpawnTerminal,
   onWritePty,
+  openOn = "dag",
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>("dag");
+  const [activeTab, setActiveTab] = useState<TabType>(openOn);
+  useEffect(() => {
+    if (isOpen) setActiveTab(openOn);
+  }, [isOpen, openOn]);
   const [serviceStatus, setServiceStatus] = useState<ArchonServiceStatus | null>(null);
   const [workflows, setWorkflows] = useState<ArchonWorkflow[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>("");

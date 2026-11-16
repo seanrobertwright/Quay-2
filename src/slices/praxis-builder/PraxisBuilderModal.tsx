@@ -198,6 +198,8 @@ export interface BuilderProject {
 export interface PraxisBuilderHandle {
   /** Drops the undo histories of these projects, as when they are removed from Quay. */
   forgetProjects: (projectPaths: readonly string[]) => void;
+  /** Opens graph `id` of the builder's project, as picking it in the definitions list does. */
+  openGraph: (id: string) => void;
 }
 
 /** The selected nodes of one shown graph, keyed by project and definition. */
@@ -220,6 +222,8 @@ interface PraxisBuilderModalProps {
   onUnsavedProjectsChange?: (projectKeys: string[]) => void;
   /** Opens a visible shell terminal with a command typed in, for the host chip's actions. */
   onRunInTerminal?: RunInTerminal;
+  /** Called with the project and graph id each time the builder opens a graph. */
+  onGraphOpened?: (projectPath: string, id: string) => void;
   ref?: Ref<PraxisBuilderHandle>;
 }
 
@@ -339,6 +343,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   onAddProject,
   onUnsavedProjectsChange,
   onRunInTerminal,
+  onGraphOpened,
   ref,
 }) => {
   const titleId = useId();
@@ -417,7 +422,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const shownCanvas = useRef<{ key: string; canvas: BuilderCanvas } | null>(null);
   const canvasFor = (key: string) => (shownCanvas.current?.key === key ? shownCanvas.current.canvas : null);
 
-  useImperativeHandle(ref, () => ({ forgetProjects: (paths) => changeSessions((s) => forgetHistories(s, paths)) }), [changeSessions]);
+  // The handle's openGraph reaches the latest openDefinition, which is defined further down.
+  const openDefinitionLatest = useRef<((ref: DefinitionRef) => void) | null>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      forgetProjects: (paths) => changeSessions((s) => forgetHistories(s, paths)),
+      openGraph: (id) => openDefinitionLatest.current?.({ kind: "graphs", id }),
+    }),
+    [changeSessions],
+  );
 
   const projectPath = project?.path ?? null;
   const projectKey = projectPath ? normalizePath(projectPath) : "";
@@ -426,6 +440,12 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const openKind = open?.kind;
   const openId = open?.id;
   const openKey = open ? definitionKey(open) : "";
+  // Each graph the builder opens, so the Workflows panel can list recent graphs.
+  const graphOpened = useRef(onGraphOpened);
+  graphOpened.current = onGraphOpened;
+  useEffect(() => {
+    if (projectPath && openKind === "graphs" && openId) graphOpened.current?.(projectPath, openId);
+  }, [projectPath, openKind, openId]);
   const openDraft = session && openKey ? session.drafts[openKey] : undefined;
   const openHistory = session && openKey ? session.histories[openKey] : undefined;
   const viewKey = `${projectKey}|${openKey}`;
@@ -983,6 +1003,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNotice(null);
     changeSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
   };
+  openDefinitionLatest.current = openDefinition;
 
   const importHostTemplateToProject = async (name: string): Promise<ImportHostTemplateOutcome> => {
     if (!projectPath) {
