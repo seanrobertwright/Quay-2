@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
@@ -41,6 +41,14 @@ export interface CompanionLens {
   close: () => void;
 }
 
+/** The run or work order picked in the Workflows panel, as the Run view shows it. */
+export interface CompanionRun {
+  /** The run's key, `engine:id`. */
+  key: string;
+  /** The Run view's content: the run and its decision. */
+  content: ReactNode;
+}
+
 /** What the companion knows about the selected terminal, handed to each view. */
 export interface CompanionContext {
   terminal: TerminalInfo;
@@ -59,6 +67,8 @@ export interface CompanionContext {
   activity: CompanionActivity | null;
   /** The Activity entry the latest show request asked for, or null. */
   focus: ActivityFocus | null;
+  /** The run picked in the Workflows panel, or null while none is. */
+  run: CompanionRun | null;
   /** Shows `view` for the terminal, as the view switch does. */
   show: (view: CompanionViewId) => void;
 }
@@ -184,14 +194,27 @@ export const ACTIVITY_VIEW: CompanionView<CompanionContext> = {
 };
 
 /**
- * The views the companion registers, in the order its view switch lists them. Each later view
- * (Run, Inspector) is added here.
+ * The Run view: the run or work order picked in the Workflows panel and its decision. It is not
+ * the selected terminal's own, so it shows while a run is picked whatever terminal is selected,
+ * and with none.
+ */
+export const RUN_VIEW: CompanionView<CompanionContext> = {
+  id: "run",
+  label: "Run",
+  available: ({ run }) => run !== null,
+  render: ({ run }) => run?.content ?? null,
+};
+
+/**
+ * The views the companion registers, in the order its view switch lists them. A later view
+ * (Inspector) is added here.
  */
 export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
   PULL_REQUEST_VIEW,
   TICKET_VIEW,
   REPOSITORY_VIEW,
   ACTIVITY_VIEW,
+  RUN_VIEW,
   TOPOS_VIEW,
 ];
 
@@ -232,6 +255,8 @@ interface CompanionProps {
   activity?: CompanionActivity | null;
   /** The latest request to show a view; one for a terminal other than the selected one is ignored. */
   showRequest?: CompanionShowRequest | null;
+  /** The run picked in the Workflows panel; without it the companion offers no Run view. */
+  run?: CompanionRun | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
@@ -247,6 +272,7 @@ export const Companion = ({
   topos = null,
   activity = null,
   showRequest = null,
+  run = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
@@ -267,10 +293,11 @@ export const Companion = ({
             topos,
             activity,
             focus: focus?.terminalId === selectedTerminal.id ? focus : null,
+            run,
             show: (view: CompanionViewId) => setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run],
   );
   const selectedId = context?.terminal.id ?? null;
   // Each request is taken once, when it arrives, as if its view were picked on the switch.
@@ -341,6 +368,10 @@ export const Companion = ({
           className="flex-1 min-h-0 overflow-y-auto"
         >
           {shown.render(context)}
+        </section>
+      ) : run ? (
+        <section data-companion-view={RUN_VIEW.id} aria-label={RUN_VIEW.label} className="flex-1 min-h-0 overflow-y-auto">
+          {run.content}
         </section>
       ) : (
         <p className="p-4 text-xs text-[#8b949e]">Select a terminal to see what it is working on.</p>
