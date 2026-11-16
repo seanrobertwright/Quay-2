@@ -1,12 +1,18 @@
-import { FC, useState, useRef, CSSProperties } from "react";
+import { FC, useState, useRef, CSSProperties, type ReactNode } from "react";
 import { TerminalInfo, StageLayout } from "../terminal/types";
 import { TerminalView } from "../terminal/TerminalView";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
-import { StageTabBar } from "./StageTabBar";
+import { StageTabBar, type StageToolTab } from "./StageTabBar";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
+
+/** A full-stage tool open in a stage tab, such as the swarm builder. */
+export interface StageTool extends StageToolTab {
+  /** What the tool draws over the panes while its tab is in front. */
+  content: ReactNode;
+}
 
 interface StageProps {
   terminals: TerminalInfo[];
@@ -36,6 +42,12 @@ interface StageProps {
   onRelaunchTerminal?: (terminalId: string) => void;
   onRenameTerminal?: (terminalId: string, name: string) => void;
   onCloseTerminal?: (terminalId: string) => void;
+  /** The open stage tab tools. Each stays mounted while the terminals are in front. */
+  tools?: readonly StageTool[];
+  /** The tool in front of the panes, or null while the terminals are. */
+  frontToolId?: string | null;
+  onSelectTool?: (id: string) => void;
+  onCloseTool?: (id: string) => void;
 }
 
 export const Stage: FC<StageProps> = ({
@@ -64,6 +76,10 @@ export const Stage: FC<StageProps> = ({
   onRelaunchTerminal,
   onRenameTerminal,
   onCloseTerminal,
+  tools = [],
+  frontToolId = null,
+  onSelectTool,
+  onCloseTool,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -239,12 +255,45 @@ export const Stage: FC<StageProps> = ({
     );
   });
 
+  // Each open tool, drawn over the panes while its tab is in front and hidden, still mounted, otherwise.
+  const toolLayers = tools.map((tool) => (
+    <div
+      key={`tool-${tool.id}`}
+      data-stage-tool-panel={tool.id}
+      hidden={tool.id !== frontToolId}
+      className="absolute inset-0 z-30 flex flex-col bg-[#0d1117] overflow-hidden"
+    >
+      {tool.content}
+    </div>
+  ));
+  const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
+  const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool };
+
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
       <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+        {tools.length > 0 && (
+          <StageTabBar
+            terminals={[]}
+            currentTerminalId=""
+            layout={layout}
+            zoomedFromLayout={zoomedFromLayout}
+            onSelectTerminal={onSelectTerminal}
+            onNewTerminal={onNewTerminal}
+            onUnsplit={onUnsplit}
+            onSplitHorizontal={onSplitHorizontal}
+            onSplitVertical={onSplitVertical}
+            onSplitGrid={onSplitGrid}
+            onToggleZoom={onToggleZoom}
+            {...toolTabs}
+          />
+        )}
         {/* A shell-wide warning shows with no terminal open too, such as one raised at startup */}
         <ShellWarningBanner />
-        <Placeholder onNewTerminal={onNewTerminal} />
+        <div className="flex-1 min-h-0 relative flex flex-col">
+          <Placeholder onNewTerminal={onNewTerminal} />
+          {toolLayers}
+        </div>
         <div key="stage-viewport" className="hidden" aria-hidden="true">
           {terminalViews}
           {/* A second child keeps the panes nested as they are in the stage viewport below;
@@ -310,6 +359,7 @@ export const Stage: FC<StageProps> = ({
         onSplitVertical={onSplitVertical}
         onSplitGrid={onSplitGrid}
         onToggleZoom={onToggleZoom}
+        {...toolTabs}
       />
 
       {/* Shell-wide warnings: full stage width, between the tab bar and the panes */}
@@ -323,6 +373,8 @@ export const Stage: FC<StageProps> = ({
       >
         {/* Render all terminals so switching projects/worktrees never destroys xterm buffers */}
         {terminalViews}
+
+        {toolLayers}
 
         {/* Draggable Divider for split-horizontal */}
         {layout === "split-horizontal" && (

@@ -32,7 +32,13 @@ afterEach(() => {
   }
 });
 
-function render({ layout = "single" as StageLayout, zoomedFromLayout = null as StageLayout | null, currentId = "a" } = {}) {
+function render({
+  layout = "single" as StageLayout,
+  zoomedFromLayout = null as StageLayout | null,
+  currentId = "a",
+  tools = [] as { id: string; label: string }[],
+  frontToolId = null as string | null,
+} = {}) {
   const calls: string[] = [];
   const log = (name: string) => () => void calls.push(name);
   const container = document.createElement("div");
@@ -52,6 +58,10 @@ function render({ layout = "single" as StageLayout, zoomedFromLayout = null as S
         onSplitVertical: log("split-vertical"),
         onSplitGrid: log("grid"),
         onToggleZoom: log("zoom"),
+        tools: tools.map((t) => ({ ...t, icon: null })),
+        frontToolId,
+        onSelectTool: (id: string) => void calls.push(`tool ${id}`),
+        onCloseTool: (id: string) => void calls.push(`close ${id}`),
       }),
     ),
   );
@@ -139,4 +149,24 @@ test("Zoom is a toggle that shows whether the pane is zoomed and runs the zoom a
   mounted = null;
   const on = render({ layout: "single", zoomedFromLayout: "split-horizontal" });
   assert.equal(on.named("Zoom pane").getAttribute("aria-pressed"), "true");
+});
+
+test("a stage tab tool has its own tab after the terminals; in front, it is the current tab", () => {
+  const { bar, tabs, named, calls } = render({ tools: [{ id: "swarm-builder", label: "Swarm builder" }], frontToolId: "swarm-builder" });
+  const toolTab = bar.querySelector('[aria-label="Stage tabs"] button[data-stage-tool="swarm-builder"]') as HTMLButtonElement;
+  assert.ok(toolTab, "the tool has a tab");
+  assert.equal(toolTab.getAttribute("aria-label"), "Swarm builder");
+  assert.equal(toolTab.getAttribute("aria-current"), "true");
+  assert.deepEqual(tabs().map((t) => t.getAttribute("aria-current")), [null, null, null], "no terminal tab is current");
+
+  act(() => toolTab.click());
+  act(() => named("Close Swarm builder").click());
+  assert.deepEqual(calls, ["tool swarm-builder", "close swarm-builder"]);
+});
+
+test("with the tool behind the terminals its tab is not current", () => {
+  const { bar, tabs } = render({ tools: [{ id: "swarm-builder", label: "Swarm builder" }], frontToolId: null, currentId: "b" });
+  const toolTab = bar.querySelector('button[data-stage-tool="swarm-builder"]') as HTMLButtonElement;
+  assert.equal(toolTab.getAttribute("aria-current"), null);
+  assert.deepEqual(tabs().map((t) => t.getAttribute("aria-current")), [null, "true", null]);
 });
