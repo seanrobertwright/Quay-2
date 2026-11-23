@@ -58,9 +58,19 @@ pub async fn handle_mcp_request(
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
     if let Some(accepted) = reply_to_notification(&req) {
+        // PROTOTYPE (#693): what a CLI says when it gives up on a call
+        super::a2ui_proto::log(&format!(
+            "NOTIFICATION from {}: {} {}",
+            caller.id(),
+            req.method,
+            req.params.as_ref().map(Value::to_string).unwrap_or_default()
+        ));
         return accepted;
     }
     let caller_id = caller.id();
+    if req.method != "tools/call" {
+        super::a2ui_proto::log(&format!("REQUEST from {caller_id}: {}", req.method));
+    }
     let id = req.id.unwrap_or(Value::Null);
 
     match req.method.as_str() {
@@ -344,6 +354,9 @@ pub async fn handle_mcp_request(
                         }
                     }
                 }
+
+                // PROTOTYPE (#693), throwaway
+                "quay_surface_proto" => super::a2ui_proto::hand_over(&ctx, caller_id, &arguments).await,
 
                 _ => Err(format!("Unknown tool: {}", tool_name)),
             };

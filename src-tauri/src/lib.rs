@@ -206,6 +206,7 @@ pub fn run() {
             open_project_places,
             list_recent_projects,
             a2a_send_prompt,
+            slices::orchestrator::a2ui_proto::a2ui_proto_answer,
             a2a_broadcast_toast,
             a2a_get_messages,
             a2a_clear_messages,

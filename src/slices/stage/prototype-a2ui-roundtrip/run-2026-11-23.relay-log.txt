@@ -1,0 +1,44 @@
+19:14:10.591 [47100] START QUAY_MCP_URL=http://127.0.0.1:63717/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=term-bf752c5b8dd949e7b576e1c35906848d cwd=C:\Users\swright\AppData\Local\Temp\claude\e6ca8ef5fe37217e\2a160a1a-8fd1-409e-aa92-1730c584c2ce\scratchpad\rt-fixture
+19:14:10.604 [47100] -> server/discover id=1
+19:14:10.687 [47100] <- server/discover id=1 http=200 after 0.1s
+19:14:10.692 [47100] -> initialize id=2
+19:14:10.712 [47100] <- initialize id=2 http=200 after 0.0s
+19:14:10.724 [47100] -> notifications/initialized id=- {}
+19:14:10.727 [47100] -> tools/list id=3
+19:14:10.736 [47100] <- notifications/initialized id=- http=202 after 0.0s
+19:14:10.740 [47100] <- tools/list id=3 http=200 after 0.0s
+19:14:58.149 [47100] -> notifications/roots/list_changed id=- {}
+19:14:58.162 [47100] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:16:32.016 [47100] -> notifications/roots/list_changed id=- {}
+19:16:32.029 [47100] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:16:45.299 [47100] -> tools/call quay_surface_proto id=4
+19:18:09.161 [47100] <- tools/call quay_surface_proto id=4 http=200 after 83.9s
+19:21:49.539 [47100] -> notifications/roots/list_changed id=- {}
+19:21:49.550 [47100] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:22:00.897 [47100] -> tools/call quay_surface_proto id=5
+19:22:25.920 [47100] <- tools/call quay_surface_proto id=5 http=200 after 25.0s
+19:23:24.935 [47100] -> notifications/roots/list_changed id=- {}
+19:23:24.949 [47100] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:25:00.521 [47100] -> notifications/roots/list_changed id=- {}
+19:25:00.537 [47100] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:25:08.309 [47100] -> tools/call quay_surface_proto id=6
+19:28:08.320 [47100] -> notifications/cancelled id=- {"reason":"context deadline exceeded","requestId":6}
+19:28:08.328 [47100] <- notifications/cancelled id=- http=202 after 0.0s
+19:30:15.566 [47100] !! tools/call quay_surface_proto id=6 TypeError: fetch failed after 307.3s
+19:32:19.053 [47100] -> notifications/roots/list_changed id=- {}
+19:32:19.068 [47100] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:43:32.088 [47220] START QUAY_MCP_URL=http://127.0.0.1:63717/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=term-e0acb5f82d5c41bbbbe9663b1bbf06df cwd=C:\Users\swright\AppData\Local\Temp\claude\e6ca8ef5fe37217e\2a160a1a-8fd1-409e-aa92-1730c584c2ce\scratchpad\rt-fixture
+19:43:32.115 [47220] -> server/discover id=1
+19:43:32.269 [47220] <- server/discover id=1 http=200 after 0.2s
+19:43:32.277 [47220] -> initialize id=2
+19:43:32.291 [47220] <- initialize id=2 http=200 after 0.0s
+19:43:32.294 [47220] -> notifications/initialized id=- {}
+19:43:32.300 [47220] -> tools/list id=3
+19:43:32.311 [47220] <- notifications/initialized id=- http=202 after 0.0s
+19:43:32.317 [47220] <- tools/list id=3 http=200 after 0.0s
+19:43:32.337 [47220] -> notifications/roots/list_changed id=- {}
+19:43:32.355 [47220] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:45:57.133 [47220] -> notifications/roots/list_changed id=- {}
+19:45:57.157 [47220] <- notifications/roots/list_changed id=- http=202 after 0.0s
+19:47:46.605 [47220] -> tools/call quay_surface_proto id=4
+19:48:11.442 [47220] <- tools/call quay_surface_proto id=4 http=200 after 24.8s

@@ -26,7 +26,10 @@
           "description": "If true (default), waits up to 60s from this call for the peer to complete its turn and returns its reply. A wait on a listener returns at once."
         }
       },
-      "required": ["target_terminal_id", "message"]
+      "required": [
+        "target_terminal_id",
+        "message"
+      ]
     }
   },
   {
@@ -40,7 +43,9 @@
           "description": "The notice text to broadcast."
         }
       },
-      "required": ["text"]
+      "required": [
+        "text"
+      ]
     }
   },
   {
@@ -54,7 +59,9 @@
           "description": "The peer's exact terminal ID or exact session name, e.g. from quay_list_agents. Nothing else matches: no run kind, partial name or partial ID. A session name matches live terminals only, those in your project first, and one that two of them share is refused as ambiguous; pass the ID then. An exited terminal is reached by its ID only, and a message to it is refused."
         }
       },
-      "required": ["terminal_id"]
+      "required": [
+        "terminal_id"
+      ]
     }
   },
   {
@@ -63,21 +70,56 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "project_path": { "type": "string", "description": "Any path inside the git repository." },
-        "title": { "type": "string" },
-        "objective": { "type": "string", "description": "What the author agent must do." },
+        "project_path": {
+          "type": "string",
+          "description": "Any path inside the git repository."
+        },
+        "title": {
+          "type": "string"
+        },
+        "objective": {
+          "type": "string",
+          "description": "What the author agent must do."
+        },
         "allowed_output_paths": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Repo-relative globs the author may change, e.g. src/slices/auth/**."
         },
-        "base_branch": { "type": "string", "description": "Defaults to the main checkout's current branch." },
-        "author_agent": { "type": "string", "description": "Agent CLI that will do the work, e.g. claude. Defaults to claude." },
-        "max_corrections": { "type": "integer", "minimum": 0, "maximum": 10 },
-        "budget_usd": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 },
-        "depends_on": { "type": "array", "items": { "type": "string" } }
+        "base_branch": {
+          "type": "string",
+          "description": "Defaults to the main checkout's current branch."
+        },
+        "author_agent": {
+          "type": "string",
+          "description": "Agent CLI that will do the work, e.g. claude. Defaults to claude."
+        },
+        "max_corrections": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "budget_usd": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       },
-      "required": ["project_path", "title", "objective", "allowed_output_paths", "budget_usd"]
+      "required": [
+        "project_path",
+        "title",
+        "objective",
+        "allowed_output_paths",
+        "budget_usd"
+      ]
     }
   },
   {
@@ -86,9 +128,14 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "work_order_id": { "type": "string", "description": "e.g. WO-3" }
+        "work_order_id": {
+          "type": "string",
+          "description": "e.g. WO-3"
+        }
       },
-      "required": ["work_order_id"]
+      "required": [
+        "work_order_id"
+      ]
     }
   },
   {
@@ -97,9 +144,37 @@
     "inputSchema": {
       "type": "object",
       "properties": {
-        "work_order_id": { "type": "string", "description": "e.g. WO-3" }
+        "work_order_id": {
+          "type": "string",
+          "description": "e.g. WO-3"
+        }
       },
-      "required": ["work_order_id"]
+      "required": [
+        "work_order_id"
+      ]
+    }
+  },
+  {
+    "name": "quay_surface_proto",
+    "description": "PROTOTYPE. Show the operator a surface written as A2UI 1.0 messages and wait for their answer. Returns the operator's action, or 'No answer yet' when the wait runs out.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "description": "A2UI 1.0 messages, in order.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "wait_seconds": {
+          "type": "integer",
+          "description": "How long the call waits for the operator. Default 110."
+        }
+      },
+      "required": [
+        "messages"
+      ]
     }
   }
 ]

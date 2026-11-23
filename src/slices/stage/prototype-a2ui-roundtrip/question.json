@@ -1,0 +1,8 @@
+{"messages":[{"version":"1.0","createSurface":{"surfaceId":"banner-colour","components":[
+{"id":"root","component":"Column","children":["q","choices"]},
+{"id":"q","component":"Text","text":"Which colour should the banner be?"},
+{"id":"choices","component":"Row","children":["b_blue","b_green"]},
+{"id":"b_blue","component":"Button","child":"t_blue","action":{"event":{"name":"choose","context":{"colour":"blue"}}}},
+{"id":"t_blue","component":"Text","text":"Blue"},
+{"id":"b_green","component":"Button","child":"t_green","action":{"event":{"name":"choose","context":{"colour":"green"}}}},
+{"id":"t_green","component":"Text","text":"Green"}]}}]}

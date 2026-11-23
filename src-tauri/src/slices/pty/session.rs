@@ -490,6 +490,20 @@ fn shell_command(command_text: Option<&str>) -> CommandBuilder {
     }
 }
 
+/// PROTOTYPE (#693), throwaway: launch knobs for `kind`, read at every launch from the JSON
+/// file `QUAY_A2UI_PROTO_KNOBS` names, e.g.
+/// `{"claude": {"args": [], "env": {}, "mcp_timeout_ms": 150000}, "codex": {"args": []}}`.
+fn proto_knobs(kind: RunKind) -> serde_json::Value {
+    let key = serde_json::to_value(kind).ok().and_then(|v| v.as_str().map(str::to_string));
+    std::env::var("QUAY_A2UI_PROTO_KNOBS")
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .zip(key)
+        .map(|(all, key)| all[key.as_str()].clone())
+        .unwrap_or(serde_json::Value::Null)
+}
+
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
 /// the launch prompt and, last, Quay's MCP config. `server_port` is the loopback port an
 /// OpenCode terminal serves its events on; other CLIs ignore it.
@@ -674,6 +688,19 @@ pub(crate) fn build_command(
         }
     }
 
+    // PROTOTYPE (#693), throwaway
+    let knobs = proto_knobs(request.run_kind);
+    if let Some(env) = knobs["env"].as_object() {
+        for (key, value) in env {
+            cmd.env(key, value.as_str().unwrap_or_default());
+        }
+    }
+    if let Some(args) = knobs["args"].as_array() {
+        for arg in args {
+            cmd.arg(arg.as_str().unwrap_or_default());
+        }
+    }
+
     // After the custom flags, so a custom `-c` can't replace them, and before the launch
     // prompt, Codex's positional argument
     if request.run_kind == RunKind::Codex {
@@ -705,7 +732,13 @@ pub(crate) fn build_command(
     // another config file, so it goes after the custom flags and the launch prompt.
     if request.run_kind == RunKind::Claude {
         cmd.arg("--mcp-config");
-        cmd.arg(mcp_config_arg(bridge_port));
+        // PROTOTYPE (#693): the per-server tool timeout, when the knobs set one
+        let mut config: serde_json::Value =
+            serde_json::from_str(&mcp_config_arg(bridge_port)).unwrap_or_default();
+        if let Some(timeout) = knobs["mcp_timeout_ms"].as_u64() {
+            config["mcpServers"]["quay"]["timeout"] = timeout.into();
+        }
+        cmd.arg(config.to_string());
     }
 
     cmd.cwd(&request.project_path);
