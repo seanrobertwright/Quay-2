@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "proto:a2ui-placement": "vite --port 1427 --strictPort --open \"/?prototype=a2ui-placement&variant=A\"",
     "build": "tsc && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "test": "node --test \"src/**/*.test.ts\" && pnpm run test:budget",
