@@ -95,6 +95,8 @@ export interface ToposProps {
   onRunInTerminal?: (cwd: string, argv: string[]) => Promise<boolean>;
   /** A palette entry's request (#393, #395), with a count so the same request twice runs twice. */
   request?: { kind: ToposRequestKind; seq: number } | null;
+  /** A file of the selected terminal's worktree to open the diff of (#721), with a count as `request` has. */
+  fileRequest?: (OpenFile & { seq: number }) | null;
 }
 
 type VersionCheck =
@@ -120,6 +122,7 @@ export const Topos: React.FC<ToposProps> = ({
   onShowWorktree,
   onRunInTerminal,
   request = null,
+  fileRequest = null,
 }) => {
   const titleId = useId();
   // One modal layer for every confirm in Topos (#421): while one is open everything else in the panel
@@ -455,6 +458,15 @@ export const Topos: React.FC<ToposProps> = ({
         return pushRemote();
     }
   }, [isOpen, request, refContext, newBranch, pickCheckout, fetchRemote, pullRemote, pushRemote]);
+  // A file link's request runs once Topos shows the worktree it is in, which is the selected terminal's.
+  const handledFile = useRef(0);
+  const showsProject = isOpen && graphRepo !== null && project !== null && selectedPath === project.path;
+  useEffect(() => {
+    if (!showsProject || fileRequest === null || fileRequest.seq === handledFile.current) return;
+    handledFile.current = fileRequest.seq;
+    setResolving(null);
+    setOpenFile({ path: fileRequest.path, side: fileRequest.side });
+  }, [showsProject, fileRequest, setOpenFile]);
   const newBranchAtHead = useCallback(() => newBranch("HEAD"), [newBranch]);
   const watch = graph.feed?.watch ?? null;
   // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.

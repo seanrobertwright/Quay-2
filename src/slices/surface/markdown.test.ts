@@ -304,3 +304,98 @@ test("an image is named and not loaded", async () => {
   assert.equal(content.querySelectorAll("img, [src], [role]").length, 0);
   assert.deepEqual(calls, []);
 });
+
+const SHOW_FILE = "surface_show_file";
+const notice = () => mounted!.container.querySelector('[role="alert"]')?.textContent ?? null;
+
+test("a Markdown link to a local path shows the file on a click, in the surface's own terminal", async () => {
+  fakeInvoke(async (cmd, args) => {
+    calls.push({ cmd, args });
+    return { kind: "revealed" };
+  });
+  const content = await drawText(
+    "[a](src/a.ts:12) [b](README.md:3) [c](<C:/Program Files/x y.txt>) [d](docs/a%20b.md) [e](../up.txt) [f](//host/share/x) [g](file://host/x) [h](<\\\\\\\\host\\\\x>)",
+  );
+  const paths = ["src/a.ts:12", "README.md:3", "C:/Program Files/x y.txt", "docs/a b.md", "../up.txt", "//host/share/x", "file://host/x", "\\\\host\\x"];
+
+  assert.deepEqual(links(content).map((link) => link.textContent), ["a", "b", "c", "d", "e", "f", "g", "h"]);
+  assert.deepEqual(calls, [], "a path is judged at the click");
+  for (const [i, link] of links(content).entries()) {
+    await point(link, "mouseover");
+    assert.equal(foot().textContent, paths[i]);
+    await act(async () => link.click());
+    await point(link, "mouseout");
+  }
+  assert.deepEqual(calls.map(({ cmd, args }) => [cmd, args]), paths.map((path) => [SHOW_FILE, { terminalId: "t1", path, line: null }]));
+  assert.equal(notice(), null);
+});
+
+test("a link to a path with characters nobody sees is text", async () => {
+  const content = await drawText("[a](docs/a\u202egnp.exe) [b](docs/\u200bx) [c](#part) [d](?x) [e]() [f](a%E2%80%AEb)");
+  assert.equal(links(content).length, 0);
+});
+
+test("a FileLink shows its file on a click", async () => {
+  const container = await draw(
+    surfaceOf(
+      [
+        { id: "a", component: "FileLink", path: "src/a.ts", line: 12, label: "The parser" },
+        { id: "b", component: "FileLink", path: { "@path": "/file" } },
+        { id: "c", component: "FileLink", path: "src/c.ts", line: 4 },
+      ],
+      { file: "docs/**b**.md" },
+    ),
+  );
+  assert.deepEqual(links(container).map((link) => link.textContent), ["The parser", "docs/**b**.md", "src/c.ts:4"]);
+  await point(links(container)[0], "mouseover");
+  assert.equal(foot().textContent, "src/a.ts:12");
+  assert.deepEqual(calls, []);
+
+  for (const link of links(container)) await act(async () => link.click());
+  assert.deepEqual(called(SHOW_FILE), [
+    { terminalId: "t1", path: "src/a.ts", line: 12 },
+    { terminalId: "t1", path: "docs/**b**.md", line: null },
+    { terminalId: "t1", path: "src/c.ts", line: 4 },
+  ]);
+});
+
+test("a file with uncommitted changes opens the diff view of its terminal's worktree", async () => {
+  const { onFileDiffRequest } = await import("../git/fileDiffRequest.ts");
+  const asked: unknown[] = [];
+  const stop = onFileDiffRequest((request) => (asked.push(request), true));
+  fakeInvoke(async () => ({ kind: "diff", path: "src/a.ts", side: "staged", line: 12 }));
+  const content = await drawText("[a](src/a.ts:12)");
+  await act(async () => links(content)[0].click());
+  stop();
+
+  assert.deepEqual(asked, [{ terminalId: "t1", path: "src/a.ts", side: "staged", line: 12 }]);
+  assert.equal(notice(), null);
+  // Nothing in the window takes the request
+  await act(async () => links(content)[0].click());
+  assert.equal(notice(), "Not opened: the diff view is not there for src/a.ts. Select its terminal and try again.");
+});
+
+test("a path that is not opened says so at the frame's foot, until the next click", async () => {
+  fakeInvoke(() => Promise.reject("Not opened: there is no gone.ts."));
+  const content = await drawText("[a](gone.ts) [b](https://b.example)");
+  await act(async () => links(content)[0].click());
+  assert.equal(notice(), "Not opened: there is no gone.ts.");
+  assert.ok(!content.contains(mounted!.container.querySelector('[role="alert"]')), "in Quay's part of the frame");
+
+  fakeInvoke(async () => null);
+  await act(async () => links(content)[1].click());
+  assert.equal(notice(), null);
+  fakeInvoke(() => Promise.reject("no browser"));
+  await act(async () => links(content)[1].click());
+  assert.equal(notice(), "Not opened: the browser could not be started (no browser).");
+});
+
+test("a slower answer to an earlier click does not replace what a later one said", async () => {
+  const answers: ((why: string) => void)[] = [];
+  fakeInvoke(() => new Promise((_, reject) => answers.push(reject)));
+  const content = await drawText("[a](a.ts) [b](b.ts)");
+  for (const link of links(content)) await act(async () => link.click());
+  await act(async () => answers[1]("Not opened: there is no b.ts."));
+  await act(async () => answers[0]("Not opened: there is no a.ts."));
+  assert.equal(notice(), "Not opened: there is no b.ts.");
+});

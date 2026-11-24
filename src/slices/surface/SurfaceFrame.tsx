@@ -35,7 +35,7 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, refusal, chil
       <span className="shrink-0 text-[#8b949e]">{cliName(terminal.run_kind)}</span>
     </header>
     {band}
-    <SurfaceLinksProvider>
+    <SurfaceLinksProvider terminalId={terminal.id}>
       {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside. */}
       <div data-surface-content className="relative isolate overflow-hidden p-3 text-xs text-[#c9d1d9] contain-paint">
         {children}

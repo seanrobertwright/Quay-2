@@ -82,6 +82,7 @@ import { BuilderProject, PraxisBuilder, type PraxisBuilderHandle } from "./slice
 import { Topos, type ToposTarget } from "./slices/git/topos/Topos";
 import { ToposLayer, ToposLens, useToposDock } from "./slices/companion/ToposDock";
 import type { ToposRequestKind } from "./slices/git/topos/toposPalette";
+import { onFileDiffRequest, type FileDiffRequest } from "./slices/git/fileDiffRequest";
 import { commandLine, shellFor, typeCommand } from "./slices/terminal/typedCommand";
 import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
@@ -733,6 +734,21 @@ export function App() {
     setToposRequest((prev) => ({ kind, seq: (prev?.seq ?? 0) + 1 }));
     openToposView();
   };
+
+  // A file link in the selected terminal's surface opens the file's diff in the Topos lens (#721); the
+  // count makes a repeat run again.
+  const [toposFile, setToposFile] = useState<(FileDiffRequest & { seq: number }) | null>(null);
+  const openToposLens = toposDock.companion.openWide;
+  useEffect(
+    () =>
+      onFileDiffRequest((request) => {
+        if (request.terminalId !== activeTerminalId) return false;
+        setToposFile((prev) => ({ ...request, seq: (prev?.seq ?? 0) + 1 }));
+        openToposLens();
+        return true;
+      }),
+    [activeTerminalId, openToposLens]
+  );
 
   // Picking a terminal anywhere brings the terminals back in front of a stage tab; a tab stays open
   // until closed.
@@ -1569,6 +1585,7 @@ export function App() {
           onShowWorktree={showToposWorktree}
           onRunInTerminal={runInToposTerminal}
           request={toposRequest}
+          fileRequest={toposFile?.terminalId === activeTerminalId ? toposFile : null}
         />
       </ToposLayer>
 
