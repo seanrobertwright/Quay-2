@@ -168,7 +168,7 @@ struct Surface {
 
 impl Surface {
     /// Whether it asks for something and has no answer, which keeps it from making room for another.
-    fn is_open(&self) -> bool {
+    fn is_asking(&self) -> bool {
         matches!(self.phase, Phase::Asking { .. } | Phase::Typing { .. })
     }
 
@@ -323,7 +323,7 @@ impl SurfaceStore {
         let left = if terminal.surfaces.len() < MOST_KEPT {
             None
         } else {
-            let oldest = terminal.surfaces.iter().position(|surface| !surface.is_open());
+            let oldest = terminal.surfaces.iter().position(|surface| !surface.is_asking());
             let left = terminal.surfaces.remove(oldest.ok_or(CommitRefused::Full)?);
             terminal.left.add(left.id.clone(), left.phase.standing());
             Some(SurfaceKey::new(&key.terminal_id, left.id))

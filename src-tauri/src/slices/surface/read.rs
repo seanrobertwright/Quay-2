@@ -2,7 +2,7 @@
 
 use serde_json::{json, Map, Value};
 
-use super::rejection::{error_result, Rejection};
+use super::rejection::Rejection;
 use super::store::{Standing, SurfaceKey, SurfaceStore};
 
 pub const TOOL: &str = "quay_surface_read";
@@ -28,14 +28,12 @@ pub fn read(store: &SurfaceStore, terminal_id: &str, arguments: &Value) -> Resul
 
 fn surface_id(arguments: &Value) -> Result<&str, Rejection> {
     if let Some(field) = arguments.as_object().and_then(|fields| fields.keys().find(|field| *field != "surface_id")) {
-        let path = format!("/{}", field.replace('~', "~0").replace('/', "~1"));
-        return Err(Rejection::invalid(path, format!("{TOOL} has no field \"{field}\".")));
+        return Err(Rejection::unknown_field(TOOL, "", field));
     }
     let id = arguments.get("surface_id").and_then(Value::as_str).filter(|id| !id.is_empty());
     id.ok_or_else(|| Rejection::invalid("/surface_id", format!("{TOOL} needs a surface_id.")))
 }
 
 fn rejected(rejection: Rejection) -> Value {
-    let body = json!({ "errors": [rejection], "next": "Nothing was changed. Correct the call and send it again." });
-    error_result(body.to_string())
+    rejection.result("Nothing was changed. Correct the call and send it again.")
 }

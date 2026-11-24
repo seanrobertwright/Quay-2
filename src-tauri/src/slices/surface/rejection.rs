@@ -16,10 +16,20 @@ impl Rejection {
         Self { code: "VALIDATION_FAILED", path: path.into(), message: message.into() }
     }
 
+    /// `tool` has no field `field` in the object at `path`.
+    pub fn unknown_field(tool: &str, path: &str, field: &str) -> Self {
+        let segment = field.replace('~', "~0").replace('/', "~1");
+        Self::invalid(format!("{path}/{segment}"), format!("{tool} has no field \"{field}\" here."))
+    }
+
     /// The result of a typed tool's call that this rejects.
     pub fn typed_result(&self) -> Value {
-        let body = json!({ "errors": [self], "next": "Nothing was shown. Correct the call and send it again." });
-        error_result(body.to_string())
+        self.result("Nothing was shown. Correct the call and send it again.")
+    }
+
+    /// The result of a call that this rejects. `next` is what its agent does about it.
+    pub fn result(&self, next: &str) -> Value {
+        error_result(json!({ "errors": [self], "next": next }).to_string())
     }
 }
 
@@ -42,6 +52,6 @@ impl QuayFailed {
     }
 }
 
-pub(super) fn error_result(text: String) -> Value {
+fn error_result(text: String) -> Value {
     json!({ "content": [{ "type": "text", "text": text }], "isError": true })
 }

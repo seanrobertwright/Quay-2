@@ -5,47 +5,31 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::store::{AnswerRefused, SurfaceKey};
-use super::test_seam::{accepted, start, FakeWebview, OpenCall, Seam, A_WHILE};
+use super::store::AnswerRefused;
+use super::test_seam::{accepted, answer_to, key, question, start, FakeWebview, OpenCall, Seam, A_WHILE};
 use super::timing::Timing;
 use super::typing::NotTyped;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
 use crate::slices::pty::osc7501::{AntigravityTurn, Osc7501};
 
-/// A question with a title of its own.
-fn question(title: &str) -> Value {
-    json!({ "questions": [{ "question": title, "options": [{ "label": "Yes" }, { "label": "No" }] }] })
-}
-
 const BASE: &str = "Which base should this branch take?";
 
 fn answer() -> Value {
-    json!({ "answers": [{ "question": BASE, "chosen": ["Yes"], "text": "skip the suite" }] })
+    answer_to(BASE)
 }
 
 /// `answer`, typed in.
 const TYPED: &str = "[Quay surface \"Which base should this branch take?\" (ask_1)]: \
     {\"answers\":[{\"question\":\"Which base should this branch take?\",\"chosen\":[\"Yes\"],\"text\":\"skip the suite\"}]}\r";
 
-fn key(terminal_id: &str, id: &str) -> SurfaceKey {
-    SurfaceKey::new(terminal_id, id)
-}
-
 /// Limits that leave a test time, with this long a wait.
 fn waits(ms: u64) -> Timing {
     Timing { verdict: Duration::from_secs(5), wait: Duration::from_millis(ms) }
 }
 
-/// The question `title` as `terminal_id`'s request `id`, once it has been drawn.
-async fn asked_as(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str, id: Value, title: &str) -> OpenCall {
-    let call = seam.cli(terminal_id).call_as(id, "quay_ask", question(title));
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
-    webview.next_shown().await;
-    call
-}
-
+/// The question `BASE` of `terminal_id`, once it has been drawn.
 async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str) -> OpenCall {
-    asked_as(seam, webview, terminal_id, json!(1), BASE).await
+    seam.asked(webview, terminal_id, BASE).await
 }
 
 fn no_answer_yet(id: &str) -> Value {
@@ -152,7 +136,7 @@ async fn a_wait_ends_when_antigravity_prints_that_its_turn_ended_and_not_when_it
 async fn a_wait_ends_at_a_cancel_that_names_its_call() {
     for id in [json!(3), json!("call-3")] {
         let (seam, mut webview) = start(Timing::default()).await;
-        let call = asked_as(&seam, &mut webview, "term-a", id.clone(), BASE).await;
+        let call = seam.asked_as(&mut webview, "term-a", id.clone(), BASE).await;
 
         let cancel = json!({ "requestId": id, "reason": "Request timed out" });
         seam.cli("term-a").notify("notifications/cancelled", cancel).await;
@@ -170,14 +154,14 @@ async fn a_cancel_that_names_no_waiting_call_of_the_terminal_ends_nothing() {
     assert_eq!(cli.call_as(json!(2), "quay_list_agents", json!({})).result().await["isError"], Value::Null);
     cancel(json!(2)).await;
     cancel(json!(2)).await;
-    let first = asked_as(&seam, &mut webview, "term-a", json!(3), "First?").await;
+    let first = seam.asked_as(&mut webview, "term-a", json!(3), "First?").await;
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
     first.answer().await;
     cancel(json!(3)).await;
 
     // A later launch counts its requests from the start again
     seam.open_terminal("term-a", RunKind::OpenCode, ClaudeStatus::Working);
-    let second = asked_as(&seam, &mut webview, "term-a", json!(3), "Second?").await;
+    let second = seam.asked_as(&mut webview, "term-a", json!(3), "Second?").await;
     for id in [json!(2), json!("3"), json!(null), json!({ "requestId": 3 })] {
         cancel(id).await;
     }
@@ -458,7 +442,7 @@ async fn nothing_the_agent_or_the_operator_wrote_reaches_the_terminal_as_a_contr
     let (seam, mut webview) = start(waits(100)).await;
     seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
     let title = "Which\r\n\u{1b}[2J one\u{7f}\u{9b}31m\u{85}\u{2028}\u{202e}\u{0}?";
-    let call = asked_as(&seam, &mut webview, "term-a", json!(1), title).await;
+    let call = seam.asked_as(&mut webview, "term-a", json!(1), title).await;
     call.answer().await;
 
     let text = "a\r\nb\u{1b}]0;x\u{7}\u{7f}\u{85}\u{9b}\u{2028}\u{202e}\u{e0041} é😀 \"q\" \\";
@@ -489,12 +473,17 @@ async fn a_typed_answer_does_not_become_the_terminals_task_title() {
     cli.event("turn.started", json!({ "prompt": "Fix the login bug" })).await;
     assert_eq!(title().as_deref(), Some("Fix the login bug"));
 
-    let typed = TYPED.trim_end();
-    for prompt in [typed.to_string(), format!("<pasted_content id=\"62ae\">\n{typed}\n</pasted_content>")] {
+    // The window titles tasks too, and its test reads the same prompts
+    let vectors: Value = serde_json::from_str(include_str!("typed_line.vectors.json")).unwrap();
+    let prompts = |list: &str| -> Vec<String> { serde_json::from_value(vectors[list].clone()).unwrap() };
+    let title_nothing = prompts("title_nothing");
+    assert_eq!(title_nothing[0], TYPED.trim_end());
+    for prompt in title_nothing {
         cli.event("turn.started", json!({ "prompt": prompt })).await;
-        assert_eq!(title().as_deref(), Some("Fix the login bug"));
+        assert_eq!(title().as_deref(), Some("Fix the login bug"), "{prompt:?}");
     }
-
-    cli.event("turn.started", json!({ "prompt": "[Quay surface] looks odd" })).await;
-    assert_eq!(title().as_deref(), Some("[Quay surface] looks odd"), "what the operator types is a title");
+    for prompt in prompts("titles") {
+        cli.event("turn.started", json!({ "prompt": prompt })).await;
+        assert_eq!(title().as_deref(), Some(prompt.as_str()), "what the operator types is a title");
+    }
 }

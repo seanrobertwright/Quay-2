@@ -120,10 +120,7 @@ fn object<'a>(value: &'a Value, path: &str, what: &str, fields: &[&str]) -> Resu
     let map = value.as_object().ok_or_else(|| Rejection::invalid(path, format!("{what} is an object.")))?;
     match map.keys().find(|key| !fields.contains(&key.as_str())) {
         None => Ok(map),
-        Some(key) => {
-            let path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
-            Err(Rejection::invalid(path, format!("quay_ask has no field \"{key}\" here.")))
-        }
+        Some(key) => Err(Rejection::unknown_field(TOOL, path, key)),
     }
 }
 

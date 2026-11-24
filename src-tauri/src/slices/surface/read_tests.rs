@@ -4,32 +4,13 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::store::{AnswerRefused, SurfaceKey};
-use super::test_seam::{accepted, start, FakeCli, FakeWebview, OpenCall, Seam, A_WHILE};
+use super::store::AnswerRefused;
+use super::test_seam::{answer_to, key, question, start, FakeCli, A_WHILE};
 use super::timing::Timing;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
 
-fn question(title: &str) -> Value {
-    json!({ "questions": [{ "question": title, "options": [{ "label": "Yes" }, { "label": "No" }] }] })
-}
-
 fn answer() -> Value {
-    json!({ "answers": [{ "question": "One?", "chosen": ["Yes"] }] })
-}
-
-fn key(terminal_id: &str, id: &str) -> SurfaceKey {
-    SurfaceKey::new(terminal_id, id)
-}
-
-async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str, title: &str) -> OpenCall {
-    shown(seam, webview, terminal_id, title, true).await
-}
-
-async fn shown(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str, title: &str, asks: bool) -> OpenCall {
-    let call = seam.cli(terminal_id).call("quay_ask", question(title));
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(asks));
-    webview.next_shown().await;
-    call
+    answer_to("One?")
 }
 
 fn short_wait() -> Timing {
@@ -44,7 +25,7 @@ async fn read(cli: &FakeCli, id: &str) -> Value {
 async fn a_surface_is_read_by_its_id_in_each_state() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
-    let first = asked(&seam, &mut webview, "term-a", "One?").await;
+    let first = seam.asked(&mut webview, "term-a", "One?").await;
     assert_eq!(read(&cli, "ask_1").await, json!({ "surface_id": "ask_1", "state": "no_answer_yet" }));
     assert!(first.is_open(), "reading ends no wait");
 
@@ -56,12 +37,12 @@ async fn a_surface_is_read_by_its_id_in_each_state() {
         assert_eq!(read(&cli, "ask_1").await, state, "as often as it is asked");
     }
 
-    shown(&seam, &mut webview, "term-a", "Two?", false).await;
+    seam.shown(&mut webview, "term-a", "Two?").await;
     assert_eq!(read(&cli, "ask_2").await, json!({ "surface_id": "ask_2", "state": "shown" }));
     seam.surfaces.dismiss(&key("term-a", "ask_2")).unwrap();
     assert_eq!(read(&cli, "ask_2").await, json!({ "surface_id": "ask_2", "state": "dismissed" }));
 
-    let third = asked(&seam, &mut webview, "term-a", "Three?").await;
+    let third = seam.asked(&mut webview, "term-a", "Three?").await;
     seam.surfaces.dismiss(&key("term-a", "ask_3")).unwrap();
     third.answer().await;
     assert_eq!(read(&cli, "ask_3").await, json!({ "surface_id": "ask_3", "state": "dismissed" }));
@@ -72,11 +53,11 @@ async fn an_answer_is_read_after_its_surface_has_left_the_screen() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
     let answered = json!({ "surface_id": "ask_1", "state": "answered", "result": answer() });
-    let mut calls = vec![asked(&seam, &mut webview, "term-a", "One?").await];
+    let mut calls = vec![seam.asked(&mut webview, "term-a", "One?").await];
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
     webview.next_shown().await;
     for n in 2..=15 {
-        calls.push(asked(&seam, &mut webview, "term-a", &format!("Question {n}?")).await);
+        calls.push(seam.asked(&mut webview, "term-a", &format!("Question {n}?")).await);
     }
     assert_eq!(webview.next_removed().await, key("term-a", "ask_1"), "it made room");
     assert_eq!(read(&cli, "ask_1").await, answered);
@@ -89,7 +70,7 @@ async fn an_answer_is_read_after_its_surface_has_left_the_screen() {
 #[tokio::test]
 async fn an_id_the_terminal_never_had_is_rejected() {
     let (seam, mut webview) = start(Timing::default()).await;
-    let _call = asked(&seam, &mut webview, "term-a", "One?").await;
+    let _call = seam.asked(&mut webview, "term-a", "One?").await;
     let never = |id: &str| {
         json!({
             "errors": [{
@@ -115,7 +96,7 @@ async fn a_read_without_one_id_is_rejected() {
         (json!({ "surface_id": 1 }), "/surface_id", needs),
         (json!({ "surface_id": "" }), "/surface_id", needs),
         (json!(["ask_1"]), "/surface_id", needs),
-        (json!({ "surface_id": "ask_1", "a/b~": 1 }), "/a~1b~0", "quay_surface_read has no field \"a/b~\"."),
+        (json!({ "surface_id": "ask_1", "a/b~": 1 }), "/a~1b~0", "quay_surface_read has no field \"a/b~\" here."),
     ] {
         let failure = seam.cli("term-a").call("quay_surface_read", arguments).failure().await;
         let body: Value = serde_json::from_str(&failure).unwrap();
@@ -127,8 +108,8 @@ async fn a_read_without_one_id_is_rejected() {
 async fn dismissing_a_question_is_its_open_calls_result() {
     let (seam, mut webview) = start(Timing::default()).await;
     seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
-    let call = asked(&seam, &mut webview, "term-a", "One?").await;
-    let other = asked(&seam, &mut webview, "term-b", "One?").await;
+    let call = seam.asked(&mut webview, "term-a", "One?").await;
+    let other = seam.asked(&mut webview, "term-b", "One?").await;
 
     seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
     assert_eq!(call.answer().await, json!({ "dismissed": true }));
@@ -148,7 +129,7 @@ async fn dismissing_a_question_is_its_open_calls_result() {
 #[tokio::test]
 async fn a_dismissal_after_the_wait_is_typed_held_until_the_turn_ends() {
     let (seam, mut webview) = start(short_wait()).await;
-    asked(&seam, &mut webview, "term-a", "One?").await.answer().await;
+    seam.asked(&mut webview, "term-a", "One?").await.answer().await;
 
     seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
     seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
@@ -165,8 +146,8 @@ async fn a_dismissal_after_the_wait_is_typed_held_until_the_turn_ends() {
 async fn dismissing_what_asks_for_nothing_tells_the_agent_nothing() {
     let (seam, mut webview) = start(Timing::default()).await;
     seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
-    shown(&seam, &mut webview, "term-a", "One?", false).await;
-    let answered = asked(&seam, &mut webview, "term-a", "Two?").await;
+    seam.shown(&mut webview, "term-a", "One?").await;
+    let answered = seam.asked(&mut webview, "term-a", "Two?").await;
     seam.surfaces.answer(&key("term-a", "ask_2"), 1, answer()).unwrap();
     answered.answer().await;
 
@@ -181,7 +162,7 @@ async fn dismissing_what_asks_for_nothing_tells_the_agent_nothing() {
 #[tokio::test]
 async fn a_question_of_a_terminal_that_is_over_can_still_be_dismissed() {
     let (seam, mut webview) = start(short_wait()).await;
-    asked(&seam, &mut webview, "term-a", "One?").await.answer().await;
+    seam.asked(&mut webview, "term-a", "One?").await.answer().await;
     seam.pty_manager.update_status("term-a", ClaudeStatus::Exited);
 
     seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
@@ -192,10 +173,10 @@ async fn a_question_of_a_terminal_that_is_over_can_still_be_dismissed() {
 #[tokio::test]
 async fn only_the_last_100_surfaces_to_leave_a_terminal_can_still_be_read() {
     let (seam, mut webview) = start(Timing::default()).await;
-    let _other = shown(&seam, &mut webview, "term-b", "One?", false).await;
+    let _other = seam.shown(&mut webview, "term-b", "One?").await;
     seam.surfaces.dismiss(&key("term-b", "ask_1")).unwrap();
     for n in 1..=101 {
-        shown(&seam, &mut webview, "term-a", &format!("Question {n}?"), false).await;
+        seam.shown(&mut webview, "term-a", &format!("Question {n}?")).await;
         seam.surfaces.dismiss(&key("term-a", &format!("ask_{n}"))).unwrap();
     }
 

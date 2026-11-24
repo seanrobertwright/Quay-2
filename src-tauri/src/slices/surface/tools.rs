@@ -16,7 +16,7 @@ use super::store::{
 };
 use super::timing::Timing;
 use super::typing::{NotTyped, Terminals};
-use super::wait::OpenCall;
+use super::wait::Wait;
 
 /// The window that checks and draws surfaces.
 pub trait Webview: Send + Sync {
@@ -111,7 +111,7 @@ impl SurfaceTools {
         match tool {
             ask::TOOL => Some(match Ask::parse(arguments) {
                 Err(rejection) => rejection.typed_result(),
-                Ok(ask) => self.show_ask(OpenCall::open(self, terminal_id, request), terminal_id, arguments, &ask).await,
+                Ok(ask) => self.show_ask(Wait::start(self, terminal_id, request), arguments, &ask).await,
             }),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Ok(body) => text_result(body),
@@ -121,9 +121,10 @@ impl SurfaceTools {
         }
     }
 
-    async fn show_ask(&self, call: OpenCall, terminal_id: &str, arguments: &Value, ask: &Ask) -> Value {
+    async fn show_ask(&self, wait: Wait, arguments: &Value, ask: &Ask) -> Value {
+        let terminal_id = wait.terminal_id();
         let title = &ask.questions[0].question;
-        let creation = Creation { tool: ask::TOOL, arguments, title, call: call.number() };
+        let creation = Creation { tool: ask::TOOL, arguments, title, call: wait.number() };
         let key = {
             let queue = self.queue(terminal_id);
             let _one_at_a_time = queue.lock().await;
@@ -147,7 +148,7 @@ impl SurfaceTools {
                 }
             }
         };
-        match call.answer(self.0.timing.wait).await {
+        match wait.answer(self.0.timing.wait).await {
             Some(answer) => text_result(answer),
             None => text_result(json!({ "surface_id": key.id, "state": "no_answer_yet", "next": NO_ANSWER_NEXT })),
         }

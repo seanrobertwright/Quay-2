@@ -12,7 +12,8 @@ pub fn typed_line(title: &str, id: &str, result: &Value) -> String {
     format!("{LEAD}{}\" ({})]: {}", printed(title), printed(id), escaped(&result.to_string()))
 }
 
-/// Whether `prompt` is a line `typed_line` made, as a CLI reports the prompt its turn started with.
+/// Whether `prompt`, which a CLI reports its turn started with, has the shape of a line `typed_line`
+/// makes. Text of that shape which the operator typed counts as one too.
 pub fn is_typed_line(prompt: &str) -> bool {
     prompt.strip_prefix(LEAD).is_some_and(|rest| rest.contains("\" (") && rest.contains(")]: {"))
 }

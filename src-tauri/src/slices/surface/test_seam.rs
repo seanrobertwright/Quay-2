@@ -150,6 +150,28 @@ impl Seam {
         self.pty_manager.begin_launch(id, kind)
     }
 
+    /// The question `title` as `terminal_id`'s request `id`, once it has been drawn.
+    pub async fn asked_as(&self, webview: &mut FakeWebview, terminal_id: &str, id: Value, title: &str) -> OpenCall {
+        self.drawn(webview, terminal_id, id, title, true).await
+    }
+
+    /// The question `title` of `terminal_id`, once it has been drawn.
+    pub async fn asked(&self, webview: &mut FakeWebview, terminal_id: &str, title: &str) -> OpenCall {
+        self.drawn(webview, terminal_id, json!(1), title, true).await
+    }
+
+    /// `asked`, for a surface that asks for nothing.
+    pub async fn shown(&self, webview: &mut FakeWebview, terminal_id: &str, title: &str) -> OpenCall {
+        self.drawn(webview, terminal_id, json!(1), title, false).await
+    }
+
+    async fn drawn(&self, webview: &mut FakeWebview, terminal_id: &str, id: Value, title: &str, asks: bool) -> OpenCall {
+        let call = self.cli(terminal_id).call_as(id, "quay_ask", question(title));
+        self.surfaces.verdict(webview.next_check().await.call, accepted(asks));
+        webview.next_shown().await;
+        call
+    }
+
     /// The operator types `data` into `terminal_id`'s pane.
     pub fn operator_types(&self, terminal_id: &str, data: &str) {
         self.pty_manager.write_from_operator(terminal_id, data).unwrap();
@@ -286,6 +308,20 @@ impl FakeCli {
         let list = self.post("tools/list", json!({})).result().await;
         list["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect()
     }
+}
+
+pub fn key(terminal_id: &str, id: &str) -> SurfaceKey {
+    SurfaceKey::new(terminal_id, id)
+}
+
+/// A question with this title and the options Yes and No.
+pub fn question(title: &str) -> Value {
+    json!({ "questions": [{ "question": title, "options": [{ "label": "Yes" }, { "label": "No" }] }] })
+}
+
+/// An answer to the question `title`.
+pub fn answer_to(title: &str) -> Value {
+    json!({ "answers": [{ "question": title, "chosen": ["Yes"], "text": "skip the suite" }] })
 }
 
 /// The verdict of a webview that accepts a surface. Its state stands for what the engine would give.
