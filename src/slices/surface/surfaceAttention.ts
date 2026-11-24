@@ -6,7 +6,7 @@ import { subscribeToSurfaces, surfacesByTerminal, useSurfacesOf } from "./surfac
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 
 /** A live surface has had no answer. */
-const isLive = ({ answer }: SurfaceRecord): boolean => answer === null || answer === undefined;
+export const isLive = ({ answer }: SurfaceRecord): boolean => answer === null || answer === undefined;
 
 interface Attention {
   live: readonly SurfaceRecord[];
@@ -14,16 +14,16 @@ interface Attention {
 }
 
 const NONE: Attention = { live: [], asking: [] };
-const worked = new WeakMap<readonly SurfaceRecord[], Attention>();
+const attentionByList = new WeakMap<readonly SurfaceRecord[], Attention>();
 
 /** The live ones of `surfaces`, one terminal's, and which of those ask, each in the order of `surfaces`. */
 function attentionOf(surfaces: readonly SurfaceRecord[]): Attention {
-  const kept = worked.get(surfaces);
+  const kept = attentionByList.get(surfaces);
   if (kept) return kept;
   const live = surfaces.filter(isLive);
   const asking = live.filter(({ asks }) => asks);
   const attention = { live: live.length > 0 ? live : NONE.live, asking: asking.length > 0 ? asking : NONE.asking };
-  worked.set(surfaces, attention);
+  attentionByList.set(surfaces, attention);
   return attention;
 }
 
@@ -42,7 +42,8 @@ export type AskingRecord = Readonly<Pick<SurfaceRecord, "terminal_id" | "id" | "
 let lastRead: ReturnType<typeof surfacesByTerminal> | null = null;
 let lastAsking: readonly AskingRecord[] = [];
 
-const sameSurface = (a: AskingRecord, b: AskingRecord): boolean => a.terminal_id === b.terminal_id && a.id === b.id && a.order === b.order;
+/** Whether `a` and `b` are the same asking of a surface: a terminal may use an id again, for a surface of another order. */
+export const sameSurface = (a: AskingRecord, b: AskingRecord): boolean => a.terminal_id === b.terminal_id && a.id === b.id && a.order === b.order;
 
 /** Every terminal's asking surfaces. The result is the same one until a surface starts or stops asking. */
 function askingSurfaces(): readonly AskingRecord[] {

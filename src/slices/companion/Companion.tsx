@@ -1,5 +1,6 @@
 import { neonPart } from "../../lib/neon.ts";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { WAITING_ON_YOU } from "../../lib/waiting.ts";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
@@ -11,7 +12,6 @@ import {
   type CompanionPrefs,
 } from "./companionPrefs.ts";
 import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
-import { DOT_STATUS_LABELS } from "../shell/terminalStatus.ts";
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
 import { PullRequestView, type NumberedPullRequestAsk, type PullRequestAsk } from "./PullRequestView.tsx";
@@ -26,7 +26,7 @@ import { SurfaceView, type SurfaceFocus } from "../surface/SurfaceView.tsx";
 import { useSurfacesOf, useSurfacesRead } from "../surface/surfaceHost.ts";
 import { askingOf } from "../surface/surfaceAttention.ts";
 import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
-import { useQuestionOver } from "./useQuestionOver.ts";
+import { useAskingOver, useAskingState, type AskedOfRender } from "./useAskingOver.ts";
 
 /** What the companion reads and changes about terminal links. */
 export interface CompanionLinking {
@@ -362,7 +362,7 @@ export const Companion = ({
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
   // Selecting another terminal forgets it, so every selection starts from the first view, unless a
-  // question of the terminal waits: then the Surface view shows over it, or Activity when a
+  // surface of the terminal asks: then the Surface view shows over it, or Activity when a
   // permission request waits too.
   const [picked, setPicked] = useState<{ terminalId: string; view: CompanionViewId } | null>(null);
   // While the builder's inspector is given, the Inspector view shows, unless a view is picked over
@@ -379,9 +379,22 @@ export const Companion = ({
   const surfaces = useSurfacesOf(selectedTerminal?.id ?? null);
   const asking = askingOf(surfaces);
   const ready = useSurfacesRead() && activity?.permissionsRead !== false;
-  // While a question of the terminal shows, the Surface view is over the view the state below gives.
-  const question = useQuestionOver(selectedTerminal?.id ?? null, asking, ready);
-  const { open: openQuestion, leave: leaveQuestion } = question;
+  // While an asking surface of the terminal shows, the Surface view is over the view the state below gives.
+  const askingState = useAskingState(selectedTerminal?.id ?? null, asking);
+  const { open: openAsking, leave: leaveAsking } = askingState;
+  const asks = asking.length > 0;
+  const selectedId = selectedTerminal?.id ?? null;
+  const hasInspector = inspector !== null;
+  /** Makes `view` the one underneath. */
+  const showUnderneath = useCallback(
+    (view: CompanionViewId) => {
+      if (selectedId === null) return;
+      setSurfaceFocus(null);
+      if (hasInspector) setOverInspector(view);
+      else setPicked({ terminalId: selectedId, view });
+    },
+    [selectedId, hasInspector],
+  );
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
@@ -402,34 +415,31 @@ export const Companion = ({
             pullRequestAsk: prAsk?.terminalId === selectedTerminal.id ? prAsk : null,
             takePullRequestAsk: (seq: number) => setPrAsk((current) => (current?.seq === seq ? null : current)),
             show: (view: CompanionViewId) => {
-              if (view === SURFACE_VIEW.id && openQuestion()) return;
-              leaveQuestion();
-              setSurfaceFocus(null);
-              if (inspector) setOverInspector(view);
-              else setPicked({ terminalId: selectedTerminal.id, view });
+              if (view === SURFACE_VIEW.id && asks) {
+                openAsking();
+                return;
+              }
+              leaveAsking();
+              showUnderneath(view);
             },
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, surfaces, surfaceFocus, run, inspector, prAsk, openQuestion, leaveQuestion],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, surfaces, surfaceFocus, run, inspector, prAsk, asks, openAsking, leaveAsking, showUnderneath],
   );
-  const selectedId = context?.terminal.id ?? null;
   // A handed-in ticket shows until its Close, until a view is asked for over it, or until another
   // terminal is selected; a new seq shows it again.
   const [closedTicketSeq, setClosedTicketSeq] = useState<number | null>(null);
   const [ticketOver, setTicketOver] = useState<{ seq: number; terminalId: string | null } | null>(null);
-  // What the operator asks for takes the question off the screen. It has a render of its own, before
-  // the one the question's own rule follows it in.
-  let asked = false;
+  // What this render is asked for, which comes before the asking surfaces' own rule.
+  let asked: AskedOfRender | null = null;
   if (ticket && ticket.seq !== ticketOver?.seq) {
     setTicketOver({ seq: ticket.seq, terminalId: selectedId });
-    leaveQuestion();
-    asked = true;
+    asked = "leave";
   }
-  const [hadInspector, setHadInspector] = useState(inspector !== null);
-  if (hadInspector !== (inspector !== null)) {
-    setHadInspector(inspector !== null);
-    if (inspector) leaveQuestion();
-    asked = true;
+  const [hadInspector, setHadInspector] = useState(hasInspector);
+  if (hadInspector !== hasInspector) {
+    setHadInspector(hasInspector);
+    if (hasInspector) asked = "leave";
   }
   // Once a ticket is withdrawn the next one may carry its seq again, so nothing is kept of it.
   if (!ticket && ticketOver) {
@@ -440,13 +450,14 @@ export const Companion = ({
   const [takenSeq, setTakenSeq] = useState<number | null>(null);
   if (showRequest && showRequest.seq !== takenSeq) {
     setTakenSeq(showRequest.seq);
-    asked = true;
     if (showRequest.terminalId === selectedId) {
-      // A reload follows a merge and is not an ask to see the view, so a question or a ticket stays over it.
+      // A reload follows a merge and is not an ask to see the view, so an asking surface or a ticket stays over it.
       const isAsk = showRequest.pullRequest?.kind !== "reload";
-      // A question that is asked for shows over the view before it, as one that arrives does.
-      if (showRequest.view !== SURFACE_VIEW.id || !openQuestion()) {
-        if (isAsk) leaveQuestion();
+      // An asking surface that is asked for shows over the view before it, as one that arrives does.
+      if (showRequest.view === SURFACE_VIEW.id && asks) {
+        asked = "open";
+      } else {
+        asked = isAsk ? "leave" : (asked ?? "wait");
         setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
         if (inspector) setOverInspector(showRequest.view);
       }
@@ -471,7 +482,7 @@ export const Companion = ({
         ? choices.find((view) => view.id === picked.view)
         : undefined;
   const pick = (view: CompanionViewId) => {
-    // The view switch is on screen over a handed-in ticket only while a question is over the ticket too.
+    // The view switch is on screen over a handed-in ticket only while an asking surface is over the ticket too.
     if (ticket) setClosedTicketSeq(ticket.seq);
     context?.show(view);
   };
@@ -479,18 +490,18 @@ export const Companion = ({
   const handedIn =
     ticket && ticket.seq !== closedTicketSeq && (ticket.seq !== ticketOver?.seq || ticketOver.terminalId === selectedId) ? ticket : null;
   const permissionPending = activity?.waiting.some((item) => item.kind === "permission" && item.terminalId === selectedId) ?? false;
-  if (!asked) {
-    question.follow({
-      cardShown:
-        !handedIn &&
-        ((underneathId === ACTIVITY_VIEW.id && permissionPending) || (underneathId === RUN_VIEW.id && run?.undecided === true)),
-      permissionPending,
-      showActivity: () => context?.show(ACTIVITY_VIEW.id),
-    });
-  }
-  const shownId = question.over ? SURFACE_VIEW.id : underneathId;
+  const askingOver = useAskingOver(askingState, {
+    asked,
+    ready,
+    cardShown:
+      !handedIn &&
+      ((underneathId === ACTIVITY_VIEW.id && permissionPending) || (underneathId === RUN_VIEW.id && run?.undecided === true)),
+    permissionPending,
+    showActivity: () => showUnderneath(ACTIVITY_VIEW.id),
+  });
+  const shownId = askingOver ? SURFACE_VIEW.id : underneathId;
   const shown = views.find((view) => view.id === shownId) ?? null;
-  const looseTicket = question.over ? null : handedIn;
+  const looseTicket = askingOver ? null : handedIn;
   // With no terminal selected, the Inspector and Run views still show while they are given.
   const body: { view: CompanionView<CompanionContext>; content: ReactNode } | null =
     context && shown
@@ -549,7 +560,7 @@ export const Companion = ({
             <ViewSwitch
               views={viewChoices}
               shown={shown.id}
-              waiting={asking.length > 0 && shown.id !== SURFACE_VIEW.id ? SURFACE_VIEW.id : null}
+              waiting={asks && shown.id !== SURFACE_VIEW.id ? SURFACE_VIEW.id : null}
               onPick={pick}
             />
             <div className="ml-auto shrink-0 flex items-center gap-2 pl-2">
@@ -671,7 +682,7 @@ const ViewSwitch = ({
             type="button"
             role="radio"
             aria-checked={checked}
-            aria-label={view.id === waiting ? `${view.label}, ${DOT_STATUS_LABELS.waiting}` : undefined}
+            aria-label={view.id === waiting ? `${view.label}, ${WAITING_ON_YOU}` : undefined}
             tabIndex={checked ? 0 : -1}
             onClick={() => onPick(view.id)}
             onKeyDown={(e) => {

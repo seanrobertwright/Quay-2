@@ -4,6 +4,7 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
+import { isLive } from "./surfaceAttention.ts";
 import { answerSurface, loadA2ui } from "./surfaceHost.ts";
 import type { SurfaceAction, SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
@@ -86,7 +87,7 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
     <div ref={listRef} className="flex flex-col gap-2 p-2">
       {surfaces.map((record) => {
         const key = `${record.terminal_id} ${record.id} ${record.revision}`;
-        return record.answer === null || record.answer === undefined ? (
+        return isLive(record) ? (
           <LiveSurface key={key} record={record} terminal={terminal} />
         ) : (
           <SettledSurface key={key} record={record} terminal={terminal} />

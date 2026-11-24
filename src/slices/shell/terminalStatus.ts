@@ -2,6 +2,7 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
 import type { AttentionItem } from "../attention/attentionQueue.ts";
+import { WAITING_ON_YOU } from "../../lib/waiting.ts";
 import { isSamePath, isSubpathOf } from "../../utils/paths.ts";
 
 /** The four dots of the module bar's terminal status list. */
@@ -10,7 +11,7 @@ export type DotStatus = "working" | "waiting" | "idle" | "exited";
 /** Each dot's status as a screen reader and the tooltip say it. */
 export const DOT_STATUS_LABELS: Record<DotStatus, string> = {
   working: "working",
-  waiting: "waiting on you",
+  waiting: WAITING_ON_YOU,
   idle: "idle",
   exited: "exited",
 };

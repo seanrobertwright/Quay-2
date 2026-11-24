@@ -10,7 +10,7 @@ export const loadA2ui = () => import("./a2ui/index.ts");
 const NONE: readonly SurfaceRecord[] = [];
 let byTerminal: ReadonlyMap<string, readonly SurfaceRecord[]> = new Map();
 /** Whether the surfaces Rust held when the page loaded are kept, or could not be read. */
-let read = false;
+let listDone = false;
 const subscribers = new Set<() => void>();
 
 function set(next: typeof byTerminal): void {
@@ -81,7 +81,7 @@ export function startSurfaces(): () => void {
   ]);
   const listRead = () => {
     if (stopped) return;
-    read = true;
+    listDone = true;
     set(byTerminal);
   };
   const readList = async () => {
@@ -102,7 +102,7 @@ export function startSurfaces(): () => void {
   return () => {
     stopped = true;
     cancelAnimationFrame(frame);
-    read = false;
+    listDone = false;
     set(new Map());
     listening.then((unlisten) => unlisten.forEach((stop) => stop()), failed("The surfaces could not be listened for"));
   };
@@ -117,7 +117,7 @@ export function useSurfacesOf(terminalId: string | null): readonly SurfaceRecord
  * Whether the surfaces Rust held when the page loaded are known. Until then a surface that comes may
  * be one the operator has seen already. Also true once they could not be read.
  */
-export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSurfaces, () => read);
+export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSurfaces, () => listDone);
 
 /** Sends the operator's answer. It rejects with Quay's words for why it was not taken. */
 export function answerSurface(record: SurfaceRecord, answer: unknown): Promise<void> {

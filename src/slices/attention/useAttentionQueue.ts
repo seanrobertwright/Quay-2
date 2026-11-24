@@ -121,7 +121,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     });
   }, [terminals]);
 
-  // Before paint, so a question that settles takes every mark of it off the screen at once
+  // Before paint, so a surface that settles takes every mark of it off the screen at once
   const asking = useAskingSurfaces();
   useLayoutEffect(() => {
     dispatch({
