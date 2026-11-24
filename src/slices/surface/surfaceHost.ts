@@ -119,6 +119,11 @@ export function useSurfacesOf(terminalId: string | null): readonly SurfaceRecord
  */
 export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSurfaces, () => listDone);
 
+/** Dismisses a surface. It rejects with Quay's words for why it stays. */
+export function dismissSurface({ terminal_id, id }: SurfaceKey): Promise<void> {
+  return invoke("surface_dismiss", { terminalId: terminal_id, id });
+}
+
 /** Sends the operator's answer. It rejects with Quay's words for why it was not taken. */
 export function answerSurface(record: SurfaceRecord, answer: unknown): Promise<void> {
   return invoke("surface_answer", { terminalId: record.terminal_id, id: record.id, revision: record.revision, answer });

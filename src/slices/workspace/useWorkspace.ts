@@ -24,6 +24,7 @@ import { focusTerminal } from "../terminal/terminalRequests";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler, type CtrlBActions } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
+import { messageTitle, promptTitle } from "./taskTitle";
 import { opensCommandPalette } from "./paletteKey";
 import { chooseGridSlots } from "./gridSlots";
 import { areWorktreesEqual, findProjectsNeedingWorktreeRefresh } from "./worktreeSync";
@@ -269,12 +270,7 @@ export function useWorkspace() {
                 envelope.data?.query ||
                 envelope.data?.user_input;
               if (rawPrompt && typeof rawPrompt === "string") {
-                const clean = rawPrompt
-                  .trim()
-                  .replace(/^\[Message from peer agent[^\]]*\]:\s*/, "")
-                  .split("\n")[0]
-                  .trim()
-                  .slice(0, 36);
+                const clean = promptTitle(rawPrompt);
                 if (clean) {
                   updated.task_title = clean;
                   // Auto-update session display name if it hasn't been custom-named
@@ -410,7 +406,7 @@ export function useWorkspace() {
       content: string;
     }>("a2a-message-dispatched", (event) => {
       const { to_terminal, content } = event.payload;
-      const cleanTitle = content.trim().replace(/^\[Peer agent[^\]]*\]:\s*/, "").slice(0, 36);
+      const cleanTitle = messageTitle(content);
 
       setTerminals((prev) =>
         prev.map((t) => {

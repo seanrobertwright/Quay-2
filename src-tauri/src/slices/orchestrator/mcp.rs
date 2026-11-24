@@ -49,6 +49,14 @@ fn reply_to_notification(req: &JsonRpcRequest) -> Option<Response> {
         .then(|| StatusCode::ACCEPTED.into_response())
 }
 
+/// The id of the request a notification says its client has given up, when it says so.
+fn cancelled_request(notification: &JsonRpcRequest) -> Option<&Value> {
+    match notification.method.as_str() {
+        "notifications/cancelled" => notification.params.as_ref()?.get("requestId"),
+        _ => None,
+    }
+}
+
 /// Tells a client that probes with MCP 2026-07-28's `server/discover` that Quay speaks the earlier
 /// versions, which start with `initialize`. That revision's Streamable HTTP page, section "Backward
 /// Compatibility", has the client fall back on `400 Bad Request` when "the body is empty or is not a
@@ -83,6 +91,9 @@ pub async fn handle_mcp_request(
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
     if let Some(accepted) = reply_to_notification(&req) {
+        if let Some(request) = cancelled_request(&req) {
+            ctx.surfaces.call_cancelled(caller.id(), request);
+        }
         return accepted;
     }
     let caller_id = caller.id();
@@ -372,7 +383,7 @@ pub async fn handle_mcp_request(
 
                 _ => ctx
                     .surfaces
-                    .call(caller_id, tool_name, &arguments)
+                    .call(caller_id, &id, tool_name, &arguments)
                     .await
                     .ok_or_else(|| format!("Unknown tool: {}", tool_name)),
             };
