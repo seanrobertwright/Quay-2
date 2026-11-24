@@ -188,3 +188,22 @@ async fn a_question_of_a_terminal_that_is_over_can_still_be_dismissed() {
     assert_eq!(webview.next_removed().await, key("term-a", "ask_1"));
     assert_eq!(seam.typed("term-a"), "");
 }
+
+#[tokio::test]
+async fn only_the_last_100_surfaces_to_leave_a_terminal_can_still_be_read() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let _other = shown(&seam, &mut webview, "term-b", "One?", false).await;
+    seam.surfaces.dismiss(&key("term-b", "ask_1")).unwrap();
+    for n in 1..=101 {
+        shown(&seam, &mut webview, "term-a", &format!("Question {n}?"), false).await;
+        seam.surfaces.dismiss(&key("term-a", &format!("ask_{n}"))).unwrap();
+    }
+
+    let cli = seam.cli("term-a");
+    let failure = cli.call("quay_surface_read", json!({ "surface_id": "ask_1" })).failure().await;
+    assert!(failure.contains("No surface \\\"ask_1\\\" in this terminal."), "{failure}");
+    for id in ["ask_2", "ask_101"] {
+        assert_eq!(read(&cli, id).await["state"], "dismissed");
+    }
+    assert_eq!(read(&seam.cli("term-b"), "ask_1").await["state"], "dismissed", "each terminal's are its own");
+}

@@ -1,7 +1,7 @@
 //! The surface store: every surface, its owner, state and waits, in memory, as one state machine
 //! under its own lock. Nothing waits while holding it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -16,6 +16,10 @@ use super::typing::NotTyped;
 
 /// The most surfaces a terminal keeps: the spec's four live and ten locked, not told apart yet.
 pub const MOST_KEPT: usize = 14;
+
+/// How many of a terminal's surfaces that have left can still be read. Past it the one that left first
+/// is forgotten, with its answer.
+const MOST_READABLE: usize = 100;
 
 /// Which surface: its id is one among its terminal's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -186,13 +190,31 @@ impl Surface {
     }
 }
 
+/// Where a terminal's surfaces that have left stand, in the order they left: at most `MOST_READABLE`.
+#[derive(Default)]
+struct Left(VecDeque<(String, Standing)>);
+
+impl Left {
+    fn add(&mut self, id: String, standing: Standing) {
+        if self.0.len() == MOST_READABLE {
+            self.0.pop_front();
+        }
+        self.0.push_back((id, standing));
+    }
+
+    /// Where the last surface of that id stood.
+    fn standing(&self, id: &str) -> Option<Standing> {
+        self.0.iter().rev().find(|(left, _)| left == id).map(|(_, standing)| standing.clone())
+    }
+}
+
 /// One terminal's surfaces, in the order they were committed, where those that have left stand, how
 /// many asks have been named, and the calls that are open.
 #[derive(Default)]
 struct Terminal {
     asks: u64,
     surfaces: Vec<Surface>,
-    left: HashMap<String, Standing>,
+    left: Left,
     calls: OpenCalls,
 }
 
@@ -234,12 +256,12 @@ impl SurfaceStore {
     }
 
     /// Where the surface `key` stands, also once it has left the screen. `None` when its terminal
-    /// never had it.
+    /// never had it, or has had `MOST_READABLE` leave since it left.
     pub fn standing(&self, key: &SurfaceKey) -> Option<Standing> {
         let inner = self.0.lock();
         let terminal = inner.terminals.get(&key.terminal_id)?;
         let surface = terminal.surfaces.iter().find(|surface| surface.id == key.id);
-        surface.map(|surface| surface.phase.standing()).or_else(|| terminal.left.get(&key.id).cloned())
+        surface.map(|surface| surface.phase.standing()).or_else(|| terminal.left.standing(&key.id))
     }
 
     /// Opens a call of `terminal_id` whose JSON-RPC request has the id `request`. Returns its number
@@ -303,7 +325,7 @@ impl SurfaceStore {
         } else {
             let oldest = terminal.surfaces.iter().position(|surface| !surface.is_open());
             let left = terminal.surfaces.remove(oldest.ok_or(CommitRefused::Full)?);
-            terminal.left.insert(left.id.clone(), left.phase.standing());
+            terminal.left.add(left.id.clone(), left.phase.standing());
             Some(SurfaceKey::new(&key.terminal_id, left.id))
         };
         let phase = match accepted.asks {
@@ -378,7 +400,7 @@ impl SurfaceStore {
             Phase::Settled { answer } => Standing::Answered(answer),
             _ => Standing::Dismissed,
         };
-        left.insert(surface.id, standing);
+        left.add(surface.id, standing);
         Ok(Some(Dismissed { line }))
     }
 
