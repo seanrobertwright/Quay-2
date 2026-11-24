@@ -13,6 +13,9 @@ use super::rejection::Rejection;
 pub const TOOL: &str = "quay_ask";
 pub const PLACE: Place = Place::Companion;
 
+/// What its surfaces are named by: `ask_1` and on.
+pub const NAMED: &str = "ask";
+
 pub(super) const CONTEXT_LIMIT: usize = 600;
 pub(super) const QUESTION_COUNT: RangeInclusive<usize> = 1..=4;
 pub(super) const QUESTION_LIMIT: usize = 200;

@@ -10,9 +10,11 @@ use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, Verdict};
 use super::names;
+use super::place::Place;
 use super::raw::{self, RawCall};
 use super::read;
 use super::rejection::{CallError, QuayFailed, Rejection};
+use super::review::{self, Review};
 use super::store::{
     AnswerRefused, Answered, BeingSent, Changed, CommitRefused, Creation, Dismissed, Standing, SurfaceKey,
     SurfaceRecord, SurfaceStore, ToType,
@@ -47,6 +49,17 @@ struct Inner {
 
 #[derive(Clone)]
 pub struct SurfaceTools(Arc<Inner>);
+
+/// A typed tool's call that Rust has found nothing wrong with.
+struct Typed<'a> {
+    tool: &'static str,
+    /// What Quay names its surfaces by.
+    named: &'static str,
+    place: Place,
+    title: &'a str,
+    /// The arguments as Rust checked them.
+    checked: Value,
+}
 
 impl Default for SurfaceTools {
     fn default() -> Self {
@@ -138,17 +151,24 @@ impl SurfaceTools {
         match tool {
             ask::TOOL => Some(match Ask::parse(arguments) {
                 Err(rejection) => self.reject(terminal_id, ask::TOOL, &rejection),
-                Ok(ask) => match Wait::start(self, terminal_id, request) {
-                    Some(wait) => self.show_ask(wait, arguments, &ask).await,
-                    None => QuayFailed::TerminalOver.result(),
-                },
+                Ok(ask) => {
+                    let title = &ask.questions[0].question;
+                    let typed =
+                        Typed { tool: ask::TOOL, named: ask::NAMED, place: ask::PLACE, title, checked: json!(ask) };
+                    self.show_typed(terminal_id, request, arguments, typed).await
+                }
+            }),
+            review::TOOL => Some(match Review::parse(arguments) {
+                Err(rejection) => self.reject(terminal_id, review::TOOL, &rejection),
+                Ok(review) => {
+                    let (named, place, title) = (review::NAMED, review::PLACE, &review.title);
+                    let typed = Typed { tool: review::TOOL, named, place, title, checked: json!(review) };
+                    self.show_typed(terminal_id, request, arguments, typed).await
+                }
             }),
             board::TOOL => Some(match Board::parse(arguments) {
                 Err(rejection) => self.reject(terminal_id, board::TOOL, &rejection),
-                Ok(board) => match Wait::start(self, terminal_id, request) {
-                    Some(wait) => self.show_board(wait, arguments, &board).await,
-                    None => QuayFailed::TerminalOver.result(),
-                },
+                Ok(board) => self.show_board(terminal_id, request, arguments, &board).await,
             }),
             raw::TOOL => Some(match RawCall::parse(arguments) {
                 Err(rejection) => self.reject(terminal_id, raw::TOOL, &rejection),
@@ -165,20 +185,23 @@ impl SurfaceTools {
         }
     }
 
-    async fn show_ask(&self, wait: Wait, arguments: &Value, ask: &Ask) -> Value {
-        let terminal_id = wait.terminal_id();
-        let title = &ask.questions[0].question;
-        let creation = Creation { tool: ask::TOOL, arguments, title, place: ask::PLACE, call: wait.number() };
+    /// Shows what `terminal_id`'s call `typed` makes, and waits for its answer if it asks for one.
+    async fn show_typed(&self, terminal_id: &str, request: &Value, arguments: &Value, typed: Typed<'_>) -> Value {
+        let Typed { tool, named, place, title, checked } = typed;
+        let Some(wait) = Wait::start(self, terminal_id, request) else {
+            return QuayFailed::TerminalOver.result();
+        };
+        let creation = Creation { tool, arguments, title, place, call: wait.number() };
         let key = {
             let queue = self.queue(terminal_id);
             let _one_at_a_time = queue.lock().await;
             match self.0.store.rejoin(terminal_id, creation) {
                 Some(key) => key,
                 None => {
-                    let Some(key) = self.0.store.name_ask(terminal_id) else {
+                    let Some(key) = self.0.store.name(terminal_id, named) else {
                         return QuayFailed::TerminalOver.result();
                     };
-                    match self.check_and_commit(&key, creation, json!(ask)).await {
+                    match self.check_and_commit(&key, creation, checked).await {
                         Err(failure) => return failure,
                         Ok(record) => {
                             self.show(&record);
@@ -206,8 +229,10 @@ impl SurfaceTools {
     }
 
     /// Shows a board, which sends nothing back, so its call waits for no answer.
-    async fn show_board(&self, wait: Wait, arguments: &Value, board: &Board) -> Value {
-        let terminal_id = wait.terminal_id();
+    async fn show_board(&self, terminal_id: &str, request: &Value, arguments: &Value, board: &Board) -> Value {
+        let Some(wait) = Wait::start(self, terminal_id, request) else {
+            return QuayFailed::TerminalOver.result();
+        };
         let creation =
             Creation { tool: board::TOOL, arguments, title: &board.title, place: board::PLACE, call: wait.number() };
         let key = SurfaceKey::new(terminal_id, &board.id);

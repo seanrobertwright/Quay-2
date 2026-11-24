@@ -14,6 +14,7 @@ import { acceptedRaw, button, column, create, EVENT, oneButton, text, type Compo
 
 const { earlierButton, findButton, mountCompanion, openLocked, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 const { line, lines, strip, opened } = await import("./fixtures/boardFixtures.ts");
+const { frame, mountStage, openTab, tabs } = await import("./fixtures/reviewFixtures.ts");
 
 const MINUTE = 60_000;
 
@@ -115,6 +116,7 @@ test("a value bound to data of another kind is drawn as what it reads, or as not
     text(`text${i}`, bound(path)),
     { id: `stat${i}`, component: "Stat", label: bound(path), value: bound(path) },
     { id: `field${i}`, component: "TextField", label: bound(path), value: bound(path) },
+    { id: `check${i}`, component: "CheckBox", label: bound(path), value: bound(path) },
     { id: `file${i}`, component: "FileLink", path: "a.ts", label: bound(path) },
     { id: `bar${i}`, component: "Progress", done: bound(path), total: 7, label: bound(path) },
     { id: `image${i}`, component: "Image", url: bound(path), description: bound(path) },
@@ -127,6 +129,23 @@ test("a value bound to data of another kind is drawn as what it reads, or as not
   const values = [...container.querySelectorAll("input")].filter(({ type }) => type === "text").map(({ value }) => value);
   assert.deepEqual(values, ["3", "true", "", "", ""]);
   assert.ok(!content(container).textContent!.includes("[object"));
+});
+
+test("a raw tab goes by its title, never takes the stage, and sends its action from there", async () => {
+  list = [await acceptedRaw([create(oneButton(EVENT))], { place: "tab" })];
+  loadSurfaces();
+  mounted = await mountStage([TERMINAL]);
+  const { container } = mounted;
+  assert.equal(tabs(container)[0].getAttribute("aria-label"), "Migration plan, surface from fix-75, waiting on you");
+  assert.equal(frame(container) === null, true);
+
+  await openTab(container, "Migration plan");
+  await until(() => !container.textContent?.includes("Loading"), "it was never drawn");
+  assert.equal(frame(container)!.querySelector("[data-surface-content]")!.textContent, "Migration planPress go");
+  await act(async () => findButton(frame(container)!, "Press go")!.click());
+  await settle();
+  const [{ answer }] = called("surface_answer") as { answer: { action: { name: string } } }[];
+  assert.equal(answer.action.name, "go");
 });
 
 /** Draws the pane's strip. */
@@ -194,7 +213,7 @@ test("an answered raw surface keeps the answer, and folds what was asked with no
   const said = content(container).textContent!;
   assert.ok(said.startsWith("Migration planapprovenameAdadropped[\"a\",\"b\"]"), said);
   assert.ok(region(container).textContent!.includes("Answered and sent to the agent."));
-  await act(async () => findButton(region(container), "What was asked")!.click());
+  await act(async () => findButton(region(container), "What was shown")!.click());
   await until(() => findButton(region(container), "Press go") !== undefined, "what was asked is gone");
   const inside = region(container).querySelector("fieldset")!;
   assert.equal(inside.disabled, true);

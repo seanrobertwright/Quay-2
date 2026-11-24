@@ -18,6 +18,8 @@ export interface MenuPoint {
 
 /** One entry of a menu. */
 export interface ContextMenuItem {
+  /** Tells it from another item of the same name. */
+  id?: string;
   name: string;
   enabled: boolean;
   /** Items of one group sit together, with a separator between groups. */
@@ -175,7 +177,7 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
         const groupStarts = i > 0 && items[i - 1].group !== item.group;
         const toggle = item.checked !== undefined;
         return (
-          <div key={item.name}>
+          <div key={item.id ?? item.name}>
             {groupStarts && <div role="separator" className="my-1 border-t border-[#30363d]" />}
             <button
               type="button"

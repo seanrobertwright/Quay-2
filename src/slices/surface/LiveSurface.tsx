@@ -16,10 +16,14 @@ const Loading = () => <p className="text-[#8b949e]">Loading…</p>;
 interface LiveSurfaceProps {
   record: SurfaceRecord;
   terminal: TerminalInfo;
+  /** Fills what it is in, and scrolls what it holds. */
+  fills?: boolean;
+  /** Why it was not dismissed from outside its frame. */
+  notDismissed?: string | null;
 }
 
 /** A surface the operator can act on. */
-export const LiveSurface = ({ record, terminal }: LiveSurfaceProps) => {
+export const LiveSurface = ({ record, terminal, fills = false, notDismissed = null }: LiveSurfaceProps) => {
   const { kind, KindIcon, layout } = lookOf(record.tool);
   const [refusal, setRefusal] = useState<string | null>(null);
   // What is unsent in it comes with the list
@@ -42,7 +46,7 @@ export const LiveSurface = ({ record, terminal }: LiveSurfaceProps) => {
     [record],
   );
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} dismiss={dismiss} refusal={refusal}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceTitle record={record} />
       <SurfaceBoundary key={record.revision}>
         <Suspense fallback={<Loading />}>

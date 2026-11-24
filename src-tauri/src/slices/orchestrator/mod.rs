@@ -1,4 +1,6 @@
 pub mod commands;
+#[cfg(test)]
+mod handshake_tests;
 mod instructions;
 pub mod launch_prompt;
 pub mod mcp;

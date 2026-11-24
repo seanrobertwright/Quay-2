@@ -51,6 +51,34 @@
     }
   },
   {
+    "name": "quay_review",
+    "description": "Show the operator a plan, results or findings to decide on, in a tab of their own, when they should read before you go on. They keep or drop each item, may comment, and approve, request changes or reject. The call stays open for the verdict, up to 100 seconds, and returns {\"title\", \"verdict\", \"dropped\", \"comment\"}: verdict is approved, changes_requested or rejected, dropped the titles of the items to leave out, and comment is left out when empty.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Plain text, at most 80 characters." },
+        "body": { "type": "string", "description": "Markdown, at most 20000 characters." },
+        "items": {
+          "type": "array",
+          "maxItems": 30,
+          "description": "What can be kept or dropped one by one. All start kept.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "description": "At most 120 characters, and no other item's." },
+              "detail": { "type": "string", "description": "Plain text, at most 300 characters." },
+              "file": { "type": "string", "description": "A path to show, which may end in :line." }
+            },
+            "required": ["title"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["title", "body"],
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "quay_board",
     "description": "Show the operator how a long run stands, as a live line on this terminal's pane that opens into steps, progress and stats. Each call replaces the whole board, so send all of it each time. Returns {\"shown\": true} at once and sends nothing back. {\"dismissed\": true} means the operator closed this board: stop updating it, and use a new id for a later run.",
     "inputSchema": {
@@ -104,17 +132,16 @@
   },
   {
     "name": "quay_surface",
-    "description": "Show the operator a surface you write yourself, as A2UI 1.0 messages, when no other tool shows what you need. quay_surface_guide has the components and the rules. One createSurface a call, and its surface whole in that call. With an action to you, the call stays open for it, up to 100 seconds, and returns the A2UI action message; without one it returns {\"shown\": true}.",
+    "description": "Show the operator what no other tool can, as A2UI 1.0 messages you write. quay_surface_guide says how. One createSurface a call, whole in that call. With an action to you the call waits for it, up to 100 seconds, and returns the A2UI action message, else {\"shown\": true}.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "messages": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "A2UI 1.0 messages. Leave catalogId out." },
+        "messages": { "type": "array", "items": { "type": "object" } },
         "place": {
-          "type": "string",
           "enum": ["companion", "tab", "strip"],
-          "description": "Needed to create a surface. companion: narrow, beside the terminal, for something that needs an answer. tab: full width, opened by the operator, for long content. strip: compact, on the pane, for status, with no action to you."
+          "description": "To create. companion: narrow, for an answer. tab: full width, for long content. strip: compact, for status, with no action to you."
         },
-        "title": { "type": "string", "description": "Needed to create a surface: plain text, at most 80 characters." }
+        "title": { "type": "string", "description": "To create. At most 80 characters." }
       },
       "required": ["messages"],
       "additionalProperties": false

@@ -90,15 +90,17 @@ test("more than ten errors are the first ten and how many are left", async () =>
   assert.deepEqual([verdict.errors.length, verdict.more], [10, 4]);
 });
 
-const NAMES = "The catalog's components are Button, ChoicePicker, Column, FileLink, Image, Progress, Stat, Steps, Text, TextField.";
-
 test("an unknown component is told with the catalog's names, and with advice for what Quay does not draw", async () => {
   const media = " Quay plays no media. Link the file with FileLink.";
   const advice: [string, string][] = [["Carousel", ""], ["Modal", " Quay draws no modal. Put the content in the surface, or use place tab."], ["Video", media], ["AudioPlayer", media]];
   for (const [component, said] of advice) {
-    assert.deepEqual(told(await errorsIn([create(column({ id: "x", component }))])), [
-      ["VALIDATION_FAILED", "/messages/0/createSurface/components/1/component", `Unknown component type '${component}' not found in catalog 'urn:quay:a2ui:catalog:v1'. ${NAMES}${said}`],
-    ]);
+    const [error, ...others] = await errorsIn([create(column({ id: "x", component }))]);
+    assert.equal(others.length, 0);
+    assert.deepEqual([error.code, error.path], ["VALIDATION_FAILED", "/messages/0/createSurface/components/1/component"]);
+    const [, listed, rest] = /^Unknown component type '\w+' not found in catalog 'urn:quay:a2ui:catalog:v1'\. The catalog's components are ([\w, ]+)\.(.*)$/.exec(error.message)!;
+    assert.equal(rest, said);
+    for (const name of ["Button", "ChoicePicker", "Column", "FileLink", "Image", "Progress", "Stat", "Steps", "Text", "TextField"]) assert.ok(listed.split(", ").includes(name), name);
+    assert.ok(!listed.includes(component));
   }
 });
 
@@ -169,4 +171,8 @@ test("a call that creates nothing is told what is wrong with it, or nothing", as
   assert.deepEqual(await only([{ version: "1.0", deleteSurface: { surfaceId: "gone" } }]), { errors: [], more: 0 });
   const verdict = await only([{ version: "v0.9", deleteSurface: { surfaceId: "gone" } }]);
   assert.deepEqual("errors" in verdict && where(verdict.errors), [["VALIDATION_FAILED", "/messages/0/version"]]);
+  const odd = { version: "1.0", deleteSurface: { surfaceId: "gone", why: "x" } };
+  const found = await only([odd]);
+  assert.deepEqual("errors" in found && where(found.errors), [["VALIDATION_FAILED", "/messages/0/deleteSurface/why"]]);
+  assert.deepEqual(where(await errorsIn([odd, create(column(text("said", "x")))])), [["VALIDATION_FAILED", "/messages/0/deleteSurface/why"]]);
 });

@@ -2,16 +2,10 @@ import { neonPart } from "../../lib/neon.ts";
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Columns2, Grid2x2, Maximize2, Minimize2, Plus, Rows2, Square, X } from "lucide-react";
 import type { StageLayout, TerminalInfo } from "../terminal/types";
+import type { StageToolTab } from "./stageTools.ts";
 
 /** The stage tab bar's height, in CSS px. */
 export const STAGE_TAB_BAR_HEIGHT = 34;
-
-/** A full-stage tool, such as the swarm builder, with its own stage tab. */
-export interface StageToolTab {
-  id: string;
-  label: string;
-  icon: ReactNode;
-}
 
 interface StageTabBarProps {
   /** The active project's terminals, in Projects panel order. */
@@ -34,6 +28,8 @@ interface StageTabBarProps {
   frontToolId?: string | null;
   onSelectTool?: (id: string) => void;
   onCloseTool?: (id: string) => void;
+  /** The menu that locked surface tabs are folded under, after the tabs. */
+  earlierTabs?: ReactNode;
 }
 
 interface LayoutChoice {
@@ -46,7 +42,7 @@ interface LayoutChoice {
 
 /**
  * The bar on top of the stage, `STAGE_TAB_BAR_HEIGHT` tall: a tab per terminal of the active
- * project, then a tab per open stage tab tool, then New terminal, with the layout switchers and
+ * project, then a tab per open stage tab tool, then the locked surface tabs' menu, then New terminal, with the layout switchers and
  * Zoom on the right. A terminal tab selects its terminal: it focuses the pane that shows it, or
  * else takes over the focused pane. A tool tab brings its tool in front of the panes. Tabs are plain
  * buttons marked current, not ARIA tabs, since the panes they show are not tab panels.
@@ -67,6 +63,7 @@ export const StageTabBar = ({
   frontToolId = null,
   onSelectTool,
   onCloseTool,
+  earlierTabs,
 }: StageTabBarProps) => {
   const layoutRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const choices: LayoutChoice[] = [
@@ -140,14 +137,19 @@ export const StageTabBar = ({
                 type="button"
                 data-stage-tool={tool.id}
                 onClick={() => onSelectTool?.(tool.id)}
-                aria-label={tool.label}
+                aria-label={tool.name ?? tool.label}
+                title={tool.name}
                 aria-current={current ? "true" : undefined}
                 className="max-w-[12rem] pl-3 pr-1 flex items-center gap-1.5"
               >
-                <span aria-hidden="true" className="shrink-0 w-3.5 h-3.5 grid place-items-center">
+                <span
+                  aria-hidden="true"
+                  className={`shrink-0 w-3.5 h-3.5 grid place-items-center ${tool.waits && !current ? "motion-safe:animate-pulse" : ""}`}
+                >
                   {tool.icon}
                 </span>
                 <span className="truncate">{tool.label}</span>
+                {tool.waits && <span aria-hidden="true" data-waiting-dot className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d29922]" />}
               </button>
               <button
                 type="button"
@@ -162,6 +164,7 @@ export const StageTabBar = ({
           );
         })}
       </div>
+      {earlierTabs}
       <button
         type="button"
         onClick={onNewTerminal}

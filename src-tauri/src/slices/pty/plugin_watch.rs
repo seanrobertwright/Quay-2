@@ -1,13 +1,14 @@
 //! What Quay knows, in one launch of a terminal, about whether the plugin or extension
 //! that reports its turns is loaded (Claude Code's event-bridge plugin, or Quay's PiG
 //! extension; see `RunKind::reports_through_plugin`), and the status rules that follow. The
-//! launch's first output, its process's exit and its CLI's handshake with Quay's MCP server are
-//! kept here too, since all of them begin anew with each launch.
+//! time a launch began, its first output, its process's exit and its CLI's handshake with Quay's MCP
+//! server are kept here too, since all of them begin anew with each launch.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use super::handshake::Handshake;
 use super::models::{ClaudeStatus, RunKind};
 
 /// How long a Claude or PiG terminal may stay silent after its first output before Quay
@@ -54,6 +55,10 @@ pub struct PluginWatch {
     heard: bool,
     hint_dismissed: bool,
     first_output_at: Option<Instant>,
+    /// When the launch began.
+    began: Instant,
+    /// When its first turn started, for a CLI that connects then (`RunKind::connects_at_first_prompt`).
+    prompted_at: Option<Instant>,
     /// Whether the launch's CLI has shaken hands with Quay's MCP server.
     handshake: bool,
     /// Whether the launch's process has exited.
@@ -68,6 +73,8 @@ impl PluginWatch {
             heard: false,
             hint_dismissed: false,
             first_output_at: None,
+            began: Instant::now(),
+            prompted_at: None,
             handshake: false,
             exited: false,
         }
@@ -103,15 +110,34 @@ impl PluginWatch {
                 .is_some_and(|at| now.saturating_duration_since(at) >= PLUGIN_SILENCE)
     }
 
+    /// Records the start of a turn. Whether it is the launch's first, of a CLI that connects then.
+    pub fn start_turn(&mut self) -> bool {
+        let first = self.run_kind.connects_at_first_prompt() && self.prompted_at.is_none();
+        if first {
+            self.prompted_at = Some(Instant::now());
+        }
+        first
+    }
+
     /// Records the CLI's handshake with Quay's MCP server, unless the launch's process has exited.
-    pub fn shake_hands(&mut self) {
+    /// Returns whether it is the launch's first.
+    pub fn shake_hands(&mut self) -> bool {
+        let first = !self.exited && !self.handshake;
         self.handshake = !self.exited;
+        first
     }
 
     /// Whether the CLI has shaken hands with Quay's MCP server and the launch's process has not
     /// exited.
     pub fn handshake_seen(&self) -> bool {
         self.handshake
+    }
+
+    /// How the launch stands with Quay's MCP server at `now`, or `None` when its process has exited.
+    pub fn handshake(&self, now: Instant) -> Option<Handshake> {
+        let connects_from =
+            if self.run_kind.connects_at_first_prompt() { self.prompted_at } else { Some(self.began) };
+        (!self.exited).then(|| Handshake::at(now, self.began, connects_from, self.handshake))
     }
 
     /// Marks the launch's process exited and clears its CLI's handshake.

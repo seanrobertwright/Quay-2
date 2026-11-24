@@ -36,8 +36,9 @@ export interface SentAction extends SurfaceAction {
 export interface CheckRequest {
   call: number;
   tool: string;
+  /** The id the surface has if it is accepted. Empty for a raw call that creates none. */
   surface_id: string;
-  /** The call's arguments, as Rust checked them. */
+  /** The call's arguments: a typed call's as Rust checked them, a raw one's as its agent wrote them. */
   arguments: unknown;
 }
 
@@ -73,7 +74,7 @@ export interface SurfaceKey {
   id: string;
 }
 
-/** Where a surface is drawn. Mirrors `Place`. */
+/** Where a surface is drawn: the companion's Surface view, a stage tab of its own, or its terminal's pane. Mirrors `Place`. */
 export type SurfacePlace = "companion" | "tab" | "strip";
 
 /** How a board's run stands, as its agent says it. Mirrors `Status`. */

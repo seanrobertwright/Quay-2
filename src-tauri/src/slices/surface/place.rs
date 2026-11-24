@@ -12,7 +12,7 @@ pub enum Place {
     Companion,
     /// A stage tab of its own.
     Tab,
-    /// A line on the terminal's pane.
+    /// A line on its terminal's pane.
     Strip,
 }
 

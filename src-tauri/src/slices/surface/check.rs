@@ -15,9 +15,9 @@ pub struct CheckRequest {
     /// Names the call, so a verdict reaches only the check it is for.
     pub call: u64,
     pub tool: String,
-    /// The id the surface has if it is accepted.
+    /// The id the surface has if it is accepted. Empty for a raw call that creates none.
     pub surface_id: String,
-    /// The call's arguments, as Rust checked them.
+    /// The call's arguments: a typed call's as Rust checked them, a raw one's as its agent wrote them.
     pub arguments: Value,
 }
 

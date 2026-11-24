@@ -34,7 +34,7 @@ interface AgentsPanelProps {
   selectedTerminalId: string | null;
   sessionHistoryRequest: SessionHistoryRequest | null;
   onSelectTerminal: (terminalId: string) => void;
-  /** Opens a waiting item: its terminal, a permission request in the companion's Activity view and a surface in its Surface view. */
+  /** Opens a waiting item: its terminal, a permission request in the companion's Activity view and a surface in its Surface view or its stage tab. */
   onOpenWaiting: (item: AttentionItem) => void;
   /** Opens the message an agent's latest reply answered in the companion's Activity view. */
   onOpenReply: (terminalId: string, messageId: string) => void;

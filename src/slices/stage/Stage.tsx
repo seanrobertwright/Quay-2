@@ -7,15 +7,10 @@ import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
-import { StageTabBar, type StageToolTab } from "./StageTabBar";
+import { StageTabBar } from "./StageTabBar";
+import type { StageTool } from "./stageTools.ts";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
-
-/** A full-stage tool open in a stage tab, such as the swarm builder. */
-export interface StageTool extends StageToolTab {
-  /** What the tool draws over the panes while its tab is in front. */
-  content: ReactNode;
-}
 
 interface StageProps {
   terminals: TerminalInfo[];
@@ -47,6 +42,8 @@ interface StageProps {
   onCloseTerminal?: (terminalId: string) => void;
   /** Opens a terminal's agent surface, from the button in its pane header that counts those that ask. */
   onOpenSurface?: (key: SurfaceKey) => void;
+  /** The mark a terminal's pane header shows before its actions, if any. `isVisible` is whether the pane is on the stage. */
+  terminalMark?: (terminal: TerminalInfo, isVisible: boolean) => ReactNode;
   /** The line a terminal's pane shows above it, if any. `isVisible` is whether the pane is on the stage. */
   terminalNote?: (terminal: TerminalInfo, isVisible: boolean) => ReactNode;
   /** The open stage tab tools. Each stays mounted while the terminals are in front. */
@@ -55,6 +52,8 @@ interface StageProps {
   frontToolId?: string | null;
   onSelectTool?: (id: string) => void;
   onCloseTool?: (id: string) => void;
+  /** The menu that locked surface tabs are folded under. */
+  earlierTabs?: ReactNode;
 }
 
 export const Stage: FC<StageProps> = ({
@@ -84,11 +83,13 @@ export const Stage: FC<StageProps> = ({
   onRenameTerminal,
   onCloseTerminal,
   onOpenSurface,
+  terminalMark,
   terminalNote,
   tools = [],
   frontToolId = null,
   onSelectTool,
   onCloseTool,
+  earlierTabs,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -259,6 +260,7 @@ export const Stage: FC<StageProps> = ({
         onToggleAsk={onToggleLiveMode ? () => onToggleLiveMode(term.id, term.live_mode) : undefined}
         onCloseTerminal={onCloseTerminal ? () => onCloseTerminal(term.id) : undefined}
         headerExtra={onOpenSurface && <AskingButton terminalId={term.id} onOpen={onOpenSurface} />}
+        headerMark={terminalMark?.(term, isVisible)}
         strip={isVisible && <BoardStrip terminal={term} />}
         note={terminalNote?.(term, isVisible)}
         paneCount={paneCount}
@@ -279,12 +281,12 @@ export const Stage: FC<StageProps> = ({
     </div>
   ));
   const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
-  const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool };
+  const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool, earlierTabs };
 
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
       <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
-        {tools.length > 0 && (
+        {(tools.length > 0 || earlierTabs) && (
           <StageTabBar
             terminals={[]}
             currentTerminalId=""

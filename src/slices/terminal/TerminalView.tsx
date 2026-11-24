@@ -48,6 +48,8 @@ interface TerminalViewProps {
   onCloseTerminal?: () => void;
   /** What the pane header shows after the session's state. */
   headerExtra?: ReactNode;
+  /** What the pane header shows before its own actions, at the other end from `headerExtra`. */
+  headerMark?: ReactNode;
   /** What is drawn over the top of the terminal, which keeps its size, as a column that lets clicks through. */
   strip?: ReactNode;
   /** A line the pane shows above the terminal, after the pane's own notices. */
@@ -76,6 +78,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onToggleAsk,
   onCloseTerminal,
   headerExtra,
+  headerMark,
   strip,
   note,
   paneCount = 1,
@@ -282,13 +285,15 @@ export const TerminalView: FC<TerminalViewProps> = ({
               {headerExtra}
             </div>
 
-            {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}
+            {/* Right: Focus indicator, mark and actions (Redraw, Search, Zoom, Close) */}
             <div className="flex items-center gap-1 shrink-0">
               {framed && isFocused && (
                 <span className="hidden @sm/pane:inline text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
                   ACTIVE
                 </span>
               )}
+
+              {headerMark}
 
               {/* Repaint / Redraw Terminal */}
               <button

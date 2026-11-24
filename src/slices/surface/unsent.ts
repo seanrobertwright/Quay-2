@@ -75,6 +75,11 @@ export function keepEnded(record: SurfaceRecord): void {
   keepUnsent(record);
 }
 
+/** Saves at once what is unsent in `record`, if it is drawn. */
+export function saveUnsentNow(record: SurfaceRecord): void {
+  followed.get(keyOf(record))?.();
+}
+
 /** Drops what is unsent in a surface that is settled, or that Quay no longer has. */
 export function dropUnsent(key: SurfaceKey): void {
   kept.delete(keyOf(key));

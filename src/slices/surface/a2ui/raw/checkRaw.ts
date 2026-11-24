@@ -66,6 +66,23 @@ function run(messages: readonly (Checked & { message: Message })[]): CreateSurfa
   }
 }
 
+/** Adds what the engine finds wrong with a delete. A scratch copy has no surface it could be of. */
+function checkDeletes(checked: readonly Checked[]): void {
+  const scratch = scratchEngine();
+  try {
+    for (const { message, errors } of checked) {
+      if (message?.kind !== "deleteSurface" || errors.length > 0) continue;
+      try {
+        scratch.run(forEngine(message));
+      } catch (error) {
+        errors.push(engineErrorAt(error, message, []));
+      }
+    }
+  } finally {
+    scratch.dispose();
+  }
+}
+
 /** The verdict on the surface that `messages` make, whose state is `state`. */
 function whole(state: CreateSurface, messages: readonly Message[]): Verdict {
   const [create] = messages;
@@ -92,6 +109,7 @@ export function checkRaw(args: unknown, surfaceId: string): Verdict {
     const { message, errors } = prePass(written, i);
     return { message, errors: [...errors] };
   });
+  checkDeletes(checked);
   const its = making(checked, surfaceId);
   const state = its.length > 0 ? run(its) : null;
   for (const { message, errors } of its) errors.push(...postCheck(message, place));
