@@ -145,7 +145,8 @@ A surface that shows how a run stands, sent whole each time through `quay_board`
 _Avoid_: dashboard, status card
 
 **Place**:
-Where a surface is drawn: `companion`, `tab` or `strip`. Fixed for the surface's life.
+Where its agent has a surface drawn: `companion`, `tab` or `strip`. Fixed for the surface's life. The
+operator can have a raw surface in the companion drawn as a stage tab and back, which leaves its place.
 _Avoid_: location, slot, target
 
 **Strip**:

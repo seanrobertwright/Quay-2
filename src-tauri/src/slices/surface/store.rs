@@ -12,6 +12,7 @@ use tokio::sync::oneshot;
 use super::board::Board;
 use super::board_run::BoardRun;
 use super::calls::{Handed, OpenCalls};
+use super::carried::Carried;
 use super::check::Accepted;
 use super::past_limit::{within_limits, PastLimit};
 use super::place::{Place, MOST_LIVE};
@@ -20,7 +21,11 @@ use super::typing::NotTyped;
 use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
+mod moved;
 mod raw;
+
+pub use moved::MoveRefused;
+pub use raw::{RawChange, RawRefused};
 
 /// The most locked surfaces a terminal keeps. Past it the one whose last change is the oldest leaves at
 /// once, which counts as deleted. That change is its lock, or the last its agent sent of a board after it.
@@ -52,26 +57,47 @@ pub struct SurfaceRecord {
     /// What its agent calls it: its title, or an ask's first question.
     pub title: String,
     pub place: Place,
+    /// Whether the operator has a raw companion surface open as a stage tab, of which its agent is not told.
+    pub as_tab: bool,
     /// The accepted state as one compact `createSurface`.
     pub state: Value,
     /// Which version of the content `state` is. An answer names the one it was given to.
     pub revision: u64,
-    /// Where it stands among the surfaces: one committed later has a higher order.
+    /// Where it stands among the surfaces: one committed or opened again later has a higher order.
     pub order: u64,
+    /// The order it was committed with. Opened again or replaced, it keeps that.
+    pub began: u64,
     /// Rises with every change to any surface, so an older record of a surface can be told.
     pub change: u64,
     /// Whether the surface has an action to its agent.
     pub asks: bool,
     /// When it was shown, in milliseconds since the epoch.
     pub shown_at: i64,
+    /// When its agent last changed its content, in milliseconds since the epoch.
+    pub updated_at: i64,
+    /// Which of what the operator put in an earlier revision is kept.
+    pub carried: Carried,
+    /// How it was opened again, if it was since it was last answered.
+    pub reopened: Option<Reopened>,
     /// The answer, once there is one.
     pub answer: Option<Value>,
     /// When the answer was sent, in milliseconds since the epoch.
     pub answered_at: Option<i64>,
     /// When its terminal exited before it was settled, in milliseconds since the epoch.
     pub ended_at: Option<i64>,
+    /// When its agent deleted it before it was answered, in milliseconds since the epoch.
+    pub withdrawn_at: Option<i64>,
     /// The run a board shows. Other surfaces have none.
     pub board: Option<BoardRun>,
+}
+
+/// An answered surface that its agent opened again. Times are in milliseconds since the epoch.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Reopened {
+    pub at: i64,
+    /// The answer it had.
+    pub answer: Value,
+    pub answered_at: i64,
 }
 
 /// Why an answer was not taken. The surface is as it was.
@@ -83,6 +109,8 @@ pub enum AnswerRefused {
     OlderRevision,
     /// Its terminal exited first, or was relaunched.
     Ended,
+    /// Its agent deleted it first.
+    Withdrawn,
     /// No call is open to return it through, and it could not be typed in.
     NotTyped(NotTyped),
 }
@@ -141,6 +169,8 @@ pub enum Standing {
     Dismissed,
     /// Its terminal exited before it was settled.
     Ended,
+    /// Its agent deleted it before it was answered.
+    Withdrawn,
 }
 
 impl Standing {
@@ -151,6 +181,7 @@ impl Standing {
             Self::Answered(_) => "answered",
             Self::Dismissed => "dismissed",
             Self::Ended => "ended",
+            Self::Withdrawn => "withdrawn",
         }
     }
 }
@@ -204,12 +235,14 @@ enum Phase {
     /// Its terminal exited first, at `at`, in milliseconds since the epoch. `asked` is whether it had
     /// an action to its agent.
     Ended { asked: bool, at: i64 },
+    /// Its agent deleted it, when it asked and had no answer, at `at`, in milliseconds since the epoch.
+    Withdrawn { at: i64 },
 }
 
 impl Phase {
-    /// Whether it was answered, or its terminal exited first.
+    /// Whether it was answered, or will not be.
     fn is_over(&self) -> bool {
-        matches!(self, Self::Settled { .. } | Self::Ended { .. })
+        matches!(self, Self::Settled { .. } | Self::Ended { .. } | Self::Withdrawn { .. })
     }
 
     fn standing(&self) -> Standing {
@@ -218,6 +251,7 @@ impl Phase {
             Self::Asking { .. } | Self::Typing { .. } => Standing::NoAnswerYet,
             Self::Settled { answer, .. } => Standing::Answered(answer.clone()),
             Self::Ended { .. } => Standing::Ended,
+            Self::Withdrawn { .. } => Standing::Withdrawn,
         }
     }
 }
@@ -229,13 +263,18 @@ struct Surface {
     arguments: Value,
     title: String,
     place: Place,
+    as_tab: bool,
     state: Value,
     /// The image files `state` names.
     image_paths: Vec<String>,
     revision: u64,
     order: u64,
+    began: u64,
     change: u64,
     shown_at: i64,
+    updated_at: i64,
+    carried: Carried,
+    reopened: Option<Reopened>,
     phase: Phase,
     /// Whether the launch that created it is over.
     launch_over: bool,
@@ -248,18 +287,24 @@ struct Surface {
 impl Surface {
     /// The surface `id` as a call creates it with the change `change`. It asks for nothing.
     fn new(id: &str, creation: Creation, accepted: Accepted, change: u64) -> Self {
+        let now = now_ms();
         Self {
             id: id.to_string(),
             tool: creation.tool.to_string(),
             arguments: creation.arguments.clone(),
             title: creation.title.to_string(),
             place: creation.place,
+            as_tab: false,
             state: accepted.state,
             image_paths: accepted.image_paths,
             revision: 1,
             order: change,
+            began: change,
             change,
-            shown_at: now_ms(),
+            shown_at: now,
+            updated_at: now,
+            carried: Carried::new(1),
+            reopened: None,
             phase: Phase::NotAsking,
             launch_over: false,
             board: None,
@@ -267,8 +312,8 @@ impl Surface {
         }
     }
 
-    /// Whether it is settled or ended. It takes nothing more, and its `change` stays as it is, unless it
-    /// is a board that its agent sends again.
+    /// Whether it is settled, ended or withdrawn. It takes nothing more from the operator, and its `change`
+    /// stays as it is, unless its agent opens it again or it is a board that is sent again.
     fn is_locked(&self) -> bool {
         self.phase.is_over() || self.board.as_ref().is_some_and(|run| run.stopped_at.is_some())
     }
@@ -303,26 +348,34 @@ impl Surface {
     }
 
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
-        let (answer, answered_at, ended_at) = match &self.phase {
-            Phase::Settled { answer, at } => (Some(answer.clone()), Some(*at), None),
-            Phase::Ended { at, .. } => (None, None, Some(*at)),
-            Phase::NotAsking | Phase::Asking { .. } | Phase::Typing { .. } => (None, None, None),
-        };
+        let (mut answer, mut answered_at, mut ended_at, mut withdrawn_at) = (None, None, None, None);
+        match &self.phase {
+            Phase::Settled { answer: its, at } => (answer, answered_at) = (Some(its.clone()), Some(*at)),
+            Phase::Ended { at, .. } => ended_at = Some(*at),
+            Phase::Withdrawn { at } => withdrawn_at = Some(*at),
+            Phase::NotAsking | Phase::Asking { .. } | Phase::Typing { .. } => {}
+        }
         SurfaceRecord {
             terminal_id: terminal_id.to_string(),
             id: self.id.clone(),
             tool: self.tool.clone(),
             title: self.title.clone(),
             place: self.place,
+            as_tab: self.as_tab,
             state: self.state.clone(),
             revision: self.revision,
             order: self.order,
+            began: self.began,
             change: self.change,
             asks: !matches!(self.phase, Phase::NotAsking | Phase::Ended { asked: false, .. }),
             shown_at: self.shown_at,
+            updated_at: self.updated_at,
+            carried: self.carried.clone(),
+            reopened: self.reopened.clone(),
             answer,
             answered_at,
             ended_at,
+            withdrawn_at,
             board: self.board.clone(),
         }
     }
@@ -609,7 +662,7 @@ impl SurfaceStore {
     }
 
     /// Adds the surface `key` as the webview accepted it, if its place has room for it and it is within the
-    /// limits. One that makes way for it leaves. Returns it.
+    /// limits. Returns it.
     pub fn commit(
         &self,
         key: &SurfaceKey,
@@ -619,7 +672,7 @@ impl SurfaceStore {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminal_to_commit(key, creation)?;
-        if terminal.find(&key.id).is_some_and(|there| !there.makes_way(creation)) {
+        if terminal.find(&key.id).is_some() {
             return Err(CommitRefused::IdInUse);
         }
         within_limits(&accepted)?;
@@ -630,7 +683,6 @@ impl SurfaceStore {
         };
         let surface = Surface { phase, ..Surface::new(&key.id, creation, accepted, change) };
         let record = surface.record(&key.terminal_id);
-        terminal.surfaces.retain(|there| there.id != key.id);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
         Ok(record)
@@ -668,7 +720,9 @@ impl SurfaceStore {
             Surface { board: Some(run), shown_at: now, ..Surface::new(&key.id, creation, accepted, change) };
         if let Some(same) = same {
             surface.revision = same.revision + 1;
+            surface.carried = Carried::new(surface.revision);
             surface.order = same.order;
+            surface.began = same.began;
             surface.shown_at = same.shown_at;
         }
         let record = surface.record(&key.terminal_id);
@@ -697,6 +751,7 @@ impl SurfaceStore {
             Phase::NotAsking => return Err(AnswerRefused::NoSuchSurface),
             Phase::Typing { .. } | Phase::Settled { .. } => return Err(AnswerRefused::AlreadyAnswered),
             Phase::Ended { .. } => return Err(AnswerRefused::Ended),
+            Phase::Withdrawn { .. } => return Err(AnswerRefused::Withdrawn),
             Phase::Asking { waiters } => waiters,
         };
         if revision != surface.revision {
@@ -726,7 +781,7 @@ impl SurfaceStore {
         };
         let line = match &surfaces[at].phase {
             Phase::Typing { .. } => return Err(BeingSent),
-            Phase::NotAsking | Phase::Settled { .. } | Phase::Ended { .. } => None,
+            Phase::NotAsking | Phase::Settled { .. } | Phase::Ended { .. } | Phase::Withdrawn { .. } => None,
             Phase::Asking { waiters } => {
                 let result = json!({ "dismissed": true });
                 let line = typed_line(&surfaces[at].title, &key.id, &result);
@@ -820,8 +875,9 @@ impl SurfaceStore {
     }
 
     /// Keeps what is unsent in a surface that is not settled, in place of what was kept. Saves may arrive in any order: one
-    /// made before the one that is kept is refused.
-    pub fn save_unsent(&self, key: &SurfaceKey, save: UnsentSave) -> Result<(), UnsentRefused> {
+    /// made before the one that is kept is refused, and of one read from an earlier revision only what
+    /// the updates since have left is kept.
+    pub fn save_unsent(&self, key: &SurfaceKey, mut save: UnsentSave) -> Result<(), UnsentRefused> {
         if save.is_too_large() {
             return Err(UnsentRefused::TooLarge);
         }
@@ -832,9 +888,10 @@ impl SurfaceStore {
             .and_then(|terminal| terminal.find(&key.id))
             .filter(|surface| !matches!(surface.phase, Phase::Settled { .. }) && surface.order == save.order)
             .ok_or(UnsentRefused::NoSuchSurface)?;
-        if save.revision != surface.revision {
+        if save.revision > surface.revision || !surface.carried.keep(save.revision, &mut save.values) {
             return Err(UnsentRefused::OtherRevision);
         }
+        save.revision = surface.revision;
         if surface.unsent.as_ref().is_some_and(|kept| (kept.page, kept.save) >= (save.page, save.save)) {
             return Err(UnsentRefused::OlderSave);
         }

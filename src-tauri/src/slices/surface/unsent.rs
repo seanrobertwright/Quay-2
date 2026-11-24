@@ -54,7 +54,7 @@ pub enum UnsentRefused {
     NoSuchSurface,
     /// It is over `UNSENT_LIMIT`.
     TooLarge,
-    /// It was read from another revision than the surface has.
+    /// It was read from a revision of which nothing can be told to be kept.
     OtherRevision,
     /// One that was made later is kept.
     OlderSave,

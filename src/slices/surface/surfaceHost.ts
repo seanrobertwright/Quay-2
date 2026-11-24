@@ -3,8 +3,9 @@ import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { paced } from "./paced.ts";
-import { isLive, type CheckRequest, type SurfaceKey, type SurfaceRecord, type Verdict } from "./surfaceTypes.ts";
-import { closePage, dropUnsent, keepEnded, keepUnsent, openPage, type Page } from "./unsent.ts";
+import { isLive, isUnanswered, type CheckRequest, type SurfaceKey, type SurfaceRecord, type Verdict } from "./surfaceTypes.ts";
+import { RAW_TOOL } from "./rawTool.ts";
+import { closePage, dropUnsent, keepUnsent, openPage, type Page } from "./unsent.ts";
 
 /** The A2UI module. It is large, so nothing imports it until the shell has been drawn. */
 export const loadA2ui = () => import("./a2ui/index.ts");
@@ -34,10 +35,9 @@ function keep(record: SurfaceRecord): void {
   const surfaces = byTerminal.get(record.terminal_id) ?? NONE;
   const kept = surfaces.find((s) => s.id === record.id);
   if (kept && kept.change >= record.change) return;
-  // Before anything draws again: what goes off the screen by it sends nothing more, and one that ended
-  // is drawn with all that was put in it
-  if (isLive(record)) keepUnsent(record);
-  else if (record.ended_at !== null) keepEnded(record);
+  // Before anything draws again: what goes off the screen by it sends nothing more, and one that changed,
+  // ended or was withdrawn is drawn with what was put in it
+  if (isLive(record) || isUnanswered(record)) keepUnsent(record);
   else dropUnsent(record);
   const next = [...surfaces.filter((s) => s !== kept), record].sort((a, b) => a.order - b.order);
   set(new Map(byTerminal).set(record.terminal_id, next));
@@ -73,15 +73,15 @@ export function startSurfaces(): () => void {
   const onCheck = (request: CheckRequest) => {
     if (!stopped) answerCheck(request).catch(failed("A check could not be answered"));
   };
-  // A board may be sent as often as its agent likes
-  const boards = paced(keep);
+  // A board may be sent, and a raw surface updated, as often as its agent likes
+  const often = paced(keep);
   const onRecord = (record: SurfaceRecord) => {
     if (stopped) return;
-    if (record.board) boards.take(record);
+    if (record.board || (record.tool === RAW_TOOL && isLive(record))) often.take(record);
     else keep(record);
   };
   const leave = (key: SurfaceKey) => {
-    boards.forget(key);
+    often.forget(key);
     drop(key);
   };
   // What left while the list was read, which may still be in it. Null once the list has been kept.
@@ -104,8 +104,9 @@ export function startSurfaces(): () => void {
   const readList = async () => {
     await listening;
     if (stopped) return;
-    for (const record of await invoke<SurfaceRecord[]>("surface_list")) onRecord(record);
+    const records = await invoke<SurfaceRecord[]>("surface_list");
     if (stopped) return;
+    records.forEach(keep);
     leftMeanwhile?.forEach(leave);
     leftMeanwhile = null;
   };
@@ -126,7 +127,7 @@ export function startSurfaces(): () => void {
   const frame = requestAnimationFrame(() => void loadA2ui().catch(failed("The A2UI module could not be loaded")));
   return () => {
     stopped = true;
-    boards.stop();
+    often.stop();
     cancelAnimationFrame(frame);
     listDone = false;
     closePage();
@@ -150,6 +151,11 @@ export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSu
 /** Dismisses a surface. It rejects with Quay's words for why it stays. */
 export function dismissSurface({ terminal_id, id }: SurfaceKey): Promise<void> {
   return invoke("surface_dismiss", { terminalId: terminal_id, id });
+}
+
+/** Moves a raw companion surface to a stage tab of its own, or back. It is kept as moved once this settles, and rejects with Quay's words for why it stays. */
+export async function moveSurface({ terminal_id, id }: SurfaceKey, asTab: boolean): Promise<void> {
+  keep(await invoke<SurfaceRecord>("surface_move", { terminalId: terminal_id, id, asTab }));
 }
 
 /** Dismisses those of `terminalId`'s surfaces `ids` that are locked, of which no agent is told. It rejects with why they stay. */

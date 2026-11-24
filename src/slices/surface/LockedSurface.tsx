@@ -7,7 +7,7 @@ import { NotSent } from "./NotSent.tsx";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { useSurfacesRead } from "./surfaceHost.ts";
-import type { SurfaceRecord } from "./surfaceTypes.ts";
+import { isUnanswered, type SurfaceRecord } from "./surfaceTypes.ts";
 import { unsentIn } from "./unsent.ts";
 import { useDismiss } from "./useDismiss.ts";
 
@@ -42,18 +42,18 @@ interface LockedSurfaceProps {
 export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null }: LockedSurfaceProps) => {
   const { kind, KindIcon, titled, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
   const { components } = record.state.createSurface;
-  const ended = record.ended_at !== null;
+  const unanswered = isUnanswered(record);
   const [refusal, setRefusal] = useState<string | null>(null);
   const dismiss = useDismiss(record, setRefusal);
   // What is unsent in it comes with the list
   const read = useSurfacesRead();
-  const texts = ended && read ? typedIn(components, unsentIn(record)) : [];
+  const texts = unanswered && read ? typedIn(components, unsentIn(record)) : [];
   return (
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
-          {(ended || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}
-          {!ended && Settled && <Settled answer={record.answer} components={components} />}
+          {(unanswered || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}
+          {!unanswered && Settled && <Settled answer={record.answer} components={components} />}
           {texts.length > 0 && <NotSent texts={texts} />}
           {Asked && (
             <Folded label={askedLabel}>

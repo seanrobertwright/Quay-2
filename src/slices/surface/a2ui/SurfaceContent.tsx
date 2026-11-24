@@ -1,9 +1,10 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { LinksContext } from "../links.ts";
 import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
-import type { SentAction, SurfaceRecord } from "../surfaceTypes.ts";
+import { sameSurface } from "../surfaceAttention.ts";
+import type { CreateSurface, SentAction, SurfaceRecord } from "../surfaceTypes.ts";
 import { followUnsent, unsentIn } from "../unsent.ts";
 import { actionMessage } from "./actionMessage.ts";
 import { giveEffects } from "./effects.ts";
@@ -13,9 +14,14 @@ type OnAction = (action: SentAction) => Promise<void>;
 
 const noAction: OnAction = async () => {};
 
-/** The engine that draws a record, with what the operator has put in it so far. */
+/** The engine that draws a surface, with what the operator has put in it so far. */
 interface Live {
+  /** The record it is at. */
+  record: SurfaceRecord;
+  /** The revision its content was made new at. */
+  from: number;
   surface: EngineSurface;
+  update: (state: CreateSurface) => void;
   data: SurfaceData;
   onAction: OnAction;
 }
@@ -23,14 +29,36 @@ interface Live {
 /** Kept while their records are, so a surface that comes back to the screen is as it was left. */
 const lives = new WeakMap<SurfaceRecord, Live>();
 
+/** Puts what is unsent in `record` in `surface`. */
+function putIn({ dataModel }: EngineSurface, record: SurfaceRecord): void {
+  for (const [path, value] of Object.entries(unsentIn(record))) dataModel.set(path, value, true);
+}
+
+/** Whether `record` is the surface of `before` with no content made new since, so the engine of `before` can be brought to it. */
+const goesOn = (before: SurfaceRecord, record: SurfaceRecord) => sameSurface(before, record) && record.carried.from <= before.revision && before.revision <= record.revision;
+
+/** Brings `live` to `record`, which its own goes on to. */
+function bring(live: Live, record: SurfaceRecord): void {
+  const { revision } = live.record;
+  lives.delete(live.record);
+  live.record = record;
+  lives.set(record, live);
+  if (revision === record.revision) return;
+  live.update(record.state);
+  putIn(live.surface, record);
+}
+
 function liveOf(record: SurfaceRecord): Live {
   const kept = lives.get(record);
   if (kept) return kept;
-  const { surface } = engineFor(record.state, (action) => live.onAction({ name: action.name, context: action.context, message: actionMessage(action) }));
+  const { surface, update } = engineFor(record.state, (action) => live.onAction({ name: action.name, context: action.context, message: actionMessage(action) }));
   const { dataModel } = surface;
-  for (const [path, value] of Object.entries(unsentIn(record))) dataModel.set(path, value, true);
+  putIn(surface, record);
   const live: Live = {
+    record,
+    from: record.carried.from,
     surface,
+    update,
     data: {
       get: (path) => dataModel.get<unknown>(path),
       set: (path, value) => void dataModel.set(path, value),
@@ -46,7 +74,7 @@ function liveOf(record: SurfaceRecord): Live {
 }
 
 interface SurfaceContentProps {
-  /** The surface to draw. Another record needs a `key` of its own. */
+  /** The surface to draw. Another surface needs a `key` of its own. */
   record: SurfaceRecord;
   /** The frame's layout of a typed surface's parts, or null to draw the surface as it is. */
   layout: Layout | null;
@@ -56,7 +84,11 @@ interface SurfaceContentProps {
 
 /** What an agent's surface holds, drawn by Quay's components. */
 export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceContentProps) => {
-  const [live] = useState(() => liveOf(record));
+  const [live, setLive] = useState(() => liveOf(record));
+  if (live.record !== record && !goesOn(live.record, record)) setLive(liveOf(record));
+  useLayoutEffect(() => {
+    if (live.record !== record && goesOn(live.record, record)) bring(live, record);
+  }, [live, record]);
   useEffect(() => {
     live.onAction = onAction;
   }, [live, onAction]);
@@ -71,7 +103,7 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
   return (
     <LayoutContext.Provider value={value}>
       <ImagesContext.Provider value={images}>
-        <A2uiSurface surface={live.surface} />
+        <A2uiSurface key={live.from} surface={live.surface} />
       </ImagesContext.Provider>
     </LayoutContext.Provider>
   );

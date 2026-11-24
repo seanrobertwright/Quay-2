@@ -11,6 +11,7 @@ mod ask;
 mod board;
 mod board_run;
 mod calls;
+mod carried;
 mod check;
 pub mod commands;
 mod disk;
@@ -21,6 +22,7 @@ pub mod names;
 mod past_limit;
 mod place;
 mod raw;
+mod raw_changes;
 mod read;
 mod rejection;
 mod review;
@@ -38,11 +40,15 @@ mod ask_tests;
 #[cfg(test)]
 mod board_tests;
 #[cfg(test)]
+mod delete_tests;
+#[cfg(test)]
 mod disk_tests;
 #[cfg(test)]
 mod image_file_tests;
 #[cfg(test)]
 mod image_tests;
+#[cfg(test)]
+mod life_tests;
 #[cfg(test)]
 mod limit_tests;
 #[cfg(test)]
@@ -50,7 +56,11 @@ mod local_path_tests;
 #[cfg(test)]
 mod locked_tests;
 #[cfg(test)]
+mod move_tests;
+#[cfg(test)]
 mod over_tests;
+#[cfg(test)]
+mod raw_seam;
 #[cfg(test)]
 mod raw_tests;
 #[cfg(test)]
@@ -65,12 +75,14 @@ mod show_file_tests;
 mod test_seam;
 #[cfg(test)]
 mod unsent_tests;
+#[cfg(test)]
+mod update_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
 pub use image::*;
 pub use show_file::*;
-pub use store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
+pub use store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
 pub use typed_line::is_typed_line;
 pub use typing::{NotTyped, Terminals};

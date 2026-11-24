@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::oneshot;
 
+use super::place::Place;
+
 /// A call for the webview to check on a scratch copy of the engine. It applies nothing.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CheckRequest {
@@ -19,6 +21,17 @@ pub struct CheckRequest {
     pub surface_id: String,
     /// The call's arguments: a typed call's as Rust checked them, a raw one's as its agent wrote them.
     pub arguments: Value,
+    /// The surfaces a raw call updates, as they were accepted last. Left out when it updates none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub held: Vec<HeldSurface>,
+}
+
+/// A surface that the scratch copy is built from.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HeldSurface {
+    pub place: Place,
+    /// The accepted state as one compact `createSurface`.
+    pub state: Value,
 }
 
 /// What the webview made of a check.
@@ -32,6 +45,10 @@ pub enum Verdict {
         more: usize,
     },
     Accepted(Accepted),
+    /// A raw call's: each surface that is there once all of its messages are applied.
+    Surfaces {
+        surfaces: Vec<AcceptedSurface>,
+    },
 }
 
 /// One thing the webview found wrong with a call. A typed tool's is the engine's, as its
@@ -46,6 +63,14 @@ pub struct CheckError {
     #[serde(default)]
     pub path: Option<String>,
     pub message: String,
+}
+
+/// One of the surfaces a raw call creates or updates.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct AcceptedSurface {
+    pub surface_id: String,
+    #[serde(flatten)]
+    pub accepted: Accepted,
 }
 
 /// A surface the engine accepted.
@@ -85,6 +110,7 @@ impl Checks {
         tool: &str,
         surface_id: &str,
         arguments: Value,
+        held: Vec<HeldSurface>,
         limit: Duration,
         send: impl FnOnce(&CheckRequest),
     ) -> Option<Verdict> {
@@ -97,6 +123,7 @@ impl Checks {
                 tool: tool.to_string(),
                 surface_id: surface_id.to_string(),
                 arguments,
+                held,
             };
             inner.pending.insert(request.call, Pending { request: request.clone(), verdict: tx });
             request

@@ -1,4 +1,4 @@
-// The stage tabs of the surfaces whose place is a tab. Which tab is in front is the stage's to say:
+// The stage tabs of the surfaces that are drawn in one. Which tab is in front is the stage's to say:
 // nothing here brings one in front but the operator opening it.
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { WAITING_ON_YOU } from "../../lib/waiting.ts";
@@ -11,12 +11,12 @@ import { everySurfaceIn, keptSurface } from "./surfacePlaces.ts";
 import { surfaceKey } from "./surfaceAttention.ts";
 import { dismissSurface, subscribeToSurfaces } from "./surfaceHost.ts";
 import { SurfaceTab } from "./SurfaceTab.tsx";
-import { isLive, type SurfaceKey, type SurfaceRecord } from "./surfaceTypes.ts";
+import { drawnIn, isLive, type SurfaceKey, type SurfaceRecord } from "./surfaceTypes.ts";
 
 const PREFIX = "surface:";
 
-/** A tab's id. A terminal may use a surface's id again, and the later surface's tab has another. */
-const tabId = (record: SurfaceRecord) => `${PREFIX}${surfaceKey(record)}`;
+/** A tab's id, which a surface that is opened again keeps. A terminal may use a surface's id again, and the later surface's tab has another. */
+const tabId = (record: SurfaceRecord) => `${PREFIX}${surfaceKey({ ...record, order: record.began })}`;
 
 /** A surface that has a tab, and its terminal. */
 interface Tabbed {
@@ -83,7 +83,7 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
   );
   const open = (key: SurfaceKey): boolean => {
     const record = keptSurface(key);
-    if (record?.place !== "tab") return false;
+    if (!record || drawnIn(record) !== "tab") return false;
     const terminal = terminals.find(({ id }) => id === record.terminal_id);
     if (!terminal) return false;
     onSelectTerminal(terminal);

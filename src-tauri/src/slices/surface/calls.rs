@@ -7,13 +7,13 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::oneshot;
 
-/// What an open call returns: the operator's answer. Calls that wait on one surface each get one.
+/// What an open call returns: the operator's answer, or that there will be none. Calls that wait on one surface each get one.
 pub struct Handed {
     result: Value,
     /// How many of those calls have not dropped it unread.
     held: Arc<AtomicUsize>,
-    /// The line it is typed in as once every one of them has.
-    line: Arc<str>,
+    /// The line it is typed in as once every one of them has, or none when it is not.
+    line: Option<Arc<str>>,
 }
 
 impl Handed {
@@ -23,7 +23,7 @@ impl Handed {
 
     /// Gives it up unread. The line to type, when no other call has it.
     pub fn drop_unread(self) -> Option<Arc<str>> {
-        (self.held.fetch_sub(1, Ordering::AcqRel) == 1).then_some(self.line)
+        (self.held.fetch_sub(1, Ordering::AcqRel) == 1).then_some(self.line).flatten()
     }
 }
 
@@ -90,10 +90,19 @@ impl OpenCalls {
     /// Returns `result` through those of `numbers` that are open, which ends their waits. `line` is
     /// what is typed in if every one of them drops it unread. `false` when none is open.
     pub fn hand(&mut self, numbers: &[u64], result: &Value, line: &str) -> bool {
+        self.send(numbers, result, Some(line.into()))
+    }
+
+    /// Returns `result` through the call `number`, if it is open, which ends its wait. It is no answer, so
+    /// it is not typed in when the call drops it unread.
+    pub fn tell(&mut self, number: u64, result: &Value) {
+        self.send(&[number], result, None);
+    }
+
+    fn send(&mut self, numbers: &[u64], result: &Value, line: Option<Arc<str>>) -> bool {
         let named = self.0.iter_mut().filter(|call| numbers.contains(&call.number));
         let waiting: Vec<_> = named.filter_map(|call| call.answer.take()).collect();
         let held = Arc::new(AtomicUsize::new(waiting.len()));
-        let line: Arc<str> = line.into();
         // A call ends itself before it stops listening, so one that is open takes what it is sent
         let taken = waiting.into_iter().map(|answer| {
             let handed = Handed { result: result.clone(), held: held.clone(), line: line.clone() };

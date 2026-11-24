@@ -132,7 +132,7 @@
   },
   {
     "name": "quay_surface",
-    "description": "Show the operator what no other tool can, as A2UI 1.0 messages you write. quay_surface_guide says how. One createSurface a call, whole in that call. With an action to you the call waits for it, up to 100 seconds, and returns the A2UI action message, else {\"shown\": true}.",
+    "description": "Show the operator what no other tool can, as A2UI 1.0 messages you write. quay_surface_guide says how. One createSurface a call, each surface whole after it. deleteSurface takes back any of your surfaces. A call that makes or updates one with an action to you waits for it, up to 100 seconds, and returns the A2UI action message, else {\"shown\": true}.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -149,7 +149,7 @@
   },
   {
     "name": "quay_surface_read",
-    "description": "Read where one of this terminal's surfaces stands, by the id a call returned. Use it for an answer you did not get, not to wait for one: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered, dismissed, or ended when the terminal exited first, and result is there only when answered.",
+    "description": "Read where one of your surfaces stands, for an answer you did not get. Do not wait with it: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered, dismissed, withdrawn when you deleted it unanswered, or ended when the terminal exited first, and result is there only when answered.",
     "inputSchema": {
       "type": "object",
       "properties": {

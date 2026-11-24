@@ -6,6 +6,7 @@ import { startSurfaces } from "./slices/surface/surfaceHost";
 import type { SurfaceKey } from "./slices/surface/surfaceTypes";
 import { openBoard } from "./slices/surface/strip/openBoards.ts";
 import { useSurfaceTabs } from "./slices/surface/useSurfaceTabs";
+import { onSurfaceRequest } from "./slices/surface/surfaceRequests";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
@@ -879,6 +880,10 @@ export function App() {
     if (terminal_id !== activeTerminalId) showTerminal(terminal_id);
     setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id });
   };
+  // A surface that its own frame moved is brought into view where it went.
+  const openSurfaceRef = useRef(openSurface);
+  openSurfaceRef.current = openSurface;
+  useEffect(() => onSurfaceRequest((key) => openSurfaceRef.current(key)), []);
   // A Waiting on you row selects its terminal; a permission request opens in Activity to answer, and
   // an asking surface in the Surface view or its stage tab.
   const openWaiting = (item: AttentionItem) => {

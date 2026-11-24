@@ -1,6 +1,8 @@
 import { Component, type ReactNode } from "react";
 
 interface SurfaceBoundaryProps {
+  /** The revision of the surface. One that could not be drawn is tried again at the next. */
+  revision?: number;
   children: ReactNode;
 }
 
@@ -10,6 +12,10 @@ export class SurfaceBoundary extends Component<SurfaceBoundaryProps, { failed: b
 
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+
+  componentDidUpdate({ revision }: SurfaceBoundaryProps) {
+    if (this.state.failed && revision !== this.props.revision) this.setState({ failed: false });
   }
 
   componentDidCatch(error: unknown) {

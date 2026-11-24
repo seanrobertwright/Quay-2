@@ -55,7 +55,7 @@ async fn the_tool_names_each_state_it_returns() {
     let tools = list["tools"].as_array().unwrap();
     let tool = tools.iter().find(|tool| tool["name"] == "quay_surface_read").unwrap();
     let description = tool["description"].as_str().unwrap();
-    for state in ["shown", "no_answer_yet", "answered", "dismissed", "ended"] {
+    for state in ["shown", "no_answer_yet", "answered", "dismissed", "withdrawn", "ended"] {
         assert!(description.contains(state), "{state}");
     }
 }

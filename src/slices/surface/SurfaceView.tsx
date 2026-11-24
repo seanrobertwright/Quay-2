@@ -54,7 +54,10 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
   });
   useEffect(() => {
     if (!focus) return;
-    regionOf(focus.surfaceId)?.scrollIntoView?.({ block: "start" });
+    const region = regionOf(focus.surfaceId);
+    region?.scrollIntoView?.({ block: "start" });
+    // What asked for it may have left the screen with the focus, as the tab it was sent back from has
+    if (document.activeElement === null || document.activeElement === document.body) region?.focus({ preventScroll: true });
   }, [focus]);
   return (
     <div ref={listRef} data-surface-view tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2">

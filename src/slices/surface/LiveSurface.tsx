@@ -2,12 +2,14 @@ import { lazy, Suspense, useCallback, useState } from "react";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { answerOf } from "./answerOf.ts";
 import { lookOf } from "./looks/index.ts";
+import { ReopenedBand } from "./ReopenedBand.tsx";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { answerSurface, loadA2ui, useSurfacesRead } from "./surfaceHost.ts";
 import { SurfaceTitle } from "./SurfaceTitle.tsx";
 import type { SentAction, SurfaceRecord } from "./surfaceTypes.ts";
 import { useDismiss } from "./useDismiss.ts";
+import { useMove } from "./useMove.ts";
 
 const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
 
@@ -29,6 +31,7 @@ export const LiveSurface = ({ record, terminal, fills = false, notDismissed = nu
   // What is unsent in it comes with the list
   const read = useSurfacesRead();
   const dismiss = useDismiss(record, setRefusal);
+  const move = useMove(record, setRefusal);
   const onAction = useCallback(
     async (action: SentAction) => {
       const answer = answerOf(record.tool, action);
@@ -46,9 +49,9 @@ export const LiveSurface = ({ record, terminal, fills = false, notDismissed = nu
     [record],
   );
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<ReopenedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceTitle record={record} />
-      <SurfaceBoundary key={record.revision}>
+      <SurfaceBoundary revision={record.revision}>
         <Suspense fallback={<Loading />}>
           {read ? <SurfaceContent record={record} layout={layout} onAction={onAction} /> : <Loading />}
         </Suspense>

@@ -9,13 +9,18 @@ export type A2uiClientAction = Parameters<ActionListener>[0];
 
 export type EngineSurface = SurfaceModel<ReactCatalogComponent>;
 
-/** An engine that holds the surface `state` creates. It throws what the engine finds wrong with it. */
+/**
+ * An engine that holds the surface `state` creates. It throws what the engine finds wrong with it. `update`
+ * makes it the surface of a later state, which has all of its components; those that stay are not drawn anew.
+ */
 export function engineFor(state: CreateSurface, onAction?: ActionListener) {
   const processor = new MessageProcessor<ReactCatalogComponent>([catalog], onAction, { validationConfig: STRICT_VALIDATION, version: "1.0" });
   processor.processMessages([structuredClone(state)]);
   const surface: EngineSurface | undefined = processor.model.getSurface(state.createSurface.surfaceId);
   if (!surface) throw new Error(`The engine made no surface "${state.createSurface.surfaceId}".`);
-  return { surface, dispose: () => processor.dispose() };
+  const update = ({ version, createSurface: { surfaceId, components, dataModel } }: CreateSurface) =>
+    processor.processMessages(structuredClone([{ version, updateComponents: { surfaceId, components } }, { version, updateDataModel: { surfaceId, value: dataModel } }]));
+  return { surface, update, dispose: () => processor.dispose() };
 }
 
 /** The engine's strict checks of each message, without those that need all of a call's messages: a root, every child, no orphan. */

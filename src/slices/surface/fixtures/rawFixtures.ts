@@ -33,9 +33,17 @@ export const oneButton = (action: unknown, more: Component = {}): Component[] =>
 /** An action that asks the agent for something. */
 export const EVENT = { event: { name: "go", context: {} } };
 
-/** The verdict on a call that holds these messages, and creates the surface `creates` in `place`, or none when that is empty. */
-export const verdictOnRaw = (messages: unknown, place: SurfacePlace = "companion", creates = "plan"): Promise<Verdict> =>
-  verdictOn({ call: verdicts().length + 1, tool: "quay_surface", surface_id: creates, arguments: { messages, place, title: "Migration plan" } });
+/** The verdict on a call that holds these messages, and creates a surface in `place` if one of them does. */
+export const verdictOnCall = (messages: unknown, place: SurfacePlace = "companion"): Promise<Verdict> =>
+  verdictOn({ call: verdicts().length + 1, tool: "quay_surface", surface_id: "plan", arguments: { messages, place, title: "Migration plan" } });
+
+/** `verdictOnCall`, of a call that makes the one surface `plan` if it is accepted: what was made of that. */
+export async function verdictOnRaw(messages: unknown, place?: SurfacePlace): Promise<Exclude<Verdict, { surfaces: unknown }>> {
+  const verdict = await verdictOnCall(messages, place);
+  if (!("surfaces" in verdict)) return verdict;
+  assert.equal(verdict.surfaces.length, 1);
+  return verdict.surfaces[0];
+}
 
 /** What was found wrong with these messages. */
 export async function errorsIn(messages: unknown, place?: SurfacePlace): Promise<CheckError[]> {

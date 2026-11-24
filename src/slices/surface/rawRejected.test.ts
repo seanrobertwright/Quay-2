@@ -5,7 +5,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckError } from "./surfaceTypes.ts";
 import { startRust, unloadSurfaces } from "./fixtures/fakeRust.ts";
-import { button, column, create, errorsIn, EVENT, oneButton, text, told, verdictOnRaw, type Component } from "./fixtures/rawFixtures.ts";
+import { button, column, create, errorsIn, EVENT, oneButton, text, told, verdictOnCall, verdictOnRaw, type Component } from "./fixtures/rawFixtures.ts";
 
 beforeEach(() => startRust({ surface_list: () => [], surface_checks: () => [] }));
 afterEach(() => unloadSurfaces());
@@ -167,8 +167,8 @@ test("a surface at every limit is accepted, and past one it is rejected by its n
 });
 
 test("a call that creates nothing is told what is wrong with it, or nothing", async () => {
-  const only = (messages: unknown[]) => verdictOnRaw(messages, undefined, "");
-  assert.deepEqual(await only([{ version: "1.0", deleteSurface: { surfaceId: "gone" } }]), { errors: [], more: 0 });
+  const only = (messages: unknown[]) => verdictOnCall(messages);
+  assert.deepEqual(await only([{ version: "1.0", deleteSurface: { surfaceId: "gone" } }]), { surfaces: [] });
   const verdict = await only([{ version: "v0.9", deleteSurface: { surfaceId: "gone" } }]);
   assert.deepEqual("errors" in verdict && where(verdict.errors), [["VALIDATION_FAILED", "/messages/0/version"]]);
   const odd = { version: "1.0", deleteSurface: { surfaceId: "gone", why: "x" } };

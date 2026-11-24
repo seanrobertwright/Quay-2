@@ -133,6 +133,7 @@ test("an answer to an older revision is refused in words, the question is drawn 
   const changed = structuredClone(asked);
   changed.revision = 2;
   changed.change = 2;
+  changed.carried = { from: 2, set: {} };
   const label = changed.state.createSurface.components.find((component) => component.id === "q0_question")!;
   label.text = "Which base now?";
   const refusal = "Not sent: the agent has changed this since. Check it and send again.";
