@@ -20,6 +20,9 @@ import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
 import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
+// PROTOTYPE (#711), throwaway
+import { SurfaceView, useArrival } from "../stage/prototype-a2ui-live/SurfaceView.tsx";
+import { livesOf } from "../stage/prototype-a2ui-live/live.ts";
 import { ActivityView, type ActivityFocus, type CompanionActivity } from "./ActivityView.tsx";
 
 /** What the companion reads and changes about terminal links. */
@@ -240,6 +243,14 @@ export const INSPECTOR_VIEW: CompanionView<CompanionContext> = {
   render: ({ inspector }) => inspector && <InspectorSlot inspector={inspector} />,
 };
 
+/** PROTOTYPE (#711), throwaway: the agent surfaces of the selected terminal. */
+export const SURFACE_VIEW: CompanionView<CompanionContext> = {
+  id: "surface",
+  label: "Surface",
+  available: ({ terminal }) => livesOf(terminal.id).length > 0,
+  render: ({ terminal }) => <SurfaceView key={terminal.id} terminalId={terminal.id} />,
+};
+
 /** The views the companion registers, in the order its view switch lists them. */
 export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
   PULL_REQUEST_VIEW,
@@ -249,6 +260,7 @@ export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
   RUN_VIEW,
   TOPOS_VIEW,
   INSPECTOR_VIEW,
+  SURFACE_VIEW,
 ];
 
 /**
@@ -382,6 +394,13 @@ export const Companion = ({
       if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
       if (showRequest.pullRequest) setPrAsk({ ...showRequest.pullRequest, terminalId: showRequest.terminalId, seq: showRequest.seq });
     }
+  }
+  // PROTOTYPE (#711): an asking surface from the selected terminal switches to the Surface view
+  const arrival = useArrival();
+  const [arrivedSeq, setArrivedSeq] = useState<number | null>(null);
+  if (arrival && arrival.seq !== arrivedSeq) {
+    setArrivedSeq(arrival.seq);
+    if (arrival.terminalId === selectedId) setPicked({ terminalId: arrival.terminalId, view: "surface" });
   }
   if (picked && picked.terminalId !== selectedId) setPicked(null);
   const choices = context ? switchableViews(views, context) : [];

@@ -1,0 +1,1161 @@
+# First build, CDP port 9371. From 07:44:30 another session drove this window; nothing after that is used.
+07:29:27.818 WEBVIEW rebuilt 0 in 15.5ms, 330ms after navigation
+07:30:36.095 WEBVIEW rebuilt 0 in 52.0ms, 419ms after navigation
+07:31:27.881 WEBVIEW rebuilt 0 in 44.6ms, 295ms after navigation
+07:32:36.472 WEBVIEW rebuilt 0 in 35.9ms, 235ms after navigation
+07:32:45.534 WEBVIEW rebuilt 0 in 38.6ms, 277ms after navigation
+07:32:54.460 call 1 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=386
+07:32:54.475 call 1 VERDICT 14.7ms (webview 10.5ms) components=9 errors=null bytes=1747
+07:32:54.476 call 1 COMMIT ask_1 revision=1 sets=[]
+07:32:54.894 ask_1 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:32:56.558 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=168
+07:33:45.685 WEBVIEW rebuilt 1 in 39.1ms, 250ms after navigation
+07:34:34.489 ask_1 NO ANSWER YET
+07:34:34.620 call 2 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=386
+07:34:34.626 call 2 VERDICT 5.7ms (webview 1.5ms) components=9 errors=null bytes=1746
+07:34:34.627 call 2 COMMIT ask_2 revision=1 sets=[]
+07:34:35.043 ask_2 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:34:53.136 WEBVIEW rebuilt 2 in 65.2ms, 298ms after navigation
+07:36:14.629 ask_2 NO ANSWER YET
+07:36:15.396 call 3 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=386
+07:36:15.401 call 3 VERDICT 4.8ms (webview 1.4ms) components=9 errors=null bytes=1746
+07:36:15.402 call 3 COMMIT ask_3 revision=1 sets=[]
+07:36:15.810 ask_3 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:37:55.413 ask_3 NO ANSWER YET
+07:38:04.342 WEBVIEW rebuilt 3 in 42.1ms, 263ms after navigation
+07:38:12.666 call 4 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=386
+07:38:12.670 call 4 VERDICT 4.3ms (webview 1.1ms) components=9 errors=null bytes=1746
+07:38:12.671 call 4 COMMIT ask_4 revision=1 sets=[]
+07:38:13.085 ask_4 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:38:14.469 ask_4 DRAFT (left) revision=1 of 1 entries=6 bytes=168
+07:38:42.797 WEBVIEW rebuilt 4 in 50.8ms, 272ms after navigation
+07:38:51.043 call 5 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=386
+07:38:51.051 call 5 VERDICT 7.8ms (webview 2.5ms) components=9 errors=null bytes=1746
+07:38:51.051 call 5 COMMIT ask_5 revision=1 sets=[]
+07:38:51.460 ask_5 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:38:52.955 ask_5 DRAFT (left) revision=1 of 1 entries=6 bytes=168
+07:38:54.783 ask_5 ANSWERED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"keep the tags"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"Say it is faster"}]}
+07:38:54.784 ask_5 RETURNED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"keep the tags"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"Say it is faster"}]}
+07:38:54.784 ask_5 SECOND ANSWER refused
+07:39:31.208 WEBVIEW rebuilt 5 in 48.1ms, 319ms after navigation
+07:39:36.429 call 6 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=386
+07:39:36.438 call 6 VERDICT 8.3ms (webview 2.7ms) components=9 errors=null bytes=1746
+07:39:36.438 call 6 COMMIT ask_6 revision=1 sets=[]
+07:39:36.859 ask_6 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:39:52.685 ask_4 NO ANSWER YET
+07:41:16.446 ask_6 NO ANSWER YET
+07:41:34.654 ask_6 DRAFT (pause) revision=1 of 1 entries=2 bytes=643
+07:41:59.095 ask_6 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:42:47.525 ask_6 DRAFT (pause) revision=1 of 1 entries=2 bytes=643
+07:42:50.408 call 7 CHECK quay_ask from term-98a785538b6a4b66b1c8c564fba764db bytes=7069
+07:42:50.420 call 7 VERDICT 11.7ms (webview 3.9ms) components=16 errors=null bytes=11760
+07:42:50.420 call 7 COMMIT ask_7 revision=1 sets=[]
+07:42:50.868 ask_7 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:43:39.279 ask_7 DRAFT (pause) revision=1 of 1 entries=2 bytes=643
+07:44:00.139 call 8 CHECK quay_surface from term-98a785538b6a4b66b1c8c564fba764db bytes=229775
+07:44:00.164 call 8 VERDICT 25.7ms (webview 4.3ms) components=4 errors=null bytes=229836
+07:44:00.166 call 8 COMMIT heavyform revision=1 sets=[]
+07:44:30.424 ask_7 NO ANSWER YET
+07:44:49.049 heavyform DRAFT (pause) revision=1 of 1 entries=1 bytes=612
+07:44:50.110 WEBVIEW rebuilt 8 in 126.4ms, 424ms after navigation
+07:44:57.083 WEBVIEW rebuilt 8 in 117.2ms, 414ms after navigation
+07:45:40.181 heavyform NO ANSWER YET
+# First build again, own port
+07:45:53.122 WEBVIEW rebuilt 0 in 58.4ms, 362ms after navigation
+07:46:03.624 WEBVIEW rebuilt 0 in 48.8ms, 358ms after navigation
+07:46:27.665 WEBVIEW rebuilt 0 in 46.0ms, 264ms after navigation
+07:46:46.914 WEBVIEW rebuilt 0 in 47.9ms, 298ms after navigation
+07:46:55.926 WEBVIEW rebuilt 0 in 37.4ms, 263ms after navigation
+07:47:01.128 call 1 CHECK quay_ask from term-7c24984f114b40dc9003828bbc40ee06 bytes=386
+07:47:01.152 call 1 VERDICT 23.8ms (webview 19.5ms) components=9 errors=null bytes=1747
+07:47:01.153 call 1 COMMIT ask_1 revision=1 sets=[]
+07:47:01.575 ask_1 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:48:41.161 ask_1 NO ANSWER YET
+07:48:59.333 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=643
+07:50:15.565 call 2 CHECK quay_ask from term-7c24984f114b40dc9003828bbc40ee06 bytes=7069
+07:50:15.573 call 2 VERDICT 8.2ms (webview 3.5ms) components=16 errors=null bytes=11760
+07:50:15.574 call 2 COMMIT ask_2 revision=1 sets=[]
+07:50:15.984 ask_2 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:51:04.389 ask_2 DRAFT (pause) revision=1 of 1 entries=2 bytes=643
+07:51:25.169 call 3 CHECK quay_surface from term-7c24984f114b40dc9003828bbc40ee06 bytes=229775
+07:51:25.190 call 3 VERDICT 21.8ms (webview 4ms) components=4 errors=null bytes=229834
+07:51:25.194 call 3 COMMIT heavyform revision=1 sets=[]
+07:51:55.589 ask_2 NO ANSWER YET
+07:52:14.068 heavyform DRAFT (pause) revision=1 of 1 entries=1 bytes=612
+07:52:15.437 call 4 CHECK quay_surface from term-7c24984f114b40dc9003828bbc40ee06 bytes=47633
+07:52:15.508 call 4 VERDICT 72.7ms (webview 41.3ms) components=500 errors=null bytes=47698
+
+07:53:04.559 big DRAFT (pause) revision=1 of 1 entries=1 bytes=619
+07:53:05.205 heavyform NO ANSWER YET
+07:53:52.348 WEBVIEW rebuilt 4 in 119.8ms, 361ms after navigation
+07:54:01.798 call 5 CHECK quay_ask from term-15116968ca82472eabd20f730ac45f30 bytes=386
+07:54:01.803 call 5 VERDICT 4.9ms (webview 1.6ms) components=9 errors=null bytes=1746
+07:54:01.803 call 5 COMMIT ask_1 revision=1 sets=[]
+07:54:02.366 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=160
+07:54:03.173 WEBVIEW rebuilt 5 in 60.9ms, 251ms after navigation
+07:54:07.462 WEBVIEW rebuilt 5 in 66.3ms, 269ms after navigation
+07:54:09.690 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=170
+07:54:09.692 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=170
+07:54:09.970 WEBVIEW rebuilt 5 in 77.7ms, 285ms after navigation
+07:54:12.367 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=174
+07:54:12.369 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=174
+07:54:12.634 WEBVIEW rebuilt 5 in 66.5ms, 277ms after navigation
+07:54:15.111 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=161
+07:54:17.163 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=161
+07:54:19.065 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=189
+07:54:19.643 ask_1 ANSWERED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"first note"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"settled text plus more without any pause"}]}
+07:54:19.644 ask_1 RETURNED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"first note"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"settled text plus more without any pause"}]}
+07:54:20.864 call 6 CHECK quay_surface from term-15116968ca82472eabd20f730ac45f30 bytes=1082
+07:54:20.870 call 6 VERDICT 6.0ms (webview 1.9ms) components=8 errors=null bytes=1143
+07:54:20.871 call 6 COMMIT form revision=1 sets=[]
+07:54:21.613 form DRAFT (pause) revision=1 of 1 entries=3 bytes=54
+07:54:22.365 WEBVIEW rebuilt 6 in 70.4ms, 286ms after navigation
+07:54:25.107 call 7 CHECK quay_surface from term-15116968ca82472eabd20f730ac45f30 bytes=105
+07:54:25.111 call 7 VERDICT 3.9ms (webview 1.4ms) components=8 errors=null bytes=1152
+07:54:25.111 call 7 COMMIT form revision=2 sets=["/status"]
+07:54:25.112 form NO ANSWER YET
+07:54:25.113 form DRAFT (update) revision=2 of 2 entries=3 bytes=63
+07:54:31.791 form DRAFT (pause) revision=2 of 2 entries=4 bytes=88
+07:55:00.879 WEBVIEW rebuilt 6 in 78.9ms, 293ms after navigation
+07:55:10.141 WEBVIEW rebuilt 6 in 77.4ms, 288ms after navigation
+07:55:14.655 call 8 CHECK quay_surface from term-6743e29171184228874120f941be259f bytes=1082
+07:55:14.659 call 8 VERDICT 4.1ms (webview 1.1ms) components=8 errors=null bytes=1143
+07:55:14.659 call 8 COMMIT form revision=1 sets=[]
+07:55:17.286 form DRAFT (pause) revision=1 of 1 entries=1 bytes=34
+07:55:20.364 form DRAFT (pause) revision=1 of 1 entries=1 bytes=56
+07:55:22.494 call 9 CHECK quay_surface from term-6743e29171184228874120f941be259f bytes=105
+07:55:22.501 call 9 VERDICT 6.8ms (webview 1.4ms) components=8 errors=null bytes=1152
+07:55:22.501 call 9 COMMIT form revision=2 sets=["/status"]
+07:55:22.502 form NO ANSWER YET
+07:55:22.504 form DRAFT (update) revision=2 of 2 entries=1 bytes=70
+07:55:23.453 form DRAFT (pause) revision=2 of 2 entries=1 bytes=78
+07:55:25.310 call 10 CHECK quay_surface from term-6743e29171184228874120f941be259f bytes=200
+07:55:25.315 call 10 VERDICT 4.5ms (webview 1.4ms) components=8 errors=null bytes=1156
+07:55:25.315 call 10 COMMIT form revision=3 sets=[]
+07:55:25.315 form NO ANSWER YET
+07:55:25.317 form DRAFT (update) revision=3 of 3 entries=1 bytes=88
+07:55:26.565 form DRAFT (pause) revision=3 of 3 entries=1 bytes=100
+07:55:37.536 WEBVIEW rebuilt 7 in 75.2ms, 304ms after navigation
+07:55:41.723 WEBVIEW rebuilt 7 in 65.4ms, 263ms after navigation
+07:55:45.396 call 11 CHECK quay_surface from term-6743e29171184228874120f941be259f bytes=105
+07:55:45.402 call 11 VERDICT 5.1ms (webview 1ms) components=8 errors=null bytes=1163
+07:55:45.402 call 11 COMMIT form revision=4 sets=["/status"]
+07:55:45.402 form NO ANSWER YET
+07:55:45.406 form DRAFT (update) revision=4 of 4 entries=1 bytes=108
+07:55:49.721 form DRAFT (pause) revision=4 of 4 entries=1 bytes=130
+07:55:51.620 WEBVIEW rebuilt 7 in 101.9ms, 306ms after navigation
+07:55:55.777 WEBVIEW rebuilt 7 in 71.2ms, 273ms after navigation
+07:56:00.644 form DRAFT (pause) revision=4 of 4 entries=1 bytes=152
+07:56:02.768 form DRAFT (pause) revision=4 of 4 entries=1 bytes=160
+07:56:28.554 WEBVIEW rebuilt 7 in 74.1ms, 277ms after navigation
+07:56:45.362 call 12 CHECK quay_ask from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=386
+07:56:45.367 call 12 VERDICT 5.1ms (webview 1.4ms) components=9 errors=null bytes=1746
+07:56:45.368 call 12 COMMIT ask_1 revision=1 sets=[]
+07:56:45.928 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=160
+07:56:46.791 WEBVIEW rebuilt 8 in 80.7ms, 284ms after navigation
+07:56:50.724 WEBVIEW rebuilt 8 in 52.8ms, 256ms after navigation
+07:56:54.658 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=170
+07:56:54.659 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=170
+07:56:54.934 WEBVIEW rebuilt 8 in 87.0ms, 284ms after navigation
+07:56:59.026 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=174
+07:56:59.027 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=174
+07:56:59.266 WEBVIEW rebuilt 8 in 51.7ms, 249ms after navigation
+07:57:03.242 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=161
+07:57:05.162 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=189
+07:57:05.707 ask_1 ANSWERED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"first note"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"settled text plus more without any pause"}]}
+07:57:05.709 ask_1 RETURNED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"first note"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"settled text plus more without any pause"}]}
+07:57:06.319 call 13 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=1082
+07:57:06.323 call 13 VERDICT 4.3ms (webview 1ms) components=8 errors=null bytes=1141
+07:57:06.323 call 13 COMMIT form revision=1 sets=[]
+07:57:07.048 form DRAFT (pause) revision=1 of 1 entries=3 bytes=54
+07:57:07.757 WEBVIEW rebuilt 9 in 50.4ms, 257ms after navigation
+07:57:12.207 call 14 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=105
+07:57:12.211 call 14 VERDICT 4.4ms (webview 1.2ms) components=8 errors=null bytes=1152
+07:57:12.211 call 14 COMMIT form revision=2 sets=["/status"]
+07:57:12.212 form NO ANSWER YET
+07:57:12.214 form DRAFT (update) revision=2 of 2 entries=3 bytes=65
+07:57:13.727 call 15 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=200
+07:57:13.731 call 15 VERDICT 3.7ms (webview 1ms) components=8 errors=null bytes=1154
+07:57:13.731 call 15 COMMIT form revision=3 sets=[]
+07:57:13.731 form NO ANSWER YET
+07:57:13.733 form DRAFT (update) revision=3 of 3 entries=3 bytes=86
+07:57:15.272 call 16 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=106
+07:57:15.277 call 16 VERDICT 4.5ms (webview 1.2ms) components=8 errors=null bytes=1167
+07:57:15.278 call 16 COMMIT form revision=4 sets=["/meta/owner"]
+07:57:15.278 form NO ANSWER YET
+07:57:15.282 form DRAFT (update) revision=4 of 4 entries=3 bytes=109
+07:57:17.942 form DRAFT (pause) revision=4 of 4 entries=3 bytes=141
+07:57:18.682 call 17 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=105
+07:57:18.686 call 17 VERDICT 4.0ms (webview 1.2ms) components=8 errors=null bytes=1163
+07:57:18.687 call 17 COMMIT form revision=5 sets=["/status"]
+07:57:18.687 form NO ANSWER YET
+07:57:18.688 form DRAFT (update) revision=5 of 5 entries=4 bytes=166
+07:57:19.314 call 18 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=106
+07:57:19.317 call 18 VERDICT 3.3ms (webview 1ms) components=8 errors=null bytes=1165
+07:57:19.317 call 18 COMMIT form revision=6 sets=["/meta/owner"]
+07:57:19.318 form NO ANSWER YET
+07:57:19.319 form DRAFT (update) revision=6 of 6 entries=3 bytes=141
+07:57:20.224 form DRAFT (pause) revision=6 of 6 entries=4 bytes=172
+07:57:20.632 call 19 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=126
+07:57:20.635 call 19 VERDICT 3.2ms (webview 0.9ms) components=8 errors=null bytes=1163
+07:57:20.636 call 19 COMMIT form revision=7 sets=["/meta"]
+07:57:20.636 form NO ANSWER YET
+07:57:20.638 form DRAFT (update) revision=7 of 7 entries=3 bytes=141
+07:57:21.273 form DRAFT (left) revision=7 of 7 entries=4 bytes=178
+07:57:21.821 call 20 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=200
+07:57:21.825 call 20 VERDICT 3.7ms (webview 1.2ms) components=8 errors=null bytes=1156
+07:57:21.825 call 20 COMMIT form revision=8 sets=[]
+07:57:21.825 form NO ANSWER YET
+07:57:22.509 call 21 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=105
+07:57:22.513 call 21 VERDICT 3.6ms (webview 1ms) components=8 errors=null bytes=1163
+07:57:22.513 call 21 COMMIT form revision=9 sets=["/status"]
+07:57:22.514 form NO ANSWER YET
+07:57:24.249 form DRAFT (pause) revision=9 of 9 entries=4 bytes=181
+07:57:24.812 call 22 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=106
+07:57:24.817 call 22 VERDICT 4.9ms (webview 1.3ms) components=8 errors=null bytes=1167
+07:57:24.818 call 22 COMMIT form revision=10 sets=["/meta/owner"]
+07:57:24.818 form NO ANSWER YET
+07:57:24.820 form DRAFT (update) revision=10 of 10 entries=3 bytes=144
+07:57:25.353 WEBVIEW rebuilt 9 in 82.9ms, 274ms after navigation
+07:57:29.026 form STALE ANSWER refused revision=1 of 10
+07:57:29.099 form DRAFT (late) revision=9 of 10 entries=1 bytes=16
+07:57:29.454 WEBVIEW rebuilt 9 in 61.4ms, 289ms after navigation
+07:57:33.892 form DRAFT (pause) revision=10 of 10 entries=1 bytes=18
+07:57:34.206 call 23 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=105
+07:57:34.213 call 23 VERDICT 7.2ms (webview 2.3ms) components=8 errors=null bytes=1163
+07:57:34.213 call 23 COMMIT form revision=11 sets=["/status"]
+07:57:34.214 form NO ANSWER YET
+07:57:35.102 form DRAFT (pause) revision=11 of 11 entries=1 bytes=21
+07:57:35.910 form DRAFT (pause) revision=11 of 11 entries=1 bytes=32
+07:57:36.251 call 24 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=171
+07:57:36.254 call 24 VERDICT 3.6ms (webview 1.1ms) components=8 errors=null bytes=1151
+07:57:36.255 call 24 COMMIT form revision=12 sets=["/"]
+07:57:36.255 form NO ANSWER YET
+07:57:36.257 form DRAFT (update) revision=12 of 12 entries=0 bytes=2
+07:57:36.952 form ANSWERED {"version":"1.0","action":{"name":"go","surfaceId":"form","sourceComponentId":"go","timestamp":"2026-11-24T07:57:36.948Z","context":{"note":"agent's","owner":"dan","agree":true,"where":["there"]}}}
+07:57:36.953 form RETURNED {"version":"1.0","action":{"name":"go","surfaceId":"form","sourceComponentId":"go","timestamp":"2026-11-24T07:57:36.948Z","context":{"note":"agent's","owner":"dan","agree":true,"where":["there"]}}}
+07:57:37.582 call 25 CHECK quay_surface from term-67bdfa1a67db4070a1142e4e0f0a8658 bytes=233
+07:57:37.586 call 25 VERDICT 3.9ms (webview 1.2ms) components=null errors=[{"code":"VALIDATION_FAILED","surfaceId":"bad","path":"/components/1/component","message":"Unknown component type 'Marquee' not found in catalog 'urn:quay:a2ui:catalog:v1'."}] bytes=203
+07:58:17.177 WEBVIEW rebuilt 9 in 78.8ms, 302ms after navigation
+07:58:26.400 WEBVIEW rebuilt 9 in 77.5ms, 308ms after navigation
+07:58:31.031 call 26 CHECK quay_ask from term-1d29d5192b9047a6a2fdd277880d2f6d bytes=386
+07:58:31.037 call 26 VERDICT 5.6ms (webview 1.6ms) components=9 errors=null bytes=1746
+07:58:31.037 call 26 COMMIT ask_1 revision=1 sets=[]
+07:58:31.450 ask_1 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+07:58:32.815 call 27 CHECK quay_surface from term-1d29d5192b9047a6a2fdd277880d2f6d bytes=1999
+07:58:32.825 call 27 VERDICT 10.1ms (webview 5.3ms) components=20 errors=null bytes=2057
+07:58:32.825 call 27 COMMIT sink revision=1 sets=[]
+07:58:34.403 call 28 CHECK quay_surface from term-1d29d5192b9047a6a2fdd277880d2f6d bytes=47633
+07:58:34.429 call 28 VERDICT 26.2ms (webview 16ms) components=500 errors=null bytes=47696
+07:58:34.431 call 28 COMMIT big revision=1 sets=[]
+07:58:36.190 call 29 CHECK quay_surface from term-1d29d5192b9047a6a2fdd277880d2f6d bytes=105
+07:58:36.196 call 29 VERDICT 5.8ms (webview 1.4ms) components=null errors=[{"code":"INTEGRITY_ERROR","surfaceId":"form","message":"Surface not found for message: form"}] bytes=123
+07:58:37.156 call 30 CHECK quay_surface from term-1d29d5192b9047a6a2fdd277880d2f6d bytes=233
+07:58:37.166 call 30 VERDICT 10.6ms (webview 2.5ms) components=null errors=[{"code":"VALIDATION_FAILED","surfaceId":"bad","path":"/components/1/component","message":"Unknown component type 'Marquee' not found in catalog 'urn:quay:a2ui:catalog:v1'."}] bytes=203
+07:58:39.367 sink ANSWERED {"version":"1.0","action":{"name":"go","surfaceId":"sink","sourceComponentId":"go","timestamp":"2026-11-24T07:58:39.365Z","context":{}}}
+07:58:39.367 sink RETURNED {"version":"1.0","action":{"name":"go","surfaceId":"sink","sourceComponentId":"go","timestamp":"2026-11-24T07:58:39.365Z","context":{}}}
+07:59:15.316 WEBVIEW rebuilt 12 in 92.7ms, 300ms after navigation
+07:59:24.241 WEBVIEW rebuilt 12 in 112.4ms, 326ms after navigation
+07:59:28.841 call 31 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:28.866 call 31 VERDICT 25.6ms (webview 15.5ms) components=500 errors=null bytes=47698
+07:59:28.868 call 31 COMMIT big revision=1 sets=[]
+07:59:29.179 call 32 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:29.198 call 32 VERDICT 19.7ms (webview 11.2ms) components=500 errors=null bytes=47698
+07:59:29.200 call 32 COMMIT big revision=2 sets=[]
+07:59:29.527 call 33 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:29.553 call 33 VERDICT 25.9ms (webview 15.4ms) components=500 errors=null bytes=47698
+07:59:29.555 call 33 COMMIT big revision=3 sets=[]
+07:59:29.864 call 34 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:29.888 call 34 VERDICT 24.4ms (webview 14.9ms) components=500 errors=null bytes=47698
+07:59:29.890 call 34 COMMIT big revision=4 sets=[]
+07:59:30.202 call 35 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:30.221 call 35 VERDICT 19.9ms (webview 10ms) components=500 errors=null bytes=47696
+07:59:30.224 call 35 COMMIT big revision=5 sets=[]
+07:59:30.550 call 36 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:30.569 call 36 VERDICT 19.8ms (webview 10.5ms) components=500 errors=null bytes=47698
+07:59:30.571 call 36 COMMIT big revision=6 sets=[]
+07:59:31.164 call 37 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:31.190 call 37 VERDICT 26.9ms (webview 15.7ms) components=500 errors=null bytes=47698
+07:59:31.192 call 37 COMMIT big revision=7 sets=[]
+07:59:31.503 call 38 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:31.527 call 38 VERDICT 23.8ms (webview 13.6ms) components=500 errors=null bytes=47698
+07:59:31.529 call 38 COMMIT big revision=8 sets=[]
+07:59:32.020 call 39 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:32.039 call 39 VERDICT 19.2ms (webview 9.9ms) components=500 errors=null bytes=47697
+07:59:32.041 call 39 COMMIT big revision=9 sets=[]
+07:59:32.356 call 40 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:32.377 call 40 VERDICT 20.9ms (webview 9.7ms) components=500 errors=null bytes=47697
+07:59:32.379 call 40 COMMIT big revision=10 sets=[]
+07:59:32.896 call 41 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:32.916 call 41 VERDICT 19.9ms (webview 9.5ms) components=500 errors=null bytes=47697
+07:59:32.917 call 41 COMMIT big revision=11 sets=[]
+07:59:33.287 call 42 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:33.305 call 42 VERDICT 19.1ms (webview 9.6ms) components=500 errors=null bytes=47697
+07:59:33.307 call 42 COMMIT big revision=12 sets=[]
+07:59:33.630 call 43 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:33.650 call 43 VERDICT 21.1ms (webview 10.5ms) components=500 errors=null bytes=47698
+07:59:33.652 call 43 COMMIT big revision=13 sets=[]
+07:59:34.144 call 44 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:34.163 call 44 VERDICT 20.5ms (webview 9.1ms) components=500 errors=null bytes=47697
+07:59:34.166 call 44 COMMIT big revision=14 sets=[]
+07:59:34.594 call 45 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:34.619 call 45 VERDICT 25.2ms (webview 13.2ms) components=500 errors=null bytes=47698
+07:59:34.621 call 45 COMMIT big revision=15 sets=[]
+07:59:35.027 call 46 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:35.050 call 46 VERDICT 23.4ms (webview 12.4ms) components=500 errors=null bytes=47698
+07:59:35.053 call 46 COMMIT big revision=16 sets=[]
+07:59:35.662 call 47 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:35.681 call 47 VERDICT 19.5ms (webview 8.7ms) components=500 errors=null bytes=28862
+07:59:35.682 call 47 COMMIT flat revision=1 sets=[]
+07:59:36.006 call 48 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:36.028 call 48 VERDICT 23.3ms (webview 11.5ms) components=500 errors=null bytes=28863
+07:59:36.030 call 48 COMMIT flat revision=2 sets=[]
+07:59:36.367 call 49 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:36.385 call 49 VERDICT 19.1ms (webview 8.8ms) components=500 errors=null bytes=28862
+07:59:36.386 call 49 COMMIT flat revision=3 sets=[]
+07:59:36.691 call 50 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:36.709 call 50 VERDICT 19.0ms (webview 8.3ms) components=500 errors=null bytes=28862
+07:59:36.711 call 50 COMMIT flat revision=4 sets=[]
+07:59:37.040 call 51 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:37.059 call 51 VERDICT 19.9ms (webview 8.8ms) components=500 errors=null bytes=28862
+07:59:37.061 call 51 COMMIT flat revision=5 sets=[]
+07:59:37.383 call 52 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:37.402 call 52 VERDICT 20.3ms (webview 9ms) components=500 errors=null bytes=28860
+07:59:37.404 call 52 COMMIT flat revision=6 sets=[]
+07:59:37.743 call 53 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:37.767 call 53 VERDICT 24.9ms (webview 11.1ms) components=500 errors=null bytes=28863
+07:59:37.769 call 53 COMMIT flat revision=7 sets=[]
+07:59:38.099 call 54 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:38.118 call 54 VERDICT 19.5ms (webview 8.2ms) components=500 errors=null bytes=28862
+07:59:38.120 call 54 COMMIT flat revision=8 sets=[]
+07:59:38.451 call 55 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:38.469 call 55 VERDICT 19.6ms (webview 8.5ms) components=500 errors=null bytes=28862
+07:59:38.471 call 55 COMMIT flat revision=9 sets=[]
+07:59:38.776 call 56 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+07:59:38.795 call 56 VERDICT 19.8ms (webview 8.7ms) components=500 errors=null bytes=28862
+07:59:38.796 call 56 COMMIT flat revision=10 sets=[]
+07:59:39.124 call 57 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:39.155 call 57 VERDICT 31.1ms (webview 13.5ms) components=500 errors=null bytes=150736
+07:59:39.156 call 57 COMMIT bigtext revision=1 sets=[]
+07:59:39.480 call 58 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:39.513 call 58 VERDICT 33.7ms (webview 12.5ms) components=500 errors=null bytes=150736
+07:59:39.515 call 58 COMMIT bigtext revision=2 sets=[]
+07:59:39.891 call 59 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:39.923 call 59 VERDICT 33.2ms (webview 9.1ms) components=500 errors=null bytes=150735
+07:59:39.926 call 59 COMMIT bigtext revision=3 sets=[]
+07:59:40.304 call 60 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:40.335 call 60 VERDICT 32.5ms (webview 9.5ms) components=500 errors=null bytes=150735
+07:59:40.338 call 60 COMMIT bigtext revision=4 sets=[]
+07:59:40.954 call 61 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:40.982 call 61 VERDICT 29.5ms (webview 9.5ms) components=500 errors=null bytes=150735
+07:59:40.984 call 61 COMMIT bigtext revision=5 sets=[]
+07:59:41.370 call 62 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:41.400 call 62 VERDICT 35.7ms (webview 9.7ms) components=500 errors=null bytes=150735
+07:59:41.403 call 62 COMMIT bigtext revision=6 sets=[]
+07:59:41.707 call 63 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:41.743 call 63 VERDICT 37.4ms (webview 12.7ms) components=500 errors=null bytes=150736
+07:59:41.745 call 63 COMMIT bigtext revision=7 sets=[]
+07:59:42.039 call 64 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:42.072 call 64 VERDICT 34.6ms (webview 13.2ms) components=500 errors=null bytes=150736
+07:59:42.074 call 64 COMMIT bigtext revision=8 sets=[]
+07:59:42.422 call 65 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:42.452 call 65 VERDICT 31.2ms (webview 9.9ms) components=500 errors=null bytes=150735
+07:59:42.454 call 65 COMMIT bigtext revision=9 sets=[]
+07:59:42.832 call 66 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=150671
+07:59:42.868 call 66 VERDICT 38.0ms (webview 11.1ms) components=500 errors=null bytes=150736
+07:59:42.872 call 66 COMMIT bigtext revision=10 sets=[]
+07:59:43.192 call 67 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:43.232 call 67 VERDICT 41.0ms (webview 10.7ms) components=500 errors=null bytes=277001
+07:59:43.236 call 67 COMMIT heavy revision=1 sets=[]
+07:59:43.777 call 68 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:43.830 call 68 VERDICT 57.1ms (webview 14.5ms) components=500 errors=null bytes=277001
+07:59:43.834 call 68 COMMIT heavy revision=2 sets=[]
+07:59:44.179 call 69 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:44.228 call 69 VERDICT 51.7ms (webview 10.8ms) components=500 errors=null bytes=277001
+07:59:44.232 call 69 COMMIT heavy revision=3 sets=[]
+07:59:44.590 call 70 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:44.647 call 70 VERDICT 61.4ms (webview 10.7ms) components=500 errors=null bytes=277001
+07:59:44.652 call 70 COMMIT heavy revision=4 sets=[]
+07:59:45.038 call 71 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:45.094 call 71 VERDICT 60.8ms (webview 11.4ms) components=500 errors=null bytes=277001
+07:59:45.098 call 71 COMMIT heavy revision=5 sets=[]
+07:59:45.489 call 72 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:45.545 call 72 VERDICT 59.8ms (webview 13ms) components=500 errors=null bytes=276999
+07:59:45.550 call 72 COMMIT heavy revision=6 sets=[]
+07:59:45.912 call 73 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:45.962 call 73 VERDICT 52.9ms (webview 11ms) components=500 errors=null bytes=276999
+07:59:45.966 call 73 COMMIT heavy revision=7 sets=[]
+07:59:46.404 call 74 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:46.460 call 74 VERDICT 58.6ms (webview 11.9ms) components=500 errors=null bytes=277001
+07:59:46.464 call 74 COMMIT heavy revision=8 sets=[]
+07:59:46.789 call 75 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:46.848 call 75 VERDICT 63.0ms (webview 15.7ms) components=500 errors=null bytes=277001
+07:59:46.852 call 75 COMMIT heavy revision=9 sets=[]
+07:59:47.268 call 76 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:47.324 call 76 VERDICT 58.8ms (webview 14.1ms) components=500 errors=null bytes=277001
+07:59:47.329 call 76 COMMIT heavy revision=10 sets=[]
+07:59:47.974 call 77 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47753
+07:59:48.008 call 77 VERDICT 36.6ms (webview 9.9ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+07:59:48.652 call 78 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47753
+07:59:48.682 call 78 VERDICT 32.6ms (webview 8.4ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+07:59:49.381 call 79 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47753
+07:59:49.413 call 79 VERDICT 35.2ms (webview 8.8ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+07:59:50.430 call 80 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47753
+07:59:50.472 call 80 VERDICT 45.8ms (webview 10.5ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=134
+07:59:50.827 call 81 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47753
+07:59:50.859 call 81 VERDICT 35.7ms (webview 9.4ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+07:59:51.298 call 82 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:51.546 call 82 VERDICT 251.2ms (webview 101.6ms) components=500 errors=null bytes=47699
+07:59:51.548 call 82 COMMIT big revision=17 sets=[]
+07:59:51.876 call 83 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:52.116 call 83 VERDICT 242.3ms (webview 88.5ms) components=500 errors=null bytes=47698
+07:59:52.118 call 83 COMMIT big revision=18 sets=[]
+07:59:52.466 call 84 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:52.768 call 84 VERDICT 305.3ms (webview 142ms) components=500 errors=null bytes=47697
+07:59:52.770 call 84 COMMIT big revision=19 sets=[]
+07:59:53.270 call 85 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:53.566 call 85 VERDICT 302.5ms (webview 105.7ms) components=500 errors=null bytes=47699
+07:59:53.568 call 85 COMMIT big revision=20 sets=[]
+07:59:54.315 call 86 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:54.611 call 86 VERDICT 302.4ms (webview 125.7ms) components=500 errors=null bytes=47699
+07:59:54.617 call 86 COMMIT big revision=21 sets=[]
+07:59:55.161 call 87 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:55.424 call 87 VERDICT 267.2ms (webview 98.9ms) components=500 errors=null bytes=47698
+07:59:55.426 call 87 COMMIT big revision=22 sets=[]
+07:59:56.814 call 88 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:57.037 call 88 VERDICT 225.3ms (webview 93.5ms) components=500 errors=null bytes=47698
+07:59:57.039 call 88 COMMIT big revision=23 sets=[]
+07:59:57.795 call 89 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+07:59:58.024 call 89 VERDICT 231.4ms (webview 96.3ms) components=500 errors=null bytes=47698
+07:59:58.025 call 89 COMMIT big revision=24 sets=[]
+07:59:59.047 call 90 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+07:59:59.337 call 90 VERDICT 292.2ms (webview 102.7ms) components=500 errors=null bytes=277002
+07:59:59.341 call 90 COMMIT heavy revision=11 sets=[]
+08:00:00.690 call 91 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+08:00:01.195 call 91 VERDICT 512.5ms (webview 198.4ms) components=500 errors=null bytes=277002
+08:00:01.198 call 91 COMMIT heavy revision=12 sets=[]
+08:00:01.642 call 92 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+08:00:01.971 call 92 VERDICT 333.7ms (webview 119.6ms) components=500 errors=null bytes=277002
+08:00:01.975 call 92 COMMIT heavy revision=13 sets=[]
+08:00:02.351 call 93 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+08:00:02.680 call 93 VERDICT 332.7ms (webview 139.7ms) components=500 errors=null bytes=277002
+08:00:02.684 call 93 COMMIT heavy revision=14 sets=[]
+08:00:03.026 call 94 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=276936
+08:00:03.416 call 94 VERDICT 393.9ms (webview 150.4ms) components=500 errors=null bytes=277002
+08:00:03.421 call 94 COMMIT heavy revision=15 sets=[]
+08:00:04.595 call 95 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+08:00:04.626 call 95 VERDICT 33.7ms (webview 9ms) components=500 errors=null bytes=28860
+08:00:04.628 call 95 COMMIT flat revision=11 sets=[]
+08:00:04.951 call 96 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+08:00:04.986 call 96 VERDICT 36.5ms (webview 12.7ms) components=500 errors=null bytes=28863
+08:00:04.987 call 96 COMMIT flat revision=12 sets=[]
+08:00:05.351 call 97 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+08:00:05.395 call 97 VERDICT 46.9ms (webview 10ms) components=500 errors=null bytes=28861
+08:00:05.397 call 97 COMMIT flat revision=13 sets=[]
+08:00:05.906 call 98 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+08:00:05.952 call 98 VERDICT 49.6ms (webview 13.7ms) components=500 errors=null bytes=28863
+08:00:05.953 call 98 COMMIT flat revision=14 sets=[]
+08:00:06.363 call 99 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=28798
+08:00:06.398 call 99 VERDICT 38.8ms (webview 8.4ms) components=500 errors=null bytes=28862
+08:00:06.399 call 99 COMMIT flat revision=15 sets=[]
+08:00:15.861 big DRAFT (pause) revision=23 of 24 entries=1 bytes=294
+08:00:16.397 call 100 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:16.461 call 100 VERDICT 68.0ms (webview 20.1ms) components=500 errors=null bytes=47698
+08:00:16.464 call 100 COMMIT big revision=25 sets=[]
+08:00:17.014 call 101 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:17.085 call 101 VERDICT 74.9ms (webview 17.8ms) components=500 errors=null bytes=47698
+08:00:17.089 call 101 COMMIT big revision=26 sets=[]
+08:00:17.527 call 102 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:17.596 call 102 VERDICT 72.0ms (webview 9.9ms) components=500 errors=null bytes=47697
+08:00:17.598 call 102 COMMIT big revision=27 sets=[]
+08:00:18.368 call 103 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:18.418 call 103 VERDICT 52.1ms (webview 14.7ms) components=500 errors=null bytes=47698
+08:00:18.421 call 103 COMMIT big revision=28 sets=[]
+08:00:19.143 call 104 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:19.193 call 104 VERDICT 53.2ms (webview 14.5ms) components=500 errors=null bytes=47698
+08:00:19.195 call 104 COMMIT big revision=29 sets=[]
+08:00:20.571 call 105 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:20.670 call 105 VERDICT 102.9ms (webview 21.2ms) components=500 errors=null bytes=47698
+08:00:20.674 call 105 COMMIT big revision=30 sets=[]
+08:00:21.132 call 106 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:21.256 call 106 VERDICT 129.1ms (webview 18.3ms) components=500 errors=null bytes=47698
+08:00:21.261 call 106 COMMIT big revision=31 sets=[]
+08:00:21.836 call 107 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:21.924 call 107 VERDICT 90.3ms (webview 19.5ms) components=500 errors=null bytes=47698
+08:00:21.928 call 107 COMMIT big revision=32 sets=[]
+08:00:24.839 call 108 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47598
+08:00:24.876 call 108 VERDICT 38.4ms (webview 10.3ms) components=500 errors=null bytes=47662
+08:00:24.879 call 108 COMMIT bigask revision=1 sets=[]
+08:00:26.444 call 109 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47598
+08:00:26.510 call 109 VERDICT 69.1ms (webview 21ms) components=500 errors=null bytes=47660
+08:00:26.515 call 109 COMMIT bigask revision=2 sets=[]
+08:00:26.522 bigask NO ANSWER YET
+08:00:41.667 call 110 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:41.835 WEBVIEW rebuilt 17 in 386.9ms, 730ms after navigation
+08:00:41.915 call 110 VERDICT 260.5ms (webview 13.8ms) components=500 errors=null bytes=47698
+08:00:41.918 call 110 COMMIT big revision=33 sets=[]
+08:00:44.132 call 111 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:44.196 WEBVIEW rebuilt 17 in 282.2ms, 577ms after navigation
+08:00:44.302 call 111 VERDICT 174.3ms (webview 19.6ms) components=500 errors=null bytes=47698
+08:00:44.304 call 111 COMMIT big revision=34 sets=[]
+08:00:46.571 WEBVIEW rebuilt 17 in 254.4ms, 517ms after navigation
+08:00:47.179 call 112 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:47.227 call 112 VERDICT 51.6ms (webview 14.4ms) components=500 errors=null bytes=47698
+08:00:47.228 call 112 COMMIT big revision=35 sets=[]
+08:00:49.028 call 113 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:49.089 call 113 VERDICT 67.6ms (webview 17.8ms) components=500 errors=null bytes=47698
+08:00:49.093 call 113 COMMIT big revision=36 sets=[]
+08:00:49.157 call 113 LATE VERDICT dropped
+08:00:49.981 WEBVIEW rebuilt 17 in 344.2ms, 918ms after navigation
+08:00:51.174 call 114 CHECK quay_surface from term-a281e35ec7ad4324831000443c2827fd bytes=47633
+08:00:51.221 call 114 VERDICT 52.5ms (webview 13.8ms) components=500 errors=null bytes=47698
+08:00:51.224 call 114 COMMIT big revision=37 sets=[]
+08:00:51.957 WEBVIEW rebuilt 17 in 321.2ms, 636ms after navigation
+08:01:24.246 WEBVIEW rebuilt 17 in 164.3ms, 384ms after navigation
+08:01:33.157 call 115 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28802
+08:01:33.516 WEBVIEW rebuilt 17 in 197.9ms, 413ms after navigation
+08:01:38.162 call 115 NO VERDICT after 5006.2ms
+08:01:40.890 call 116 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28803
+08:01:41.267 WEBVIEW rebuilt 17 in 168.0ms, 427ms after navigation
+08:01:45.901 call 116 NO VERDICT after 5012.0ms
+08:01:48.633 call 117 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28803
+08:01:49.075 WEBVIEW rebuilt 17 in 259.4ms, 500ms after navigation
+08:01:53.642 call 117 NO VERDICT after 5010.1ms
+08:01:56.627 call 118 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28803
+08:01:57.012 WEBVIEW rebuilt 17 in 206.1ms, 460ms after navigation
+08:02:01.632 call 118 NO VERDICT after 5004.9ms
+08:02:04.628 call 119 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28803
+08:02:05.005 WEBVIEW rebuilt 17 in 262.4ms, 506ms after navigation
+08:02:09.645 call 119 NO VERDICT after 5016.9ms
+08:02:12.432 call 120 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28803
+08:02:12.692 WEBVIEW rebuilt 17 in 161.0ms, 399ms after navigation
+08:02:17.437 call 120 NO VERDICT after 5005.5ms
+08:02:21.787 call 121 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:22.071 WEBVIEW rebuilt 17 in 186.9ms, 449ms after navigation
+08:02:26.804 call 121 NO VERDICT after 5017.3ms
+08:02:32.118 call 122 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:32.157 call 122 VERDICT 39.5ms (webview 23ms) components=500 errors=null bytes=28873
+08:02:32.159 call 122 COMMIT rl7292_130 revision=1 sets=[]
+08:02:32.343 WEBVIEW rebuilt 18 in 167.1ms, 409ms after navigation
+08:02:35.382 call 123 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:35.411 call 123 VERDICT 29.7ms (webview 17ms) components=500 errors=null bytes=28873
+08:02:35.413 call 123 COMMIT rl7292_160 revision=1 sets=[]
+08:02:35.637 WEBVIEW rebuilt 19 in 182.4ms, 452ms after navigation
+08:02:39.219 call 124 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:39.282 call 124 VERDICT 65.0ms (webview 28.2ms) components=500 errors=null bytes=28875
+08:02:39.285 call 124 COMMIT rl7292_200 revision=1 sets=[]
+08:02:39.538 WEBVIEW rebuilt 20 in 210.1ms, 587ms after navigation
+08:02:42.540 call 125 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:42.670 WEBVIEW rebuilt 20 in 238.5ms, 448ms after navigation
+08:02:42.695 call 125 VERDICT 156.5ms (webview 13.6ms) components=500 errors=null bytes=28875
+08:02:42.697 call 125 COMMIT rl7292_250 revision=1 sets=[]
+08:02:45.912 call 126 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:46.076 WEBVIEW rebuilt 21 in 275.5ms, 540ms after navigation
+08:02:46.101 call 126 VERDICT 192.7ms (webview 13.8ms) components=500 errors=null bytes=28875
+08:02:46.103 call 126 COMMIT rl7292_300 revision=1 sets=[]
+08:02:49.230 call 127 CHECK quay_surface from term-09645f7a60254e7cabc19f3c76af9e9b bytes=28804
+08:02:49.260 WEBVIEW rebuilt 22 in 283.3ms, 498ms after navigation
+08:02:49.288 call 127 VERDICT 60.1ms (webview 10.4ms) components=500 errors=null bytes=28875
+08:02:49.290 call 127 COMMIT rl7292_400 revision=1 sets=[]
+08:02:56.008 WEBVIEW rebuilt 23 in 506.0ms, 711ms after navigation
+08:03:06.643 call 128 CHECK quay_surface from term-f7051347380c4bd2b130a41cb94b4f9a bytes=47598
+08:03:06.662 call 128 VERDICT 18.8ms (webview 10.1ms) components=500 errors=null bytes=47666
+08:03:06.663 call 128 COMMIT dr7384_0 revision=1 sets=[]
+08:03:08.021 call 129 CHECK quay_surface from term-f7051347380c4bd2b130a41cb94b4f9a bytes=47598
+08:03:08.043 call 129 VERDICT 22.4ms (webview 10.5ms) components=500 errors=null bytes=47666
+08:03:08.045 call 129 COMMIT dr7384_1 revision=1 sets=[]
+08:03:09.714 call 130 CHECK quay_surface from term-f7051347380c4bd2b130a41cb94b4f9a bytes=47598
+08:03:09.737 call 130 VERDICT 24.9ms (webview 11.1ms) components=500 errors=null bytes=47666
+08:03:09.739 call 130 COMMIT dr7384_2 revision=1 sets=[]
+08:03:11.088 call 131 CHECK quay_surface from term-f7051347380c4bd2b130a41cb94b4f9a bytes=47598
+08:03:11.114 call 131 VERDICT 27.5ms (webview 9.5ms) components=500 errors=null bytes=47665
+08:03:11.116 call 131 COMMIT dr7384_3 revision=1 sets=[]
+08:03:12.503 call 132 CHECK quay_surface from term-f7051347380c4bd2b130a41cb94b4f9a bytes=47598
+08:03:12.533 call 132 VERDICT 31.9ms (webview 10.2ms) components=500 errors=null bytes=47666
+08:03:12.535 call 132 COMMIT dr7384_4 revision=1 sets=[]
+# First build, the reload race a second time
+08:05:17.486 WEBVIEW rebuilt 0 in 31.9ms, 365ms after navigation
+08:05:30.811 WEBVIEW rebuilt 0 in 35.1ms, 352ms after navigation
+08:05:40.730 call 1 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28802
+08:05:40.927 WEBVIEW rebuilt 0 in 32.3ms, 247ms after navigation
+08:05:45.733 call 1 NO VERDICT after 5003.3ms
+08:05:48.435 call 2 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28803
+08:05:48.610 WEBVIEW rebuilt 0 in 22.5ms, 219ms after navigation
+08:05:53.451 call 2 NO VERDICT after 5016.9ms
+08:05:56.217 call 3 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28803
+08:05:56.416 WEBVIEW rebuilt 0 in 33.5ms, 266ms after navigation
+08:06:01.232 call 3 NO VERDICT after 5016.2ms
+08:06:04.238 call 4 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28803
+08:06:04.418 WEBVIEW rebuilt 0 in 23.5ms, 268ms after navigation
+08:06:09.242 call 4 NO VERDICT after 5005.0ms
+08:06:12.028 call 5 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28803
+08:06:12.140 WEBVIEW rebuilt 0 in 30.7ms, 213ms after navigation
+08:06:17.038 call 5 NO VERDICT after 5009.7ms
+08:06:19.841 call 6 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28803
+08:06:19.929 WEBVIEW rebuilt 0 in 21.6ms, 220ms after navigation
+08:06:24.849 call 6 NO VERDICT after 5007.8ms
+08:06:27.681 call 7 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:27.737 call 7 VERDICT 55.7ms (webview 33.1ms) components=500 errors=null bytes=28875
+08:06:27.738 call 7 COMMIT rl7540_100 revision=1 sets=[]
+08:06:27.815 WEBVIEW rebuilt 1 in 43.6ms, 295ms after navigation
+08:06:30.616 call 8 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:30.645 call 8 VERDICT 28.9ms (webview 17.3ms) components=500 errors=null bytes=28875
+08:06:30.646 call 8 COMMIT rl7540_130 revision=1 sets=[]
+08:06:30.726 WEBVIEW rebuilt 2 in 71.8ms, 301ms after navigation
+08:06:34.592 call 9 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:34.753 WEBVIEW rebuilt 2 in 78.4ms, 387ms after navigation
+08:06:39.598 call 9 NO VERDICT after 5007.7ms
+08:06:42.499 call 10 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:42.505 WEBVIEW rebuilt 2 in 75.7ms, 258ms after navigation
+08:06:42.548 call 10 VERDICT 49.1ms (webview 15.2ms) components=500 errors=null bytes=28875
+08:06:42.549 call 10 COMMIT rl7540_200 revision=1 sets=[]
+08:06:45.506 WEBVIEW rebuilt 3 in 61.0ms, 261ms after navigation
+08:06:45.554 call 11 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:45.582 call 11 VERDICT 28.9ms (webview 15ms) components=500 errors=null bytes=28873
+08:06:45.583 call 11 COMMIT rl7540_250 revision=1 sets=[]
+08:06:48.582 WEBVIEW rebuilt 4 in 119.5ms, 306ms after navigation
+08:06:48.639 call 12 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:48.665 call 12 VERDICT 28.0ms (webview 10.5ms) components=500 errors=null bytes=28875
+08:06:48.667 call 12 COMMIT rl7540_300 revision=1 sets=[]
+08:06:51.656 WEBVIEW rebuilt 5 in 137.1ms, 322ms after navigation
+08:06:51.784 call 13 CHECK quay_surface from term-e516d65761184829815a7adbf2e4436b bytes=28804
+08:06:51.808 call 13 VERDICT 26.4ms (webview 9.7ms) components=500 errors=null bytes=28874
+08:06:51.810 call 13 COMMIT rl7540_400 revision=1 sets=[]
+08:06:58.101 WEBVIEW rebuilt 6 in 96.8ms, 285ms after navigation
+08:07:08.771 WEBVIEW rebuilt 6 in 144.9ms, 395ms after navigation
+08:07:12.229 call 14 CHECK quay_surface from term-e216e89ec52648ea87252bf7f90b0eac bytes=1082
+08:07:12.236 call 14 VERDICT 6.7ms (webview 3ms) components=8 errors=null bytes=1141
+08:07:12.236 call 14 COMMIT form revision=1 sets=[]
+08:07:13.114 WEBVIEW rebuilt 7 in 137.3ms, 334ms after navigation
+08:07:16.675 call 15 CHECK quay_surface from term-e216e89ec52648ea87252bf7f90b0eac bytes=105
+08:07:16.678 call 15 VERDICT 3.5ms (webview 1.2ms) components=8 errors=null bytes=1152
+08:07:16.678 call 15 COMMIT form revision=2 sets=["/status"]
+08:07:16.679 form NO ANSWER YET
+08:07:16.682 form DRAFT (update) revision=2 of 2 entries=1 bytes=20
+08:07:21.037 form DRAFT (pause) revision=2 of 2 entries=1 bytes=42
+# Final build: unanswered checks handed over, focus left alone
+08:09:33.629 WEBVIEW rebuilt 0 in 31.7ms, 340ms after navigation
+08:09:44.999 WEBVIEW rebuilt 0 in 26.8ms, 322ms after navigation
+08:09:53.881 call 1 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28802
+08:09:54.056 WEBVIEW rebuilt 0 in 24.6ms, 218ms after navigation
+08:09:54.057 CHECKS 1 handed over again
+08:09:54.114 call 1 VERDICT 233.0ms (webview 38.1ms) components=500 errors=null bytes=28871
+08:09:54.116 call 1 COMMIT rl7793_0 revision=1 sets=[]
+08:09:57.474 call 2 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28803
+08:09:57.655 WEBVIEW rebuilt 1 in 37.0ms, 223ms after navigation
+08:09:57.656 CHECKS 1 handed over again
+08:09:57.695 call 2 VERDICT 220.8ms (webview 16.3ms) components=500 errors=null bytes=28873
+08:09:57.696 call 2 COMMIT rl7793_10 revision=1 sets=[]
+08:10:00.419 call 3 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28803
+08:10:00.619 WEBVIEW rebuilt 2 in 64.2ms, 259ms after navigation
+08:10:00.621 CHECKS 1 handed over again
+08:10:00.658 call 3 VERDICT 238.9ms (webview 14.9ms) components=500 errors=null bytes=28873
+08:10:00.659 call 3 COMMIT rl7793_20 revision=1 sets=[]
+08:10:03.506 call 4 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28803
+08:10:03.742 WEBVIEW rebuilt 3 in 80.3ms, 327ms after navigation
+08:10:03.743 CHECKS 1 handed over again
+08:10:03.780 call 4 VERDICT 273.7ms (webview 18ms) components=500 errors=null bytes=28871
+08:10:03.781 call 4 COMMIT rl7793_40 revision=1 sets=[]
+08:10:06.568 call 5 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28803
+08:10:06.793 WEBVIEW rebuilt 4 in 113.3ms, 350ms after navigation
+08:10:06.798 CHECKS 1 handed over again
+08:10:06.835 call 5 VERDICT 266.7ms (webview 12.2ms) components=500 errors=null bytes=28873
+08:10:06.838 call 5 COMMIT rl7793_60 revision=1 sets=[]
+08:10:09.676 call 6 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28803
+08:10:09.892 WEBVIEW rebuilt 5 in 128.6ms, 355ms after navigation
+08:10:09.896 CHECKS 1 handed over again
+08:10:09.923 call 6 VERDICT 246.5ms (webview 9.3ms) components=500 errors=null bytes=28872
+08:10:09.926 call 6 COMMIT rl7793_80 revision=1 sets=[]
+08:10:12.753 call 7 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:12.807 call 7 VERDICT 54.0ms (webview 19ms) components=500 errors=null bytes=28873
+08:10:12.809 call 7 COMMIT rl7793_100 revision=1 sets=[]
+08:10:12.930 WEBVIEW rebuilt 6 in 156.6ms, 344ms after navigation
+08:10:16.062 call 8 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:16.106 call 8 VERDICT 44.0ms (webview 19.2ms) components=500 errors=null bytes=28875
+08:10:16.108 call 8 COMMIT rl7793_130 revision=1 sets=[]
+08:10:16.332 WEBVIEW rebuilt 8 in 172.5ms, 464ms after navigation
+08:10:19.016 call 9 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:19.076 call 9 VERDICT 60.1ms (webview 28.4ms) components=500 errors=null bytes=28875
+08:10:19.078 call 9 COMMIT rl7793_160 revision=1 sets=[]
+08:10:19.238 WEBVIEW rebuilt 8 in 219.7ms, 430ms after navigation
+08:10:22.007 call 10 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:22.108 WEBVIEW rebuilt 9 in 168.6ms, 352ms after navigation
+08:10:22.113 CHECKS 1 handed over again
+08:10:22.144 call 10 VERDICT 136.4ms (webview 9.2ms) components=500 errors=null bytes=28874
+08:10:22.146 call 10 COMMIT rl7793_200 revision=1 sets=[]
+08:10:22.180 call 10 LATE VERDICT dropped
+08:10:25.414 call 11 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:25.439 WEBVIEW rebuilt 10 in 154.8ms, 341ms after navigation
+08:10:25.445 CHECKS 1 handed over again
+08:10:25.470 call 11 VERDICT 56.9ms (webview 9.3ms) components=500 errors=null bytes=28874
+08:10:25.472 call 11 COMMIT rl7793_250 revision=1 sets=[]
+08:10:25.508 call 11 LATE VERDICT dropped
+08:10:28.746 WEBVIEW rebuilt 11 in 151.8ms, 343ms after navigation
+08:10:28.772 call 12 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:28.815 call 12 VERDICT 43.2ms (webview 9.3ms) components=500 errors=null bytes=28874
+08:10:28.816 call 12 COMMIT rl7793_300 revision=1 sets=[]
+08:10:31.874 WEBVIEW rebuilt 12 in 215.3ms, 406ms after navigation
+08:10:31.937 call 13 CHECK quay_surface from term-81efc4cc90264480bfdda0e208e2958f bytes=28804
+08:10:31.977 call 13 VERDICT 39.4ms (webview 9ms) components=500 errors=null bytes=28872
+08:10:31.979 call 13 COMMIT rl7793_400 revision=1 sets=[]
+08:10:38.911 WEBVIEW rebuilt 13 in 179.4ms, 371ms after navigation
+08:10:48.119 WEBVIEW rebuilt 13 in 247.9ms, 433ms after navigation
+08:10:51.868 call 14 CHECK quay_surface from term-218d527496f94c088891a9d7509575b0 bytes=1082
+08:10:51.873 call 14 VERDICT 5.9ms (webview 2.6ms) components=8 errors=null bytes=1143
+08:10:51.874 call 14 COMMIT form revision=1 sets=[]
+08:10:53.203 WEBVIEW rebuilt 14 in 175.3ms, 379ms after navigation
+08:10:56.699 call 15 CHECK quay_surface from term-218d527496f94c088891a9d7509575b0 bytes=105
+08:10:56.703 call 15 VERDICT 3.6ms (webview 1.1ms) components=8 errors=null bytes=1152
+08:10:56.703 call 15 COMMIT form revision=2 sets=["/status"]
+08:10:56.703 form NO ANSWER YET
+08:10:56.706 form DRAFT (update) revision=2 of 2 entries=1 bytes=21
+08:10:57.973 form DRAFT (pause) revision=2 of 2 entries=1 bytes=34
+08:10:59.774 call 16 CHECK quay_surface from term-218d527496f94c088891a9d7509575b0 bytes=200
+08:10:59.779 call 16 VERDICT 4.9ms (webview 1.3ms) components=8 errors=null bytes=1156
+08:10:59.779 call 16 COMMIT form revision=3 sets=[]
+08:10:59.780 form NO ANSWER YET
+08:10:59.782 form DRAFT (update) revision=3 of 3 entries=1 bytes=43
+08:11:01.041 form DRAFT (pause) revision=3 of 3 entries=1 bytes=56
+08:11:13.628 WEBVIEW rebuilt 14 in 213.5ms, 412ms after navigation
+08:11:22.826 WEBVIEW rebuilt 14 in 243.2ms, 447ms after navigation
+08:11:31.180 call 17 CHECK quay_ask from term-a8445d58a0b54616a7324f02deb35eb6 bytes=386
+08:11:31.184 call 17 VERDICT 4.7ms (webview 1.7ms) components=9 errors=null bytes=1746
+08:11:31.185 call 17 COMMIT ask_1 revision=1 sets=[]
+08:11:31.599 ask_1 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+08:11:32.998 ask_1 DRAFT (left) revision=1 of 1 entries=6 bytes=168
+08:11:34.805 ask_1 ANSWERED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"keep the tags"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"Say it is faster"}]}
+08:11:34.805 ask_1 RETURNED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"keep the tags"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"Say it is faster"}]}
+08:11:37.011 WEBVIEW rebuilt 15 in 210.3ms, 439ms after navigation
+08:11:45.288 call 18 CHECK quay_ask from term-a8445d58a0b54616a7324f02deb35eb6 bytes=386
+08:11:45.294 call 18 VERDICT 6.3ms (webview 1.6ms) components=9 errors=null bytes=1746
+08:11:45.294 call 18 COMMIT ask_2 revision=1 sets=[]
+08:11:45.708 ask_2 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+08:11:47.174 ask_2 DRAFT (left) revision=1 of 1 entries=6 bytes=168
+08:11:48.967 ask_2 ANSWERED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"keep the tags"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"Say it is faster"}]}
+08:11:48.968 ask_2 RETURNED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"keep the tags"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"Say it is faster"}]}
+08:11:48.968 ask_2 SECOND ANSWER refused
+08:11:55.229 WEBVIEW rebuilt 16 in 170.5ms, 419ms after navigation
+08:12:04.469 WEBVIEW rebuilt 16 in 178.9ms, 363ms after navigation
+08:12:08.982 call 19 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:09.011 call 19 VERDICT 29.1ms (webview 18.2ms) components=500 errors=null bytes=47698
+08:12:09.013 call 19 COMMIT big revision=1 sets=[]
+08:12:09.336 call 20 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:09.356 call 20 VERDICT 19.5ms (webview 11ms) components=500 errors=null bytes=47696
+08:12:09.359 call 20 COMMIT big revision=2 sets=[]
+08:12:09.673 call 21 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:09.697 call 21 VERDICT 24.2ms (webview 12.8ms) components=500 errors=null bytes=47698
+08:12:09.699 call 21 COMMIT big revision=3 sets=[]
+08:12:10.037 call 22 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:10.058 call 22 VERDICT 21.3ms (webview 12.8ms) components=500 errors=null bytes=47698
+08:12:10.061 call 22 COMMIT big revision=4 sets=[]
+08:12:10.423 call 23 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:10.442 call 23 VERDICT 18.9ms (webview 9.7ms) components=500 errors=null bytes=47697
+08:12:10.443 call 23 COMMIT big revision=5 sets=[]
+08:12:10.753 call 24 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:10.772 call 24 VERDICT 19.2ms (webview 9.7ms) components=500 errors=null bytes=47697
+08:12:10.774 call 24 COMMIT big revision=6 sets=[]
+08:12:11.095 call 25 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:11.116 call 25 VERDICT 21.3ms (webview 12.9ms) components=500 errors=null bytes=47698
+08:12:11.118 call 25 COMMIT big revision=7 sets=[]
+08:12:11.434 call 26 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:11.457 call 26 VERDICT 22.8ms (webview 13.4ms) components=500 errors=null bytes=47698
+08:12:11.459 call 26 COMMIT big revision=8 sets=[]
+08:12:11.766 call 27 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:11.785 call 27 VERDICT 19.3ms (webview 10.1ms) components=500 errors=null bytes=47698
+08:12:11.787 call 27 COMMIT big revision=9 sets=[]
+08:12:12.090 call 28 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:12.108 call 28 VERDICT 18.4ms (webview 9.6ms) components=500 errors=null bytes=47697
+08:12:12.112 call 28 COMMIT big revision=10 sets=[]
+08:12:12.418 call 29 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:12.437 call 29 VERDICT 19.6ms (webview 10.4ms) components=500 errors=null bytes=47698
+08:12:12.439 call 29 COMMIT big revision=11 sets=[]
+08:12:12.785 call 30 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:12.804 call 30 VERDICT 18.9ms (webview 10ms) components=500 errors=null bytes=47696
+08:12:12.806 call 30 COMMIT big revision=12 sets=[]
+08:12:13.375 call 31 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:13.397 call 31 VERDICT 21.7ms (webview 9.3ms) components=500 errors=null bytes=47697
+08:12:13.399 call 31 COMMIT big revision=13 sets=[]
+08:12:13.719 call 32 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:13.738 call 32 VERDICT 18.7ms (webview 9.7ms) components=500 errors=null bytes=47697
+08:12:13.739 call 32 COMMIT big revision=14 sets=[]
+08:12:14.255 call 33 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:14.279 call 33 VERDICT 24.0ms (webview 13.2ms) components=500 errors=null bytes=47698
+08:12:14.281 call 33 COMMIT big revision=15 sets=[]
+08:12:14.924 call 34 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:14.968 call 34 VERDICT 42.7ms (webview 25.1ms) components=500 errors=null bytes=47698
+08:12:14.972 call 34 COMMIT big revision=16 sets=[]
+08:12:15.666 call 35 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:15.687 call 35 VERDICT 21.3ms (webview 10.6ms) components=500 errors=null bytes=28863
+08:12:15.689 call 35 COMMIT flat revision=1 sets=[]
+08:12:16.158 call 36 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:16.186 call 36 VERDICT 28.2ms (webview 13.5ms) components=500 errors=null bytes=28863
+08:12:16.189 call 36 COMMIT flat revision=2 sets=[]
+08:12:16.676 call 37 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:16.699 call 37 VERDICT 22.7ms (webview 11.9ms) components=500 errors=null bytes=28863
+08:12:16.702 call 37 COMMIT flat revision=3 sets=[]
+08:12:16.993 call 38 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:17.012 call 38 VERDICT 18.7ms (webview 8.9ms) components=500 errors=null bytes=28862
+08:12:17.013 call 38 COMMIT flat revision=4 sets=[]
+08:12:17.332 call 39 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:17.352 call 39 VERDICT 19.6ms (webview 8.2ms) components=500 errors=null bytes=28862
+08:12:17.353 call 39 COMMIT flat revision=5 sets=[]
+08:12:17.921 call 40 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:17.939 call 40 VERDICT 18.0ms (webview 8.1ms) components=500 errors=null bytes=28862
+08:12:17.941 call 40 COMMIT flat revision=6 sets=[]
+08:12:18.260 call 41 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:18.277 call 41 VERDICT 16.9ms (webview 8.6ms) components=500 errors=null bytes=28862
+08:12:18.279 call 41 COMMIT flat revision=7 sets=[]
+08:12:18.588 call 42 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:18.606 call 42 VERDICT 17.4ms (webview 7.8ms) components=500 errors=null bytes=28862
+08:12:18.607 call 42 COMMIT flat revision=8 sets=[]
+08:12:18.930 call 43 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:18.953 call 43 VERDICT 22.8ms (webview 11.4ms) components=500 errors=null bytes=28863
+08:12:18.955 call 43 COMMIT flat revision=9 sets=[]
+08:12:19.272 call 44 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:19.294 call 44 VERDICT 22.0ms (webview 9.7ms) components=500 errors=null bytes=28862
+08:12:19.295 call 44 COMMIT flat revision=10 sets=[]
+08:12:19.813 call 45 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:19.841 call 45 VERDICT 28.4ms (webview 9.8ms) components=500 errors=null bytes=150735
+08:12:19.843 call 45 COMMIT bigtext revision=1 sets=[]
+08:12:20.133 call 46 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:20.161 call 46 VERDICT 28.1ms (webview 8.9ms) components=500 errors=null bytes=150735
+08:12:20.163 call 46 COMMIT bigtext revision=2 sets=[]
+08:12:20.774 call 47 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:20.807 call 47 VERDICT 32.4ms (webview 12.5ms) components=500 errors=null bytes=150736
+08:12:20.809 call 47 COMMIT bigtext revision=3 sets=[]
+08:12:21.136 call 48 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:21.169 call 48 VERDICT 33.5ms (webview 13.7ms) components=500 errors=null bytes=150736
+08:12:21.172 call 48 COMMIT bigtext revision=4 sets=[]
+08:12:21.780 call 49 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:21.810 call 49 VERDICT 30.4ms (webview 9.3ms) components=500 errors=null bytes=150735
+08:12:21.812 call 49 COMMIT bigtext revision=5 sets=[]
+08:12:22.134 call 50 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:22.163 call 50 VERDICT 28.1ms (webview 9.1ms) components=500 errors=null bytes=150735
+08:12:22.164 call 50 COMMIT bigtext revision=6 sets=[]
+08:12:22.669 call 51 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:22.700 call 51 VERDICT 31.0ms (webview 9.7ms) components=500 errors=null bytes=150735
+08:12:22.702 call 51 COMMIT bigtext revision=7 sets=[]
+08:12:23.406 call 52 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:23.439 call 52 VERDICT 32.6ms (webview 11.4ms) components=500 errors=null bytes=150736
+08:12:23.441 call 52 COMMIT bigtext revision=8 sets=[]
+08:12:23.829 call 53 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:23.864 call 53 VERDICT 35.1ms (webview 12.2ms) components=500 errors=null bytes=150736
+08:12:23.865 call 53 COMMIT bigtext revision=9 sets=[]
+08:12:24.243 call 54 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=150671
+08:12:24.278 call 54 VERDICT 35.3ms (webview 12.7ms) components=500 errors=null bytes=150736
+08:12:24.282 call 54 COMMIT bigtext revision=10 sets=[]
+08:12:24.841 call 55 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:24.888 call 55 VERDICT 47.9ms (webview 11.1ms) components=500 errors=null bytes=277001
+08:12:24.893 call 55 COMMIT heavy revision=1 sets=[]
+08:12:25.565 call 56 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:25.620 call 56 VERDICT 55.6ms (webview 13.1ms) components=500 errors=null bytes=277001
+08:12:25.625 call 56 COMMIT heavy revision=2 sets=[]
+08:12:26.015 call 57 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:26.067 call 57 VERDICT 51.8ms (webview 11ms) components=500 errors=null bytes=276999
+08:12:26.071 call 57 COMMIT heavy revision=3 sets=[]
+08:12:26.431 call 58 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:26.486 call 58 VERDICT 54.6ms (webview 14ms) components=500 errors=null bytes=276999
+08:12:26.489 call 58 COMMIT heavy revision=4 sets=[]
+08:12:26.813 call 59 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:26.864 call 59 VERDICT 50.5ms (webview 10.9ms) components=500 errors=null bytes=277001
+08:12:26.867 call 59 COMMIT heavy revision=5 sets=[]
+08:12:27.233 call 60 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:27.286 call 60 VERDICT 52.9ms (webview 12.2ms) components=500 errors=null bytes=277001
+08:12:27.290 call 60 COMMIT heavy revision=6 sets=[]
+08:12:27.618 call 61 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:27.668 call 61 VERDICT 49.9ms (webview 11.1ms) components=500 errors=null bytes=277001
+08:12:27.671 call 61 COMMIT heavy revision=7 sets=[]
+08:12:28.014 call 62 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:28.062 call 62 VERDICT 48.6ms (webview 10.9ms) components=500 errors=null bytes=277001
+08:12:28.066 call 62 COMMIT heavy revision=8 sets=[]
+08:12:28.587 call 63 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:28.637 call 63 VERDICT 50.1ms (webview 10.9ms) components=500 errors=null bytes=277001
+08:12:28.641 call 63 COMMIT heavy revision=9 sets=[]
+08:12:28.984 call 64 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:29.035 call 64 VERDICT 51.7ms (webview 11.9ms) components=500 errors=null bytes=277001
+08:12:29.039 call 64 COMMIT heavy revision=10 sets=[]
+08:12:29.373 call 65 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47753
+08:12:29.410 call 65 VERDICT 37.4ms (webview 12.6ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=134
+08:12:29.698 call 66 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47753
+08:12:29.732 call 66 VERDICT 34.2ms (webview 8.6ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+08:12:30.034 call 67 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47753
+08:12:30.065 call 67 VERDICT 31.7ms (webview 8.7ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+08:12:30.373 call 68 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47753
+08:12:30.402 call 68 VERDICT 29.7ms (webview 8.8ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+08:12:30.714 call 69 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47753
+08:12:30.743 call 69 VERDICT 28.9ms (webview 8.9ms) components=null errors=[{"code":"VALIDATION_FAILED","message":"A surface has at most 500 components; this one would have 501."}] bytes=133
+08:12:31.092 call 70 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:31.345 call 70 VERDICT 253.3ms (webview 118.9ms) components=500 errors=null bytes=47699
+08:12:31.348 call 70 COMMIT big revision=17 sets=[]
+08:12:31.663 call 71 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:31.898 call 71 VERDICT 234.9ms (webview 96.5ms) components=500 errors=null bytes=47698
+08:12:31.900 call 71 COMMIT big revision=18 sets=[]
+08:12:32.229 call 72 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:32.463 call 72 VERDICT 233.7ms (webview 103.3ms) components=500 errors=null bytes=47699
+08:12:32.465 call 72 COMMIT big revision=19 sets=[]
+08:12:32.758 call 73 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:32.962 call 73 VERDICT 204.0ms (webview 80ms) components=500 errors=null bytes=47696
+08:12:32.963 call 73 COMMIT big revision=20 sets=[]
+08:12:33.336 call 74 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:33.574 call 74 VERDICT 237.3ms (webview 99.9ms) components=500 errors=null bytes=47698
+08:12:33.575 call 74 COMMIT big revision=21 sets=[]
+08:12:34.375 call 75 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:34.654 call 75 VERDICT 278.8ms (webview 128ms) components=500 errors=null bytes=47697
+08:12:34.656 call 75 COMMIT big revision=22 sets=[]
+08:12:35.032 call 76 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:35.258 call 76 VERDICT 225.8ms (webview 91.7ms) components=500 errors=null bytes=47698
+08:12:35.260 call 76 COMMIT big revision=23 sets=[]
+08:12:35.983 call 77 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:36.347 call 77 VERDICT 364.3ms (webview 157.9ms) components=500 errors=null bytes=47699
+08:12:36.351 call 77 COMMIT big revision=24 sets=[]
+08:12:37.191 call 78 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:37.630 call 78 VERDICT 438.5ms (webview 166.1ms) components=500 errors=null bytes=277002
+08:12:37.634 call 78 COMMIT heavy revision=11 sets=[]
+08:12:38.001 call 79 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:38.403 call 79 VERDICT 401.5ms (webview 164.7ms) components=500 errors=null bytes=277002
+08:12:38.408 call 79 COMMIT heavy revision=12 sets=[]
+08:12:38.809 call 80 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:39.166 call 80 VERDICT 356.6ms (webview 129.4ms) components=500 errors=null bytes=277002
+08:12:39.169 call 80 COMMIT heavy revision=13 sets=[]
+08:12:39.535 call 81 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:40.067 call 81 VERDICT 532.5ms (webview 181.4ms) components=500 errors=null bytes=277002
+08:12:40.070 call 81 COMMIT heavy revision=14 sets=[]
+08:12:40.714 call 82 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=276936
+08:12:41.063 call 82 VERDICT 349.3ms (webview 134.5ms) components=500 errors=null bytes=277002
+08:12:41.067 call 82 COMMIT heavy revision=15 sets=[]
+08:12:42.299 call 83 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:42.335 call 83 VERDICT 36.7ms (webview 10ms) components=500 errors=null bytes=28861
+08:12:42.337 call 83 COMMIT flat revision=11 sets=[]
+08:12:42.638 call 84 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:42.672 call 84 VERDICT 34.0ms (webview 8.4ms) components=500 errors=null bytes=28862
+08:12:42.673 call 84 COMMIT flat revision=12 sets=[]
+08:12:42.953 call 85 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:42.984 call 85 VERDICT 31.0ms (webview 8.6ms) components=500 errors=null bytes=28862
+08:12:42.985 call 85 COMMIT flat revision=13 sets=[]
+08:12:43.519 call 86 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:43.552 call 86 VERDICT 33.4ms (webview 8.3ms) components=500 errors=null bytes=28862
+08:12:43.554 call 86 COMMIT flat revision=14 sets=[]
+08:12:43.877 call 87 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=28798
+08:12:43.916 call 87 VERDICT 39.5ms (webview 11.7ms) components=500 errors=null bytes=28863
+08:12:43.918 call 87 COMMIT flat revision=15 sets=[]
+08:12:53.550 big DRAFT (pause) revision=23 of 24 entries=1 bytes=294
+08:12:53.929 call 88 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:53.986 call 88 VERDICT 56.3ms (webview 16.5ms) components=500 errors=null bytes=47698
+08:12:53.989 call 88 COMMIT big revision=25 sets=[]
+08:12:54.542 call 89 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:54.635 call 89 VERDICT 92.6ms (webview 21.6ms) components=500 errors=null bytes=47698
+08:12:54.639 call 89 COMMIT big revision=26 sets=[]
+08:12:55.166 call 90 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:55.294 call 90 VERDICT 127.7ms (webview 29.6ms) components=500 errors=null bytes=47698
+08:12:55.298 call 90 COMMIT big revision=27 sets=[]
+08:12:55.820 call 91 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:55.898 call 91 VERDICT 78.9ms (webview 17.4ms) components=500 errors=null bytes=47698
+08:12:55.902 call 91 COMMIT big revision=28 sets=[]
+08:12:56.470 call 92 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:56.598 call 92 VERDICT 127.6ms (webview 23.5ms) components=500 errors=null bytes=47698
+08:12:56.601 call 92 COMMIT big revision=29 sets=[]
+08:12:57.116 call 93 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:57.186 call 93 VERDICT 70.3ms (webview 20.2ms) components=500 errors=null bytes=47698
+08:12:57.192 call 93 COMMIT big revision=30 sets=[]
+08:12:57.708 call 94 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:57.797 call 94 VERDICT 89.4ms (webview 19.1ms) components=500 errors=null bytes=47698
+08:12:57.801 call 94 COMMIT big revision=31 sets=[]
+08:12:58.286 call 95 CHECK quay_surface from term-aff4f9d742fd4dd68386426e71e52ca5 bytes=47633
+08:12:58.383 call 95 VERDICT 97.0ms (webview 30.2ms) components=500 errors=null bytes=47698
+08:12:58.386 call 95 COMMIT big revision=32 sets=[]
+08:13:08.551 WEBVIEW rebuilt 20 in 546.9ms, 888ms after navigation
+08:13:18.095 WEBVIEW rebuilt 20 in 451.6ms, 777ms after navigation
+08:13:24.476 call 96 CHECK quay_ask from term-87d721da67824600bea809dda8dc72b6 bytes=386
+08:13:24.485 call 96 VERDICT 8.6ms (webview 1.8ms) components=9 errors=null bytes=1746
+08:13:24.485 call 96 COMMIT ask_1 revision=1 sets=[]
+08:13:25.078 ask_1 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+08:13:28.321 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=63
+08:13:30.423 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=83
+08:13:32.548 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=103
+08:13:34.660 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=123
+08:13:36.814 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=143
+08:13:38.931 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=163
+08:13:41.041 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=183
+08:13:43.149 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=203
+08:13:45.304 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=223
+08:13:47.413 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=243
+08:13:49.526 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=263
+08:13:51.644 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=283
+08:13:53.760 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=303
+08:13:55.875 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=323
+08:13:58.000 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=343
+08:14:00.101 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=363
+08:14:02.226 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=383
+08:14:04.349 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=403
+08:14:06.469 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=423
+08:14:08.568 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=443
+08:14:10.695 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=463
+08:14:12.832 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=483
+08:14:14.954 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=503
+08:14:17.076 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=523
+08:14:19.187 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=543
+08:14:21.305 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=563
+08:14:23.425 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=583
+08:14:25.545 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=603
+08:14:27.647 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=623
+08:14:29.770 ask_1 DRAFT (pause) revision=1 of 1 entries=2 bytes=643
+08:15:04.498 ask_1 NO ANSWER YET
+08:15:09.191 WEBVIEW rebuilt 21 in 456.5ms, 775ms after navigation
+08:15:23.438 call 97 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:15:23.473 call 97 VERDICT 35.7ms (webview 18.9ms) components=500 errors=null bytes=47698
+08:15:23.475 call 97 COMMIT big revision=1 sets=[]
+08:15:23.848 call 98 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:15:23.886 call 98 VERDICT 38.0ms (webview 18.1ms) components=500 errors=null bytes=47698
+08:15:23.889 call 98 COMMIT big revision=2 sets=[]
+08:15:24.409 call 99 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:15:24.446 call 99 VERDICT 35.8ms (webview 19.5ms) components=500 errors=null bytes=47698
+08:15:24.451 call 99 COMMIT big revision=3 sets=[]
+08:15:24.980 call 100 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:15:25.018 call 100 VERDICT 37.3ms (webview 21.6ms) components=500 errors=null bytes=47698
+08:15:25.022 call 100 COMMIT big revision=4 sets=[]
+08:15:25.481 call 101 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:15:25.512 call 101 VERDICT 30.4ms (webview 17.8ms) components=500 errors=null bytes=47698
+08:15:25.520 call 101 COMMIT big revision=5 sets=[]
+08:15:25.923 call 102 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:15:25.943 call 102 VERDICT 19.7ms (webview 10ms) components=500 errors=null bytes=47696
+08:15:25.945 call 102 COMMIT big revision=6 sets=[]
+08:22:04.879 call 103 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:04.928 call 103 VERDICT 48.4ms (webview 26.9ms) components=500 errors=null bytes=47698
+08:22:04.932 call 103 COMMIT big revision=7 sets=[]
+08:22:05.331 call 104 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:05.372 call 104 VERDICT 40.2ms (webview 24.2ms) components=500 errors=null bytes=47698
+08:22:05.379 call 104 COMMIT big revision=8 sets=[]
+08:22:05.752 call 105 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:05.786 call 105 VERDICT 33.7ms (webview 20.8ms) components=500 errors=null bytes=47698
+08:22:05.789 call 105 COMMIT big revision=9 sets=[]
+08:22:06.168 call 106 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:06.202 call 106 VERDICT 35.0ms (webview 19.7ms) components=500 errors=null bytes=47698
+08:22:06.205 call 106 COMMIT big revision=10 sets=[]
+08:22:06.588 call 107 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:06.627 call 107 VERDICT 39.5ms (webview 24.1ms) components=500 errors=null bytes=47698
+08:22:06.630 call 107 COMMIT big revision=11 sets=[]
+08:22:07.059 call 108 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:07.084 call 108 VERDICT 24.6ms (webview 13.3ms) components=500 errors=null bytes=47698
+08:22:07.087 call 108 COMMIT big revision=12 sets=[]
+08:22:07.409 call 109 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:07.441 call 109 VERDICT 31.5ms (webview 21.1ms) components=500 errors=null bytes=47698
+08:22:07.443 call 109 COMMIT big revision=13 sets=[]
+08:22:07.742 call 110 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=47633
+08:22:07.766 call 110 VERDICT 23.5ms (webview 13.3ms) components=500 errors=null bytes=47698
+08:22:07.770 call 110 COMMIT big revision=14 sets=[]
+08:22:13.228 call 111 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=1082
+08:22:13.235 call 111 VERDICT 6.6ms (webview 1.1ms) components=8 errors=null bytes=1143
+08:22:13.235 call 111 COMMIT form revision=1 sets=[]
+08:22:13.457 call 112 CHECK quay_surface from term-5869e75338424bf58b2a02c3846d5c80 bytes=1999
+08:22:13.467 call 112 VERDICT 9.9ms (webview 3.7ms) components=20 errors=null bytes=2057
+08:22:13.467 call 112 COMMIT sink revision=1 sets=[]
+08:22:16.058 form DRAFT (pause) revision=1 of 1 entries=1 bytes=33
+08:22:40.059 WEBVIEW rebuilt 24 in 348.4ms, 729ms after navigation
+08:22:44.450 WEBVIEW rebuilt 24 in 403.6ms, 733ms after navigation
+08:23:01.436 WEBVIEW rebuilt 24 in 405.5ms, 647ms after navigation
+08:23:11.898 call 113 CHECK quay_ask from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=386
+08:23:11.905 call 113 VERDICT 7.3ms (webview 2.6ms) components=9 errors=null bytes=1746
+08:23:11.906 call 113 COMMIT ask_1 revision=1 sets=[]
+08:23:12.476 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=160
+08:23:14.062 WEBVIEW rebuilt 25 in 448.5ms, 697ms after navigation
+08:23:17.961 WEBVIEW rebuilt 25 in 401.7ms, 631ms after navigation
+08:23:21.532 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=170
+08:23:21.536 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=170
+08:23:22.145 WEBVIEW rebuilt 25 in 373.6ms, 621ms after navigation
+08:23:25.956 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=174
+08:23:25.958 ask_1 DRAFT (pagehide) revision=1 of 1 entries=6 bytes=174
+08:23:26.555 WEBVIEW rebuilt 25 in 370.3ms, 611ms after navigation
+08:23:30.194 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=161
+08:23:32.102 ask_1 DRAFT (pause) revision=1 of 1 entries=6 bytes=189
+08:23:33.214 ask_1 ANSWERED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"first note"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"settled text plus more without any pause"}]}
+08:23:33.214 ask_1 RETURNED {"answers":[{"question":"Which base should this branch take?","chosen":["Merge master in"],"text":"first note"},{"question":"What should the release note say about the new behaviour?","chosen":[],"text":"settled text plus more without any pause"}]}
+08:23:34.042 call 114 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=1082
+08:23:34.047 call 114 VERDICT 5.1ms (webview 1.5ms) components=8 errors=null bytes=1143
+08:23:34.047 call 114 COMMIT form revision=1 sets=[]
+08:23:34.811 form DRAFT (pause) revision=1 of 1 entries=3 bytes=54
+08:23:36.180 WEBVIEW rebuilt 26 in 413.4ms, 630ms after navigation
+08:23:40.269 call 115 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=105
+08:23:40.275 call 115 VERDICT 5.5ms (webview 1.7ms) components=8 errors=null bytes=1152
+08:23:40.276 call 115 COMMIT form revision=2 sets=["/status"]
+08:23:40.276 form NO ANSWER YET
+08:23:40.280 form DRAFT (update) revision=2 of 2 entries=3 bytes=65
+08:23:41.770 call 116 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=200
+08:23:41.774 call 116 VERDICT 4.0ms (webview 1.6ms) components=8 errors=null bytes=1156
+08:23:41.774 call 116 COMMIT form revision=3 sets=[]
+08:23:41.775 form NO ANSWER YET
+08:23:41.782 form DRAFT (update) revision=3 of 3 entries=3 bytes=87
+08:23:43.284 call 117 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=106
+08:23:43.288 call 117 VERDICT 4.1ms (webview 1.3ms) components=8 errors=null bytes=1167
+08:23:43.289 call 117 COMMIT form revision=4 sets=["/meta/owner"]
+08:23:43.289 form NO ANSWER YET
+08:23:43.290 form DRAFT (update) revision=4 of 4 entries=3 bytes=108
+08:23:45.970 form DRAFT (pause) revision=4 of 4 entries=3 bytes=141
+08:23:47.690 call 118 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=105
+08:23:47.695 call 118 VERDICT 5.3ms (webview 1.5ms) components=8 errors=null bytes=1163
+08:23:47.696 call 118 COMMIT form revision=5 sets=["/status"]
+08:23:47.697 form NO ANSWER YET
+08:23:47.699 form DRAFT (update) revision=5 of 5 entries=4 bytes=166
+08:23:48.932 call 119 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=106
+08:23:49.049 call 119 VERDICT 116.2ms (webview 2ms) components=8 errors=null bytes=1165
+08:23:49.050 call 119 COMMIT form revision=6 sets=["/meta/owner"]
+08:23:49.051 form NO ANSWER YET
+08:23:49.062 form DRAFT (update) revision=6 of 6 entries=3 bytes=141
+08:23:49.866 form DRAFT (pause) revision=6 of 6 entries=4 bytes=172
+08:23:50.533 call 120 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=126
+08:23:50.538 call 120 VERDICT 5.1ms (webview 2ms) components=8 errors=null bytes=1161
+08:23:50.539 call 120 COMMIT form revision=7 sets=["/meta"]
+08:23:50.539 form NO ANSWER YET
+08:23:50.541 form DRAFT (update) revision=7 of 7 entries=3 bytes=141
+08:23:51.500 form DRAFT (left) revision=7 of 7 entries=4 bytes=178
+08:23:52.362 call 121 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=200
+08:23:52.367 call 121 VERDICT 4.5ms (webview 1.8ms) components=8 errors=null bytes=1156
+08:23:52.367 call 121 COMMIT form revision=8 sets=[]
+08:23:52.367 form NO ANSWER YET
+08:23:53.267 call 122 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=105
+08:23:53.272 call 122 VERDICT 5.5ms (webview 1.1ms) components=8 errors=null bytes=1165
+08:23:53.273 call 122 COMMIT form revision=9 sets=["/status"]
+08:23:53.273 form NO ANSWER YET
+08:23:54.757 form DRAFT (pause) revision=9 of 9 entries=4 bytes=181
+08:23:55.227 call 123 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=106
+08:23:55.231 call 123 VERDICT 4.7ms (webview 1.7ms) components=8 errors=null bytes=1167
+08:23:55.232 call 123 COMMIT form revision=10 sets=["/meta/owner"]
+08:23:55.232 form NO ANSWER YET
+08:23:55.235 form DRAFT (update) revision=10 of 10 entries=3 bytes=144
+08:23:56.294 WEBVIEW rebuilt 26 in 439.4ms, 680ms after navigation
+08:23:59.621 form STALE ANSWER refused revision=1 of 10
+08:24:00.037 form DRAFT (late) revision=9 of 10 entries=1 bytes=16
+08:24:01.053 WEBVIEW rebuilt 26 in 431.5ms, 660ms after navigation
+08:24:04.843 call 124 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=105
+08:24:04.848 call 124 VERDICT 4.7ms (webview 1.6ms) components=8 errors=null bytes=1163
+08:24:04.849 call 124 COMMIT form revision=11 sets=["/status"]
+08:24:04.850 form NO ANSWER YET
+08:24:04.852 form DRAFT (update) revision=11 of 11 entries=1 bytes=18
+08:24:06.336 form DRAFT (pause) revision=11 of 11 entries=1 bytes=21
+08:24:07.479 form DRAFT (pause) revision=11 of 11 entries=1 bytes=32
+08:24:07.802 call 125 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=171
+08:24:07.807 call 125 VERDICT 5.3ms (webview 2ms) components=8 errors=null bytes=1149
+08:24:07.808 call 125 COMMIT form revision=12 sets=["/"]
+08:24:07.809 form NO ANSWER YET
+08:24:07.810 form DRAFT (update) revision=12 of 12 entries=0 bytes=2
+08:24:08.744 form ANSWERED {"version":"1.0","action":{"name":"go","surfaceId":"form","sourceComponentId":"go","timestamp":"2026-11-24T08:24:08.742Z","context":{"note":"agent's","owner":"dan","agree":true,"where":["there"]}}}
+08:24:08.745 form RETURNED {"version":"1.0","action":{"name":"go","surfaceId":"form","sourceComponentId":"go","timestamp":"2026-11-24T08:24:08.742Z","context":{"note":"agent's","owner":"dan","agree":true,"where":["there"]}}}
+08:24:09.391 call 126 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=233
+08:24:09.395 call 126 VERDICT 4.0ms (webview 1.3ms) components=null errors=[{"code":"VALIDATION_FAILED","surfaceId":"bad","path":"/components/1/component","message":"Unknown component type 'Marquee' not found in catalog 'urn:quay:a2ui:catalog:v1'."}] bytes=203
+08:24:10.791 WEBVIEW rebuilt 26 in 427.6ms, 656ms after navigation
+08:24:15.074 call 127 CHECK quay_ask from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=386
+08:24:15.081 call 127 VERDICT 7.3ms (webview 2.4ms) components=9 errors=null bytes=1746
+08:24:15.082 call 127 COMMIT ask_2 revision=1 sets=[]
+08:24:15.497 ask_2 DRAFT (pause) revision=1 of 1 entries=1 bytes=22
+08:24:16.516 call 128 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=1999
+08:24:16.521 call 128 VERDICT 5.8ms (webview 2.1ms) components=20 errors=null bytes=2057
+08:24:16.522 call 128 COMMIT sink revision=1 sets=[]
+08:24:18.037 call 129 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=47633
+08:24:18.066 call 129 VERDICT 29.8ms (webview 18.8ms) components=500 errors=null bytes=47698
+08:24:18.069 call 129 COMMIT big revision=1 sets=[]
+08:24:19.555 call 130 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=105
+08:24:19.563 call 130 VERDICT 7.7ms (webview 1.1ms) components=8 errors=null bytes=1156
+08:24:19.564 call 130 COMMIT form revision=13 sets=["/status"]
+08:24:21.047 call 131 CHECK quay_surface from term-619e05d6b5774095b3a8e937cb1bbbf0 bytes=233
+08:24:21.054 call 131 VERDICT 7.4ms (webview 1.3ms) components=null errors=[{"code":"VALIDATION_FAILED","surfaceId":"bad","path":"/components/1/component","message":"Unknown component type 'Marquee' not found in catalog 'urn:quay:a2ui:catalog:v1'."}] bytes=203
+08:24:23.414 sink ANSWERED {"version":"1.0","action":{"name":"go","surfaceId":"sink","sourceComponentId":"go","timestamp":"2026-11-24T08:24:23.412Z","context":{}}}
+08:24:23.414 sink RETURNED {"version":"1.0","action":{"name":"go","surfaceId":"sink","sourceComponentId":"go","timestamp":"2026-11-24T08:24:23.412Z","context":{}}}

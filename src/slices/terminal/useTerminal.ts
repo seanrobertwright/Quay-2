@@ -230,7 +230,10 @@ export function useTerminal(
       // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
       if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
-        requestAnimationFrame(() => focusXterm(term));
+        // PROTOTYPE (#711), throwaway: not out of a field the operator is typing in elsewhere
+        const at = document.activeElement;
+        const typingElsewhere = at?.matches("input, textarea") && !containerRef.current?.contains(at);
+        if (!typingElsewhere) requestAnimationFrame(() => focusXterm(term));
       }
 
       if (!initialLoaded) {

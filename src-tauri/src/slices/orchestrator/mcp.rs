@@ -358,6 +358,9 @@ pub async fn handle_mcp_request(
                 // PROTOTYPE (#693), throwaway
                 "quay_surface_proto" => super::a2ui_proto::hand_over(&ctx, caller_id, &arguments).await,
 
+                // PROTOTYPE (#711), throwaway
+                "quay_ask" | "quay_surface" => super::a2ui_live::call(&ctx, caller_id, tool_name, &arguments).await,
+
                 _ => Err(format!("Unknown tool: {}", tool_name)),
             };
 

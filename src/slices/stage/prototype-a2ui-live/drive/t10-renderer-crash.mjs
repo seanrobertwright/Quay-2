@@ -1,0 +1,22 @@
+import { attach, inv, terminals, sleep, callIn, until, quayLog, typeKeys } from "./drv.mjs";
+const { browser, page, cdp } = await attach();
+const agent = (await terminals(page)).find((t) => t.name === "agent-a");
+await page.getByText(agent.name, { exact: true }).first().click();
+await sleep(1500);
+await callIn(page, agent.id, "quay_surface", "raw");
+await page.waitForSelector("[data-surface=form]");
+await callIn(page, agent.id, "quay_surface", "sink"); await sleep(1500);
+// what a part keeps that is not in the data model
+const tab = page.locator("[data-surface=sink]").getByRole("button", { name: "Two" });
+await tab.click();
+await page.getByRole("radio", { name: "Repository" }).click(); await sleep(300);
+await page.getByRole("radio", { name: "Surface" }).click(); await sleep(300);
+console.log("tab Two pressed after leaving and coming back:", await tab.getAttribute("aria-pressed"));
+const note = page.locator("[data-surface=form] textarea");
+await note.fill("kept before the crash"); await sleep(800);
+await note.press("End"); await typeKeys(cdp, " lost in the crash", 30);
+const n = quayLog().length;
+cdp.send("Page.crash").catch(() => {});
+await sleep(4000);
+console.log("log after the crash", quayLog().slice(n).map((l) => l.slice(0, 110)));
+await browser.close().catch(() => {});

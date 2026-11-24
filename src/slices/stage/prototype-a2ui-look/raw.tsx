@@ -1,5 +1,5 @@
 // PROTOTYPE (#696), throwaway. A raw surface: A2UI 1.0 wire messages through the official engine
-// (@a2ui/react 0.15.0, STRICT_VALIDATION), drawn by Quay's own Tailwind components in place of the
+// (@a2ui/react 0.16.1, STRICT_VALIDATION), drawn by Quay's own Tailwind components in place of the
 // stock Lit elements. Round two draws under a catalog id of Quay's own (#700): ChoicePicker's options
 // gain description and recommended, and Steps, Progress, Stat and FileLink are added.
 import { useContext, useEffect, useId, useState, type ReactNode } from "react";
@@ -153,7 +153,7 @@ const Progress = ({ props }: { props: any }) => (
   </div>
 );
 
-const QUAY: ReactCatalogComponent[] = [
+export const QUAY: ReactCatalogComponent[] = [
   make(ChoicePickerApi, ({ props }) => <ChoicePicker props={props} />),
   make(C.TabsApi, ({ props, buildChild }) => <Tabs props={props} buildChild={buildChild} />),
   make(C.DateTimeInputApi, ({ props }) => <DateTimeInput props={props} />),

@@ -1,5 +1,7 @@
 // PROTOTYPE (#693), throwaway
 pub mod a2ui_proto;
+// PROTOTYPE (#711), throwaway
+pub mod a2ui_live;
 pub mod commands;
 pub mod launch_prompt;
 pub mod mcp;
