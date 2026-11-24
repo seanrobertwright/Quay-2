@@ -6,7 +6,10 @@
 mod ask;
 mod check;
 pub mod commands;
+mod disk;
+mod local_path;
 mod rejection;
+mod show_file;
 mod store;
 pub mod timing;
 mod tools;
@@ -14,9 +17,16 @@ mod tools;
 #[cfg(test)]
 mod ask_tests;
 #[cfg(test)]
+mod disk_tests;
+#[cfg(test)]
+mod local_path_tests;
+#[cfg(test)]
+mod show_file_tests;
+#[cfg(test)]
 mod test_seam;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
+pub use show_file::*;
 pub use store::{AnswerRefused, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};

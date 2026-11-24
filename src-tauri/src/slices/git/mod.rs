@@ -26,6 +26,7 @@ mod discard_tests;
 #[cfg(test)]
 mod diff_tests;
 pub mod error;
+pub mod file_change;
 pub mod graph;
 pub mod models;
 pub mod op_runner;
