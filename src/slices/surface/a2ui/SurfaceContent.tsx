@@ -3,6 +3,7 @@ import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { LinksContext } from "../links.ts";
 import type { SurfaceAction, SurfaceRecord } from "../surfaceTypes.ts";
+import { followUnsent, unsentIn } from "../unsent.ts";
 import { giveEffects } from "./effects.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
 
@@ -15,7 +16,7 @@ interface Live {
   onAction: OnAction;
 }
 
-/** Kept while their records are, so what was typed survives a surface leaving the screen. */
+/** Kept while their records are, so a surface that comes back to the screen is as it was left. */
 const lives = new WeakMap<SurfaceRecord, Live>();
 
 function liveOf(record: SurfaceRecord): Live {
@@ -23,6 +24,7 @@ function liveOf(record: SurfaceRecord): Live {
   if (kept) return kept;
   const { surface } = engineFor(record.state, (action) => live.onAction({ name: action.name, context: action.context }));
   const { dataModel } = surface;
+  for (const [path, value] of Object.entries(unsentIn(record))) dataModel.set(path, value, true);
   const live: Live = {
     surface,
     data: {
@@ -58,6 +60,7 @@ export const SurfaceContent = ({ record, layout, onAction }: SurfaceContentProps
   useEffect(() => {
     if (links) giveEffects(live.surface, links.effects);
   }, [live, links]);
+  useEffect(() => followUnsent(record, live.data), [record, live]);
   const { components } = record.state.createSurface;
   const value = useMemo(() => (layout ? { Layout: layout, components, data: live.data } : null), [layout, components, live]);
   return (

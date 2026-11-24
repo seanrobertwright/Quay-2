@@ -12,6 +12,7 @@ mod check;
 pub mod commands;
 mod disk;
 mod local_path;
+mod place;
 mod read;
 mod rejection;
 mod show_file;
@@ -20,6 +21,7 @@ pub mod timing;
 mod tools;
 mod typed_line;
 mod typing;
+mod unsent;
 mod wait;
 
 #[cfg(test)]
@@ -28,6 +30,7 @@ mod ask_tests;
 mod disk_tests;
 #[cfg(test)]
 mod local_path_tests;
+mod limit_tests;
 #[cfg(test)]
 mod read_tests;
 #[cfg(test)]
@@ -36,6 +39,8 @@ mod return_tests;
 mod show_file_tests;
 #[cfg(test)]
 mod test_seam;
+#[cfg(test)]
+mod unsent_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
@@ -44,3 +49,4 @@ pub use store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
 pub use typed_line::is_typed_line;
 pub use typing::{NotTyped, Terminals};
+pub use unsent::{Page, UnsentRefused, UnsentSave};

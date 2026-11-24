@@ -59,8 +59,13 @@ export interface SurfaceRecord extends SurfaceKey {
   order: number;
   change: number;
   asks: boolean;
+  /** When it was shown, in milliseconds since the epoch. */
+  shown_at: number;
   /** The result its agent got, once the operator has answered. */
   answer: unknown;
   /** When the answer was sent, in milliseconds since the epoch, or null while there is none. */
   answered_at: number | null;
 }
+
+/** A live surface has had no answer. */
+export const isLive = ({ answer }: SurfaceRecord): boolean => answer === null || answer === undefined;

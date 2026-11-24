@@ -31,6 +31,16 @@ const SOON: Duration = Duration::from_secs(5);
 /// How long a test watches for something that must not happen.
 pub const A_WHILE: Duration = Duration::from_millis(200);
 
+/// Waits until `holds`, for as long as something that should happen at once may take.
+pub async fn until(holds: impl Fn() -> bool, what: &str) {
+    let polling = async {
+        while !holds() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    tokio::time::timeout(SOON, polling).await.expect(what);
+}
+
 struct Sent {
     checks: mpsc::UnboundedSender<CheckRequest>,
     shown: mpsc::UnboundedSender<SurfaceRecord>,

@@ -8,19 +8,18 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { SurfaceComponent, SurfaceRecord } from "./surfaceTypes.ts";
 import { terminalInfo } from "../companion/fixtures/companionFixtures.ts";
+import { called, calls, loadSurfaces, settle, startRust, unloadSurfaces } from "./fixtures/fakeRust.ts";
 
 const { SurfaceView } = await import("./SurfaceView.tsx");
 
-/** Every command the webview called, in order. */
-let calls: { cmd: string; args: Record<string, unknown> }[];
 let mounted: { root: Root; container: HTMLElement } | null = null;
 
-beforeEach(() => {
-  calls = [];
-  fakeInvoke(async (cmd, args) => {
-    calls.push({ cmd, args });
-    return null;
-  });
+beforeEach(async () => {
+  startRust({ surface_list: () => [], surface_checks: () => [] });
+  loadSurfaces();
+  await settle();
+  // What loading the page called
+  calls.length = 0;
 });
 /** Takes what is drawn off the page. */
 async function undraw(): Promise<void> {
@@ -30,10 +29,10 @@ async function undraw(): Promise<void> {
   container.remove();
   mounted = null;
 }
-afterEach(undraw);
-
-/** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
+afterEach(async () => {
+  await undraw();
+  unloadSurfaces();
+});
 
 /** A surface of `components` under a root Column, with `data` as its data model. */
 function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown> = {}): SurfaceRecord {
@@ -56,6 +55,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     order: 1,
     change: 1,
     asks: false,
+    shown_at: 0,
     answer: null,
     answered_at: null,
   };
@@ -170,7 +170,6 @@ test("a question is plain text, whatever it holds", async () => {
 
 const links = (within: HTMLElement) => [...within.querySelectorAll<HTMLElement>('[role="link"]')];
 const foot = () => mounted!.container.querySelector<HTMLElement>("[data-surface-foot]")!;
-const called = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args);
 const OPEN_URL = "plugin:opener|open_url";
 const point = (el: HTMLElement, type: "mouseover" | "mouseout") =>
   act(async () => void el.dispatchEvent(new MouseEvent(type, { bubbles: true, relatedTarget: document.body })));
