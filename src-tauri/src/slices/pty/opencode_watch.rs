@@ -621,7 +621,8 @@ mod tests {
             initial_prompt: None,
         };
         let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-        let cmd = crate::slices::pty::session::build_command(&request, "term-live-oc", 47999, "tok-live", Some(port));
+        let launch = crate::slices::pty::plugin_watch::LaunchRef { terminal_id: "term-live-oc".to_string(), launch: 7 };
+        let cmd = crate::slices::pty::session::build_command(&request, &launch, 47999, "tok-live", Some(port));
         println!("argv: {:?}", cmd.get_argv());
 
         let pair = native_pty_system()

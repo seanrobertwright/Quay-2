@@ -370,7 +370,7 @@ impl PtyManager {
         let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request.clone(),
-            terminal_id.clone(),
+            launch_ref.clone(),
             start_seq,
             bridge_port,
             bridge_token,
@@ -456,7 +456,7 @@ impl PtyManager {
         let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request,
-            terminal_id.to_string(),
+            launch_ref.clone(),
             start_seq,
             bridge_port,
             bridge_token,
@@ -1027,6 +1027,20 @@ impl PtyManager {
         moved
     }
 
+    /// Whether `terminal_id`'s CLI has shaken hands with Quay's MCP server since its current
+    /// launch, whose process has not exited.
+    pub fn handshake_seen(&self, terminal_id: &str) -> bool {
+        self.plugin_watches.lock().get(terminal_id).is_some_and(PluginWatch::handshake_seen)
+    }
+
+    /// Records that `launch`'s CLI has shaken hands with Quay's MCP server, while `launch` is still
+    /// current and its process has not exited.
+    pub fn record_handshake(&self, launch: &LaunchRef) {
+        if let Some(watch) = launch.current_in(&mut self.plugin_watches.lock()) {
+            watch.shake_hands();
+        }
+    }
+
     /// Hides the plugin hint for the rest of the terminal's current launch, and returns
     /// the terminal's status, which stays as it was.
     pub fn dismiss_plugin_hint(&self, terminal_id: &str) -> Option<TerminalStatusPayload> {
@@ -1061,15 +1075,16 @@ impl PtyManager {
     }
 
     /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
-    /// `launch` is still current, and tells the status watcher, so held messages fail rather
-    /// than wait. An earlier launch that a relaunch ended, or a closed terminal, changes
-    /// nothing. Returns whether the terminal moved.
+    /// `launch` is still current, clears its handshake with Quay's MCP server, and tells the
+    /// status watcher, so held messages fail rather than wait. An earlier launch that a relaunch
+    /// ended, or a closed terminal, changes nothing. Returns whether the terminal moved.
     pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
         {
             let mut watches = self.plugin_watches.lock();
-            if launch.current_in(&mut watches).is_none() {
+            let Some(watch) = launch.current_in(&mut watches) else {
                 return false;
-            }
+            };
+            watch.exit();
             let mut info_map = self.terminals_info.lock();
             let Some(info) = info_map.get_mut(&launch.terminal_id) else {
                 return false;
@@ -1372,7 +1387,8 @@ mod tests {
 
         assert_eq!(request.initial_prompt, None);
         assert_eq!(request.custom_flags.as_deref(), Some("--model gpt-5"));
-        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok", None);
+        let launch = LaunchRef { terminal_id: info.id.clone(), launch: 7 };
+        let cmd = crate::slices::pty::session::build_command(&request, &launch, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(
             args[..4],
@@ -1440,7 +1456,8 @@ mod tests {
             request.custom_flags.as_deref(),
             Some(format!("--model opus --resume {}", SESSION_A).as_str())
         );
-        let cmd = crate::slices::pty::session::build_command(&request, &restored.id, 1234, "tok", None);
+        let launch = LaunchRef { terminal_id: restored.id.clone(), launch: 7 };
+        let cmd = crate::slices::pty::session::build_command(&request, &launch, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(args[2..6], ["--model", "opus", "--resume", SESSION_A], "{:?}", args);
     }

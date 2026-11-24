@@ -47,7 +47,7 @@ fn compose_launch_prompt(members: &[SwarmMember], index: usize) -> String {
         .unwrap_or_else(|| format!("You are the {}.", role));
 
     let mut sections = vec![format!("Role: {}", role), role_prompt, team_briefing(members, index)];
-    if member.run_kind.gets_quay_mcp() {
+    if member.run_kind.gets_bus_tools() {
         sections.push(QUAY_TOOLS_LINE.to_string());
     }
     sections.push(ACKNOWLEDGE_AND_WAIT.to_string());
@@ -150,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn only_agents_with_the_quay_mcp_server_hear_of_the_quay_tools() {
+    fn only_agents_with_the_bus_tools_hear_of_the_quay_tools() {
         let mut reviewer = member("codex-reviewer", "Code Reviewer & Quality Gate", RunKind::Codex);
         reviewer.role_prompt = Some("You are the reviewer.\nYou own review.md.".to_string());
         let swarm = [

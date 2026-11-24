@@ -13,10 +13,13 @@ const SIDECARS: [(&str, &str); 3] = [
 /// with it too.
 const SHARED_PACKAGE: &str = "sidecars/bridge-post";
 
+/// The limits of the app's own that the PiG extension is built with.
+const SHARED_LIMITS: &str = "src/slices/surface/timing.rs";
+
 fn main() {
     let manifest_dir = PathBuf::from(env("CARGO_MANIFEST_DIR"));
     let shared = manifest_dir.join(SHARED_PACKAGE);
-    for watched in [shared.join("src"), shared.join("Cargo.toml")] {
+    for watched in [shared.join("src"), shared.join("Cargo.toml"), manifest_dir.join(SHARED_LIMITS)] {
         println!("cargo:rerun-if-changed={}", watched.display());
     }
     for (package, name) in SIDECARS {

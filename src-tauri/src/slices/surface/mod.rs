@@ -12,6 +12,7 @@ mod check;
 pub mod commands;
 mod disk;
 mod local_path;
+pub mod names;
 mod place;
 mod read;
 mod rejection;

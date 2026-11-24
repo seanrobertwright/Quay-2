@@ -99,7 +99,7 @@ A peer's message arrives in its target's terminal as `[Peer agent (<sender>)]: <
 
 ## The MCP Tools
 
-Quay's MCP server, `quay-a2a`, serves the tools below to every full peer, at the `QUAY_MCP_URL` each peer terminal gets. Each call must carry the terminal's bearer token; a call without a live terminal's token is rejected. `pnpm docs:build` checks this reference against the server's tool list, so a tool or parameter that is added, renamed or removed fails the docs build until this page matches.
+Quay's MCP server, `quay-a2a`, serves the tools below to every full peer, at the `QUAY_MCP_URL` each peer terminal gets. Each call must carry the terminal's bearer token; a call without a live terminal's token is rejected, and the tools below are refused to a terminal of any CLI that is not a full peer. `pnpm docs:build` checks this reference against the server's tool list, so a tool or parameter that is added, renamed or removed fails the docs build until this page matches.
 
 ### `quay_list_agents`
 
