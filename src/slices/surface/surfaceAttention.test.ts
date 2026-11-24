@@ -7,15 +7,19 @@ import assert from "node:assert/strict";
 import { act, createElement, Fragment, useEffect, type FC } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { AttentionItem } from "../attention/attentionQueue.ts";
-import { terminalInfo } from "../companion/fixtures/companionFixtures.ts";
 import { nextWaitingTerminal, statusRows, waitingTerminals } from "../shell/terminalStatus.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
-import type { SurfaceRecord } from "./surfaceTypes.ts";
+import { companionPrefs } from "../companion/companionPrefs.ts";
+import { memoryStorage, terminalInfo } from "../companion/fixtures/companionFixtures.ts";
+import type { SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
 const { useAttentionQueue } = await import("../attention/useAttentionQueue.ts");
 const { AgentsPanel } = await import("../agents/AgentsPanel.tsx");
 const { TerminalStatusList } = await import("../shell/TerminalStatusList.tsx");
+const { TerminalRow } = await import("../rail/TerminalRow.tsx");
+const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
+const { QuestionsForYou } = await import("./QuestionsForYou.tsx");
 
 const PROJECT = "E:/alpha";
 const T1: TerminalInfo = { ...terminalInfo("t1", PROJECT), name: "fix-75", claude_status: "working" };
@@ -59,6 +63,7 @@ const turnEnds = (terminalId: string) => act(async () => emitEvent("bridge-event
 let opened: AttentionItem[] = [];
 let nextWait: string | null = null;
 let badge = 0;
+let renders = 0;
 
 /** What of Quay's window shows who waits: the Agents panel, its badge's count and the module bar's dots. */
 const Waiting: FC<{ terminals: TerminalInfo[] }> = ({ terminals }) => {
@@ -67,6 +72,7 @@ const Waiting: FC<{ terminals: TerminalInfo[] }> = ({ terminals }) => {
   const rows = statusRows(terminals, [], {}, waitingTerminals(queue.items));
   nextWait = nextWaitingTerminal(rows, null);
   badge = queue.items.length;
+  renders += 1;
   return createElement(
     Fragment,
     null,
@@ -135,6 +141,17 @@ test("a question removed, and a surface that asks nothing, do not wait on the op
   assert.deepEqual(waitingRows(container), []);
 });
 
+test("an update of a surface that asks, or of one that does not, draws nothing of who waits again", async () => {
+  const container = await mount(createElement(Waiting, { terminals: [T1] }));
+  const [ask, board] = [surface("ask_1"), surface("board", { tool: "quay_board", asks: false })];
+  await shown(ask);
+  await shown(board);
+  const before = renders;
+  for (const record of [ask, board]) await shown({ ...record, revision: 2, change: (change += 1) });
+  assert.equal(renders, before);
+  assert.deepEqual(waitingRows(container), ["fix-75: question for you"]);
+});
+
 test("a question takes the place of its terminal's finished turn, and another terminal's stays", async () => {
   const container = await mount(createElement(Waiting, { terminals: [T1, T2] }));
   await turnEnds("t1");
@@ -150,4 +167,154 @@ test("questions Rust already holds when the page loads wait too, and those of a 
   await act(async () => mounted!.root.render(createElement(Waiting, { terminals: [T2] })));
   await shown(surface("ask_2", { terminal_id: "t2" }));
   assert.deepEqual(waitingRows(container), ["docs: question for you", "docs: question for you"]);
+});
+
+let openedSurfaces: SurfaceKey[] = [];
+let selected = 0;
+
+/** A terminal's row in the Projects panel, with its pane's questions button. */
+const Marks: FC<{ terminal: TerminalInfo }> = ({ terminal }) => {
+  useEffect(startSurfaces, []);
+  const onOpenSurface = (key: SurfaceKey) => void openedSurfaces.push(key);
+  return createElement(
+    Fragment,
+    null,
+    createElement(TerminalRow, { index: 1, terminal, isActive: false, onSelect: () => void (selected += 1), onClose: () => {}, onOpenSurface }),
+    createElement(QuestionsForYou, { terminalId: terminal.id, onOpen: onOpenSurface }),
+  );
+};
+async function mountMarks(terminal = T1): Promise<HTMLElement> {
+  openedSurfaces = [];
+  selected = 0;
+  return mount(createElement(Marks, { terminal }));
+}
+
+const chips = (container: HTMLElement) => [...container.querySelectorAll<HTMLButtonElement>("[data-surface-chips] button")];
+const names = (buttons: HTMLButtonElement[]) => buttons.map((b) => [b.textContent, b.getAttribute("aria-label")]);
+const iconDot = (container: HTMLElement) => container.querySelector("[data-surface-dot]");
+const paneButton = (container: HTMLElement) => [...container.querySelectorAll("button")].find((b) => b.textContent?.endsWith("for you")) ?? null;
+
+test("a row has a chip for each live surface, an icon and a word, and a click opens that surface without selecting the row", async () => {
+  const container = await mountMarks();
+  assert.equal(chips(container).length, 0);
+  await shown(surface("ask_1"));
+  await shown(surface("view", { tool: "quay_surface", asks: false }));
+  await shown(surface("ask_1", { terminal_id: "t2" }));
+  assert.deepEqual(names(chips(container)), [
+    ["Question", "Question, surface 1 of 2 from fix-75"],
+    ["Surface", "Surface, surface 2 of 2 from fix-75"],
+  ]);
+  assert.ok(chips(container).every((chip) => chip.querySelector("svg") !== null));
+
+  await act(async () => chips(container)[1].click());
+  assert.deepEqual(openedSurfaces, [{ terminal_id: "t1", id: "view" }]);
+  assert.equal(selected, 0);
+});
+
+test("past three the rest fold into one chip, which opens the oldest of them", async () => {
+  const container = await mountMarks();
+  for (const id of ["a", "b", "c"]) await shown(surface(id));
+  assert.deepEqual(chips(container).map((chip) => chip.textContent), ["Question", "Question", "Question"]);
+  for (const id of ["d", "e"]) await shown(surface(id));
+  assert.deepEqual(chips(container).map((chip) => chip.textContent), ["Question", "Question", "Question", "+2"]);
+  assert.equal(chips(container)[3].getAttribute("aria-label"), "+2 more surfaces from fix-75");
+  await act(async () => chips(container)[3].click());
+  assert.deepEqual(openedSurfaces, [{ terminal_id: "t1", id: "d" }]);
+});
+
+test("a question puts an amber dot on the row's CLI icon and keeps the status text; a surface that asks nothing puts none", async () => {
+  const container = await mountMarks({ ...T1, claude_status: "idle" });
+  await shown(surface("view", { asks: false }));
+  assert.equal(iconDot(container) === null, true);
+  await shown(surface("ask_1"));
+  const dot = iconDot(container)!;
+  assert.ok(dot.className.includes("bg-[#d29922]"));
+  assert.ok(dot.parentElement!.querySelector("svg") !== null, "on the CLI's icon");
+  assert.equal(dot.textContent, "question for you", "in words too");
+  assert.ok(container.textContent!.includes("Ready"));
+});
+
+test("the pane's button counts every question and opens the oldest", async () => {
+  const container = await mountMarks();
+  assert.equal(paneButton(container) === null, true);
+  const first = surface("ask_1");
+  await shown(first);
+  await shown(surface("view", { asks: false }));
+  assert.equal(paneButton(container)!.textContent, "1 question for you");
+  await shown(surface("ask_2"));
+  assert.equal(paneButton(container)!.textContent, "2 questions for you");
+  await act(async () => paneButton(container)!.click());
+  assert.deepEqual(openedSurfaces, [{ terminal_id: "t1", id: "ask_1" }]);
+  await answered(first);
+  await act(async () => paneButton(container)!.click());
+  assert.deepEqual(openedSurfaces[1], { terminal_id: "t1", id: "ask_2" });
+});
+
+test("when the last question settles, its chip, its dot and the pane's button go at once", async () => {
+  const container = await mountMarks();
+  const ask = surface("ask_1");
+  await shown(ask);
+  assert.deepEqual([chips(container).length, iconDot(container) !== null, paneButton(container) !== null], [1, true, true]);
+  await answered(ask);
+  assert.deepEqual([chips(container).length, iconDot(container) !== null, paneButton(container) !== null], [0, false, false]);
+});
+
+/** `record`, which counts each time what it is waiting for is read, under its terminal. */
+function counted(record: SurfaceRecord, reads: Map<string, number>): SurfaceRecord {
+  return new Proxy(record, {
+    get(target, property, receiver) {
+      if (property === "asks" || property === "answer") reads.set(target.terminal_id, (reads.get(target.terminal_id) ?? 0) + 1);
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+/** Every terminal's row and pane button, with who waits on the operator and the companion on the first terminal. */
+const Everything: FC<{ terminals: TerminalInfo[]; tick: number }> = ({ terminals, tick }) => {
+  useEffect(startSurfaces, []);
+  const queue = useAttentionQueue(terminals);
+  badge = queue.items.length;
+  return createElement(
+    Fragment,
+    null,
+    ...terminals.map((terminal) =>
+      createElement(
+        Fragment,
+        { key: terminal.id },
+        createElement(TerminalRow, { index: tick, terminal, isActive: false, onSelect: () => {}, onClose: () => {}, onOpenSurface: () => {} }),
+        createElement(QuestionsForYou, { terminalId: terminal.id, onOpen: () => {} }),
+      ),
+    ),
+    createElement(Companion, {
+      // On a view other than Surface, whose frames read their own surfaces
+      selectedTerminal: { ...terminals[0], id: "none" },
+      projects: [],
+      projectWorktrees: {},
+      views: COMPANION_VIEWS,
+      prefs: companionPrefs(memoryStorage()),
+      activity: { events: [], messages: [], waiting: queue.items, answer: queue.answerPermission },
+    }),
+  );
+};
+
+test("with the limits full in twelve terminals, a render reads no surface again, and a change reads its own terminal's", async () => {
+  const terminals = Array.from({ length: 12 }, (_, i): TerminalInfo => ({ ...terminalInfo(`t${i}`, PROJECT), name: `agent-${i}` }));
+  const reads = new Map<string, number>();
+  for (const { id } of terminals) {
+    // Four live in each of the three places, the strip's asking nothing, and ten locked
+    for (let i = 0; i < 12; i += 1) list.push(counted(surface(`live_${i}`, { terminal_id: id, asks: i < 8 }), reads));
+    for (let i = 0; i < 10; i += 1) list.push(counted(surface(`locked_${i}`, { terminal_id: id, answer: { answers: [] } }), reads));
+  }
+  const container = await mount(createElement(Everything, { terminals, tick: 1 }));
+  assert.equal(badge, 12 * 8);
+  assert.equal(container.querySelectorAll("[data-surface-chips] button").length, 12 * 4, "three and the rest, on each row");
+  assert.equal(reads.size, 12, "each was read to know it");
+
+  reads.clear();
+  for (let tick = 2; tick < 12; tick += 1) await act(async () => mounted!.root.render(createElement(Everything, { terminals, tick })));
+  assert.equal(reads.size, 0, "ten renders read nothing");
+
+  await shown(counted(surface("live_0", { terminal_id: "t3", answer: { answers: [] }, order: 1 }), reads));
+  assert.equal(badge, 12 * 8 - 1);
+  assert.deepEqual([...reads.keys()], ["t3"]);
 });
