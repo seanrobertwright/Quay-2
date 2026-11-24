@@ -27,19 +27,20 @@ const DETAIL: ArchonRunDetail = {
 };
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
-afterEach(() => {
+const unmount = () => {
   if (mounted) {
     const { root, container } = mounted;
     act(() => root.unmount());
     container.remove();
     mounted = null;
   }
-});
+};
+afterEach(unmount);
 
-async function render() {
+async function render(detail: ArchonRunDetail = DETAIL) {
   let closed = 0;
   fakeInvoke(async (command) => {
-    if (command === "archon_get_run_detail") return DETAIL;
+    if (command === "archon_get_run_detail") return detail;
     throw new Error(`no fake for ${command}`);
   });
   const container = document.createElement("div");
@@ -94,4 +95,14 @@ test("Escape closes the run lens", async () => {
   const { container, closed } = await render();
   await act(async () => void container.querySelector("section")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
   assert.equal(closed(), 1);
+});
+
+test("a gate whose request carried no message still has words above Approve and Reject in the run lens", async () => {
+  const gateText = async (prompt: string) => {
+    const { container } = await render({ ...DETAIL, run: { ...RUN, status: "paused" }, pending_approval: { prompt, node_id: "gate" } });
+    return [...container.querySelectorAll('[role="region"][aria-label="Approval gate"] p')].map((p) => p.textContent);
+  };
+  assert.deepEqual(await gateText(""), ["Waiting for approval at gate", "Approval requested"]);
+  unmount();
+  assert.deepEqual(await gateText("Ship it?"), ["Waiting for approval at gate", "Ship it?"]);
 });

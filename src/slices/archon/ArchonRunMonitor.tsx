@@ -437,7 +437,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
                   <p className="font-semibold">
                     Waiting for approval{detail.pending_approval.node_id ? ` at ${detail.pending_approval.node_id}` : ""}
                   </p>
-                  <p className="text-[#c9d1d9] whitespace-pre-wrap">{detail.pending_approval.prompt}</p>
+                  <p className="text-[#c9d1d9] whitespace-pre-wrap">{detail.pending_approval.prompt || "Approval requested"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">

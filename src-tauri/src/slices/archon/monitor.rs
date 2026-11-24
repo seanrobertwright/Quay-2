@@ -383,16 +383,19 @@ pub fn build_run_detail(
                 ));
             }
             "approval_requested" => {
-                let prompt = str_at(data, "message").unwrap_or_default().to_string();
+                let message = str_at(data, "message");
                 pending = Some(ArchonPendingApproval {
-                    prompt: prompt.clone(),
+                    prompt: message.unwrap_or_default().to_string(),
                     node_id: step.clone(),
                     requested_ms: at,
                 });
                 logs.push(entry(
                     "approval",
                     "Approval requested".into(),
-                    (!prompt.is_empty()).then(|| clip(&prompt, MAX_DETAIL_CHARS)),
+                    Some(clip(
+                        message.unwrap_or("Approval requested"),
+                        MAX_DETAIL_CHARS,
+                    )),
                     Some("running"),
                     None,
                 ));
@@ -772,7 +775,7 @@ mod tests {
             let r = build_run_detail(&detail("paused", asked, None), None, false);
             assert_eq!(r.pending_approval.map(|p| p.prompt).as_deref(), Some(""));
             assert_eq!(r.logs[0].label, "Approval requested");
-            assert_eq!(r.logs[0].detail, None);
+            assert_eq!(r.logs[0].detail.as_deref(), Some("Approval requested"));
         }
     }
 
