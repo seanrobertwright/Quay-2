@@ -6,14 +6,14 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { epochMsFromLocalParts, parseUtcTimestamp } from "../../lib/dates.ts";
-import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import type { Mounted } from "./fixtures/askFixtures.ts";
+import type { SurfaceRecord } from "./surfaceTypes.ts";
+import type { GivenVerdict, Mounted } from "./fixtures/askFixtures.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { askCheck, askRecord, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { acceptedAsk, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 let list: SurfaceRecord[];
-let verdicts: { call: number; verdict: Verdict }[];
+let verdicts: GivenVerdict[];
 /** What each `surface_answer` sent. */
 let sent: unknown[];
 let stop: (() => void) | null = null;
@@ -24,7 +24,7 @@ beforeEach(() => {
   verdicts = [];
   sent = [];
   fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as (typeof verdicts)[number]);
+    if (cmd === "surface_verdict") verdicts.push(args as GivenVerdict);
     if (cmd === "surface_answer") sent.push(args.answer);
     if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd === "surface_list") return list;
@@ -42,11 +42,7 @@ afterEach(async () => {
 async function accepted(ask: unknown): Promise<SurfaceRecord> {
   stop ??= startSurfaces();
   await settle();
-  emitEvent("surface-check", askCheck(1, ask));
-  await until(() => verdicts.length > 0, "no verdict was given");
-  const { verdict } = verdicts[0];
-  assert.ok("state" in verdict, JSON.stringify(verdict));
-  return askRecord(verdict.state);
+  return acceptedAsk(ask, verdicts);
 }
 
 /** The frame of `record` in the companion's Surface view. */

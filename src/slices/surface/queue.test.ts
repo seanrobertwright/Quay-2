@@ -8,17 +8,17 @@ import { act, createElement } from "react";
 import type { CompanionShowRequest } from "../companion/Companion.tsx";
 import { companionPrefs } from "../companion/companionPrefs.ts";
 import { memoryStorage } from "../companion/fixtures/companionFixtures.ts";
-import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import type { Mounted } from "./fixtures/askFixtures.ts";
+import type { SurfaceRecord } from "./surfaceTypes.ts";
+import type { GivenVerdict, Mounted } from "./fixtures/askFixtures.ts";
 
 const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { askCheck, askRecord, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { acceptedAsk, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 const MINUTE = 60_000;
 
 let list: SurfaceRecord[];
-let verdicts: { call: number; verdict: Verdict }[];
+let verdicts: GivenVerdict[];
 let stop: (() => void) | null = null;
 let mounted: Mounted | null = null;
 
@@ -26,7 +26,7 @@ beforeEach(() => {
   list = [];
   verdicts = [];
   fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as (typeof verdicts)[number]);
+    if (cmd === "surface_verdict") verdicts.push(args as GivenVerdict);
     if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd === "surface_list") return list;
     return cmd === "surface_checks" ? [] : null;
@@ -48,11 +48,7 @@ async function asked(...asks: string[][]): Promise<SurfaceRecord[]> {
   await settle();
   const records: SurfaceRecord[] = [];
   for (const [i, questions] of asks.entries()) {
-    emitEvent("surface-check", { ...askCheck(i + 1, { questions: questions.map(question) }), surface_id: `ask_${i + 1}` });
-    await until(() => verdicts.length === i + 1, "no verdict was given");
-    const { verdict } = verdicts[i];
-    assert.ok("state" in verdict, JSON.stringify(verdict));
-    records.push(askRecord(verdict.state, { id: `ask_${i + 1}`, order: i + 1 }));
+    records.push(await acceptedAsk({ questions: questions.map(question) }, verdicts, { id: `ask_${i + 1}`, order: i + 1 }));
   }
   return records;
 }
@@ -158,7 +154,7 @@ test("a line says how long its question has waited, and keeps saying so while it
   assert.equal(said(), "Waiting: 5 min");
 });
 
-test("a line that leaves the screen stops counting its wait", async () => {
+test("a line that leaves the screen stops counting how long its question has waited", async () => {
   const timers = new Set<unknown>();
   const [start, end] = [globalThis.setInterval, globalThis.clearInterval];
   const started = mock.method(globalThis, "setInterval", (run: () => void, ms: number) => {

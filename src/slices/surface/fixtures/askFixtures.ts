@@ -1,18 +1,21 @@
 // What the tests of asks share: waiting, the record Rust makes of an accepted ask, and the companion
 // it is drawn in, worked as the operator would. The test owns what it mounts.
-import "../../../test-support/dom.ts";
+import { emitEvent } from "../../../test-support/dom.ts";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { CheckRequest, SurfaceRecord } from "../surfaceTypes.ts";
+import type { CheckRequest, SurfaceRecord, Verdict } from "../surfaceTypes.ts";
 import { companionPrefs } from "../../companion/companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "../../companion/fixtures/companionFixtures.ts";
 import type { TerminalInfo } from "../../terminal/types.ts";
 
 const { Companion, COMPANION_VIEWS } = await import("../../companion/Companion.tsx");
 
+// Node's own, so a test that mocks the timers can still wait for what is under way
+const { setTimeout: later } = globalThis;
+
 /** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
-export const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
+export const settle = () => act(async () => void (await new Promise((resolve) => later(resolve, 20))));
 
 /** Waits, for up to two seconds, until `holds`. */
 export async function until(holds: () => boolean, what: string): Promise<void> {
@@ -37,6 +40,22 @@ export const askRecord = (state: SurfaceRecord["state"], { id = "ask_1", termina
   answer: null,
   answered_at: null,
 });
+
+/** A verdict, as the webview gives it. */
+export type GivenVerdict = {
+  call: number;
+  verdict: Verdict;
+}
+
+/** The ask of `args`, as Rust holds it once the webview has accepted it. `verdicts` is what the webview has given so far, which the test's `invoke` adds to. */
+export async function acceptedAsk(args: unknown, verdicts: readonly GivenVerdict[], { id = "ask_1", ...over }: Parameters<typeof askRecord>[1] = {}): Promise<SurfaceRecord> {
+  const call = verdicts.length + 1;
+  emitEvent("surface-check", { ...askCheck(call, args), surface_id: id });
+  await until(() => verdicts.length === call, "no verdict was given");
+  const { verdict } = verdicts[call - 1];
+  assert.ok("state" in verdict, JSON.stringify(verdict));
+  return askRecord(verdict.state, { id, ...over });
+}
 
 /** The terminal that asks, unless a test says otherwise. */
 export const TERMINAL: TerminalInfo = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };

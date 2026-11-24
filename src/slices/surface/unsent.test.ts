@@ -5,11 +5,11 @@ import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
-import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import type { Mounted } from "./fixtures/askFixtures.ts";
+import type { SurfaceRecord } from "./surfaceTypes.ts";
+import type { GivenVerdict, Mounted } from "./fixtures/askFixtures.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { askCheck, askRecord, companion, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { acceptedAsk, companion, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 /** A save, as the webview sends it. */
 interface Save {
@@ -22,7 +22,7 @@ let list: SurfaceRecord[];
 /** What Rust holds for a page that loads. */
 let held: object[];
 let pages: number;
-let verdicts: { call: number; verdict: Verdict }[];
+let verdicts: GivenVerdict[];
 let saves: Save[];
 /** What `surface_open_page` waits for. */
 let opening: Promise<void>;
@@ -37,7 +37,7 @@ beforeEach(() => {
   saves = [];
   opening = Promise.resolve();
   fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as (typeof verdicts)[number]);
+    if (cmd === "surface_verdict") verdicts.push(args as GivenVerdict);
     if (cmd === "surface_save_unsent") saves.push(structuredClone(args) as unknown as Save);
     if (cmd === "surface_open_page") return opening.then(() => ({ page: (pages += 1), unsent: structuredClone(held) }));
     if (cmd === "surface_list") return list;
@@ -63,12 +63,7 @@ const NAME = { question: "What should the branch be called?", options: [], multi
 async function asked(id: string, questions: unknown[], over: { terminal?: string; order?: number } = {}): Promise<SurfaceRecord> {
   stop ??= startSurfaces();
   await settle();
-  const call = verdicts.length + 1;
-  emitEvent("surface-check", { ...askCheck(call, { questions }), surface_id: id });
-  await until(() => verdicts.length === call, "no verdict was given");
-  const { verdict } = verdicts[call - 1];
-  assert.ok("state" in verdict, JSON.stringify(verdict));
-  return askRecord(verdict.state, { id, ...over });
+  return acceptedAsk({ questions }, verdicts, { id, ...over });
 }
 
 /** Loads the page on `terminal`'s Surface view, with `records` in Rust's list. */
@@ -93,17 +88,14 @@ async function view(name: string): Promise<void> {
   await settle();
 }
 
-/** From here on time passes only as `pass` says. What drawing the question began to wait for is over by then. */
-async function stopTheClock(): Promise<void> {
-  await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 450))));
-  mock.timers.enable({ apis: ["setTimeout"] });
-}
+/** From here on time passes only as `pass` says, but for `settle` and `until`. Drawing a question begins a pause, so it comes first. */
+const stopTheClock = () => mock.timers.enable({ apis: ["setTimeout"] });
 const pass = (ms: number) => act(async () => mock.timers.tick(ms));
 
 test("what is typed is sent 400 ms after the last change, as what differs from the accepted state", async () => {
   const record = await asked("ask_1", [BASE], { order: 7 });
+  stopTheClock();
   await load([record]);
-  await stopTheClock();
 
   await type("half a");
   await pass(399);
@@ -119,8 +111,8 @@ test("what is typed is sent 400 ms after the last change, as what differs from t
 });
 
 test("leaving the screen sends it at once, and nothing is sent after", async () => {
+  stopTheClock();
   await load([await asked("ask_1", [BASE])]);
-  await stopTheClock();
   await type("half a thought");
   await act(async () => viewEntry(mounted!.container, "Repository")!.click());
   assert.deepEqual(saves.map(({ unsent }) => unsent.values), [{ "/answers/0/text": "half a thought" }]);
@@ -129,16 +121,16 @@ test("leaving the screen sends it at once, and nothing is sent after", async () 
 });
 
 test("a page that goes sends it at once", async () => {
+  stopTheClock();
   await load([await asked("ask_1", [BASE])]);
-  await stopTheClock();
   await type("half a thought");
   window.dispatchEvent(new Event("pagehide"));
   assert.deepEqual(saves.map(({ unsent }) => unsent.values), [{ "/answers/0/text": "half a thought" }]);
 });
 
 test("a question nothing was put in sends nothing, and one that is as it was sends that", async () => {
+  stopTheClock();
   await load([await asked("ask_1", [BASE, NAME])]);
-  await stopTheClock();
   await pass(5_000);
   await act(async () => viewEntry(mounted!.container, "Repository")!.click());
   assert.equal(saves.length, 0);
@@ -204,14 +196,13 @@ const leaves = ({ terminal_id, id }: SurfaceRecord) => act(async () => emitEvent
 
 test("nothing is sent for a question that was answered or has left meanwhile", async () => {
   const record = await asked("ask_1", [BASE]);
+  stopTheClock();
   for (const over of [() => changes(record, { answer: { answers: [] }, answered_at: 1 }), () => leaves(record)]) {
     await load([record]);
-    await stopTheClock();
     await type("half a thought");
     await over();
     await pass(5_000);
     window.dispatchEvent(new Event("pagehide"));
-    mock.timers.reset();
   }
   assert.deepEqual(saves, []);
 });
