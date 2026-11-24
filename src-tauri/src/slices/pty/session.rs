@@ -94,7 +94,7 @@ const PIG_BRIDGE_NAME: &str = "quay-pig-bridge";
 
 /// The sidecar `name`. Tauri puts a sidecar beside the app's own executable, in the build
 /// folder and in an install alike.
-fn sidecar_program(name: &str) -> PathBuf {
+pub(crate) fn sidecar_program(name: &str) -> PathBuf {
     let file = format!("{}{}", name, std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
         .ok()
