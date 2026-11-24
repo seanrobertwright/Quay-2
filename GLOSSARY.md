@@ -37,7 +37,7 @@ list, badges and the spend ticker. Its buttons start at x = 0.
 _Avoid_: rail, sidebar, activity bar
 
 **Module**:
-One of the five groups of Quay's surfaces: Projects, Source control, Agents, Workflows and Project.
+One of the five groups of Quay's features: Projects, Source control, Agents, Workflows and Project.
 Each has one icon on the module bar and one panel.
 _Avoid_: section, tool
 
@@ -109,3 +109,88 @@ _Avoid_: submenu, outer menu
 A dismissible one-line banner under the stage tab bar for a problem that affects the whole window,
 such as an inherited RedirectionGuard.
 _Avoid_: status message, toast
+
+## Agent surfaces
+
+The terms of the A2UI surfaces spec. The build adds what they name.
+
+**Surface**:
+One piece of UI an agent describes to Quay through a tool call, which Quay draws with its own
+components. Say "agent surface" where the text also means parts of Quay's own window.
+_Avoid_: widget, artifact, card (Quay's own cards are not surfaces)
+
+**Typed tool**:
+A Quay tool that takes content and lays it out itself: `quay_ask`, `quay_review`, `quay_board`.
+_Avoid_: simple tool, shortcut
+
+**Raw tool**:
+`quay_surface`, the tool that takes A2UI messages as the agent wrote them. A surface sent through it
+is a raw surface.
+_Avoid_: A2UI tool, low-level tool
+
+**Guide tool**:
+`quay_surface_guide`, the tool that teaches the raw format when an agent asks.
+_Avoid_: help, docs tool
+
+**Engine**:
+The official A2UI packages' message handling, data model and validation, without their components.
+_Avoid_: renderer, which also covers Quay's components
+
+**Quay's catalog**:
+The components and functions a surface may use, all of them drawn or run by Quay.
+_Avoid_: basic catalog, which is the standard's own
+
+**Place**:
+Where a surface is drawn: `companion`, `tab` or `strip`. Fixed for the surface's life.
+_Avoid_: location, slot, target
+
+**Strip**:
+The line a board or a raw surface with that place has on its terminal's pane, which opens over the
+terminal.
+_Avoid_: banner, status strip (removed from the shell); and "reply strip", which is a lens's foot
+
+**Surface view**:
+The companion view that shows the selected terminal's companion surfaces.
+_Avoid_: question view, inbox
+
+**Surface frame**:
+What Quay draws around every agent surface, naming the terminal and its CLI.
+_Avoid_: chrome, wrapper
+
+**Asking surface**:
+A live surface with an action to its agent that the operator has not taken yet.
+_Avoid_: pending surface, open question (one kind of it)
+
+**Wait**:
+The bounded time a tool call stays open for the operator's answer. The surface outlives it.
+_Avoid_: timeout, which is the CLI's own limit on the call
+
+**Settled**:
+Said of a surface whose one answer has been given, or of a board marked done or failed.
+_Avoid_: closed, completed
+
+**Ended**:
+Said of a surface whose terminal exited before it was settled.
+_Avoid_: dead, orphaned
+
+**Withdrawn**:
+Said of an asking surface its agent deleted before the operator answered.
+_Avoid_: cancelled, retracted
+
+**Relay**:
+The stdio program that connects a CLI with only static configuration to Quay's MCP server.
+_Avoid_: proxy, bridge (the event bridge is another thing)
+
+**Connect**:
+The control that writes the relay's entry into a CLI's own configuration, and removes it again.
+_Avoid_: install, register
+
+**Quay card**:
+A decision Quay itself asks for: a permission request or one of the Run view's decisions. It carries
+the Quay mark and is never a surface.
+_Avoid_: modal, dialog, surface
+
+**Quay mark**:
+The accent glow and QUAY badge on a Quay card. In a lens the badge stands alone. No agent surface can
+have it.
+_Avoid_: brand, highlight
