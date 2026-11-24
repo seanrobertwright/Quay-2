@@ -83,9 +83,10 @@ async fn still_waits(seam: &Seam, call: OpenCall) {
     tokio::time::sleep(A_WHILE).await;
     assert!(call.is_open(), "the call waits");
     takes_lines_at_once(seam);
+    let typed = seam.typed("term-a");
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
     assert_eq!(call.answer().await, answer());
-    assert_eq!(seam.typed("term-a"), "");
+    assert_eq!(seam.typed("term-a"), typed);
 }
 
 /// Has a line for `term-a` typed at once, so one that should not be typed is not merely held.
@@ -196,15 +197,15 @@ async fn a_wait_ends_when_the_operator_types_a_lone_escape_in_codex() {
     let call = asked(&seam, &mut webview, "term-a").await;
 
     for other in ["e", "\u{1b}[A", "\u{1b}\u{1b}", "\r", ""] {
-        seam.surfaces.operator_typed("term-a", other);
+        seam.operator_types("term-a", other);
     }
-    seam.surfaces.operator_typed("term-b", "\u{1b}");
+    seam.operator_types("term-b", "\u{1b}");
     tokio::time::sleep(A_WHILE).await;
     assert!(call.is_open(), "no other key ends it");
-    seam.surfaces.operator_typed("term-a", "\u{1b}");
+    seam.operator_types("term-a", "\u{1b}");
     assert_eq!(call.answer().await, no_answer_yet("ask_1"));
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
-    assert!(seam.typed("term-a").starts_with(TYPED.trim_end()));
+    assert!(seam.typed("term-a").contains(TYPED.trim_end()));
 }
 
 #[tokio::test]
@@ -212,7 +213,7 @@ async fn an_escape_outside_codex_ends_no_wait() {
     let (seam, mut webview) = start(Timing::default()).await;
     let call = asked(&seam, &mut webview, "term-a").await;
 
-    seam.surfaces.operator_typed("term-a", "\u{1b}");
+    seam.operator_types("term-a", "\u{1b}");
     still_waits(&seam, call).await;
 }
 
@@ -446,7 +447,7 @@ async fn an_answer_that_cannot_be_typed_settles_nothing() {
     assert_eq!(send(), Err(AnswerRefused::NotTyped(NotTyped::Failed)));
     assert_eq!(seam.surfaces.surfaces()[0].answer, None);
 
-    seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
+    seam.pty_manager.open_test_input("term-a");
     assert_eq!(send(), Ok(()), "it can be sent again");
     assert_eq!(seam.typed("term-a"), TYPED);
     assert_eq!(send(), Err(AnswerRefused::AlreadyAnswered));

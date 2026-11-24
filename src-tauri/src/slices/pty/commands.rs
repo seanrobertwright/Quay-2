@@ -4,7 +4,6 @@ use super::manager::PtyManager;
 use super::models::{SpawnTerminalRequest, TerminalInfo, TerminalLink, TerminalOutputPayload};
 use crate::slices::bridge::state::BridgeState;
 use crate::slices::orchestrator::A2ARouter;
-use crate::slices::surface::SurfaceTools;
 
 #[tauri::command]
 pub async fn spawn_terminal(
@@ -64,11 +63,8 @@ pub async fn write_pty(
     terminal_id: String,
     data: String,
     pty_manager: State<'_, PtyManager>,
-    surfaces: State<'_, SurfaceTools>,
 ) -> Result<(), String> {
-    // Before the key goes in, so no answer goes to a call that it has just interrupted
-    surfaces.operator_typed(&terminal_id, &data);
-    pty_manager.write(&terminal_id, &data)
+    pty_manager.write_from_operator(&terminal_id, &data)
 }
 
 #[tauri::command]

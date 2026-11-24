@@ -18,7 +18,7 @@ use super::tools::{SurfaceTools, Webview};
 use crate::slices::bridge::routes::{create_router, AppContext};
 use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
-use crate::slices::orchestrator::A2ARouter;
+use crate::slices::orchestrator::{connect_surfaces, A2ARouter};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
 use crate::slices::pty::plugin_watch::LaunchRef;
@@ -115,7 +115,7 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     let pty_manager = PtyManager::new();
     let a2a_router = A2ARouter::new();
     a2a_router.follow_turns(&pty_manager);
-    surfaces.set_terminals(&pty_manager, &a2a_router);
+    connect_surfaces(&surfaces, &pty_manager, &a2a_router);
     let bridge_state = BridgeState::new();
     let app = create_router(AppContext {
         bridge_state: bridge_state.clone(),
@@ -148,6 +148,11 @@ impl Seam {
     pub fn open_terminal(&self, id: &str, kind: RunKind, status: ClaudeStatus) -> LaunchRef {
         self.pty_manager.insert_test_terminal(test_terminal(id, kind, status));
         self.pty_manager.begin_launch(id, kind)
+    }
+
+    /// The operator types `data` into `terminal_id`'s pane.
+    pub fn operator_types(&self, terminal_id: &str, data: &str) {
+        self.pty_manager.write_from_operator(terminal_id, data).unwrap();
     }
 
     /// Everything typed into `terminal_id` so far.

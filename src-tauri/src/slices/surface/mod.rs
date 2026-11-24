@@ -32,3 +32,4 @@ pub use commands::*;
 pub use store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
 pub use typed_line::is_typed_line;
+pub use typing::{NotTyped, Terminals};

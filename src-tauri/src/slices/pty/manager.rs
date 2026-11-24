@@ -27,6 +27,9 @@ const END_KEY: &str = "\x1b[F";
 /// What the status watcher runs, with the id of the terminal whose status moved.
 type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// What the input watcher runs, with a terminal's id and what the operator typed into it.
+type InputWatcher = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 /// What the server watcher runs, with a launch whose CLI serves its own events and the
 /// loopback port it serves them on.
 type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
@@ -277,6 +280,7 @@ pub struct PtyManager {
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     server_watcher: Arc<Mutex<Option<ServerWatcher>>>,
     turn_watchers: Arc<Mutex<Vec<TurnWatcher>>>,
+    input_watcher: Arc<Mutex<Option<InputWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
     #[cfg(test)]
     test_input: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -293,6 +297,7 @@ impl PtyManager {
             status_watcher: Arc::new(Mutex::new(None)),
             server_watcher: Arc::new(Mutex::new(None)),
             turn_watchers: Arc::new(Mutex::new(Vec::new())),
+            input_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             test_input: Arc::new(Mutex::new(HashMap::new())),
         };
@@ -500,6 +505,16 @@ impl PtyManager {
         Ok(updated_info)
     }
 
+    /// Writes `data`, which the operator typed into the terminal's pane. The input watcher hears it
+    /// first.
+    pub fn write_from_operator(&self, terminal_id: &str, data: &str) -> Result<(), String> {
+        let watcher = self.input_watcher.lock().clone();
+        if let Some(watcher) = watcher {
+            watcher(terminal_id, data);
+        }
+        self.write(terminal_id, data)
+    }
+
     pub fn write(&self, terminal_id: &str, data: &str) -> Result<(), String> {
         #[cfg(test)]
         if let Some(input) = self.test_input.lock().get_mut(terminal_id) {
@@ -703,6 +718,12 @@ impl PtyManager {
         self.turn_watchers.lock().push(Arc::new(watcher));
     }
 
+    /// Runs `watcher` with a terminal's id and what the operator typed into it, before that is
+    /// written to it (see `write_from_operator`) and with no lock of this manager held.
+    pub fn set_input_watcher(&self, watcher: impl Fn(&str, &str) + Send + Sync + 'static) {
+        *self.input_watcher.lock() = Some(Arc::new(watcher));
+    }
+
     pub fn list(&self) -> Vec<TerminalInfo> {
         let mut list: Vec<TerminalInfo> = self.terminals_info.lock().values().cloned().collect();
         list.sort_by_key(|t| t.created_at);
@@ -717,8 +738,14 @@ impl PtyManager {
     /// for `test_input` until `close_test_input`.
     #[cfg(test)]
     pub fn insert_test_terminal(&self, info: TerminalInfo) {
-        self.test_input.lock().insert(info.id.clone(), Vec::new());
+        self.open_test_input(&info.id);
         self.terminals_info.lock().insert(info.id.clone(), info);
+    }
+
+    /// Has test terminal `terminal_id` take writes, none so far.
+    #[cfg(test)]
+    pub fn open_test_input(&self, terminal_id: &str) {
+        self.test_input.lock().insert(terminal_id.to_string(), Vec::new());
     }
 
     /// Everything typed into test terminal `terminal_id`, one entry per write.

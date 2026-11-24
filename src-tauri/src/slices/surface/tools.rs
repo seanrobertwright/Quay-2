@@ -15,11 +15,8 @@ use super::store::{
     SurfaceStore, MOST_KEPT,
 };
 use super::timing::Timing;
-use super::typing::{NotTyped, Typist};
+use super::typing::{NotTyped, Terminals};
 use super::wait::OpenCall;
-use crate::slices::orchestrator::A2ARouter;
-use crate::slices::pty::manager::{PtyManager, TurnEvent};
-use crate::slices::pty::models::RunKind;
 
 /// The window that checks and draws surfaces.
 pub trait Webview: Send + Sync {
@@ -39,7 +36,7 @@ struct Inner {
     /// waits for its answer. It lives as long as a call holds it or is queued for it.
     queues: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
     webview: OnceLock<Box<dyn Webview>>,
-    typist: OnceLock<Typist>,
+    terminals: OnceLock<Box<dyn Terminals>>,
 }
 
 #[derive(Clone)]
@@ -65,7 +62,7 @@ impl SurfaceTools {
             checks: Checks::default(),
             queues: Mutex::default(),
             webview: OnceLock::new(),
-            typist: OnceLock::new(),
+            terminals: OnceLock::new(),
         }))
     }
 
@@ -76,27 +73,19 @@ impl SurfaceTools {
         }
     }
 
-    /// Names the terminals an answer is typed into when no call is open to return it, once, and
-    /// follows the turns they print.
-    pub fn set_terminals(&self, pty_manager: &PtyManager, a2a_router: &A2ARouter) {
-        if self.0.typist.set(Typist::new(pty_manager, a2a_router)).is_err() {
+    /// Names the terminals an answer is typed into when no call is open to return it, once.
+    pub fn set_terminals(&self, terminals: impl Terminals + 'static) {
+        if self.0.terminals.set(Box::new(terminals)).is_err() {
             tracing::error!("The surfaces' terminals were set twice; the first stay");
-            return;
         }
-        let store = self.0.store.clone();
-        pty_manager.add_turn_watcher(move |terminal_id, event| {
-            if event == TurnEvent::Ended {
-                store.end_calls(terminal_id);
-            }
-        });
     }
 
     pub(super) fn store(&self) -> &SurfaceStore {
         &self.0.store
     }
 
-    /// Ends the waits of `terminal_id`'s calls, when its own turn has ended: nothing in it listens
-    /// any more.
+    /// Ends the waits of `terminal_id`'s calls, when its own turn has ended or been interrupted:
+    /// nothing in it listens any more.
     pub fn turn_ended(&self, terminal_id: &str) {
         self.0.store.end_calls(terminal_id);
     }
@@ -106,15 +95,6 @@ impl SurfaceTools {
     /// it has returned, and counts its requests from the start again at each launch.
     pub fn call_cancelled(&self, terminal_id: &str, request: &Value) {
         self.0.store.cancel_calls(terminal_id, request);
-    }
-
-    /// Hears `data`, which the operator typed into `terminal_id`. A lone Escape in a Codex terminal
-    /// ends its calls' waits: it interrupts Codex, which reports neither that nor the turn's end.
-    pub fn operator_typed(&self, terminal_id: &str, data: &str) {
-        let is_codex = || self.0.typist.get().and_then(|typist| typist.run_kind(terminal_id)) == Some(RunKind::Codex);
-        if data == "\u{1b}" && is_codex() {
-            self.0.store.end_calls(terminal_id);
-        }
     }
 
     /// The surface tools `tools/list` answers with.
@@ -273,8 +253,8 @@ impl SurfaceTools {
     }
 
     fn type_in(&self, terminal_id: &str, line: &str) -> Result<(), NotTyped> {
-        match self.0.typist.get() {
-            Some(typist) => typist.type_in(terminal_id, line),
+        match self.0.terminals.get() {
+            Some(terminals) => terminals.type_in(terminal_id, line),
             None => {
                 tracing::error!("{terminal_id}: an answer came before the surfaces' terminals were set");
                 Err(NotTyped::Failed)
