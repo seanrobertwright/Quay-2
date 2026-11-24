@@ -4,6 +4,10 @@ import { APPROVE_LABEL, approveLabel, BODY_PART, COMMENT_PART, COMMENTED, itemsI
 import { ReviewItemRow } from "./ReviewItemRow.tsx";
 import { droppedOf, readReview, useReview } from "./reviewState.ts";
 
+/** Reject's tint. A red button proper is for Quay's own cards alone. */
+const REJECT =
+  "[&_button]:border-[#da3633]/50 [&_button]:bg-[#da3633]/10 [&_button]:text-[#ff7b72] [&_button:enabled:hover]:bg-[#da3633]/25";
+
 /**
  * A review: what is reviewed, and the rail that decides it. Beside each other the rail stays in view
  * while the text scrolls; on a narrow stage it is under the text. The items scroll in their own box.
@@ -11,7 +15,7 @@ import { droppedOf, readReview, useReview } from "./reviewState.ts";
 export const ReviewLayout = ({ part, components, data }: LayoutProps) => {
   const itemsId = useId();
   const items = useMemo(() => itemsIn(components), [components]);
-  const { kept, commented } = useReview(items, data);
+  const { kept } = useReview(items, data);
   useEffect(() => {
     const work = () => {
       const state = readReview(items, data);
@@ -61,10 +65,8 @@ export const ReviewLayout = ({ part, components, data }: LayoutProps) => {
         <div className="flex shrink-0 flex-wrap gap-2">
           {part(VERDICT_PARTS.approve)}
           {part(VERDICT_PARTS.requestChanges)}
-          {part(VERDICT_PARTS.reject)}
+          <div className={REJECT}>{part(VERDICT_PARTS.reject)}</div>
         </div>
-        {/* Kept on the page, so the buttons stay where they are as it comes and goes */}
-        <p className={`shrink-0 text-[11px] text-[#8b949e] ${commented ? "invisible" : ""}`}>{!commented && "To request changes, say what should change."}</p>
       </div>
     </div>
   );

@@ -2,15 +2,15 @@ import { lazy, Suspense } from "react";
 import type { DataValues } from "../differences.ts";
 import { loadA2ui } from "../surfaceHost.ts";
 import type { SurfaceComponent } from "../surfaceTypes.ts";
-import { bodyIn, COMMENT, COMMENT_LABEL, COMMENT_PART, itemsIn } from "../typed/review.ts";
+import { bodyIn, COMMENT, COMMENT_LABEL, COMMENT_PART, commentOf, itemsIn } from "../typed/review.ts";
 import type { TypedText } from "./typedText.ts";
 
 const Markdown = lazy(async () => ({ default: (await loadA2ui()).Markdown }));
 
 /** The comment typed in a review, of what is unsent in it. */
 export function reviewTypedIn(_components: readonly SurfaceComponent[], unsent: DataValues): TypedText[] {
-  const text = unsent[COMMENT];
-  return typeof text === "string" && text.trim() !== "" ? [{ part: COMMENT_PART, question: COMMENT_LABEL, text }] : [];
+  const text = commentOf(unsent[COMMENT]);
+  return text === null ? [] : [{ part: COMMENT_PART, question: COMMENT_LABEL, text }];
 }
 
 /** What was reviewed, with nothing in it to decide. */

@@ -89,12 +89,16 @@ test("an item that is kept again is not dropped", async () => {
 test("Request changes needs a comment, and says so", async () => {
   const region = await draw();
   const request = () => button(region, "Request changes");
+  /** What describes the comment's field to a screen reader. */
+  const described = () => document.getElementById(comment(region).getAttribute("aria-describedby") ?? "")?.textContent ?? null;
   assert.ok(request().disabled);
-  assert.ok(region.textContent?.includes("To request changes, say what should change."));
+  assert.equal(described(), "To request changes, say what should change.");
   await type(region, "  \n ");
   assert.ok(request().disabled, "spaces are no comment");
+  assert.equal(described(), "To request changes, say what should change.");
   await type(region, "Split step 2.");
   assert.ok(!request().disabled);
+  assert.equal(described(), null);
   assert.ok(!region.textContent?.includes("To request changes, say what should change."));
   await click(request());
   assert.deepEqual(sent, [{ title: REVIEW.title, verdict: "changes_requested", dropped: [], comment: "Split step 2." }]);
@@ -105,6 +109,12 @@ test("Reject needs none, and a comment of spaces is left out", async () => {
   await type(region, "   ");
   await click(button(region, "Reject"));
   assert.deepEqual(sent, [{ title: REVIEW.title, verdict: "rejected", dropped: [] }]);
+});
+
+test("Reject is tinted red, and the other two are not", async () => {
+  const region = await draw();
+  const red = (name: string) => button(region, name).closest('[class*="[&_button]:text-[#ff7b72]"]') !== null;
+  assert.deepEqual(["Approve", "Request changes", "Reject"].map(red), [false, false, true]);
 });
 
 test("a verdict is sent once, however often it is clicked", async () => {

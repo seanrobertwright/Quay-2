@@ -50,6 +50,12 @@ export const APPROVE_LABEL = "/frame/approveLabel";
 /** The frame's own path that holds Request changes: true once there is a comment. */
 export const COMMENTED = "/frame/commented";
 
+/** What holds Request changes, and what the comment's field says meanwhile. */
+const NEEDS_COMMENT = { "@checks": [{ condition: { "@path": COMMENTED }, message: "To request changes, say what should change." }] };
+
+/** The comment that `value` is, or null when it is none. Spaces are none. */
+export const commentOf = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value : null);
+
 /** What Approve reads with `dropped` items dropped. */
 export const approveLabel = (dropped: number) =>
   dropped === 0 ? "Approve" : `Approve without ${dropped} ${dropped === 1 ? "item" : "items"}`;
@@ -79,26 +85,25 @@ function fileLine(file: string): { path: string; line?: number } {
   return named && Number(named[2]) > 0 ? { path: named[1], line: Number(named[2]) } : { path: file };
 }
 
-const textAt = (components: ReadonlyMap<string, SurfaceComponent>, id: string): string | null => {
-  const text = components.get(id)?.text;
+const byIdOf = (components: readonly SurfaceComponent[]) => new Map(components.map((component) => [component.id, component]));
+
+const textAt = (byId: ReadonlyMap<string, SurfaceComponent>, id: string): string | null => {
+  const text = byId.get(id)?.text;
   return typeof text === "string" ? text : null;
 };
 
 /** What a surface `expand` made reviews, in a line. */
 export function titleIn(components: readonly SurfaceComponent[]): string {
-  const text = components.find(({ id }) => id === TITLE_PART)?.text;
-  return typeof text === "string" ? textOfPlain(text) : "Review";
+  const text = textAt(byIdOf(components), TITLE_PART);
+  return text === null ? "Review" : textOfPlain(text);
 }
 
 /** The Markdown that a surface `expand` made reviews. */
-export function bodyIn(components: readonly SurfaceComponent[]): string {
-  const text = components.find(({ id }) => id === BODY_PART)?.text;
-  return typeof text === "string" ? text : "";
-}
+export const bodyIn = (components: readonly SurfaceComponent[]): string => textAt(byIdOf(components), BODY_PART) ?? "";
 
 /** The items of a surface `expand` made, in order. */
 export function itemsIn(components: readonly SurfaceComponent[]): ReviewItem[] {
-  const byId = new Map(components.map((component) => [component.id, component]));
+  const byId = byIdOf(components);
   const items: ReviewItem[] = [];
   for (let parts = itemParts(0); byId.has(parts.keep); parts = itemParts(items.length)) {
     const detail = textAt(byId, parts.detail);
@@ -124,7 +129,7 @@ export function expand({ title, body, items = [] }: ReviewArguments, surfaceId: 
       ...(file === null ? [] : [{ id: names.file, component: "FileLink", ...fileLine(file) }]),
     ];
   });
-  const comment: SurfaceComponent = { id: COMMENT_PART, component: "TextField", variant: "longText", label: COMMENT_LABEL, value: { "@path": COMMENT } };
+  const comment: SurfaceComponent = { id: COMMENT_PART, component: "TextField", variant: "longText", label: COMMENT_LABEL, value: { "@path": COMMENT }, ...NEEDS_COMMENT };
   const context = {
     title,
     comment: { "@path": COMMENT },
@@ -137,7 +142,7 @@ export function expand({ title, body, items = [] }: ReviewArguments, surfaceId: 
   const { approve, requestChanges, reject } = VERDICT_PARTS;
   const buttons = [
     ...button(approve, { "@path": APPROVE_LABEL }, { variant: "primary" }),
-    ...button(requestChanges, "Request changes", { "@checks": [{ condition: { "@path": COMMENTED }, message: "Say what should change first." }] }),
+    ...button(requestChanges, "Request changes", NEEDS_COMMENT),
     ...button(reject, "Reject", {}),
   ];
   const parts = [
@@ -168,11 +173,11 @@ export function collapse({ name, context }: SurfaceAction): ReviewAnswer {
   for (let i = 0; fields.has(`item${i}`); i += 1) {
     if (fields.get(`kept${i}`) !== true) dropped.push(String(fields.get(`item${i}`)));
   }
-  const comment = fields.get("comment");
+  const comment = commentOf(fields.get("comment"));
   return {
     title: String(fields.get("title")),
     verdict,
     dropped,
-    ...(typeof comment === "string" && comment.trim() !== "" ? { comment } : {}),
+    ...(comment === null ? {} : { comment }),
   };
 }

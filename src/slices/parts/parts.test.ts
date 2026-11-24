@@ -83,6 +83,14 @@ test("a text field with rows takes several lines, and two fields share no id", (
   assert.notEqual(one.id, several.id);
 });
 
+test("a text field's note describes it, and an empty one keeps its line and describes nothing", () => {
+  const field = (note?: string) => createElement(TextField, { label: "Comment", value: "", note, onChange: () => {} });
+  const container = render(createElement(Fragment, null, field("Say why."), field(""), field()));
+  const described = [...container.querySelectorAll("input")].map((input) => document.getElementById(input.getAttribute("aria-describedby") ?? "")?.textContent ?? null);
+  assert.deepEqual(described, ["Say why.", null, null]);
+  assert.deepEqual([...container.querySelectorAll("p")].map((line) => line.textContent), ["Say why.", ""]);
+});
+
 test("option rows that share a group are native radios named by their label and described by their description", () => {
   const picked: [string, boolean][] = [];
   const container = render(

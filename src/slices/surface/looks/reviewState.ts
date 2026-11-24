@@ -1,7 +1,7 @@
 // What the operator has put in a review so far, as its data model holds it.
 import { useCallback, useSyncExternalStore } from "react";
 import type { SurfaceData } from "../layout.ts";
-import { COMMENT, keptPath, type ReviewItem } from "../typed/review.ts";
+import { COMMENT, commentOf, keptPath, type ReviewItem } from "../typed/review.ts";
 
 export interface ReviewState {
   /** By item, whether it is kept. */
@@ -11,10 +11,9 @@ export interface ReviewState {
 }
 
 export function readReview(items: readonly ReviewItem[], data: SurfaceData): ReviewState {
-  const comment = data.get(COMMENT);
   return {
     kept: items.map((_, i) => data.get(keptPath(i)) === true),
-    commented: typeof comment === "string" && comment.trim() !== "",
+    commented: commentOf(data.get(COMMENT)) !== null,
   };
 }
 
