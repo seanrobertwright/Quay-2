@@ -20,7 +20,7 @@ export const AskingButton = ({ terminalId, onOpen }: AskingButtonProps) => {
     <button
       type="button"
       data-no-terminal-focus
-      title={`${asking.length}${words}. Open the oldest in the companion`}
+      title={`${asking.length}${words}. Open the oldest`}
       aria-label={`${asking.length}${words}`}
       onClick={(e) => {
         e.stopPropagation();

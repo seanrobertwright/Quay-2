@@ -4,6 +4,7 @@ import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { startSurfaces } from "./slices/surface/surfaceHost";
 import type { SurfaceKey } from "./slices/surface/surfaceTypes";
+import { useSurfaceTabs } from "./slices/surface/useSurfaceTabs";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
@@ -843,13 +844,29 @@ export function App() {
     setPendingView({ terminalId, view, entryId });
   };
   const openActivity = (terminalId: string, entryId?: string) => showCompanionView(terminalId, "activity", entryId);
+  const surfaceTabs = useSurfaceTabs({
+    terminals,
+    activeProject,
+    frontId: frontToolId,
+    onFront: setFrontToolId,
+    onSelectTerminal: ({ id, project_path }) => {
+      if (id !== activeTerminalId || !isSamePath(project_path, activeProject)) selectTerminal(id);
+    },
+  });
   // A terminal row's chip and its pane title's button open one of the terminal's surfaces.
   const openSurface = ({ terminal_id, id }: SurfaceKey) => {
+    if (surfaceTabs.open({ terminal_id, id })) {
+      // A lens lies over the stage, and over the tab with it
+      companionLens.dismiss();
+      dismissTopos();
+      setIsRunLensOpen(false);
+      return;
+    }
     if (terminal_id !== activeTerminalId) showTerminal(terminal_id);
     setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id });
   };
   // A Waiting on you row selects its terminal; a permission request opens in Activity to answer, and
-  // an asking surface in the Surface view.
+  // an asking surface in the Surface view or its stage tab.
   const openWaiting = (item: AttentionItem) => {
     if (!item.terminalId) return;
     if (item.kind === "permission") openActivity(item.terminalId);
@@ -1299,10 +1316,13 @@ export function App() {
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
         onOpenSurface={openSurface}
-        tools={stageTools}
+        tools={[...stageTools, ...surfaceTabs.tools]}
         frontToolId={frontToolId}
         onSelectTool={setFrontToolId}
-        onCloseTool={closeTool}
+        onCloseTool={(id) => {
+          if (!surfaceTabs.close(id)) closeTool(id);
+        }}
+        earlierTabs={surfaceTabs.earlier}
       />
       {diffLens && selectedTerminal && (
         <DiffLens

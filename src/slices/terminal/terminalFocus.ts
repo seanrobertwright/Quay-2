@@ -6,16 +6,21 @@ const FIELD = 'input, textarea, select, [contenteditable="true"]';
 /** The hidden field a terminal takes its keys from. */
 const TERMINAL_KEYS = ".xterm-helper-textarea";
 
+/** An agent's surface in the stage tab in front. One behind is hidden, and nothing in it has the focus. */
+const SURFACE_IN_FRONT = "[data-stage-tool-panel] [data-surface]";
+
 /** The pane a terminal's element is in. */
 export const paneOf = (element: Element | null | undefined) => element?.closest("[data-terminal-pane]") ?? null;
 
 /**
- * Whether the operator is in a field outside `pane`, such as an agent's question in the companion. A
- * terminal that took the focus then would be typed what was meant for the field. Another terminal
- * is no such field: the focus moves between terminals.
+ * Whether the operator is in a field outside `pane`, such as an agent's question in the companion, or
+ * anywhere in a surface whose stage tab is in front of the panes. A terminal that took the focus then
+ * would be typed what was meant for the field or the surface. Another terminal is no such field: the
+ * focus moves between terminals.
  */
 export function isTypingOutside(pane: Element | null): boolean {
   const active = document.activeElement;
+  if (active?.closest(SURFACE_IN_FRONT)) return true;
   return !!active?.matches(FIELD) && !active.matches(TERMINAL_KEYS) && !pane?.contains(active);
 }
 

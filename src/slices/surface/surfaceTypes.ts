@@ -51,9 +51,13 @@ export interface SurfaceKey {
   id: string;
 }
 
+/** Where a surface is drawn: the companion's Surface view, a stage tab of its own, or its terminal's pane. Mirrors `Place`. */
+export type Place = "companion" | "tab" | "strip";
+
 /** A surface as Rust holds it. Mirrors `SurfaceRecord`. */
 export interface SurfaceRecord extends SurfaceKey {
   tool: string;
+  place: Place;
   state: CreateSurface;
   revision: number;
   order: number;

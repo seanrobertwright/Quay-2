@@ -54,3 +54,19 @@ test("a terminal that focuses itself takes the focus from a button", () => {
   focusXterm(term);
   assert.equal(document.activeElement?.id, "own");
 });
+
+test("a surface in the stage tab in front keeps the focus, whatever in it has it", () => {
+  document.body.innerHTML = `
+    <div data-terminal-pane id="pane"><textarea id="own" class="xterm-helper-textarea"></textarea></div>
+    <div data-stage-tool-panel="surface"><section id="frame" data-surface="review_1" tabindex="-1"><button id="approve">Approve</button></section></div>
+    <div data-stage-tool-panel="tool"><button id="tool">Run</button></div>`;
+  const term = xterm(document.getElementById("pane")!);
+  for (const id of ["frame", "approve"]) {
+    document.getElementById(id)!.focus();
+    focusXterm(term);
+    assert.equal(document.activeElement?.id, id);
+  }
+  document.getElementById("tool")!.focus();
+  focusXterm(term);
+  assert.equal(document.activeElement?.id, "own", "any other stage tab's does not");
+});

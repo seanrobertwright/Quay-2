@@ -182,7 +182,9 @@ Said of a surface that is settled, ended or withdrawn: it can be read, and not a
 _Avoid_: frozen, archived
 
 **Earlier**:
-The fold beneath a terminal's questions in the Surface view that its locked surfaces are in.
+The fold beneath a terminal's questions in the Surface view that its locked companion surfaces are in,
+and the menu on the stage tab bar that the active project's locked tab surfaces are in once their tabs
+are left.
 _Avoid_: history, archive
 
 **Relay**:

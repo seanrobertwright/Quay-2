@@ -4,7 +4,7 @@
  * that feeds it (`useAttentionQueue`) turns bridge events into these events. The module bar's
  * Agents icon renders its count, the Agents panel's Waiting on you its rows, and the companion's
  * Activity view a terminal's permission requests. An asking surface's item says only that it waits;
- * the companion's Surface view draws the surface from the surface store.
+ * the companion's Surface view or the surface's stage tab draws it from the surface store.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */

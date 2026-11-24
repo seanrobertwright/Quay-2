@@ -12,14 +12,14 @@ import { unsentIn } from "./unsent.ts";
 import { useDismiss } from "./useDismiss.ts";
 import { When } from "./When.tsx";
 
-/** What was asked, folded. */
-const Folded = ({ children }: { children: ReactNode }) => {
+/** What was asked, folded behind `label`. */
+const Folded = ({ label, children }: { label: string; children: ReactNode }) => {
   const id = useId();
   const [shown, setShown] = useState(false);
   return (
     <div className="min-w-0">
       <FoldButton folds={id} shown={shown} onToggle={() => setShown(!shown)} className="min-h-6 text-[#58a6ff] hover:underline">
-        What was asked
+        {label}
       </FoldButton>
       {shown && (
         <div id={id} className="mt-1.5">
@@ -33,11 +33,15 @@ const Folded = ({ children }: { children: ReactNode }) => {
 interface LockedSurfaceProps {
   record: SurfaceRecord;
   terminal: TerminalInfo;
+  /** Fills what it is in, and scrolls what it holds. */
+  fills?: boolean;
+  /** Why it was not dismissed from outside its frame. */
+  notDismissed?: string | null;
 }
 
 /** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
-export const LockedSurface = ({ record, terminal }: LockedSurfaceProps) => {
-  const { kind, KindIcon, asksFor, Settled, Asked, typedIn } = lookOf(record.tool);
+export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null }: LockedSurfaceProps) => {
+  const { kind, KindIcon, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
   const { reason, Icon, tone, at } = lockedState(record);
   const { components } = record.state.createSurface;
   const ended = record.ended_at !== null;
@@ -56,14 +60,14 @@ export const LockedSurface = ({ record, terminal }: LockedSurfaceProps) => {
     </div>
   );
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
           {ended && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(components)}</p>}
-          {!ended && Settled && <Settled answer={record.answer} />}
+          {!ended && Settled && <Settled answer={record.answer} components={components} />}
           {texts.length > 0 && <NotSent texts={texts} />}
           {Asked && (
-            <Folded>
+            <Folded label={askedLabel}>
               <Asked components={components} />
             </Folded>
           )}

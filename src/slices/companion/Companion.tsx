@@ -23,7 +23,8 @@ import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
 import { ActivityView, type ActivityFocus, type CompanionActivity } from "./ActivityView.tsx";
 import { SurfaceView, type SurfaceFocus } from "../surface/SurfaceView.tsx";
-import { useSurfacesOf, useSurfacesRead } from "../surface/surfaceHost.ts";
+import { useSurfacesIn } from "../surface/places.ts";
+import { useSurfacesRead } from "../surface/surfaceHost.ts";
 import { askingOf } from "../surface/surfaceAttention.ts";
 import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
 import { useKeptFocus } from "../surface/useKeptFocus.ts";
@@ -86,7 +87,7 @@ export interface CompanionContext {
   activity: CompanionActivity | null;
   /** The Activity entry the latest show request asked for, or null. */
   focus: ActivityFocus | null;
-  /** The terminal's agent surfaces, oldest first. */
+  /** The terminal's companion surfaces, oldest first. */
   surfaces: readonly SurfaceRecord[];
   /** The surface the latest show request asked for, or null. */
   surfaceFocus: SurfaceFocus | null;
@@ -224,7 +225,7 @@ export const ACTIVITY_VIEW: CompanionView<CompanionContext> = {
     activity && <ActivityView key={terminal.id} terminal={terminal} activity={activity} focus={focus} />,
 };
 
-/** The Surface view: the selected terminal's agent surfaces, while it has any. */
+/** The Surface view: the selected terminal's companion surfaces, while it has any. */
 export const SURFACE_VIEW: CompanionView<CompanionContext> = {
   id: "surface",
   label: "Surface",
@@ -377,7 +378,7 @@ export const Companion = ({
   // What the latest request asked of the pull request view, while its terminal stays selected and
   // until the view takes it, so a view that comes back later does not act on it again.
   const [prAsk, setPrAsk] = useState<(NumberedPullRequestAsk & { terminalId: string }) | null>(null);
-  const surfaces = useSurfacesOf(selectedTerminal?.id ?? null);
+  const surfaces = useSurfacesIn("companion", selectedTerminal?.id ?? null);
   const asking = askingOf(surfaces);
   const ready = useSurfacesRead() && activity?.permissionsRead !== false;
   // While an asking surface of the terminal shows, the Surface view is over the view the state below gives.
