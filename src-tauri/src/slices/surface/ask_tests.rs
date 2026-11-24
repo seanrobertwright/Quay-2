@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use super::ask::{CONTEXT_LIMIT, DESCRIPTION_LIMIT, LABEL_LIMIT, OPTION_COUNT, QUESTION_COUNT, QUESTION_LIMIT};
 use super::check::Verdict;
 use super::store::{AnswerRefused, SurfaceKey};
-use super::test_seam::{accepted, start, start_with, CapturedLog, FakeWebview, OpenCall, Seam, A_WHILE};
+use super::test_seam::{accepted, answer, asked, question, start, start_with, CapturedLog, OpenCall, Seam, A_WHILE};
 use super::timing::{Timing, WAIT};
 use crate::dates::now_ms;
 
@@ -21,25 +21,6 @@ const SEVEN: [&str; 7] = [
     "machina_get_work_order",
     "machina_submit_deliverable",
 ];
-
-/// The spec's own question.
-pub fn question() -> Value {
-    json!({ "questions": [{
-        "question": "Which base should this branch take?",
-        "options": [
-            { "label": "Rebase onto master", "description": "Two conflicts", "recommended": true },
-            { "label": "Merge master in" },
-        ],
-    }] })
-}
-
-pub fn answer() -> Value {
-    json!({ "answers": [{
-        "question": "Which base should this branch take?",
-        "chosen": ["Rebase onto master"],
-        "text": "skip the suite",
-    }] })
-}
 
 #[tokio::test]
 async fn the_surface_tool_is_listed_after_the_seven() {
@@ -338,14 +319,6 @@ async fn a_call_dropped_while_it_is_checked_holds_up_no_later_one() {
     assert!(webview.nothing_shown().await, "a verdict for a call that is gone draws nothing");
     seam.surfaces.verdict(second_check.call, accepted(true));
     assert_eq!(webview.next_shown().await.id, second_check.surface_id);
-}
-
-/// A call from `terminal_id` whose question has been drawn.
-pub async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str) -> OpenCall {
-    let call = seam.cli(terminal_id).call("quay_ask", question());
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
-    webview.next_shown().await;
-    call
 }
 
 /// A question with these options.

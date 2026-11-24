@@ -1,12 +1,12 @@
 //! How many surfaces a terminal may have, at the `/mcp` seam.
 
 use std::ops::RangeInclusive;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::ask_tests::{answer, asked, question};
 use super::store::SurfaceKey;
-use super::test_seam::{accepted, start, FakeWebview, OpenCall, Seam, A_WHILE};
+use super::test_seam::{accepted, answer, asked, question, start, until, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
 
 async fn four_asked(seam: &Seam, webview: &mut FakeWebview) -> Vec<OpenCall> {
@@ -60,20 +60,18 @@ async fn calls_sent_at_once_cannot_pass_the_four() {
     for _ in 0..8 {
         seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     }
-    tokio::time::sleep(A_WHILE).await;
+    until(|| calls.iter().filter(|call| !call.is_open()).count() == 4, "four calls were not rejected").await;
 
-    assert_eq!(calls.iter().filter(|call| call.is_open()).count(), 4);
     assert_eq!(ids(&seam, "term-a").len(), 4);
     assert!(webview.none_removed());
 }
 
 #[tokio::test]
 async fn a_question_whose_call_is_over_still_counts_and_makes_no_room() {
-    let (seam, mut webview) = start(Timing::default()).await;
+    let (seam, mut webview) = start(Timing { wait: Duration::from_millis(1), ..Timing::default() }).await;
     for call in four_asked(&seam, &mut webview).await {
-        call.hang_up();
+        assert_eq!(call.answer().await["state"], "no_answer_yet");
     }
-    tokio::time::sleep(A_WHILE).await;
 
     let fifth = seam.cli("term-a").call("quay_ask", question());
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));

@@ -2,9 +2,8 @@
 
 use serde_json::{json, Value};
 
-use super::ask_tests::{answer, asked};
 use super::store::SurfaceKey;
-use super::test_seam::{start, CapturedLog, FakeWebview, Seam};
+use super::test_seam::{answer, asked, start, CapturedLog, FakeWebview, Seam};
 use super::timing::Timing;
 use super::unsent::UnsentRefused;
 

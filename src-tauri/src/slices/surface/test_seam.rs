@@ -30,6 +30,16 @@ const SOON: Duration = Duration::from_secs(5);
 /// How long a test watches for something that must not happen.
 pub const A_WHILE: Duration = Duration::from_millis(200);
 
+/// Waits until `holds`, for as long as something that should happen at once may take.
+pub async fn until(holds: impl Fn() -> bool, what: &str) {
+    let polling = async {
+        while !holds() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    tokio::time::timeout(SOON, polling).await.expect(what);
+}
+
 struct Sent {
     checks: mpsc::UnboundedSender<CheckRequest>,
     shown: mpsc::UnboundedSender<SurfaceRecord>,
@@ -226,6 +236,34 @@ pub fn accepted(asks: bool) -> Verdict {
         "images": 0,
     }))
     .unwrap()
+}
+
+/// The spec's own question.
+pub fn question() -> Value {
+    json!({ "questions": [{
+        "question": "Which base should this branch take?",
+        "options": [
+            { "label": "Rebase onto master", "description": "Two conflicts", "recommended": true },
+            { "label": "Merge master in" },
+        ],
+    }] })
+}
+
+/// An answer to `question`.
+pub fn answer() -> Value {
+    json!({ "answers": [{
+        "question": "Which base should this branch take?",
+        "chosen": ["Rebase onto master"],
+        "text": "skip the suite",
+    }] })
+}
+
+/// A call from `terminal_id` whose question has been drawn.
+pub async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str) -> OpenCall {
+    let call = seam.cli(terminal_id).call("quay_ask", question());
+    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
+    webview.next_shown().await;
+    call
 }
 
 /// What a test captures of the error log, on the thread it runs on.
