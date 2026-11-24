@@ -42,7 +42,7 @@ export function dotStatus(terminal: Pick<TerminalInfo, "claude_status">): DotSta
   }
 }
 
-/** The terminals with anything waiting on the operator among `items`: a permission request or a finished turn. */
+/** The terminals with anything waiting on the operator among `items`: a permission request, a finished turn or an asking surface. */
 export function waitingTerminals(items: readonly AttentionItem[]): Set<string> {
   return new Set(items.flatMap((item) => (item.terminalId ? [item.terminalId] : [])));
 }
@@ -79,7 +79,7 @@ export interface StatusRow {
  * project that holds it. The Projects panel does not list such a terminal yet; the bar still
  * gives every terminal a row.
  *
- * A terminal in `asking`, the terminals with an attention item waiting on the operator (a permission request or a finished turn), shows
+ * A terminal in `asking`, the terminals with an attention item waiting on the operator, shows
  * the waiting dot whatever its status.
  */
 export function statusRows(

@@ -1,5 +1,5 @@
 // The webview's side of the surfaces: it answers Rust's checks and keeps what Rust says is shown.
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CheckRequest, SurfaceKey, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
@@ -15,6 +15,15 @@ function set(next: typeof byTerminal): void {
   byTerminal = next;
   for (const subscriber of subscribers) subscriber();
 }
+
+/** Calls `changed` after every change to the surfaces kept, until the returned function is called. */
+export function subscribeToSurfaces(changed: () => void): () => void {
+  subscribers.add(changed);
+  return () => void subscribers.delete(changed);
+}
+
+/** Every surface kept, by terminal, each terminal's oldest first. A terminal with none is absent. */
+export const surfacesByTerminal = (): ReadonlyMap<string, readonly SurfaceRecord[]> => byTerminal;
 
 /** Keeps `record`, unless what is kept of that surface is as new. */
 function keep(record: SurfaceRecord): void {
@@ -89,11 +98,7 @@ export function startSurfaces(): () => void {
 
 /** `terminalId`'s surfaces, oldest first. */
 export function useSurfacesOf(terminalId: string | null): readonly SurfaceRecord[] {
-  const subscribe = useCallback((changed: () => void) => {
-    subscribers.add(changed);
-    return () => void subscribers.delete(changed);
-  }, []);
-  return useSyncExternalStore(subscribe, () => (terminalId === null ? NONE : (byTerminal.get(terminalId) ?? NONE)));
+  return useSyncExternalStore(subscribeToSurfaces, () => (terminalId === null ? NONE : (byTerminal.get(terminalId) ?? NONE)));
 }
 
 /** Sends the operator's answer. It rejects with Quay's words for why it was not taken. */

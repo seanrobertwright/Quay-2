@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -21,6 +21,7 @@ import {
 } from "./attentionQueue.ts";
 import { onUserInput } from "../terminal/userInput.ts";
 import { onTerminalRelaunched } from "../terminal/terminalRelaunched.ts";
+import { useAskingSurfaces } from "../surface/surfaceAttention.ts";
 
 /** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
 const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>
@@ -79,9 +80,9 @@ export interface AttentionQueueView {
 
 /**
  * The attention queue, fed from the backend: permission requests and their resolutions, the
- * bridge's turn events, terminal status, and the user's input to a terminal. It lives in memory
- * only, so an app restart starts it empty; on a webview reload the backend's pending permissions
- * rebuild its permission items.
+ * bridge's turn events, terminal status, the user's input to a terminal, and which surfaces ask. It
+ * lives in memory only, so an app restart starts it empty; on a webview reload the backend's pending
+ * permissions rebuild its permission items, and the surfaces it holds the surface items.
  *
  * A new turn starting is the bridge's `turn.started` from the terminal's own session (Claude,
  * OpenCode and PiG send it, including for a prompt a peer typed in over A2A), or a
@@ -116,6 +117,22 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
       terminals: terminals.map((t) => ({ terminalId: t.id, project: t.project_path })),
     });
   }, [terminals]);
+
+  // Before paint, so a question that settles takes every mark of it off the screen at once
+  const asking = useAskingSurfaces();
+  useLayoutEffect(() => {
+    dispatch({
+      type: "surfacesAsking",
+      surfaces: asking.map(({ terminal_id, id, order, tool }) => ({
+        terminalId: terminal_id,
+        project: projectOf(terminalsRef.current, terminal_id),
+        surfaceId: id,
+        tool,
+        order,
+      })),
+      at: Date.now(),
+    });
+  }, [asking]);
 
   useEffect(() => {
     invoke<PermissionRequestPayload[]>("get_pending_permissions")
