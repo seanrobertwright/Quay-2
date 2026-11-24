@@ -5,9 +5,12 @@ import { PieWire } from "../pie/PieWire.tsx";
 import { pieRing } from "../pie/pieRing.ts";
 import { SHELL_SETTINGS, type SetShellPref, type ShellPrefKey, type ShellPrefs, type ShellSetting } from "./shellPrefs.ts";
 
-/** What a chord asks the Project panel to focus; `seq` counts requests so a repeat focuses again. */
+/**
+ * What the Project panel is asked to focus, by a chord or, for the Connect row, by a link to it;
+ * `seq` counts requests so a repeat focuses again.
+ */
 export interface ProjectPanelFocus {
-  target: "this-project" | "check-for-updates";
+  target: "this-project" | "check-for-updates" | "connect-antigravity";
   seq: number;
 }
 
@@ -21,6 +24,8 @@ interface ProjectPanelProps {
   appVersion: string;
   prefs: ShellPrefs;
   focusRequest: ProjectPanelFocus | null;
+  /** The Connect row, which opens and focuses itself when it is asked for. */
+  connectRow: ReactNode;
   onOpenWorkspaceSettings: () => void;
   onOpenInVsCode: () => void;
   onOpenTokenSpend: () => void;
@@ -175,7 +180,7 @@ const PREVIEW_RING = pieRing({ surface: "terminal", terminalId: "", zoomable: tr
 
 /**
  * The Project module's panel: the This project group, which acts on the open project, and the
- * Quay · every project group, the shell's own settings as one-click controls.
+ * Quay · every project group, the shell's own settings as one-click controls and the Connect row.
  */
 export const ProjectPanel = (props: ProjectPanelProps) => {
   const id = useId();
@@ -184,11 +189,12 @@ export const ProjectPanel = (props: ProjectPanelProps) => {
   const thisProjectGroup = useRef<HTMLDivElement | null>(null);
   const updatesRow = useRef<HTMLUListElement | null>(null);
   // A chord's request focuses the first control it can in its target: the This project group's
-  // first enabled row, or Check for updates. Each new `seq` focuses again.
+  // first enabled row, or Check for updates. Each new `seq` focuses again. The Connect row opens
+  // and focuses itself.
   const focusSeq = props.focusRequest?.seq;
   const focusTarget = props.focusRequest?.target;
   useEffect(() => {
-    if (focusSeq === undefined) return;
+    if (focusSeq === undefined || focusTarget === "connect-antigravity") return;
     const scope = focusTarget === "check-for-updates" ? updatesRow.current : thisProjectGroup.current;
     scope?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [focusSeq, focusTarget]);
@@ -238,6 +244,7 @@ export const ProjectPanel = (props: ProjectPanelProps) => {
           {SHELL_SETTINGS.map((setting) => (
             <SettingControl key={setting.key} setting={setting} prefs={props.prefs} onSetPref={props.onSetPref} />
           ))}
+          {props.connectRow}
           <ul ref={updatesRow} className="mt-1">
             <ActionRow
               label="Check for updates"

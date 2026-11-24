@@ -41,6 +41,8 @@ interface StageProps {
   onCloseTerminal?: (terminalId: string) => void;
   /** Opens a terminal's agent surface, from the button in its pane header that counts those that ask. */
   onOpenSurface?: (key: SurfaceKey) => void;
+  /** The line a terminal's pane shows above it, if any. `isVisible` is whether the pane is on the stage. */
+  terminalNote?: (terminal: TerminalInfo, isVisible: boolean) => ReactNode;
   /** The open stage tab tools. Each stays mounted while the terminals are in front. */
   tools?: readonly StageTool[];
   /** The tool in front of the panes, or null while the terminals are. */
@@ -78,6 +80,7 @@ export const Stage: FC<StageProps> = ({
   onRenameTerminal,
   onCloseTerminal,
   onOpenSurface,
+  terminalNote,
   tools = [],
   frontToolId = null,
   onSelectTool,
@@ -253,6 +256,7 @@ export const Stage: FC<StageProps> = ({
         onToggleAsk={onToggleLiveMode ? () => onToggleLiveMode(term.id, term.live_mode) : undefined}
         onCloseTerminal={onCloseTerminal ? () => onCloseTerminal(term.id) : undefined}
         headerExtra={onOpenSurface && <AskingButton terminalId={term.id} onOpen={onOpenSurface} />}
+        note={terminalNote?.(term, isVisible)}
         paneCount={paneCount}
         style={paneStyle}
       />

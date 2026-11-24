@@ -22,6 +22,15 @@ export const ShellWarningBanner: FC = () => {
           <span className="min-w-0 flex-1 truncate" title={warning.message}>
             {warning.message}
           </span>
+          {warning.action && (
+            <button
+              type="button"
+              onClick={warning.action.run}
+              className="shrink-0 px-2 rounded border border-[#d29922]/40 hover:text-white hover:bg-[#30363d] cursor-pointer"
+            >
+              {warning.action.label}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

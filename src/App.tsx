@@ -34,6 +34,9 @@ import type { PullRequestAsk } from "./slices/companion/PullRequestView";
 import type { MergeMethod } from "./slices/github/types";
 import { SlotLayer } from "./slices/stage/SlotLayer";
 import { warnOfRedirectionGuard } from "./slices/stage/redirectionGuard";
+import { offerConnectAgain, onConnectRowAsked } from "./slices/connect/antigravity";
+import { AntigravityRow } from "./slices/connect/AntigravityRow";
+import { ConnectNote } from "./slices/connect/ConnectNote";
 import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
 import { messageEntryId } from "./slices/companion/activity";
@@ -218,6 +221,11 @@ export function App() {
   // Once at startup: whether Quay inherited RedirectionGuard, shown as a shell-wide warning (#629)
   useEffect(() => {
     void warnOfRedirectionGuard();
+  }, []);
+
+  // Once at startup: whether Antigravity's entry is gone or names an old relay (#732)
+  useEffect(() => {
+    void offerConnectAgain();
   }, []);
 
   const handleOpenInVsCode = useCallback(
@@ -1057,16 +1065,18 @@ export function App() {
     [events, trailMessages, waitingItems, attentionQueue.permissionsRead, attentionQueue.answerPermission]
   );
 
-  // Chords `t` and `$` open the Project panel on This project, `u` on Check for updates.
+  // Chords `t` and `$` open the Project panel on This project, `u` on Check for updates. A link to
+  // the Connect row opens it on that row.
   const [projectFocus, setProjectFocus] = useState<ProjectPanelFocus | null>(null);
-  const openProjectPanel = (target: ProjectPanelFocus["target"]) => {
+  const openProjectPanel = useCallback((target: ProjectPanelFocus["target"]) => {
     setOpenModule("project");
     setProjectFocus((prev) => ({ target, seq: (prev?.seq ?? 0) + 1 }));
-  };
+  }, []);
   projectOpeners.current = {
     openThisProject: () => openProjectPanel("this-project"),
     openCheckForUpdates: () => openProjectPanel("check-for-updates"),
   };
+  useEffect(() => onConnectRowAsked(() => openProjectPanel("connect-antigravity")), [openProjectPanel]);
   const openUpdateModal = () => setIsUpdateModalOpen(true);
 
   // The palette's three most recent commands, which the pie's Palette slices copy and run (#649).
@@ -1274,6 +1284,7 @@ export function App() {
               appVersion={APP_CURRENT_VERSION}
               prefs={shellPrefs}
               focusRequest={projectFocus}
+              connectRow={<AntigravityRow openRequest={projectFocus?.target === "connect-antigravity" ? projectFocus.seq : undefined} />}
               // A worktree's settings are its project's, so the selected worktree resolves to its root repo.
               onOpenWorkspaceSettings={() => openWorkspaceSettings(activeRootRepo)}
               onOpenInVsCode={() => void handleOpenInVsCode(activeProject)}
@@ -1316,6 +1327,11 @@ export function App() {
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
         onOpenSurface={openSurface}
+        terminalNote={(terminal, isVisible) =>
+          terminal.run_kind === "antigravity" && (
+            <ConnectNote terminalId={terminal.id} shown={isVisible && terminal.claude_status !== "exited"} />
+          )
+        }
         tools={[...stageTools, ...surfaceTabs.tools]}
         frontToolId={frontToolId}
         onSelectTool={setFrontToolId}

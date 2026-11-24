@@ -1,6 +1,7 @@
 //! Helpers shared by the crate's unit tests.
 
 pub mod loopback;
+pub mod relay;
 
 use std::ffi::OsStr;
 use std::ops::Deref;

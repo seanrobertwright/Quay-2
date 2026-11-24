@@ -96,7 +96,7 @@ const PIG_BRIDGE_NAME: &str = "quay-pig-bridge";
 
 /// The sidecar `name`. Tauri puts a sidecar beside the app's own executable, in the build
 /// folder and in an install alike.
-fn sidecar_program(name: &str) -> PathBuf {
+pub(crate) fn sidecar_program(name: &str) -> PathBuf {
     let file = format!("{}{}", name, std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
         .ok()
@@ -2019,12 +2019,7 @@ mod tests {
     #[ignore]
     fn live_pig_reports_its_turn_to_the_bridge() {
         // Put the built extension where Quay looks for it, beside this test binary
-        let built = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries").join(format!(
-            "{}-{}{}",
-            PIG_BRIDGE_NAME,
-            env!("QUAY_SIDECAR_TARGET"),
-            std::env::consts::EXE_SUFFIX
-        ));
+        let built = crate::test_support::relay::built_sidecar(PIG_BRIDGE_NAME);
         std::fs::copy(&built, pig_bridge_program()).expect("the app's build builds quay-pig-bridge");
 
         let (port, posts, requests) = recording_bridge();

@@ -5,6 +5,8 @@ pub mod mcp;
 #[cfg(test)]
 mod mcp_terminal_tests;
 #[cfg(test)]
+mod connect_tests;
+#[cfg(test)]
 mod mcp_tests;
 pub mod models;
 pub mod router;
