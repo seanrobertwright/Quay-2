@@ -43,7 +43,16 @@ export interface EngineError {
 }
 
 /** What the webview made of a check. Mirrors `Verdict`. */
-export type Verdict = { errors: EngineError[] } | { state: CreateSurface; asks: boolean; components: number; images: number };
+export type Verdict =
+  | { errors: EngineError[] }
+  | {
+      state: CreateSurface;
+      asks: boolean;
+      components: number;
+      images: number;
+      /** The image files it names, each once, in the order the surface has them. */
+      image_paths: string[];
+    };
 
 /** Which surface. Mirrors `SurfaceKey`. */
 export interface SurfaceKey {
@@ -52,12 +61,26 @@ export interface SurfaceKey {
 }
 
 /** Where a surface is drawn: the companion's Surface view, a stage tab of its own, or its terminal's pane. Mirrors `Place`. */
-export type Place = "companion" | "tab" | "strip";
+export type SurfacePlace = "companion" | "tab" | "strip";
+
+/** How a board's run stands, as its agent says it. Mirrors `Status`. */
+export type BoardStatus = "running" | "done" | "failed";
+
+/** The run a board shows, with its clock, in milliseconds since the epoch. Mirrors `BoardRun`. */
+export interface BoardRun {
+  title: string;
+  status: BoardStatus;
+  started_at: number;
+  /** When its agent last sent it. */
+  updated_at: number;
+  /** When its clock stopped, or null while it runs. */
+  stopped_at: number | null;
+}
 
 /** A surface as Rust holds it. Mirrors `SurfaceRecord`. */
 export interface SurfaceRecord extends SurfaceKey {
   tool: string;
-  place: Place;
+  place: SurfacePlace;
   state: CreateSurface;
   revision: number;
   order: number;
@@ -71,7 +94,10 @@ export interface SurfaceRecord extends SurfaceKey {
   answered_at: number | null;
   /** When its terminal exited before it was settled, in milliseconds since the epoch, or null. */
   ended_at: number | null;
+  /** The run a board shows, or null for another surface. */
+  board: BoardRun | null;
 }
 
-/** A live surface has had no answer, and its terminal has not exited. One that is not live is locked. */
-export const isLive = ({ answer, ended_at }: SurfaceRecord): boolean => (answer ?? null) === null && ended_at === null;
+/** A live surface has had no answer and, if it is a board, runs, and its terminal has not exited. One that is not live is locked. */
+export const isLive = ({ answer, ended_at, board }: SurfaceRecord): boolean =>
+  (answer ?? null) === null && ended_at === null && (board?.stopped_at ?? null) === null;

@@ -60,6 +60,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     answer: null,
     answered_at: null,
     ended_at: null,
+    board: null,
   };
 }
 
@@ -256,8 +257,11 @@ test("a hostile link is text, however its address is spelled and whatever form t
   for (const address of HOSTILE) {
     for (const form of forms) {
       const content = await drawText(`before ${form(address)} after`);
-      // Emphasis and code are all that a spelling may come to: nothing that acts, loads or is named.
-      const elements = [...content.querySelectorAll("*")];
+      // Emphasis, code and the box of an image that is not shown are all that a spelling may come to:
+      // nothing that acts, loads or is named.
+      const elements = [...content.querySelectorAll("*")].filter((el) => !el.closest("[data-image-refused]"));
+      const boxed = [...content.querySelectorAll("[data-image-refused], [data-image-refused] *")];
+      if (boxed.some((el) => !/^(span|bdi)$/i.test(el.tagName) || el.getAttributeNames().some((name) => !["class", "dir", "data-image-refused"].includes(name)))) drawn.push(form(address));
       const bad = elements.filter((el) => !/^(a2ui-react-.*|div|p|em|strong|code|s|br|h3)$/i.test(el.tagName) || el.getAttributeNames().some((name) => name !== "class"));
       if (bad.length > 0 || content.querySelector("[role]")) drawn.push(form(address));
       await undraw();
@@ -294,13 +298,6 @@ test("raw HTML is shown as text", async () => {
       await undraw();
     }
   }
-  assert.deepEqual(calls, []);
-});
-
-test("an image is named and not loaded", async () => {
-  const content = await drawText("![a chart](docs/chart.png) and ![](https://a.example/x.png)");
-  assert.equal(content.textContent, "![a chart](docs/chart.png) and ![](https://a.example/x.png)");
-  assert.equal(content.querySelectorAll("img, [src], [role]").length, 0);
   assert.deepEqual(calls, []);
 });
 

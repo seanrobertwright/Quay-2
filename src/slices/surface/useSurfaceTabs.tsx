@@ -7,9 +7,9 @@ import type { StageTool } from "../stage/stageTools.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { EarlierTabs } from "./EarlierTabs.tsx";
 import { lookOf } from "./looks/index.ts";
-import { keptSurface, surfacesIn } from "./places.ts";
+import { everySurfaceIn, keptSurface } from "./surfacePlaces.ts";
 import { surfaceKey } from "./surfaceAttention.ts";
-import { dismissSurface, subscribeToSurfaces, surfacesByTerminal } from "./surfaceHost.ts";
+import { dismissSurface, subscribeToSurfaces } from "./surfaceHost.ts";
 import { SurfaceTab } from "./SurfaceTab.tsx";
 import { isLive, type SurfaceKey, type SurfaceRecord } from "./surfaceTypes.ts";
 
@@ -52,13 +52,14 @@ export interface SurfaceTabs {
 
 /** The active project's surface tabs. */
 export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onSelectTerminal }: SurfaceTabsOptions): SurfaceTabs {
-  const byTerminal = useSyncExternalStore(subscribeToSurfaces, surfacesByTerminal);
+  // A surface elsewhere, such as a board that its agent updates, renders nothing again
+  const inTabs = useSyncExternalStore(subscribeToSurfaces, () => everySurfaceIn("tab"));
   const tabbed = useMemo(
     () =>
       terminals
         .filter((terminal) => isSamePath(terminal.project_path, activeProject))
-        .flatMap((terminal) => surfacesIn("tab", byTerminal.get(terminal.id) ?? []).map((record): Tabbed => ({ id: tabId(record), record, terminal }))),
-    [terminals, activeProject, byTerminal],
+        .flatMap((terminal) => inTabs.filter(({ terminal_id }) => terminal_id === terminal.id).map((record): Tabbed => ({ id: tabId(record), record, terminal }))),
+    [terminals, activeProject, inTabs],
   );
   // The latest request to open a tab. Each has a `seq` of its own.
   const [asked, setAsked] = useState<{ id: string; seq: number } | null>(null);

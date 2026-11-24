@@ -4,6 +4,7 @@ import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { startSurfaces } from "./slices/surface/surfaceHost";
 import type { SurfaceKey } from "./slices/surface/surfaceTypes";
+import { openBoard } from "./slices/surface/strip/openBoards.ts";
 import { useSurfaceTabs } from "./slices/surface/useSurfaceTabs";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
@@ -868,6 +869,10 @@ export function App() {
       companionLens.dismiss();
       dismissTopos();
       setIsRunLensOpen(false);
+      return;
+    }
+    if (openBoard({ terminal_id, id })) {
+      showTerminal(terminal_id);
       return;
     }
     if (terminal_id !== activeTerminalId) showTerminal(terminal_id);

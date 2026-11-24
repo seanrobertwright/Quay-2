@@ -1,6 +1,6 @@
 // How the frame draws each tool's surfaces.
 import type { ComponentType } from "react";
-import { ClipboardCheck, MessageCircleQuestionMark, Shapes, type LucideIcon } from "lucide-react";
+import { ClipboardCheck, LayoutList, MessageCircleQuestionMark, Shapes, type LucideIcon } from "lucide-react";
 import type { DataValues } from "../differences.ts";
 import type { Layout } from "../layout.ts";
 import type { SurfaceComponent } from "../surfaceTypes.ts";
@@ -9,6 +9,7 @@ import { titleIn } from "../typed/review.ts";
 import { AskLayout } from "./AskLayout.tsx";
 import { AskAsked, askTypedIn } from "./AskAsked.tsx";
 import { askAnswerInLine, AskSettled } from "./AskSettled.tsx";
+import { BoardLayout } from "./BoardLayout.tsx";
 import { ReviewLayout } from "./ReviewLayout.tsx";
 import { ReviewReviewed, reviewTypedIn } from "./ReviewReviewed.tsx";
 import { ReviewSettled } from "./ReviewSettled.tsx";
@@ -38,12 +39,13 @@ export interface Look {
   typedIn: (components: readonly SurfaceComponent[], unsent: DataValues) => TypedText[];
 }
 
+const PLAIN: Look = { kind: "Surface", KindIcon: Shapes, layout: null, asksFor: () => "Surface", Settled: null, settledWords: () => null, answerInLine: () => null, Asked: null, askedLabel: "What was asked", typedIn: () => [] };
+
 const LOOKS: ReadonlyMap<string, Look> = new Map<string, Look>([
   ["quay_ask", { kind: "Question", KindIcon: MessageCircleQuestionMark, layout: AskLayout, asksFor: (components) => questionsIn(components).map(({ question }) => question)[0] ?? "Question", Settled: AskSettled, settledWords: () => null, answerInLine: askAnswerInLine, Asked: AskAsked, askedLabel: "What was asked", typedIn: askTypedIn }],
   ["quay_review", { kind: "Review", KindIcon: ClipboardCheck, layout: ReviewLayout, asksFor: titleIn, Settled: ReviewSettled, settledWords: verdictWords, answerInLine: () => null, Asked: ReviewReviewed, askedLabel: "What was reviewed", typedIn: reviewTypedIn }],
+  ["quay_board", { ...PLAIN, kind: "Board", KindIcon: LayoutList, layout: BoardLayout, asksFor: () => "Board" }],
 ]);
-
-const PLAIN: Look = { kind: "Surface", KindIcon: Shapes, layout: null, asksFor: () => "Surface", Settled: null, settledWords: () => null, answerInLine: () => null, Asked: null, askedLabel: "What was asked", typedIn: () => [] };
 
 /** How the surfaces of `tool` look. */
 export const lookOf = (tool: string): Look => LOOKS.get(tool) ?? PLAIN;

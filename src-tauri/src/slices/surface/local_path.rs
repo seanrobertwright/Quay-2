@@ -21,6 +21,9 @@ pub enum Style {
     Unix,
 }
 
+/// How paths are written on this computer.
+pub const STYLE: Style = if cfg!(windows) { Style::Windows } else { Style::Unix };
+
 /// Where a disk says a path on it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Location {

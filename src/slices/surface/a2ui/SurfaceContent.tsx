@@ -2,12 +2,15 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { LinksContext } from "../links.ts";
+import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
 import type { SurfaceAction, SurfaceRecord } from "../surfaceTypes.ts";
 import { followUnsent, unsentIn } from "../unsent.ts";
 import { giveEffects } from "./effects.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
 
 type OnAction = (action: SurfaceAction) => Promise<void>;
+
+const noAction: OnAction = async () => {};
 
 /** The engine that draws a record, with what the operator has put in it so far. */
 interface Live {
@@ -35,7 +38,7 @@ function liveOf(record: SurfaceRecord): Live {
         return () => subscription.unsubscribe();
       },
     },
-    onAction: async () => {},
+    onAction: noAction,
   };
   lives.set(record, live);
   return live;
@@ -46,16 +49,17 @@ interface SurfaceContentProps {
   record: SurfaceRecord;
   /** The frame's layout of a typed surface's parts, or null to draw the surface as it is. */
   layout: Layout | null;
-  /** The operator's action. Until it settles, the button that sent it takes no second click. */
-  onAction: OnAction;
+  /** The operator's action. Until it settles, the button that sent it takes no second click. Left out for a surface that has none. */
+  onAction?: OnAction;
 }
 
 /** What an agent's surface holds, drawn by Quay's components. */
-export const SurfaceContent = ({ record, layout, onAction }: SurfaceContentProps) => {
+export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceContentProps) => {
   const [live] = useState(() => liveOf(record));
   useEffect(() => {
     live.onAction = onAction;
   }, [live, onAction]);
+  const [images] = useState(() => surfaceImages(record));
   const links = useContext(LinksContext);
   useEffect(() => {
     if (links) giveEffects(live.surface, links.effects);
@@ -65,7 +69,9 @@ export const SurfaceContent = ({ record, layout, onAction }: SurfaceContentProps
   const value = useMemo(() => (layout ? { Layout: layout, components, data: live.data } : null), [layout, components, live]);
   return (
     <LayoutContext.Provider value={value}>
-      <A2uiSurface surface={live.surface} />
+      <ImagesContext.Provider value={images}>
+        <A2uiSurface surface={live.surface} />
+      </ImagesContext.Provider>
     </LayoutContext.Provider>
   );
 };

@@ -1,7 +1,6 @@
 //! Locked surfaces, at the `/mcp` seam: how many a terminal keeps, and what is told of those that leave.
 //! What a later message for a dismissed id is told is at the store's own seam and at `check_and_commit`,
-//! which every tool that creates a surface goes through, for no tool that is here yet takes an id of its
-//! agent's.
+//! for `quay_ask` takes no id of its agent's. `quay_board` does, and is tested where it is.
 
 use std::time::Duration;
 

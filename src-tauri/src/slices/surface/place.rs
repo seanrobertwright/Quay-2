@@ -18,7 +18,7 @@ pub enum Place {
 
 impl Place {
     /// What an agent calls it.
-    pub fn name(self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
             Self::Companion => "companion",
             Self::Tab => "tab",

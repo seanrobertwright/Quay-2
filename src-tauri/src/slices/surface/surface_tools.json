@@ -79,6 +79,58 @@
     }
   },
   {
+    "name": "quay_board",
+    "description": "Show the operator how a long run stands, as a live line on this terminal's pane that opens into steps, progress and stats. Each call replaces the whole board, so send all of it each time. Returns {\"shown\": true} at once and sends nothing back. {\"dismissed\": true} means the operator closed this board: stop updating it, and use a new id for a later run.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "What is running: plain text, at most 80 characters." },
+        "steps": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string", "description": "At most 80 characters." },
+              "state": { "type": "string", "enum": ["pending", "active", "done", "failed"] },
+              "note": { "type": "string", "description": "At most 120 characters." }
+            },
+            "required": ["label", "state"],
+            "additionalProperties": false
+          }
+        },
+        "progress": {
+          "type": "object",
+          "description": "For work that is counted. It drives the bar, which the steps do otherwise.",
+          "properties": { "done": { "type": "number" }, "total": { "type": "number", "description": "Above 0." } },
+          "required": ["done", "total"],
+          "additionalProperties": false
+        },
+        "stats": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string", "description": "At most 20 characters." },
+              "value": { "type": "string", "description": "At most 20 characters." }
+            },
+            "required": ["label", "value"],
+            "additionalProperties": false
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "done", "failed"],
+          "description": "Left out, running. done and failed stop the clock; running after that starts a fresh one."
+        },
+        "id": { "type": "string", "description": "At most 40 characters. The same id is the same board, and its clock goes on. Left out, board." }
+      },
+      "required": ["title"],
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "quay_surface_read",
     "description": "Read where one of this terminal's surfaces stands, by the id a call returned. Use it for an answer you did not get, not to wait for one: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered, dismissed, or ended when the terminal exited first, and result is there only when answered.",
     "inputSchema": {
