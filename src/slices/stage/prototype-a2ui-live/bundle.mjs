@@ -14,23 +14,18 @@ const virtual = (id, code) => ({
   resolveId: (source) => (source === id ? `\0${id}` : undefined),
   load: (found) => (found === `\0${id}` ? code : undefined),
 });
-/** Puts stubs where the A2UI module is, so the rest of Quay is built as it would be without it. */
-const without = {
-  name: "without-a2ui",
+const STUBS = "export const SurfaceView = () => null; export const useArrival = () => null; export const livesOf = () => [];";
+/** Puts stubs where the A2UI module is, with `first` run before them. */
+const stubbed = (first) => ({
+  name: "stubbed-a2ui",
   enforce: "pre",
   resolveId: (source) => (/prototype-a2ui-live\/(SurfaceView|live)\.tsx?$/.test(source) ? "\0stub" : undefined),
-  load: (id) => (id === "\0stub" ? "export const SurfaceView = () => null; export const useArrival = () => null; export const livesOf = () => [];" : undefined),
-};
-/** The A2UI module in a chunk of its own, loaded when the companion first needs it. */
-const lazy = {
-  name: "lazy-a2ui",
-  enforce: "pre",
-  resolveId: (source) => (/prototype-a2ui-live\/(SurfaceView|live)\.tsx?$/.test(source) ? "\0lazy" : undefined),
-  load: (id) =>
-    id === "\0lazy"
-      ? 'void import("/src/slices/stage/prototype-a2ui-live/SurfaceView.tsx?lazy"); export const SurfaceView = () => null; export const useArrival = () => null; export const livesOf = () => [];'
-      : undefined,
-};
+  load: (id) => (id === "\0stub" ? first + STUBS : undefined),
+});
+/** Quay as it would be without the module. */
+const without = stubbed("");
+/** The module in a chunk of its own, which the main chunk loads with `import()`. */
+const lazy = stubbed('void import("/src/slices/stage/prototype-a2ui-live/SurfaceView.tsx?lazy"); ');
 const kB = (n) => `${(n / 1000).toFixed(1)} kB`;
 async function run(label, options) {
   const result = await build({ configFile: false, logLevel: "silent", ...options, build: { write: false, ...options.build } });
