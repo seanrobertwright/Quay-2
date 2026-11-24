@@ -12,7 +12,7 @@ interface Handshake {
 }
 
 /** Whether the terminal's launch has had its grace and its CLI has not shaken hands. */
-export function useNoHandshake(terminalId: string): boolean {
+export function useHandshakeOverdue(terminalId: string): boolean {
   // The terminal it was found of, so that nothing found of one is said of another
   const [lateTerminal, setLateTerminal] = useState<string | null>(null);
 

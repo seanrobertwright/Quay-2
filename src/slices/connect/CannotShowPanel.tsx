@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type FocusEvent, type KeyboardEvent
 import { createPortal } from "react-dom";
 import { usePopupLayer } from "../overlay/useOverlay.ts";
 import type { CannotShow } from "./cannotShow.ts";
+import { ConnectRowLink } from "./ConnectRowLink.tsx";
 
 /** The panel's width, and how far it stays from the window's edges, in pixels. */
 const WIDTH = 288;
@@ -15,7 +16,6 @@ interface CannotShowPanelProps {
   button: RefObject<HTMLButtonElement | null>;
   /** Called when it should go away. `refocus` is false when focus has moved on already. */
   onClose: (refocus: boolean) => void;
-  onConnect: () => void;
 }
 
 /**
@@ -23,7 +23,7 @@ interface CannotShowPanelProps {
  * would cut it off. It takes focus as it opens; Escape, Tab past its link, a press outside, focus
  * moving elsewhere or a resize of the window closes it.
  */
-export const CannotShowPanel = ({ id, label, why, button, onClose, onConnect }: CannotShowPanelProps) => {
+export const CannotShowPanel = ({ id, label, why, button, onClose }: CannotShowPanelProps) => {
   const panel = useRef<HTMLDivElement | null>(null);
   usePopupLayer(true, () => onClose(true), panel);
 
@@ -81,12 +81,7 @@ export const CannotShowPanel = ({ id, label, why, button, onClose, onConnect }: 
       style={{ width: WIDTH }}
     >
       <p>{why.reason}</p>
-      {why.remedy && <p className="text-[#8b949e]">{why.remedy}</p>}
-      {why.connect && (
-        <button type="button" onClick={onConnect} className="text-[#58a6ff] hover:text-[#79c0ff] hover:underline cursor-pointer">
-          Connect Antigravity in Settings
-        </button>
-      )}
+      {why.remedy === "words" ? <p className="text-[#8b949e]">{why.words}</p> : <ConnectRowLink onPress={() => onClose(true)} />}
     </div>,
     document.body
   );

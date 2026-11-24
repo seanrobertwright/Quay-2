@@ -4,15 +4,34 @@ import { cliName } from "../surface/cliName.ts";
 import type { RunKind } from "../terminal/types.ts";
 import type { AntigravityConnection, ConnectState } from "./connectTypes.ts";
 
-export interface CannotShow {
-  reason: string;
-  /** What to do, where a link to the Connect row is not it. */
-  remedy?: string;
-  /** Whether the Connect row is where to put it right. */
-  connect?: boolean;
-}
+/** A reason, with the remedy: words that say what to do, or the link to the Connect row. */
+export type CannotShow =
+  | { reason: string; remedy: "words"; words: string }
+  | { reason: string; remedy: "connect row" };
 
-const USE_ANOTHER = "Claude Code, Codex, OpenCode, PiG and Antigravity can show them.";
+/** How surfaces stand with a run kind. "no agent" is a kind that is no agent CLI with a prompt of its own. */
+type Support = "can show" | "no tool channel" | "not in this release" | "no agent";
+
+/** In the order `USE_ANOTHER` names them. */
+const SUPPORT: Record<RunKind, Support> = {
+  claude: "can show",
+  codex: "can show",
+  opencode: "can show",
+  pig: "can show",
+  antigravity: "can show",
+  aider: "no tool channel",
+  copilot: "not in this release",
+  pi: "not in this release",
+  gemini: "not in this release",
+  grok: "not in this release",
+  kiro: "not in this release",
+  powershell: "no agent",
+  command: "no agent",
+  archon: "no agent",
+};
+
+const CAN_SHOW = (Object.keys(SUPPORT) as RunKind[]).filter((kind) => SUPPORT[kind] === "can show").map(cliName);
+const USE_ANOTHER = `${CAN_SHOW.slice(0, -1).join(", ")} and ${CAN_SHOW.slice(-1)} can show them.`;
 
 /** What is wrong with Antigravity's entry, in each state but the one where nothing is. */
 const ENTRY_PROBLEM: Record<Exclude<ConnectState, "connected">, string> = {
@@ -28,24 +47,24 @@ const ENTRY_PROBLEM: Record<Exclude<ConnectState, "connected">, string> = {
  * stands, or null when that is not known.
  */
 export function cannotShow(kind: RunKind, antigravity: AntigravityConnection | null): CannotShow | null {
-  switch (kind) {
-    case "powershell":
-    case "command":
-    case "archon":
+  const support = SUPPORT[kind];
+  switch (support) {
+    case "no agent":
       return null;
-    case "aider":
-      return { reason: "Aider has no tool channel, so it can't show surfaces.", remedy: USE_ANOTHER };
-    case "copilot":
-    case "pi":
-    case "gemini":
-    case "grok":
-    case "kiro":
-      return { reason: `${cliName(kind)} can't show surfaces in this release.`, remedy: USE_ANOTHER };
-    case "antigravity":
-      if (antigravity && antigravity.state !== "connected") return { reason: ENTRY_PROBLEM[antigravity.state], connect: true };
+    case "no tool channel":
+      return { reason: `${cliName(kind)} has no tool channel, so it can't show surfaces.`, remedy: "words", words: USE_ANOTHER };
+    case "not in this release":
+      return { reason: `${cliName(kind)} can't show surfaces in this release.`, remedy: "words", words: USE_ANOTHER };
+    case "can show":
+      if (kind === "antigravity" && antigravity && antigravity.state !== "connected") {
+        return { reason: ENTRY_PROBLEM[antigravity.state], remedy: "connect row" };
+      }
+      return {
+        reason: `Quay has not seen ${cliName(kind)} connect, so it can't show surfaces.`,
+        remedy: "words",
+        words: "If it stays so, relaunch the terminal.",
+      };
+    default:
+      return support satisfies never;
   }
-  return {
-    reason: `Quay has not seen ${cliName(kind)} connect, so it can't show surfaces.`,
-    remedy: "If it stays so, relaunch the terminal.",
-  };
 }

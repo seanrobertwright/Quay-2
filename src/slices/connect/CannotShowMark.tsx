@@ -2,10 +2,10 @@ import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { focusTerminal } from "../terminal/terminalRequests.ts";
 import type { RunKind } from "../terminal/types.ts";
-import { askForConnectRow, readAntigravity, useAntigravity } from "./antigravity.ts";
+import { readAntigravity, useAntigravity } from "./antigravity.ts";
 import { CannotShowPanel } from "./CannotShowPanel.tsx";
 import { cannotShow } from "./cannotShow.ts";
-import { useNoHandshake } from "./handshake.ts";
+import { useHandshakeOverdue } from "./handshake.ts";
 
 interface CannotShowMarkProps {
   terminalId: string;
@@ -63,17 +63,13 @@ const MarkButton = ({ terminalId, kind }: CannotShowMarkProps) => {
           why={why}
           button={button}
           onClose={close}
-          onConnect={() => {
-            close(true);
-            askForConnectRow();
-          }}
         />
       )}
     </>
   );
 };
 
-const AgentMark = (props: CannotShowMarkProps) => useNoHandshake(props.terminalId) && <MarkButton {...props} />;
+const AgentMark = (props: CannotShowMarkProps) => useHandshakeOverdue(props.terminalId) && <MarkButton {...props} />;
 
 /**
  * The mark on the title bar of a terminal that can't show surfaces: an info button that says why, and
