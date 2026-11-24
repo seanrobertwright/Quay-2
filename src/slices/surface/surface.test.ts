@@ -154,7 +154,7 @@ const TERMINAL = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
 async function accepted(id: string, { ask = ASK as unknown, terminal = "t1", order = 1 } = {}): Promise<SurfaceRecord> {
   const verdict = await verdictOn({ ...check(order, ask), surface_id: id });
   assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: terminal, id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null };
+  return { terminal_id: terminal, id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null, answered_at: null };
 }
 
 /** The companion with `terminal` selected. */
@@ -227,7 +227,7 @@ test("content cannot draw outside the frame", async () => {
   const region = regions(container)[0];
   const content = region.querySelector<HTMLElement>("[data-surface-content]")!;
   // Paint containment clips what overflows and holds fixed and absolute elements inside.
-  for (const name of ["contain-paint", "overflow-hidden", "relative", "isolate"]) assert.ok(content.className.split(" ").includes(name), name);
+  for (const name of ["contain-paint", "overflow-clip", "relative", "isolate"]) assert.ok(content.className.split(" ").includes(name), name);
   assert.ok(content.contains(button(region, "Send")));
   assert.ok(!content.contains(region.querySelector("header")));
 });
