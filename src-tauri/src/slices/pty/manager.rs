@@ -2398,6 +2398,34 @@ mod tests {
     }
 
     #[test]
+    fn the_launch_watcher_hears_each_launch_listed_and_over_and_the_close() {
+        let manager = PtyManager::new();
+        let first = launched(&manager, "term-launches", RunKind::Codex);
+        let info = manager.get_info("term-launches").unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_launch_watcher(move |event| log.lock().push(event));
+
+        assert!(!manager.exit_launch(&LaunchRef { launch: 0, ..first.clone() }, None));
+        let second = manager.begin_launch("term-launches", RunKind::Codex);
+        assert!(manager.relist_launched(&second, info.clone(), || ()).is_ok());
+        assert!(!manager.exit_launch(&first, Some(0)), "an old launch's exit is no news");
+        assert!(manager.exit_launch(&second, Some(0)));
+        assert_eq!(manager.insert_launched(&second, info).id, "term-launches");
+        manager.kill("term-launches").unwrap();
+
+        let closed = LaunchEvent::Closed("term-launches".to_string());
+        let heard = [
+            LaunchEvent::Over(first),
+            LaunchEvent::Listed(second.clone()),
+            LaunchEvent::Over(second.clone()),
+            LaunchEvent::Listed(second),
+            closed,
+        ];
+        assert_eq!(*seen.lock(), heard);
+    }
+
+    #[test]
     fn a_relaunch_that_finishes_lists_the_terminal_again_with_its_new_session() {
         let manager = PtyManager::new();
         launched(&manager, "term-relist-done", RunKind::Codex);
