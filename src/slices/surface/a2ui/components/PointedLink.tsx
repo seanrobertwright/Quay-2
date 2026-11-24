@@ -1,6 +1,7 @@
-import { useEffect, useId, type ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { File } from "lucide-react";
 import type { SurfaceLinks } from "../../links.ts";
+import { usePointed } from "../usePointed.ts";
 
 interface PointedLinkProps {
   links: SurfaceLinks;
@@ -8,32 +9,21 @@ interface PointedLinkProps {
   address: string;
   onClick: () => void;
   children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
 }
 
 /**
  * A link that says at the frame's foot where it leads, and acts only on a click. It is a button and
  * not an anchor, so the webview has no address to follow, preload or drag.
  */
-export const PointedLink = ({ links, address, onClick, children }: PointedLinkProps) => {
-  const id = useId();
-  const { footId, point, present } = links;
-  useEffect(() => {
-    const gone = present();
-    return () => {
-      point("pointer", id, null);
-      point("focus", id, null);
-      gone();
-    };
-  }, [id, point, present]);
+export const PointedLink = ({ links, address, onClick, children, ref }: PointedLinkProps) => {
+  const pointed = usePointed(links, address);
   return (
     <button
+      ref={ref}
       type="button"
       role="link"
-      aria-describedby={footId}
-      onMouseEnter={() => point("pointer", id, address)}
-      onMouseLeave={() => point("pointer", id, null)}
-      onFocus={() => point("focus", id, address)}
-      onBlur={() => point("focus", id, null)}
+      {...pointed}
       onClick={onClick}
       className="max-w-full rounded-sm text-left wrap-anywhere text-[#58a6ff] hover:text-[#79c0ff] focus-visible:outline-2 focus-visible:outline-(--quay-accent)"
     >

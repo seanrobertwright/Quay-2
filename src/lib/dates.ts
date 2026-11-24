@@ -97,6 +97,43 @@ export function isDateStamp(text: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+/** The digits of an ISO 8601 text, as they are written. */
+export interface IsoDigits {
+  /** "YYYY-MM-DD", or null where the text is a time alone. */
+  date: string | null;
+  /** "HH:MM", or null where the text is a date alone. */
+  time: string | null;
+  /** The zone the time is written in: "Z", an offset such as "+02:00", or empty for none. */
+  zone: string;
+}
+
+/**
+ * The digits of an ISO 8601 date, time, or date and time, as they are written: nothing is read in
+ * another time zone. Seconds are left out. Null for any other text, including an impossible date or time.
+ */
+export function isoDigits(text: string): IsoDigits | null {
+  const match = /^(?:(\d{4})-(\d{2})-(\d{2}))?(?:([T ]?)(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:(Z)|([+-]\d{2}):?(\d{2}))?)?$/.exec(text);
+  if (!match) return null;
+  const [, year, month, day, between, hour, minute, second, utc, zoneHour, zoneMinute] = match;
+  const hasDate = year !== undefined;
+  const hasTime = hour !== undefined;
+  // What is between a date and a time is between nothing else
+  if ((!hasDate && !hasTime) || (hasTime && hasDate !== (between !== ""))) return null;
+  if (hasDate) {
+    // `setUTCFullYear`, because `Date.UTC` reads years 0 to 99 as 1900 to 1999.
+    const date = new Date(0);
+    date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+    if (Number(year) === 0 || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
+  }
+  if (hasTime && (Number(hour) > 23 || Number(minute) > 59 || Number(second ?? 0) > 59)) return null;
+  if (zoneHour !== undefined && (Math.abs(Number(zoneHour)) > 23 || Number(zoneMinute) > 59)) return null;
+  return {
+    date: hasDate ? `${year}-${month}-${day}` : null,
+    time: hasTime ? `${hour}:${minute}` : null,
+    zone: utc ?? (zoneHour === undefined ? "" : `${zoneHour}:${zoneMinute}`),
+  };
+}
+
 /**
  * Whole calendar days from one "YYYY-MM-DD" date to another, negative when `to` comes first. The
  * digits are read as they are, with no time zone. Throws when either is not such a date.

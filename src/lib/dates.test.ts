@@ -13,6 +13,7 @@ import {
   localTimeZoneName,
   parseUtcTimestamp,
   wallClockPartsOf,
+  isoDigits,
 } from "./dates.ts";
 
 test("a UTC timestamp reads as its moment, with or without fractional seconds", () => {
@@ -111,4 +112,21 @@ test("formatRunClock reads minutes and seconds, with hours from the first, and n
     [Number.NaN, "00:00"],
   ];
   for (const [ms, said] of cases) assert.equal(formatRunClock(ms), said);
+});
+
+test("isoDigits reads the digits of an ISO 8601 date, time, or both as they are written, and of no other text", () => {
+  const cases: [string, ReturnType<typeof isoDigits>][] = [
+    ["2026-10-21", { date: "2026-10-21", time: null, zone: "" }],
+    ["0002-10-21", { date: "0002-10-21", time: null, zone: "" }],
+    ["14:06", { date: null, time: "14:06", zone: "" }],
+    ["14:06:11.5Z", { date: null, time: "14:06", zone: "Z" }],
+    ["2026-10-21T14:06:11", { date: "2026-10-21", time: "14:06", zone: "" }],
+    ["2026-10-21 14:06", { date: "2026-10-21", time: "14:06", zone: "" }],
+    ["2026-10-21T23:59:59+02:00", { date: "2026-10-21", time: "23:59", zone: "+02:00" }],
+    ["2026-10-21T14:06-0530", { date: "2026-10-21", time: "14:06", zone: "-05:30" }],
+    ["2024-02-29", { date: "2024-02-29", time: null, zone: "" }],
+  ];
+  for (const [text, digits] of cases) assert.deepEqual(isoDigits(text), digits, text);
+  const none = ["", "T", "2026-02-30", "2026-13-01", "0000-01-01", "2026-10-21T", "24:00", "14:60", "14:06:60", "2026-10-21T14:06+25:00", "2026-10-21Z", "tomorrow", " 14:06", "14:06\n", "12026-10-21"];
+  for (const text of none) assert.equal(isoDigits(text), null, JSON.stringify(text));
 });

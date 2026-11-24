@@ -106,7 +106,7 @@ test("an unknown component is told with the catalog's names, and with advice for
 
 test("an unknown function is told with the catalog's names", async () => {
   assert.deepEqual(told(await errorsIn([create(column(text("said", { "@call": "shout", args: {} })))])), [
-    ["VALIDATION_FAILED", "/messages/0/createSurface/components/1/text", "Unrecognized function 'shout'. The catalog's functions are openUrl, showFile."],
+    ["VALIDATION_FAILED", "/messages/0/createSurface/components/1/text", "Unrecognized function 'shout'. The catalog's functions are and, copyText, email, focusTerminal, formatCurrency, formatDate, formatNumber, formatString, length, not, numeric, openUrl, or, pluralize, regex, required, showFile."],
   ]);
 });
 

@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Check, CircleDashed, LoaderCircle, X, type LucideIcon } from "lucide-react";
 import { keyed } from "./keyed.ts";
 import type { Step, StepState } from "./steps.ts";
@@ -31,9 +32,9 @@ const StepItem = ({ label, state, note }: Step) => {
 };
 
 /** A run's steps in order, down one column and then the next where there is room for two. */
-export const StepList = ({ steps }: { steps: readonly Step[] }) => (
+export const StepList = ({ steps, ref }: { steps: readonly Step[]; ref?: Ref<HTMLOListElement> }) => (
   <div className="@container min-w-0">
-    <ol className="-mb-1 gap-x-5 @lg:columns-2 [&>li]:mb-1 [&>li]:break-inside-avoid">
+    <ol ref={ref} className="-mb-1 gap-x-5 @lg:columns-2 [&>li]:mb-1 [&>li]:break-inside-avoid">
       {keyed(steps, ({ label }) => label).map(({ key, item }) => (
         <StepItem key={key} {...item} />
       ))}
