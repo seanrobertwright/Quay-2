@@ -1,9 +1,9 @@
-// What the tests of asks share: the record Rust makes of an accepted ask, and the companion
-// it is drawn in, worked as the operator would. The test owns what it mounts.
+// What the tests of asks share: the check of an ask, and the companion it is drawn in, worked as the
+// operator would. The test owns what it mounts.
 import "../../../test-support/dom.ts";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { CheckRequest, SurfaceRecord } from "../surfaceTypes.ts";
+import type { CheckRequest } from "../surfaceTypes.ts";
 import { companionPrefs } from "../../companion/companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "../../companion/fixtures/companionFixtures.ts";
 import type { TerminalInfo } from "../../terminal/types.ts";
@@ -13,20 +13,6 @@ const { Companion, COMPANION_VIEWS } = await import("../../companion/Companion.t
 
 /** The check of a `quay_ask` call that is to be the surface `ask_1`. */
 export const askCheck = (call: number, args: unknown): CheckRequest => ({ call, tool: "quay_ask", surface_id: "ask_1", arguments: args });
-
-/** An ask as Rust holds it once the webview has accepted it with `state`, before any answer. */
-export const askRecord = (state: SurfaceRecord["state"]): SurfaceRecord => ({
-  terminal_id: "t1",
-  id: "ask_1",
-  tool: "quay_ask",
-  state,
-  revision: 1,
-  order: 1,
-  change: 1,
-  asks: true,
-  answer: null,
-  answered_at: null,
-});
 
 /** The terminal that asks, unless a test says otherwise. */
 export const TERMINAL: TerminalInfo = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };

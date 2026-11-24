@@ -5,6 +5,7 @@ import {
   formatLocalDateTimeInput,
   formatUtcDateTime,
   formatUtcTimestamp,
+  formatTimeWaited,
   startOfLocalDay,
   localPartsOf,
   localTimeZoneName,
@@ -65,4 +66,22 @@ test("a moment writes as the UTC timestamp GitHub takes, and its local day start
   assert.equal(formatUtcTimestamp(ms), "2026-11-15T03:04:05Z");
   // 03:04 UTC on the 15th is 22:04 on the 14th in New York, whose midnight is 05:00 UTC.
   assert.equal(startOfLocalDay(ms), Date.UTC(2026, 10, 14, 5, 0));
+});
+
+test("a time waited reads in whole minutes, then hours and minutes, then days", () => {
+  const MINUTE = 60_000;
+  const cases: [number, string][] = [
+    [0, "just now"],
+    [MINUTE - 1, "just now"],
+    [MINUTE, "1 min"],
+    [12 * MINUTE + 59_000, "12 min"],
+    [60 * MINUTE, "1 h"],
+    [99 * MINUTE, "1 h 39 min"],
+    [24 * 60 * MINUTE, "1 d"],
+    [51 * 60 * MINUTE, "2 d 3 h"],
+    // The clock was set back
+    [-5 * MINUTE, "just now"],
+    [NaN, "just now"],
+  ];
+  for (const [waited, said] of cases) assert.equal(formatTimeWaited(1_000_000, 1_000_000 + waited), said);
 });

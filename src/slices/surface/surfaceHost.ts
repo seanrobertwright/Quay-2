@@ -2,7 +2,8 @@
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { CheckRequest, SurfaceKey, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
+import { isLive, type CheckRequest, type SurfaceKey, type SurfaceRecord, type Verdict } from "./surfaceTypes.ts";
+import { closePage, dropUnsent, keepUnsent, openPage, type Page } from "./unsent.ts";
 
 /** The A2UI module. It is large, so nothing imports it until the shell has been drawn. */
 export const loadA2ui = () => import("./a2ui/index.ts");
@@ -32,12 +33,16 @@ function keep(record: SurfaceRecord): void {
   const surfaces = byTerminal.get(record.terminal_id) ?? NONE;
   const kept = surfaces.find((s) => s.id === record.id);
   if (kept && kept.change >= record.change) return;
+  // Before anything draws again: what goes off the screen by it sends nothing more
+  if (isLive(record)) keepUnsent(record);
+  else dropUnsent(record);
   const next = [...surfaces.filter((s) => s !== kept), record].sort((a, b) => a.order - b.order);
   set(new Map(byTerminal).set(record.terminal_id, next));
 }
 
 /** Drops the surface `terminal_id` had as `id`, if it is kept. */
 function drop({ terminal_id, id }: SurfaceKey): void {
+  dropUnsent({ terminal_id, id });
   const left = (byTerminal.get(terminal_id) ?? NONE).filter((s) => s.id !== id);
   const next = new Map(byTerminal);
   if (left.length > 0) next.set(terminal_id, left);
@@ -53,8 +58,9 @@ async function answerCheck(request: CheckRequest): Promise<void> {
 
 /**
  * Starts answering checks and keeping surfaces, until the returned function is called. The webview
- * listens first, so nothing that comes while it reads the list is missed, then reads the list, then
- * every check that has no verdict: a check sent while it was loading reached nobody.
+ * listens first, so nothing that comes while it reads the list is missed, then reads what is unsent in
+ * the surfaces, which they are drawn with, then the list, then every check that has no verdict: a check
+ * sent while it was loading reached nobody.
  */
 export function startSurfaces(): () => void {
   let stopped = false;
@@ -92,7 +98,15 @@ export function startSurfaces(): () => void {
     leftMeanwhile?.forEach(drop);
     leftMeanwhile = null;
   };
+  const readUnsent = async () => {
+    await listening;
+    if (stopped) return;
+    const page = await invoke<Page>("surface_open_page");
+    if (!stopped) openPage(page);
+  };
   const start = async () => {
+    await readUnsent().catch(failed("What was not sent could not be read"));
+    if (stopped) return;
     await readList().finally(listRead);
     if (stopped) return;
     for (const request of await invoke<CheckRequest[]>("surface_checks")) onCheck(request);
@@ -103,6 +117,7 @@ export function startSurfaces(): () => void {
     stopped = true;
     cancelAnimationFrame(frame);
     listDone = false;
+    closePage();
     set(new Map());
     listening.then((unlisten) => unlisten.forEach((stop) => stop()), failed("The surfaces could not be listened for"));
   };
@@ -114,8 +129,9 @@ export function useSurfacesOf(terminalId: string | null): readonly SurfaceRecord
 }
 
 /**
- * Whether the surfaces Rust held when the page loaded are known. Until then a surface that comes may
- * be one the operator has seen already. Also true once they could not be read.
+ * Whether the surfaces Rust held when the page loaded are known, with what is unsent in them. Until
+ * then a surface that comes may be one the operator has seen already. Also true once they could not
+ * be read.
  */
 export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSurfaces, () => listDone);
 

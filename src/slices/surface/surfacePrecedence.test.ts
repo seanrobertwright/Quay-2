@@ -27,6 +27,7 @@ beforeEach(() => {
   surfaceList = async () => [];
   permissionList = async () => [];
   fakeInvoke(async (cmd) => {
+    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd === "surface_list") return surfaceList();
     if (cmd === "get_pending_permissions") return permissionList();
     if (cmd === "get_github_issue_status") return new Promise(() => {});

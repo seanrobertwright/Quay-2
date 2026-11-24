@@ -11,12 +11,15 @@ use tokio::sync::oneshot;
 
 use super::calls::{Handed, OpenCalls};
 use super::check::Accepted;
+use super::place::{Place, MOST_LIVE};
 use super::typed_line::typed_line;
 use super::typing::NotTyped;
+use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
-/// The most surfaces a terminal keeps: the spec's four live and ten locked, not told apart yet.
-pub const MOST_KEPT: usize = 14;
+/// The most settled surfaces a terminal keeps when another surface is added. What settles after that
+/// stays until the next is.
+const MOST_SETTLED: usize = 10;
 
 /// How many of a terminal's surfaces that have left can still be read. Past it the one that left first
 /// is forgotten, with its answer.
@@ -51,6 +54,8 @@ pub struct SurfaceRecord {
     pub change: u64,
     /// Whether the surface has an action to its agent.
     pub asks: bool,
+    /// When it was shown, in milliseconds since the epoch.
+    pub shown_at: i64,
     /// The answer, once there is one.
     pub answer: Option<Value>,
     /// When the answer was sent, in milliseconds since the epoch.
@@ -116,6 +121,7 @@ pub struct Creation<'a> {
     pub arguments: &'a Value,
     /// What the surface is called in the line its answer is typed in as.
     pub title: &'a str,
+    pub place: Place,
     /// The call's number, from `open_call`.
     pub call: u64,
 }
@@ -125,15 +131,15 @@ pub struct Creation<'a> {
 pub enum CommitRefused {
     /// The terminal has a surface of that id.
     IdInUse,
-    /// The terminal has `MOST_KEPT` surfaces, and each still asks for something.
-    Full,
+    /// The terminal has `MOST_LIVE` live surfaces in this place.
+    Full(Place),
 }
 
 /// A surface that was added.
 pub struct Committed {
     pub record: SurfaceRecord,
-    /// The surface that left to make room for it.
-    pub left: Option<SurfaceKey>,
+    /// The settled surfaces that left as it was added, oldest first.
+    pub left: Vec<SurfaceKey>,
 }
 
 enum Phase {
@@ -163,17 +169,39 @@ struct Surface {
     /// The arguments of the call that created it, which the same call again is told by.
     arguments: Value,
     title: String,
+    place: Place,
     state: Value,
     revision: u64,
     order: u64,
     change: u64,
+    shown_at: i64,
     phase: Phase,
+    /// What the operator has put in it and not sent, while it is live.
+    unsent: Option<UnsentSave>,
 }
 
 impl Surface {
-    /// Whether it asks for something and has no answer, which keeps it from making room for another.
-    fn is_asking(&self) -> bool {
-        matches!(self.phase, Phase::Asking { .. } | Phase::Typing { .. })
+    /// Whether it is not settled, which keeps it from making room for another.
+    fn is_live(&self) -> bool {
+        !matches!(self.phase, Phase::Settled { .. })
+    }
+
+    /// Settles it, which what is unsent in it does not outlive.
+    fn settle(&mut self, answer: Value, change: u64) {
+        self.phase = Phase::Settled { answer, at: now_ms() };
+        self.change = change;
+        self.unsent = None;
+    }
+
+    fn unsent(&self, terminal_id: &str) -> Option<Unsent> {
+        let UnsentSave { order, revision, values, .. } = self.unsent.as_ref()?;
+        Some(Unsent {
+            terminal_id: terminal_id.to_string(),
+            id: self.id.clone(),
+            order: *order,
+            revision: *revision,
+            values: values.clone(),
+        })
     }
 
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
@@ -190,6 +218,7 @@ impl Surface {
             order: self.order,
             change: self.change,
             asks: !matches!(self.phase, Phase::NotAsking),
+            shown_at: self.shown_at,
             answer,
             answered_at,
         }
@@ -236,6 +265,7 @@ impl Terminal {
 struct Inner {
     last_change: u64,
     last_call: u64,
+    last_page: u64,
     terminals: HashMap<String, Terminal>,
 }
 
@@ -337,8 +367,8 @@ impl SurfaceStore {
         }
     }
 
-    /// Adds the surface `key` as the webview accepted it. A terminal that has `MOST_KEPT` loses its
-    /// oldest one that has or wants no answer.
+    /// Adds the surface `key` as the webview accepted it, if its place has room for it. The terminal's
+    /// settled surfaces past `MOST_SETTLED` leave, oldest first.
     pub fn commit(&self, key: &SurfaceKey, creation: Creation, accepted: Accepted) -> Result<Committed, CommitRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
@@ -346,14 +376,24 @@ impl SurfaceStore {
         if terminal.find(&key.id).is_some() {
             return Err(CommitRefused::IdInUse);
         }
-        let left = if terminal.surfaces.len() < MOST_KEPT {
-            None
-        } else {
-            let oldest = terminal.surfaces.iter().position(|surface| !surface.is_asking());
-            let left = terminal.surfaces.remove(oldest.ok_or(CommitRefused::Full)?);
-            terminal.left.add(left.id.clone(), left.phase.standing());
-            Some(SurfaceKey::new(&key.terminal_id, left.id))
-        };
+        let place = creation.place;
+        let live = terminal.surfaces.iter().filter(|surface| surface.is_live() && surface.place == place);
+        if live.count() >= MOST_LIVE {
+            return Err(CommitRefused::Full(place));
+        }
+        let settled = terminal.surfaces.iter().filter(|surface| !surface.is_live()).count();
+        let mut past = settled.saturating_sub(MOST_SETTLED);
+        let mut left = Vec::new();
+        let Terminal { surfaces, left: readable, .. } = terminal;
+        surfaces.retain(|surface| {
+            let leaves = past > 0 && !surface.is_live();
+            if leaves {
+                past -= 1;
+                left.push(SurfaceKey::new(&key.terminal_id, &surface.id));
+                readable.add(surface.id.clone(), surface.phase.standing());
+            }
+            !leaves
+        });
         let phase = match accepted.asks {
             true => Phase::Asking { waiters: vec![creation.call] },
             false => Phase::NotAsking,
@@ -363,11 +403,14 @@ impl SurfaceStore {
             tool: creation.tool.to_string(),
             arguments: creation.arguments.clone(),
             title: creation.title.to_string(),
+            place,
             state: accepted.state,
             revision: 1,
             order: change,
             change,
+            shown_at: now_ms(),
             phase,
+            unsent: None,
         };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
@@ -393,8 +436,7 @@ impl SurfaceStore {
         }
         let line = typed_line(&surface.title, &surface.id, &answer);
         if calls.hand(waiters, &answer, &line) {
-            surface.phase = Phase::Settled { answer, at: now_ms() };
-            surface.change = change;
+            surface.settle(answer, change);
             return Ok(Answered::Returned(surface.record(&key.terminal_id)));
         }
         surface.phase = Phase::Typing { answer };
@@ -433,23 +475,26 @@ impl SurfaceStore {
 
     /// Settles a surface whose answer has been typed in. `None` when it has left meanwhile.
     pub fn typed(&self, key: &SurfaceKey) -> Option<SurfaceRecord> {
-        self.end_typing(key, |answer| Phase::Settled { answer, at: now_ms() })
+        self.end_typing(key, Surface::settle)
     }
 
     /// Opens a surface again whose answer could not be typed in.
     pub fn not_typed(&self, key: &SurfaceKey) {
-        self.end_typing(key, |_| Phase::Asking { waiters: Vec::new() });
+        self.end_typing(key, |surface, _, change| {
+            surface.phase = Phase::Asking { waiters: Vec::new() };
+            surface.change = change;
+        });
     }
 
-    fn end_typing(&self, key: &SurfaceKey, next: impl FnOnce(Value) -> Phase) -> Option<SurfaceRecord> {
+    fn end_typing(&self, key: &SurfaceKey, end: impl FnOnce(&mut Surface, Value, u64)) -> Option<SurfaceRecord> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let surface = inner.terminals.get_mut(&key.terminal_id)?.find(&key.id)?;
         let Phase::Typing { answer } = &mut surface.phase else {
             return None;
         };
-        surface.phase = next(answer.take());
-        surface.change = change;
+        let answer = answer.take();
+        end(surface, answer, change);
         Some(surface.record(&key.terminal_id))
     }
 
@@ -468,5 +513,42 @@ impl SurfaceStore {
             .iter()
             .flat_map(|(terminal_id, terminal)| terminal.surfaces.iter().map(|surface| surface.record(terminal_id)))
             .collect()
+    }
+
+    /// Opens a page of the webview, and gives it what is unsent in every surface, in no order.
+    pub fn open_page(&self) -> Page {
+        let mut inner = self.0.lock();
+        inner.last_page += 1;
+        let unsent = inner
+            .terminals
+            .iter()
+            .flat_map(|(terminal_id, terminal)| {
+                terminal.surfaces.iter().filter_map(|surface| surface.unsent(terminal_id))
+            })
+            .collect();
+        Page { page: inner.last_page, unsent }
+    }
+
+    /// Keeps what is unsent in a surface, in place of what was kept. Saves may arrive in any order: one
+    /// made before the one that is kept is refused.
+    pub fn save_unsent(&self, key: &SurfaceKey, save: UnsentSave) -> Result<(), UnsentRefused> {
+        if save.is_too_large() {
+            return Err(UnsentRefused::TooLarge);
+        }
+        let mut inner = self.0.lock();
+        let surface = inner
+            .terminals
+            .get_mut(&key.terminal_id)
+            .and_then(|terminal| terminal.find(&key.id))
+            .filter(|surface| surface.is_live() && surface.order == save.order)
+            .ok_or(UnsentRefused::NoSuchSurface)?;
+        if save.revision != surface.revision {
+            return Err(UnsentRefused::OtherRevision);
+        }
+        if surface.unsent.as_ref().is_some_and(|kept| (kept.page, kept.save) >= (save.page, save.save)) {
+            return Err(UnsentRefused::OlderSave);
+        }
+        surface.unsent = Some(save);
+        Ok(())
     }
 }

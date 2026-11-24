@@ -27,7 +27,7 @@ interface SurfaceFrameProps {
  * the content cannot draw outside.
  */
 export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refusal, children }: SurfaceFrameProps) => (
-  <section aria-label={`${kind} from ${terminal.name}`} data-surface={id} className="overflow-clip rounded-lg border border-[#30363d] bg-[#0d1117]">
+  <section aria-label={`${kind} from ${terminal.name}`} data-surface={id} tabIndex={-1} className="overflow-clip rounded-lg border border-[#30363d] bg-[#0d1117]">
     <header className="flex h-8 items-center gap-1.5 border-b border-[#30363d] bg-[#161b22] px-3 text-[11px]">
       <KindIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#d29922]" />
       <span aria-hidden="true" className="flex shrink-0">

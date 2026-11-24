@@ -2,7 +2,7 @@
 //! that posts tool calls with a terminal's token and a fake webview that checks, draws and answers.
 
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use parking_lot::Mutex;
@@ -30,6 +30,16 @@ const SOON: Duration = Duration::from_secs(5);
 
 /// How long a test watches for something that must not happen.
 pub const A_WHILE: Duration = Duration::from_millis(200);
+
+/// Waits until `holds`, for as long as something that should happen at once may take.
+pub async fn until(holds: impl Fn() -> bool, what: &str) {
+    let polling = async {
+        while !holds() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    tokio::time::timeout(SOON, polling).await.expect(what);
+}
 
 struct Sent {
     checks: mpsc::UnboundedSender<CheckRequest>,
@@ -105,6 +115,7 @@ pub async fn start(timing: Timing) -> (Seam, FakeWebview) {
 
 /// `offered` is whether the build lists and accepts the surface tools.
 pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
+    keep_errors_logged();
     let dir = TempDir::new("surface-seam");
     let surfaces = SurfaceTools::with(offered, timing);
     let (checks_tx, checks) = mpsc::unbounded_channel();
@@ -339,9 +350,21 @@ pub fn accepted(asks: bool) -> Verdict {
 #[derive(Clone, Default)]
 pub struct CapturedLog(Arc<Mutex<Vec<u8>>>);
 
+/// Keeps every error worth logging to some subscriber for as long as the tests run. The level of a
+/// log statement is cached by what subscribers there are when it is first reached, and a test without a
+/// capture that reaches one first, as another starts its capture, would leave it off for that capture.
+fn keep_errors_logged() {
+    static KEPT: OnceLock<tracing::Dispatch> = OnceLock::new();
+    KEPT.get_or_init(|| {
+        let nowhere = tracing_subscriber::fmt().with_max_level(tracing::Level::ERROR).with_writer(std::io::sink);
+        tracing::Dispatch::new(nowhere.finish())
+    });
+}
+
 impl CapturedLog {
     /// Captures what is logged as an error on this thread until the guard goes.
     pub fn start() -> (Self, tracing::subscriber::DefaultGuard) {
+        keep_errors_logged();
         let log = Self::default();
         let writer = log.clone();
         let subscriber = tracing_subscriber::fmt()
