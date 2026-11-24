@@ -176,7 +176,7 @@ CLAUDE_EVENTS_PERMISSIONS="host"
 | Variable | Purpose |
 | :--- | :--- |
 | `CLAUDE_EVENTS_URL` | The bridge's base address, with no path. The plugin adds `/v1/events` and its other paths |
-| `CLAUDE_EVENTS_TOKEN` | The terminal's bearer token, checked by constant-time comparison on each request to the bridge |
+| `CLAUDE_EVENTS_TOKEN` | The terminal's bearer token, which the bridge requires on events, commands, permission requests and MCP calls and checks by constant-time comparison |
 | `CLAUDE_EVENTS_TAG` | The terminal id, so events reach the right terminal |
 | `CLAUDE_EVENTS_TOOLS` | `full`: the plugin sends answers and tool data uncut |
 | `CLAUDE_EVENTS_PERMISSIONS` | `host` routes tool approvals to Quay; `off` when **Skip Permissions** is chosen |

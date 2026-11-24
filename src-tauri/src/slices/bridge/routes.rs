@@ -83,8 +83,8 @@ pub fn authorize_events(
     Ok(())
 }
 
-/// The id of a terminal whose bearer token an `/mcp` call carried. Only
-/// `authenticate_mcp_caller` can build one, so code that takes it cannot skip that check.
+/// The id of a terminal whose bearer token a request carried. Only `authenticate_mcp_caller`
+/// and `authenticate_permission` build one, so code that takes it cannot skip their checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthenticatedTerminal(String);
 
@@ -106,6 +106,23 @@ pub fn authenticate_mcp_caller(
     terminal_ids
         .into_iter()
         .find(|id| bridge_state.verify_token(id, token))
+        .map(AuthenticatedTerminal)
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))
+}
+
+/// Identifies the terminal that asks for a permission: the request must be loopback, and carry
+/// the bearer token of the one of `terminal_ids` that its `tag` names. Returns that terminal.
+fn authenticate_permission(
+    bridge_state: &BridgeState,
+    headers: &HeaderMap,
+    tag: Option<&str>,
+    terminal_ids: impl IntoIterator<Item = String>,
+) -> Result<AuthenticatedTerminal, (StatusCode, &'static str)> {
+    let token = loopback_bearer(headers)?;
+
+    terminal_ids
+        .into_iter()
+        .find(|id| tag == Some(id.as_str()) && bridge_state.verify_token(id, token))
         .map(AuthenticatedTerminal)
         .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))
 }
@@ -307,21 +324,27 @@ pub async fn handle_permission(
     headers: HeaderMap,
     Json(payload): Json<PermissionRequestPayload>,
 ) -> Result<Response, (StatusCode, &'static str)> {
-    validate_host_and_origin(&headers)?;
+    let terminal_ids = ctx.pty_manager.list().into_iter().map(|t| t.id);
+    let caller =
+        authenticate_permission(&ctx.bridge_state, &headers, payload.tag.as_deref(), terminal_ids)?;
+    decide_permission(&ctx, &caller, payload).await
+}
 
-    let tag = payload.tag.as_deref().unwrap_or("");
-    if let Some(token) = extract_bearer_token(&headers) {
-        if !ctx.bridge_state.verify_token(tag, token) {
-            return Err((StatusCode::UNAUTHORIZED, "Invalid Bearer token"));
-        }
-    }
+/// Answers the permission request `caller` made: allowed at once, or by the operator.
+async fn decide_permission(
+    ctx: &AppContext,
+    caller: &AuthenticatedTerminal,
+    payload: PermissionRequestPayload,
+) -> Result<Response, (StatusCode, &'static str)> {
+    let tag = caller.id();
+    let payload = PermissionRequestPayload { tag: Some(tag.to_string()), ..payload };
 
-    // Check terminal permission mode
-    let term_info = ctx.pty_manager.get_info(tag);
-    let is_normal = term_info
-        .as_ref()
-        .map(|t| t.live_mode == crate::slices::pty::models::PermissionMode::Normal)
-        .unwrap_or(false);
+    // Check terminal permission mode. A terminal closed since the request was checked is refused.
+    let term_info = ctx
+        .pty_manager
+        .get_info(tag)
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))?;
+    let is_normal = term_info.live_mode == crate::slices::pty::models::PermissionMode::Normal;
 
     // If Normal mode and not already allowed for session, wait for human approval
     if is_normal && !ctx.bridge_state.is_tool_allowed_for_session(tag, &payload.tool) {
@@ -563,6 +586,128 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    /// The terminals open in the permission tests.
+    fn open_terminals() -> [String; 2] {
+        ["term-a".to_string(), "term-b".to_string()]
+    }
+
+    /// The status `authenticate_permission` refuses a request with, while `open_terminals` are
+    /// open. `authorization` is the whole header, given `term-a`'s token.
+    fn permission_refusal(
+        authorization: impl Fn(&str) -> Option<String>,
+        tag: Option<&str>,
+    ) -> StatusCode {
+        let state = BridgeState::new();
+        let token_a = state.token_for("term-a");
+        state.token_for("term-b");
+        let mut headers = loopback_headers(None);
+        if let Some(value) = authorization(&token_a) {
+            headers.insert("authorization", value.parse().unwrap());
+        }
+
+        authenticate_permission(&state, &headers, tag, open_terminals()).unwrap_err().0
+    }
+
+    #[test]
+    fn permission_requests_without_a_token_are_unauthorized() {
+        assert_eq!(permission_refusal(|_| None, Some("term-a")), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn permission_requests_whose_authorization_is_not_bearer_are_unauthorized() {
+        for scheme in ["Basic ", "bearer ", "Bearer", ""] {
+            assert_eq!(
+                permission_refusal(|token| Some(format!("{scheme}{token}")), Some("term-a")),
+                StatusCode::UNAUTHORIZED,
+                "scheme {scheme:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn permission_requests_with_an_unknown_or_empty_token_are_unauthorized() {
+        for value in ["Bearer not-the-token", "Bearer "] {
+            assert_eq!(
+                permission_refusal(|_| Some(value.to_string()), Some("term-a")),
+                StatusCode::UNAUTHORIZED,
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn permission_requests_tagged_as_another_terminal_are_unauthorized() {
+        assert_eq!(
+            permission_refusal(|token| Some(format!("Bearer {token}")), Some("term-b")),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[test]
+    fn permission_requests_that_name_no_terminal_are_unauthorized() {
+        for tag in [None, Some(""), Some("term-never-opened")] {
+            for with_token in [true, false] {
+                assert_eq!(
+                    permission_refusal(|token| with_token.then(|| format!("Bearer {token}")), tag),
+                    StatusCode::UNAUTHORIZED,
+                    "tag {tag:?}, token sent: {with_token}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn permission_requests_with_a_closed_terminals_token_are_unauthorized() {
+        let state = BridgeState::new();
+        let closed = state.token_for("term-closed");
+
+        let result = authenticate_permission(
+            &state,
+            &loopback_headers(Some(&closed)),
+            Some("term-closed"),
+            open_terminals(),
+        );
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn permission_requests_from_a_browser_origin_or_another_host_are_forbidden() {
+        for (name, value) in [("origin", "http://evil.example"), ("host", "evil.example:4000")] {
+            for with_token in [true, false] {
+                let state = BridgeState::new();
+                let token_a = state.token_for("term-a");
+                let mut headers = loopback_headers(with_token.then_some(token_a.as_str()));
+                headers.insert(name, value.parse().unwrap());
+
+                let result =
+                    authenticate_permission(&state, &headers, Some("term-a"), open_terminals());
+
+                assert_eq!(
+                    result.unwrap_err().0,
+                    StatusCode::FORBIDDEN,
+                    "{name}, token sent: {with_token}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn permission_requests_with_their_terminals_token_are_attributed_to_it() {
+        let state = BridgeState::new();
+        state.token_for("term-a");
+        let token_b = state.token_for("term-b");
+
+        let result = authenticate_permission(
+            &state,
+            &loopback_headers(Some(&token_b)),
+            Some("term-b"),
+            open_terminals(),
+        );
+
+        assert_eq!(result.unwrap().id(), "term-b");
     }
 
     #[test]
