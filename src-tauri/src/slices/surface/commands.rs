@@ -4,7 +4,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use super::check::{CheckRequest, Verdict};
-use super::store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
+use super::store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};
 use super::tools::{SurfaceTools, Webview};
 use super::typing::NotTyped;
 use super::unsent::{Page, UnsentRefused, UnsentSave, UNSENT_LIMIT};
@@ -116,12 +116,32 @@ pub async fn surface_dismiss_locked(
     Ok(())
 }
 
+/// Moves a raw companion surface to a stage tab, or back, and gives it as it is then. An error says why it
+/// stays, in words for the operator.
+#[tauri::command]
+pub async fn surface_move(
+    terminal_id: String,
+    id: String,
+    as_tab: bool,
+    surfaces: State<'_, SurfaceTools>,
+) -> Result<SurfaceRecord, String> {
+    let moved = surfaces.move_surface(&SurfaceKey::new(terminal_id, id), as_tab);
+    moved.map_err(|refused| {
+        let why = match refused {
+            MoveRefused::NoSuchSurface => "Not moved: Quay no longer has this surface.",
+            MoveRefused::NotMovable => "Not moved: only a raw surface in the companion can be.",
+        };
+        why.to_string()
+    })
+}
+
 fn refusal(refused: AnswerRefused) -> &'static str {
     match refused {
         AnswerRefused::NoSuchSurface => "Not sent: Quay no longer has this surface.",
         AnswerRefused::AlreadyAnswered => "Not sent: this was already answered.",
         AnswerRefused::OlderRevision => "Not sent: the agent has changed this since. Check it and send again.",
         AnswerRefused::Ended => "Not sent: the terminal exited before this was answered.",
+        AnswerRefused::Withdrawn => "Not sent: the agent withdrew this before you answered.",
         AnswerRefused::NotTyped(NotTyped::TerminalOver) => "Not sent: the terminal has exited.",
         AnswerRefused::NotTyped(NotTyped::Failed) => "Not sent: it could not be typed into the terminal.",
     }

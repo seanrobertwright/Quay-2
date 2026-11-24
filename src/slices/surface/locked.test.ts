@@ -55,8 +55,12 @@ const asked = (n: number, text = `Question ${n}?`) => acceptedAsk(`ask_${n}`, { 
 const ANSWERS = (text: string, chosen: string[], note?: string) => ({ answers: [{ question: text, chosen, ...(note ? { text: note } : {}) }] });
 
 let change = 1_000;
-const settled = (record: SurfaceRecord, answer: object, at = AT): SurfaceRecord => ({ ...record, change: (change += 1), answer, answered_at: at });
-const ended = (record: SurfaceRecord, at = AT): SurfaceRecord => ({ ...record, change: (change += 1), ended_at: at });
+function nextChange(): Pick<SurfaceRecord, "change" | "locked_order"> {
+  change += 1;
+  return { change, locked_order: change };
+}
+const settled = (record: SurfaceRecord, answer: object, at = AT): SurfaceRecord => ({ ...record, ...nextChange(), answer, answered_at: at });
+const ended = (record: SurfaceRecord, at = AT): SurfaceRecord => ({ ...record, ...nextChange(), ended_at: at });
 
 const container = () => mounted!.container;
 const button = (name: string) => findButton(container(), name)!;
@@ -100,7 +104,7 @@ test("locked ones fold under Earlier, beneath what waits, newest first, each a l
   const first = settled(three, ANSWERS("Question 3?", ["No"]));
   const middle = ended(two);
   const waits = await asked(4);
-  await load({ ...first, change: 1_001 }, { ...middle, change: 1_002 }, { ...last, change: 1_003 }, waits);
+  await load({ ...first, locked_order: 1_001 }, { ...middle, locked_order: 1_002 }, { ...last, locked_order: 1_003 }, waits);
 
   assert.deepEqual(regions().map((section) => section.dataset.surface), ["ask_4"]);
   assert.equal(earlier()?.textContent, "Earlier (3)");

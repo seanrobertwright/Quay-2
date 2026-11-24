@@ -1,7 +1,7 @@
 // A terminal's surfaces by the place each is drawn in.
 import { useSyncExternalStore } from "react";
 import { subscribeToSurfaces, surfacesByTerminal } from "./surfaceHost.ts";
-import type { SurfaceKey, SurfacePlace, SurfaceRecord } from "./surfaceTypes.ts";
+import { drawnIn, type SurfaceKey, type SurfacePlace, type SurfaceRecord } from "./surfaceTypes.ts";
 
 const NONE: readonly SurfaceRecord[] = [];
 
@@ -18,7 +18,7 @@ function surfacesIn(terminalId: string, place: SurfacePlace): readonly SurfaceRe
   }
   const last = lastGiven.get(key);
   if (last?.of === of) return last.given;
-  const now = of.filter((record) => record.place === place);
+  const now = of.filter((record) => drawnIn(record) === place);
   const before = last?.given ?? NONE;
   const same = now.length === before.length && now.every((record, i) => record === before[i]);
   const given = same ? before : now;

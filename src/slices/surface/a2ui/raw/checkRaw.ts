@@ -1,17 +1,17 @@
-// The check of a raw call: a pre-pass of each message, the engine's own check of the messages in order
-// on a scratch copy, whether the surface they make is whole, and a post-check of what the engine lets
-// through.
+// The check of a raw call: a pre-pass of each message, the engine's own check of each surface's messages
+// in order on a scratch copy, whether the surfaces they make are whole, and a post-check of what the engine
+// lets through.
 import { isObject } from "../../json.ts";
-import type { CreateSurface, CheckError, SurfacePlace, Verdict } from "../../surfaceTypes.ts";
-import { acceptedVerdict, compact } from "../accepted.ts";
+import type { AcceptedSurface, CheckError, CreateSurface, HeldSurface, SurfacePlace, Verdict } from "../../surfaceTypes.ts";
+import { acceptedSurface, compact } from "../accepted.ts";
 import { CATALOG_ID } from "../catalog.ts";
 import { engineFor, scratchEngine } from "../engine.ts";
 import { invalid, type Message } from "./callErrors.ts";
 import { engineErrorAt } from "./engineErrors.ts";
-import { postCheck, tooLarge, withFewImages } from "./postCheck.ts";
+import { postCheck, tooLarge, tooManyImages } from "./postCheck.ts";
 import { prePass } from "./prePass.ts";
 
-/** A raw call. Rust has checked `place`, unless it rejects the call, and that `messages` is a list. */
+/** A raw call. Rust has checked `place`, unless it rejects the call, and that `messages` is a list. One that creates no surface needs no `place`. */
 interface RawCall {
   messages: readonly unknown[];
   place: SurfacePlace;
@@ -32,24 +32,42 @@ interface Checked {
 const forEngine = ({ kind, written, body }: Message): object =>
   kind === "createSurface" && isObject(body) ? { ...written, createSurface: { ...body, catalogId: CATALOG_ID } } : written;
 
-/** The call's messages that make the surface `surfaceId`: its first create, and the updates after it. */
-function making(checked: readonly Checked[], surfaceId: string): (Checked & { message: Message })[] {
-  const its = checked.flatMap(({ message, errors }) => (message?.surfaceId === surfaceId ? [{ message, errors }] : []));
-  const first = its.findIndex(({ message }) => message.kind === "createSurface");
-  if (first < 0) return [];
-  return [its[first], ...its.slice(first + 1).filter(({ message }) => message.kind.startsWith("update"))];
+type CheckedMessage = Checked & { message: Message };
+
+/** A surface that a call makes. */
+interface Made {
+  state: CreateSurface;
+  /** The messages that make it: from its create on, if the call creates it. */
+  messages: readonly Message[];
+  /** The message that is told what is wrong with the whole of it. */
+  toldAt: Message;
 }
 
-/** Runs the messages that make a surface, adding what the engine finds. Returns the state they make, or null when anything was wrong. */
-function run(messages: readonly (Checked & { message: Message })[]): CreateSurface | null {
+/**
+ * Runs one surface's messages in order, on a scratch copy of the surface that is `held` if one is, adding
+ * what is found wrong. `create` is the call's one create, of a surface in `place`. Returns what they make, or
+ * null when the surface is gone by them or anything is wrong with them. Which ids they may name is Rust's to
+ * tell, so a message that would find no surface, or another one, is not run.
+ */
+function run(its: readonly CheckedMessage[], held: HeldSurface | undefined, create: Message | undefined, place: SurfacePlace): Made | null {
   const scratch = scratchEngine();
-  const all = messages.map((one) => one.message);
+  const all = its.map(({ message }) => message);
   try {
-    for (const { message, errors } of messages) {
-      if (errors.length === 0) {
+    if (held) scratch.run(held.state);
+    let isThere = held !== undefined;
+    let inPlace = held?.place;
+    let made: Message[] = [];
+    for (const { message, errors } of its) {
+      const isCreate = message.kind === "createSurface";
+      const isDelete = message.kind === "deleteSurface";
+      if (isCreate || isDelete) made = [];
+      if (isCreate) inPlace = place;
+      const runs = isCreate ? message === create && !isThere : isDelete || isThere;
+      if (runs && errors.length === 0) {
         try {
           scratch.run(forEngine(message));
           const surface = scratch.surface(message.surfaceId);
+          isThere = surface !== undefined;
           if (surface && !isObject(surface.dataModel.get("/"))) {
             errors.push(invalid([...message.pointer, "value"], "A surface's data model is an object.", message.surfaceId));
           }
@@ -57,63 +75,57 @@ function run(messages: readonly (Checked & { message: Message })[]): CreateSurfa
           errors.push(engineErrorAt(error, message, all));
         }
       }
-      // What follows could only say that there is no surface
-      if (message.kind === "createSurface" && errors.length > 0) return null;
+      errors.push(...postCheck(message, inPlace ?? "companion"));
+      if (!isDelete) made.push(message);
     }
-    const surface = messages.every(({ errors }) => errors.length === 0) ? scratch.surface(messages[0].message.surfaceId) : null;
-    return surface ? compact(surface) : null;
+    const surface = its.every(({ errors }) => errors.length === 0) ? scratch.surface(all[0].surfaceId) : undefined;
+    if (!surface) return null;
+    const [first] = made;
+    return { state: compact(surface), messages: made, toldAt: first.kind === "createSurface" ? first : made[made.length - 1] };
   } finally {
     scratch.dispose();
   }
 }
 
-/** Adds what the engine finds wrong with a delete. A scratch copy has no surface it could be of. */
-function checkDeletes(checked: readonly Checked[]): void {
-  const scratch = scratchEngine();
-  try {
-    for (const { message, errors } of checked) {
-      if (message?.kind !== "deleteSurface" || errors.length > 0) continue;
-      try {
-        scratch.run(forEngine(message));
-      } catch (error) {
-        errors.push(engineErrorAt(error, message, []));
-      }
-    }
-  } finally {
-    scratch.dispose();
-  }
-}
-
-/** The verdict on the surface that `messages` make, whose state is `state`. */
-function whole(state: CreateSurface, messages: readonly Message[]): Verdict {
-  const [create] = messages;
-  const large = tooLarge(state, create);
-  if (large.length > 0) return rejected(large);
+/** What a call makes of a surface, or what is wrong with the whole of it. */
+function whole({ state, messages, toldAt }: Made): AcceptedSurface | CheckError[] {
+  const large = tooLarge(state, toldAt);
+  if (large.length > 0) return large;
   try {
     // The engine asks only a surface with a component whether it has a root
-    if (state.createSurface.components.length === 0) return rejected([{ ...invalid(create.pointer, "Missing root component: No component has id='root'", create.surfaceId), code: "INTEGRITY_ERROR" }]);
+    if (state.createSurface.components.length === 0) return [{ ...invalid(toldAt.pointer, "Missing root component: No component has id='root'", toldAt.surfaceId), code: "INTEGRITY_ERROR" }];
     const { surface, dispose } = engineFor(state);
     try {
-      return withFewImages(acceptedVerdict(surface, state), create);
+      const accepted = acceptedSurface(surface, state);
+      const many = tooManyImages(accepted, toldAt);
+      return many.length > 0 ? many : { surface_id: toldAt.surfaceId, ...accepted };
     } finally {
       dispose();
     }
   } catch (error) {
-    return rejected([engineErrorAt(error, create, messages)]);
+    return [engineErrorAt(error, toldAt, messages)];
   }
 }
 
-/** The verdict on a raw call that creates the surface `surfaceId`, or none when that is empty. */
-export function checkRaw(args: unknown, surfaceId: string): Verdict {
+/** The verdict on a raw call, which updates the surfaces that are `held`. */
+export function checkRaw(args: unknown, held: readonly HeldSurface[]): Verdict {
   const { messages, place } = args as RawCall;
   const checked = messages.map((written, i): Checked => {
     const { message, errors } = prePass(written, i);
     return { message, errors: [...errors] };
   });
-  checkDeletes(checked);
-  const its = making(checked, surfaceId);
-  const state = its.length > 0 ? run(its) : null;
-  for (const { message, errors } of its) errors.push(...postCheck(message, place));
+  const bySurface = new Map<string, CheckedMessage[]>();
+  for (const { message, errors } of checked) {
+    if (!message) continue;
+    const its = bySurface.get(message.surfaceId);
+    if (its) its.push({ message, errors });
+    else bySurface.set(message.surfaceId, [{ message, errors }]);
+  }
+  const create = checked.find(({ message }) => message?.kind === "createSurface")?.message ?? undefined;
+  const made = [...bySurface].flatMap(([id, its]) => run(its, held.find(({ state }) => state.createSurface.surfaceId === id), create, place) ?? []);
   const errors = checked.flatMap((one) => one.errors);
-  return state && errors.length === 0 ? whole(state, its.map(({ message }) => message)) : rejected(errors);
+  if (errors.length > 0) return rejected(errors);
+  const surfaces = made.map(whole);
+  const broken = surfaces.flatMap((surface) => (Array.isArray(surface) ? surface : []));
+  return broken.length > 0 ? rejected(broken) : { surfaces: surfaces.flatMap((surface) => (Array.isArray(surface) ? [] : [surface])) };
 }

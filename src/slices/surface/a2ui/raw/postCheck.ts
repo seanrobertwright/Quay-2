@@ -1,7 +1,7 @@
 // What a raw call is rejected for that the engine lets through: an effect that would run without a
 // click, a strip surface that asks, and one that is larger than Quay draws.
 import { hasOwn, isObject } from "../../json.ts";
-import type { CreateSurface, CheckError, SurfacePlace, Verdict } from "../../surfaceTypes.ts";
+import type { Accepted, CreateSurface, CheckError, SurfacePlace } from "../../surfaceTypes.ts";
 import { hasEvent } from "../accepted.ts";
 import { EFFECTS } from "../effects.ts";
 import { componentsOf, invalid, type Message, type Pointer } from "./callErrors.ts";
@@ -44,17 +44,16 @@ export function postCheck(message: Message, place: SurfacePlace): CheckError[] {
 
 const overLimit = ({ pointer, surfaceId }: Message, limit: string, has: string) => [invalid(pointer, `A surface has at most ${limit}; this one would have ${has}.`, surfaceId)];
 
-/** What of `state`, which `create` began, is more than Quay takes, before anything is resolved of it. */
-export function tooLarge({ createSurface }: CreateSurface, create: Message): CheckError[] {
+/** What of `state`, of which `message` is told, is more than Quay takes, before anything is resolved of it. */
+export function tooLarge({ createSurface }: CreateSurface, message: Message): CheckError[] {
   const { length } = createSurface.components;
   const bytes = new TextEncoder().encode(JSON.stringify(createSurface.dataModel)).length;
   const inKb = (size: number) => `${Math.ceil(size / 1024)} kB`;
   return [
-    ...(length > MOST_COMPONENTS ? overLimit(create, `${MOST_COMPONENTS} components`, String(length)) : []),
-    ...(bytes > MOST_DATA ? overLimit(create, `${inKb(MOST_DATA)} of data`, inKb(bytes)) : []),
+    ...(length > MOST_COMPONENTS ? overLimit(message, `${MOST_COMPONENTS} components`, String(length)) : []),
+    ...(bytes > MOST_DATA ? overLimit(message, `${inKb(MOST_DATA)} of data`, inKb(bytes)) : []),
   ];
 }
 
-/** `verdict`, unless it has more images than Quay takes. */
-export const withFewImages = (verdict: Verdict, create: Message): Verdict =>
-  "images" in verdict && verdict.images > MOST_IMAGES ? { errors: overLimit(create, `${MOST_IMAGES} images`, String(verdict.images)) } : verdict;
+/** What `accepted`, of which `message` is told, has more images than Quay takes. */
+export const tooManyImages = ({ images }: Accepted, message: Message): CheckError[] => (images > MOST_IMAGES ? overLimit(message, `${MOST_IMAGES} images`, String(images)) : []);

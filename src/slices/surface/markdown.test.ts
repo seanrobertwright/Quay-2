@@ -44,6 +44,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     tool: "quay_surface",
     title: "",
     place: "companion",
+    as_tab: false,
     state: {
       version: "1.0",
       createSurface: {
@@ -56,11 +57,17 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     revision: 1,
     order: 1,
     change: 1,
+    locked_order: 1,
     asks: false,
     shown_at: 0,
     answer: null,
     answered_at: null,
     ended_at: null,
+    withdrawn_at: null,
+    began: 1,
+    updated_at: 0,
+    carried: { from: 1, set: {} },
+    reopened: null,
     board: null,
   };
 }

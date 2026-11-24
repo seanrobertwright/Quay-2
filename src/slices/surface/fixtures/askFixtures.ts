@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { CheckRequest } from "../surfaceTypes.ts";
 import { companionPrefs } from "../../companion/companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "../../companion/fixtures/companionFixtures.ts";
+import type { CompanionShowRequest } from "../../companion/Companion.tsx";
 import type { TerminalInfo } from "../../terminal/types.ts";
 import { settle } from "./fakeRust.ts";
 
@@ -17,10 +18,10 @@ export const askCheck = (call: number, args: unknown): CheckRequest => ({ call, 
 /** The terminal that asks, unless a test says otherwise. */
 export const TERMINAL: TerminalInfo = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
 
-/** The companion with `terminal` selected. */
-export function companion(terminal: TerminalInfo) {
+/** The companion with `terminal` selected, asked to show what `showRequest` says. */
+export function companion(terminal: TerminalInfo, showRequest: CompanionShowRequest | null = null) {
   const props = { projects: [], projectWorktrees: {}, views: COMPANION_VIEWS, prefs: companionPrefs(memoryStorage()) };
-  return createElement(Companion, { ...props, selectedTerminal: terminal });
+  return createElement(Companion, { ...props, selectedTerminal: terminal, showRequest });
 }
 
 export interface Mounted {

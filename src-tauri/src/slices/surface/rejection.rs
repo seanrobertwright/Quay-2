@@ -98,8 +98,13 @@ fn next(tool: &str, run: u32) -> &'static str {
 pub enum QuayFailed {
     /// The webview gave no verdict in time.
     NoVerdict,
-    /// Quay's own expansion of a typed call failed the engine's check.
+    /// Quay's own expansion of a typed call failed the engine's check, or was given an id that is in use.
     Expansion,
+    /// The webview's verdict is of the other kind of call, or leaves out a surface that a raw call makes.
+    WrongVerdict,
+    /// The operator's answer to a surface that the call changes is being typed in. In a moment it is
+    /// answered, and the same call then says what that makes of it.
+    AnswerBeingSent,
     /// The call's terminal exited, was relaunched or closed.
     TerminalOver,
 }
@@ -107,8 +112,8 @@ pub enum QuayFailed {
 impl QuayFailed {
     pub fn result(self) -> Value {
         let next = match self {
-            Self::NoVerdict => "Send the same call once more.",
-            Self::Expansion => "Say it in the terminal instead.",
+            Self::NoVerdict | Self::AnswerBeingSent => "Send the same call once more.",
+            Self::Expansion | Self::WrongVerdict => "Say it in the terminal instead.",
             Self::TerminalOver => "Its terminal has exited.",
         };
         error_result(format!("Quay could not show this; your call was not at fault. Nothing was shown. {next}"))

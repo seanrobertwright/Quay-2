@@ -34,6 +34,8 @@ export const acceptedReview = (id: string, review: unknown = REVIEW, terminal = 
 export interface MountedStage extends Mounted {
   /** Opens a surface, as a chip of its terminal does. Whether it has a tab. */
   open: (key: SurfaceKey) => Promise<boolean>;
+  /** The same, for what is under way already. */
+  openNow: (key: SurfaceKey) => boolean;
   /** Brings the terminals in front, as picking one does. */
   showTerminals: () => Promise<void>;
   /** Makes another project active. */
@@ -100,6 +102,7 @@ export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL]
       await run(() => void (opened = tabs.open(key)));
       return opened;
     },
+    openNow: (key) => tabs.open(key),
     showTerminals: () => run(() => setFront(null)),
     showProject: (path) => run(() => setProject(path)),
   };

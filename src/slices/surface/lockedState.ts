@@ -1,5 +1,5 @@
 // How a locked surface says so: in words, with an icon of its own, and by colour.
-import { Check, CircleSlash, X, type LucideIcon } from "lucide-react";
+import { Ban, Check, CircleSlash, X, type LucideIcon } from "lucide-react";
 import { lookOf } from "./looks/index.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 
@@ -16,7 +16,8 @@ export interface LockedState {
 }
 
 /** How `record`, a locked surface, says so. */
-export function lockedState({ tool, asks, answer, answered_at, ended_at, board }: SurfaceRecord): LockedState {
+export function lockedState({ tool, asks, answer, answered_at, ended_at, withdrawn_at, board }: SurfaceRecord): LockedState {
+  if (withdrawn_at !== null) return { word: "Withdrawn", reason: "Withdrawn by the agent before you answered.", Icon: Ban, tone: "text-[#d2a8ff]", at: withdrawn_at };
   if (ended_at === null && board) {
     return board.status === "failed"
       ? { word: "Failed", reason: "Failed.", Icon: X, tone: "text-[#f85149]", at: board.stopped_at }

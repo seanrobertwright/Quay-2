@@ -4,7 +4,7 @@ import { Earlier } from "./Earlier.tsx";
 import { LiveSurface } from "./LiveSurface.tsx";
 import { QueueLine } from "./QueueLine.tsx";
 import { surfaceKey } from "./surfaceAttention.ts";
-import { isLive, type SurfaceRecord } from "./surfaceTypes.ts";
+import { isLive, newestLockedFirst, type SurfaceRecord } from "./surfaceTypes.ts";
 import { useKeptFocus } from "./useKeptFocus.ts";
 import { useSurfaceQueue } from "./useSurfaceQueue.ts";
 
@@ -25,14 +25,13 @@ interface SurfaceViewProps {
 
 /**
  * The Surface view: a terminal's companion surfaces, oldest first. Of those that ask one is open and
- * the rest are lines, and the locked ones are folded beneath. The one `focus` names is brought into
- * view.
+ * the rest are lines, and the locked ones are folded beneath. The one `focus` names is opened and
+ * brought into view.
  */
 export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewProps) => {
   const listRef = useRef<HTMLDivElement | null>(null);
   const queue = useSurfaceQueue(surfaces, focus);
-  // A locked surface changes no more, so its last change is its locking
-  const locked = surfaces.filter((record) => !isLive(record)).sort((a, b) => b.change - a.change);
+  const locked = surfaces.filter((record) => !isLive(record)).sort(newestLockedFirst);
   const regionOf = (id: string) =>
     [...(listRef.current?.querySelectorAll<HTMLElement>("[data-surface]") ?? [])].find((region) => region.dataset.surface === id);
   // The one a click opened. Its line leaves the screen, and would take the focus with it.
@@ -54,7 +53,10 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
   });
   useEffect(() => {
     if (!focus) return;
-    regionOf(focus.surfaceId)?.scrollIntoView?.({ block: "start" });
+    const region = regionOf(focus.surfaceId);
+    region?.scrollIntoView?.({ block: "start" });
+    // What asked for it may have left the screen with the focus, as the tab it was sent back from has
+    if (document.activeElement === null || document.activeElement === document.body) region?.focus({ preventScroll: true });
   }, [focus]);
   return (
     <div ref={listRef} data-surface-view tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2">
@@ -65,7 +67,7 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
         if (!record.asks || record === queue.open) return <LiveSurface key={key} record={record} terminal={terminal} />;
         return <QueueLine key={key} record={record} terminal={terminal} onOpen={() => open(record)} />;
       })}
-      {locked.length > 0 && <Earlier key={terminal.id} terminal={terminal} locked={locked} />}
+      {locked.length > 0 && <Earlier key={terminal.id} terminal={terminal} locked={locked} focus={queue.focusLocked} />}
     </div>
   );
 };

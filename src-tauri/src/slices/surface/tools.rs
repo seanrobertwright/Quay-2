@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use super::ask::{self, Ask};
 use super::board::{self, Board};
-use super::check::{Accepted, CheckRequest, Checks, Verdict};
+use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
 use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
@@ -16,7 +16,7 @@ use super::read;
 use super::rejection::{CallError, QuayFailed, Rejection};
 use super::review::{self, Review};
 use super::store::{
-    AnswerRefused, Answered, BeingSent, Changed, CommitRefused, Creation, Dismissed, Standing, SurfaceKey,
+    AnswerRefused, Answered, BeingSent, Changed, CommitRefused, Creation, Dismissed, MoveRefused, Standing, SurfaceKey,
     SurfaceRecord, SurfaceStore, ToType,
 };
 use super::timing::Timing;
@@ -214,17 +214,23 @@ impl SurfaceTools {
                 }
             }
         };
-        self.answered(wait, &key).await
+        self.answered(wait, &key, &[]).await
     }
 
-    /// The result of a call that waits for the answer to the surface `key`.
-    async fn answered(&self, wait: Wait, key: &SurfaceKey) -> Value {
-        match wait.answer(self.0.timing.wait).await {
-            Some(answer) => text_result(answer),
-            None if self.0.store.standing(key).is_none_or(|standing| standing == Standing::Ended) => {
-                text_result(json!({ "surface_id": key.id, "state": Standing::Ended.state() }))
+    /// The result of a call that waits for the first answer to the surface `key` or to one of `others`,
+    /// which are the same terminal's. Without one it is told of the first that still asks.
+    async fn answered(&self, wait: Wait, key: &SurfaceKey, others: &[SurfaceKey]) -> Value {
+        if let Some(answer) = wait.answer(self.0.timing.wait).await {
+            return text_result(answer);
+        }
+        let standing = |key: &SurfaceKey| self.0.store.standing(key);
+        let asks = |key: &&SurfaceKey| standing(key) == Some(Standing::NoAnswerYet);
+        let key = std::iter::once(key).chain(others).find(asks).unwrap_or(key);
+        match standing(key).unwrap_or(Standing::Ended) {
+            over @ (Standing::Ended | Standing::Withdrawn) => {
+                text_result(json!({ "surface_id": key.id, "state": over.state() }))
             }
-            None => text_result(json!({ "surface_id": key.id, "state": "no_answer_yet", "next": NO_ANSWER_NEXT })),
+            _ => text_result(json!({ "surface_id": key.id, "state": "no_answer_yet", "next": NO_ANSWER_NEXT })),
         }
     }
 
@@ -283,7 +289,7 @@ impl SurfaceTools {
         if self.0.store.is_dismissed(key, creation) {
             return Err(dismissed_result());
         }
-        match self.verdict_on(key, tool, arguments).await {
+        match self.verdict_on(key, tool, arguments, Vec::new()).await {
             None => {
                 tracing::error!("{terminal_id}: no verdict on a {tool} call in {:?}", self.0.timing.verdict);
                 Err(QuayFailed::NoVerdict.result())
@@ -293,18 +299,29 @@ impl SurfaceTools {
                 Err(QuayFailed::Expansion.result())
             }
             Some(Verdict::Accepted(accepted)) => Ok(accepted),
+            Some(Verdict::Surfaces { .. }) => {
+                tracing::error!("{terminal_id}: a {tool} call was given a raw call's verdict");
+                Err(QuayFailed::WrongVerdict.result())
+            }
         }
     }
 
-    /// What the webview makes of `tool`'s call for the surface `key`. `None` when it gave no verdict in time.
-    async fn verdict_on(&self, key: &SurfaceKey, tool: &str, arguments: Value) -> Option<Verdict> {
+    /// What the webview makes of `tool`'s call for the surface `key`, which updates those that are `held`.
+    /// `None` when it gave no verdict in time.
+    async fn verdict_on(
+        &self,
+        key: &SurfaceKey,
+        tool: &str,
+        arguments: Value,
+        held: Vec<HeldSurface>,
+    ) -> Option<Verdict> {
         let send = |request: &CheckRequest| {
             // One sent before the window is named is handed over when it has loaded
             if let Some(webview) = self.0.webview.get() {
                 webview.check(request);
             }
         };
-        self.0.checks.check(tool, &key.id, arguments, self.0.timing.verdict, send).await
+        self.0.checks.check(tool, &key.id, arguments, held, self.0.timing.verdict, send).await
     }
 
     /// The result of a call whose surface was not committed.
@@ -447,6 +464,13 @@ impl SurfaceTools {
     /// told.
     pub fn dismiss_locked(&self, terminal_id: &str, ids: &[String]) {
         self.remove_all(&self.0.store.dismiss_locked(terminal_id, ids));
+    }
+
+    /// The operator's move of a raw companion surface to a stage tab, or back. No agent is told.
+    pub fn move_surface(&self, key: &SurfaceKey, as_tab: bool) -> Result<SurfaceRecord, MoveRefused> {
+        let moved = self.0.store.move_surface(key, as_tab)?;
+        self.show(&moved);
+        Ok(moved)
     }
 
     /// `type_in`, for a surface that has no way back: a failure is only logged, and

@@ -68,13 +68,17 @@ const click = async (element: HTMLElement | undefined | null) => {
 };
 
 let changes = 1_000;
+function nextChange(): Pick<SurfaceRecord, "change" | "locked_order"> {
+  changes += 1;
+  return { change: changes, locked_order: changes };
+}
 const decided = (record: SurfaceRecord, answer: object, at = AT): SurfaceRecord => ({
   ...record,
-  change: (changes += 1),
+  ...nextChange(),
   answer: { title: REVIEW.title, dropped: [], ...answer },
   answered_at: at,
 });
-const ended = (record: SurfaceRecord): SurfaceRecord => ({ ...record, change: (changes += 1), ended_at: AT });
+const ended = (record: SurfaceRecord): SurfaceRecord => ({ ...record, ...nextChange(), ended_at: AT });
 
 const inFront = (container: HTMLElement) => frame(container)?.dataset.surface ?? null;
 const current = (container: HTMLElement) => tabs(container).filter((button) => button.getAttribute("aria-current") === "true").length;

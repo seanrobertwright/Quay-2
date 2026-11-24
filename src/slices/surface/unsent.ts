@@ -3,9 +3,10 @@
 // the screen. It holds only what differs from the accepted state, and none of what the frame works out
 // again.
 import { invoke } from "@tauri-apps/api/core";
+import { carriedOn } from "./carried.ts";
 import { differences, type DataValues } from "./differences.ts";
 import type { SurfaceData } from "./layout.ts";
-import type { SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
+import type { Carried, SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
 
 /** How long after the operator's last change it is sent to Rust, in milliseconds. */
@@ -29,6 +30,8 @@ export interface Page {
 
 /** What is kept of a surface that is not settled. */
 interface Kept extends Version {
+  /** What of an earlier revision's is kept, when it is known. */
+  carried: Carried | null;
   /** What is unsent, as JSON, so nothing the engine does to its lists reaches it. */
   values: string;
 }
@@ -49,10 +52,14 @@ export function openPage(opened: Page): void {
   for (const unsent of opened.unsent) {
     const key = keyOf(unsent);
     const its = kept.get(key);
-    // A surface that came while the page opened is newer than what Rust had of that id
-    if (its && !sameVersion(its, unsent)) continue;
     const { order, revision, values } = unsent;
-    kept.set(key, { order, revision, values: JSON.stringify(values) });
+    // A surface that came while the page opened is newer than what Rust had of that id
+    if (its && its.order !== order) continue;
+    if (its && its.revision > revision) {
+      if (its.carried) its.values = JSON.stringify(carriedOn(its.carried, revision, values));
+      continue;
+    }
+    kept.set(key, { order, revision, carried: its?.carried ?? null, values: JSON.stringify(values) });
   }
 }
 
@@ -62,22 +69,23 @@ export function closePage(): void {
   kept.clear();
 }
 
-/** Says that `record` is live, so what is unsent in it is kept from here on. */
+/**
+ * Says that `record` is not settled, so what is unsent in it is kept from here on, and what was put in an
+ * earlier revision of it up to now as far as that is carried on.
+ */
 export function keepUnsent(record: SurfaceRecord): void {
+  saveUnsentNow(record);
   if (keptFor(record)) return;
-  const { order, revision } = record;
-  kept.set(keyOf(record), { order, revision, values: NOTHING });
+  const { order, revision, carried } = record;
+  const before = kept.get(keyOf(record));
+  const goesOn = before !== undefined && before.order === order && before.revision < revision;
+  const values = goesOn ? JSON.stringify(carriedOn(carried, before.revision, JSON.parse(before.values))) : NOTHING;
+  kept.set(keyOf(record), { order, revision, carried, values });
 }
 
-/** Says that `record` ended before it was settled: what is unsent in it up to now is kept. */
-export function keepEnded(record: SurfaceRecord): void {
-  followed.get(keyOf(record))?.();
-  keepUnsent(record);
-}
-
-/** Saves at once what is unsent in `record`, if it is drawn. */
-export function saveUnsentNow(record: SurfaceRecord): void {
-  followed.get(keyOf(record))?.();
+/** Saves at once what is unsent in the surface `key`, if it is drawn. */
+export function saveUnsentNow(key: SurfaceKey): void {
+  followed.get(keyOf(key))?.();
 }
 
 /** Drops what is unsent in a surface that is settled, or that Quay no longer has. */

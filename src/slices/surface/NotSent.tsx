@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TypedText } from "./looks/typedText.ts";
 
-/** What the operator had typed in a surface that ended before they sent it. `texts` holds one at least. */
+/** What the operator had typed in a surface that ended or was withdrawn before they sent it. `texts` holds one at least. */
 export const NotSent = ({ texts }: { texts: readonly TypedText[] }) => {
   const [said, setSaid] = useState("");
   const copy = async () => {

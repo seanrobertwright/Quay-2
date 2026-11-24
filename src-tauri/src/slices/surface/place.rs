@@ -5,7 +5,7 @@ use serde::Serialize;
 /// The most live surfaces a terminal has in one place.
 pub const MOST_LIVE: usize = 4;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Place {
     /// The companion's Surface view.

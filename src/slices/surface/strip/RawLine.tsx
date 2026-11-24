@@ -22,8 +22,7 @@ export const RawLine = ({ record, open, opens, onToggle }: RawLineProps) => {
   return (
     <StripLine Icon={live ? KindIcon : Icon} tone={live ? "text-[#d29922]" : tone} kind={kind} title={record.title} open={open} opens={opens} onToggle={onToggle}>
       <span className="flex-1" />
-      {/* Its content has not changed since it was shown */}
-      <span className={`min-w-0 truncate text-[11px] ${live ? "text-[#8b949e]" : tone}`}>{live ? `updated ${formatTimeAgo(record.shown_at)}` : reason}</span>
+      <span className={`min-w-0 truncate text-[11px] ${live ? "text-[#8b949e]" : tone}`}>{live ? `updated ${formatTimeAgo(record.updated_at)}` : reason}</span>
     </StripLine>
   );
 };

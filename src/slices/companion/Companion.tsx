@@ -478,6 +478,7 @@ export const Companion = ({
     }
   }
   if (picked && picked.terminalId !== selectedId) setPicked(null);
+  if (surfaceFocus && surfaceFocus.terminalId !== selectedId) setSurfaceFocus(null);
   const choices = context ? switchableViews(views, context) : [];
   // While both slots are filled, the slot switch in the terminal link reaches the ticket, and the
   // view switch lists the pull request alone for the pair.

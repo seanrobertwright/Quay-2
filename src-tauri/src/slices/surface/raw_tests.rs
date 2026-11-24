@@ -4,77 +4,22 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::check::Verdict;
+use super::check::Accepted;
 use super::place::Place;
-use super::store::SurfaceRecord;
-use super::test_seam::{accepted, key, question, start, CapturedLog, FakeCli, FakeWebview, OpenCall, Seam};
+use super::raw_seam::{
+    about_plan, action, create, created, delete, invalid, makes, makes_one, messages, plan, rejected, surface, told, told_by_rust,
+    update,
+};
+use super::test_seam::{accepted, key, question, start, CapturedLog};
 use super::timing::Timing;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
 
-/// The message that creates the surface `id`.
-fn create(id: &str) -> Value {
-    json!({ "version": "1.0", "createSurface": { "surfaceId": id, "components": [{ "id": "root", "component": "Text", "text": "x" }] } })
-}
-
-fn update(id: &str) -> Value {
-    json!({ "version": "1.0", "updateDataModel": { "surfaceId": id, "path": "/a", "value": 1 } })
-}
-
-fn delete(id: &str) -> Value {
-    json!({ "version": "1.0", "deleteSurface": { "surfaceId": id } })
-}
-
-/// A call that creates the surface `id` in `place`.
-fn plan(id: &str, place: &str) -> Value {
-    json!({ "place": place, "title": "Migration plan", "messages": [create(id)] })
-}
-
-/// A call that holds `messages` and creates nothing.
-fn messages(messages: &[Value]) -> Value {
-    json!({ "messages": messages })
-}
-
-/// A verdict that rejects a call for `errors`.
-fn rejected(errors: Value) -> Verdict {
-    serde_json::from_value(json!({ "errors": errors })).unwrap()
-}
-
-/// `accepted`, of a surface of so many components whose data model is `data`.
-fn accepted_with(components: usize, data: Value) -> Verdict {
-    let Verdict::Accepted(mut surface) = accepted(false) else { unreachable!() };
+/// A surface that asks for nothing, of so many components whose data model is `data`.
+fn surface_with(components: usize, data: Value) -> Accepted {
+    let mut surface = surface(false);
     surface.components = u32::try_from(components).unwrap();
     surface.state = json!({ "version": "1.0", "createSurface": { "surfaceId": "plan", "components": [], "dataModel": data } });
-    Verdict::Accepted(surface)
-}
-
-/// Has `cli` create the surface `id` in `place`, which the webview accepts.
-async fn created(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, id: &str, place: &str, asks: bool) -> (OpenCall, SurfaceRecord) {
-    let call = cli.call("quay_surface", plan(id, place));
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(asks));
-    (call, webview.next_shown().await)
-}
-
-/// What a rejected call was told: its errors, and what to do next.
-async fn told(call: OpenCall) -> (Value, String) {
-    let text = call.failure().await;
-    let body: Value = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{e} in {text}"));
-    (body["errors"].clone(), body["next"].as_str().unwrap().to_string())
-}
-
-/// What a call that the webview finds nothing more wrong with is told.
-async fn told_by_rust(seam: &Seam, webview: &mut FakeWebview, arguments: Value) -> Value {
-    let call = seam.cli("term-a").call("quay_surface", arguments);
-    seam.surfaces.verdict(webview.next_check().await.call, rejected(json!([])));
-    told(call).await.0
-}
-
-fn invalid(path: &str, message: &str) -> Value {
-    json!({ "code": "VALIDATION_FAILED", "path": path, "message": message })
-}
-
-/// An error about the surface `plan`.
-fn about_plan(code: &str, path: &str, message: &str) -> Value {
-    json!({ "code": code, "surfaceId": "plan", "path": path, "message": message })
+    surface
 }
 
 const NEXT: &str = "Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.";
@@ -90,7 +35,7 @@ async fn a_surface_that_asks_for_nothing_is_shown_in_its_place_and_its_call_retu
         let check = webview.next_check().await;
         assert_eq!((check.tool.as_str(), check.surface_id.as_str()), ("quay_surface", id.as_str()));
         assert_eq!(check.arguments, plan(&id, name), "as its agent wrote it");
-        seam.surfaces.verdict(check.call, accepted(false));
+        seam.surfaces.verdict(check.call, makes_one(&id, false));
 
         let shown = webview.next_shown().await;
         assert_eq!((shown.id.as_str(), shown.tool.as_str(), shown.place), (id.as_str(), "quay_surface", place));
@@ -98,11 +43,6 @@ async fn a_surface_that_asks_for_nothing_is_shown_in_its_place_and_its_call_retu
         assert!(!shown.asks);
         assert_eq!(call.answer().await, json!({ "shown": true }));
     }
-}
-
-/// The A2UI message of an action.
-fn action() -> Value {
-    json!({ "version": "1.0", "action": { "name": "go", "surfaceId": "plan", "sourceComponentId": "go", "timestamp": "2026-11-24T20:00:00Z", "context": { "a": 1 } } })
 }
 
 #[tokio::test]
@@ -160,7 +100,7 @@ async fn a_creating_call_needs_a_place_and_a_title_within_the_limit() {
     let mut call = plan("plan", "companion");
     call["title"] = json!("é".repeat(80));
     let call = seam.cli("term-a").call("quay_surface", call);
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(false));
+    seam.surfaces.verdict(webview.next_check().await.call, makes_one("plan", false));
     assert_eq!(call.answer().await, json!({ "shown": true }));
 }
 
@@ -254,7 +194,7 @@ async fn past_four_live_surfaces_in_a_place_a_create_is_rejected_at_its_message(
             created(&seam, &mut webview, &cli, &format!("plan{n}"), place, false).await;
         }
         let fifth = cli.call("quay_surface", plan("plan", place));
-        seam.surfaces.verdict(webview.next_check().await.call, accepted(false));
+        seam.surfaces.verdict(webview.next_check().await.call, makes_one("plan", false));
         let message = format!("This terminal has four live surfaces in {name}, the most allowed. Wait for an answer, delete one, or put several questions in one quay_ask.");
         assert_eq!(told(fifth).await.0, json!([about_plan("VALIDATION_FAILED", "/messages/0/createSurface", &message)]));
         assert_eq!(seam.surfaces.surfaces().len(), 4);
@@ -267,25 +207,26 @@ async fn a_surface_past_a_size_limit_is_not_committed_whatever_the_webview_says(
     // {"a":"…"} is eight bytes more than what it holds
     let data = |bytes: usize| json!({ "a": "x".repeat(bytes - 8) });
     let images = || {
-        let Verdict::Accepted(mut surface) = accepted(false) else { unreachable!() };
+        let mut surface = surface(false);
         surface.images = 13;
-        Verdict::Accepted(surface)
+        surface
     };
     let cases = [
-        (accepted_with(640, json!({})), "A surface has at most 500 components; this one would have 640."),
-        (accepted_with(2, data(256 * 1024 + 1)), "A surface has at most 256 kB of data; this one would have 257 kB."),
+        (surface_with(640, json!({})), "A surface has at most 500 components; this one would have 640."),
+        (surface_with(2, data(256 * 1024 + 1)), "A surface has at most 256 kB of data; this one would have 257 kB."),
         (images(), "A surface has at most 12 images; this one would have 13."),
     ];
-    for (verdict, message) in cases {
+    for (surface, message) in cases {
         let call = seam.cli("term-a").call("quay_surface", plan("plan", "companion"));
-        seam.surfaces.verdict(webview.next_check().await.call, verdict);
+        seam.surfaces.verdict(webview.next_check().await.call, makes(vec![("plan", surface)]));
         assert_eq!(told(call).await.0, json!([about_plan("VALIDATION_FAILED", "/messages/0/createSurface", message)]));
     }
     assert!(seam.surfaces.surfaces().is_empty());
 
-    for (n, verdict) in [accepted_with(500, json!({})), accepted_with(2, data(256 * 1024))].into_iter().enumerate() {
-        let call = seam.cli("term-a").call("quay_surface", plan(&format!("plan{n}"), "companion"));
-        seam.surfaces.verdict(webview.next_check().await.call, verdict);
+    for (n, surface) in [surface_with(500, json!({})), surface_with(2, data(256 * 1024))].into_iter().enumerate() {
+        let id = format!("plan{n}");
+        let call = seam.cli("term-a").call("quay_surface", plan(&id, "companion"));
+        seam.surfaces.verdict(webview.next_check().await.call, makes(vec![(id.as_str(), surface)]));
         assert_eq!(call.answer().await, json!({ "shown": true }));
     }
 }
@@ -347,11 +288,26 @@ async fn a_call_with_no_verdict_is_quays_failure_unless_rust_rejects_it() {
     let check = webview.next_check().await;
     let failed = "Quay could not show this; your call was not at fault. Nothing was shown. Send the same call once more.";
     assert_eq!(call.failure().await, failed);
-    seam.surfaces.verdict(check.call, accepted(false));
+    seam.surfaces.verdict(check.call, makes_one("plan", false));
     assert!(webview.nothing_shown().await, "a late verdict shows nothing");
 
     let call = seam.cli("term-a").call("quay_surface", plan("plan", "modal"));
     assert_eq!(told(call).await.0[0]["path"], "/place");
+}
+
+#[tokio::test]
+async fn a_verdict_that_is_not_one_on_the_call_is_quays_failure_and_shows_nothing() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    let left_out = makes(vec![]);
+    let of_a_typed_call = accepted(false);
+    for verdict in [left_out, makes_one("other", false), of_a_typed_call] {
+        let call = cli.call("quay_surface", plan("plan", "companion"));
+        seam.surfaces.verdict(webview.next_check().await.call, verdict);
+        let failed = "Quay could not show this; your call was not at fault. Nothing was shown. Say it in the terminal instead.";
+        assert_eq!(call.failure().await, failed);
+    }
+    assert!(webview.nothing_shown().await && seam.surfaces.surfaces().is_empty());
 }
 
 #[tokio::test]
@@ -460,48 +416,16 @@ async fn a_create_for_a_dismissed_id_is_told_so() {
 }
 
 #[tokio::test]
-async fn a_later_call_that_names_another_place_or_title_is_told_that_they_are_fixed() {
-    let (seam, mut webview) = start(Timing::default()).await;
-    created(&seam, &mut webview, &seam.cli("term-a"), "plan", "tab", false).await;
-    let place = "Surface \"plan\" is in tab, and a surface's place is fixed. To move it, delete it and create it again.";
-    let title = "Surface \"plan\" is titled \"Migration plan\", and a surface's title is fixed. To change it, delete the surface and create it again.";
-
-    let mut call = messages(&[update("plan")]);
-    call["place"] = json!("companion");
-    call["title"] = json!("Another");
-    let errors = told_by_rust(&seam, &mut webview, call).await;
-    assert_eq!(errors[0], about_plan("VALIDATION_FAILED", "/place", place));
-    assert_eq!(errors[1], about_plan("VALIDATION_FAILED", "/title", title));
-
-    let mut same = messages(&[update("plan")]);
-    same["place"] = json!("tab");
-    same["title"] = json!("Migration plan");
-    let errors = told_by_rust(&seam, &mut webview, same).await;
-    assert!(errors.as_array().unwrap().iter().all(|error| error["path"] == "/messages/0/updateDataModel"), "{errors}");
-}
-
-#[tokio::test]
-async fn a_surface_that_is_shown_is_neither_updated_nor_deleted_yet_and_the_agent_is_told() {
-    let (seam, mut webview) = start(Timing::default()).await;
-    let (_, shown) = created(&seam, &mut webview, &seam.cli("term-a"), "plan", "tab", false).await;
-    for (message, at) in [(update("plan"), "/messages/0/updateDataModel"), (delete("plan"), "/messages/0/deleteSurface")] {
-        let errors = told_by_rust(&seam, &mut webview, messages(&[message])).await;
-        assert_eq!((&errors[0]["path"], errors.as_array().unwrap().len()), (&json!(at), 1));
-    }
-    assert_eq!(seam.surfaces.surfaces(), vec![shown]);
-}
-
-#[tokio::test]
 async fn a_delete_of_an_id_the_terminal_does_not_have_is_accepted_and_does_nothing() {
     let (seam, mut webview) = start(Timing::default()).await;
     let call = seam.cli("term-a").call("quay_surface", messages(&[delete("gone")]));
-    seam.surfaces.verdict(webview.next_check().await.call, rejected(json!([])));
+    seam.surfaces.verdict(webview.next_check().await.call, makes(vec![]));
     assert_eq!(call.answer().await, json!({ "deleted": true }));
 
     let mut with_create = plan("plan", "companion");
     with_create["messages"] = json!([delete("gone"), create("plan")]);
     let call = seam.cli("term-a").call("quay_surface", with_create);
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(false));
+    seam.surfaces.verdict(webview.next_check().await.call, makes_one("plan", false));
     assert_eq!(call.answer().await, json!({ "shown": true }));
 }
 
