@@ -2,12 +2,12 @@ import { ShieldAlert } from "lucide-react";
 import type { PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
 import { splitPermissionInput } from "../attention/permissionInput.ts";
+import { Button } from "../parts/Button.tsx";
 import { AttributedText } from "./AttributedText.tsx";
 import { CodeBlock } from "./CodeBlock.tsx";
+import { DangerButton } from "./DangerButton.tsx";
 import { PermissionInputBox } from "./PermissionInputBox.tsx";
 import { QuayCard } from "./QuayCard.tsx";
-
-const BUTTON = "h-7 shrink-0 px-3 rounded-md border text-xs font-medium";
 
 interface PermissionCardProps {
   permission: PermissionItem;
@@ -32,27 +32,11 @@ export const PermissionCard = ({ permission, terminalName, onAnswer }: Permissio
       {rest.length > 0 && <PermissionInputBox tool={permission.tool} rest={rest} />}
       {permission.reason && <AttributedText label={`${terminalName} says`} text={permission.reason} />}
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void onAnswer(permission.requestId, "allow", undefined, false)}
-          className={`${BUTTON} border-[#2ea043] bg-[#238636] text-white hover:bg-[#2ea043]`}
-        >
+        <Button variant="primary" onClick={() => void onAnswer(permission.requestId, "allow", undefined, false)}>
           Allow once
-        </button>
-        <button
-          type="button"
-          onClick={() => void onAnswer(permission.requestId, "allow", undefined, true)}
-          className={`${BUTTON} border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]`}
-        >
-          Allow for session
-        </button>
-        <button
-          type="button"
-          onClick={() => void onAnswer(permission.requestId, "deny")}
-          className={`${BUTTON} border-[#da3633] bg-[#da3633] text-white hover:bg-[#f85149]`}
-        >
-          Deny
-        </button>
+        </Button>
+        <Button onClick={() => void onAnswer(permission.requestId, "allow", undefined, true)}>Allow for session</Button>
+        <DangerButton onClick={() => void onAnswer(permission.requestId, "deny")}>Deny</DangerButton>
       </div>
     </QuayCard>
   );

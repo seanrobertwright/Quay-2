@@ -261,6 +261,24 @@ test("a long command and a long reason each scroll in their own box, reached by 
   }
 });
 
+test("Allow once, Allow for session and Deny each send the answer they name", async () => {
+  const answers: unknown[] = [];
+  for (const name of ["Allow once", "Allow for session", "Deny"]) {
+    const { backend } = await render({ pending: [pendingRequest("Bash", { command: "pnpm test" })] });
+    await act(async () => button(name).click());
+    await settle();
+    answers.push(...backend.calls.filter((c) => c.command === "resolve_permission").map((c) => c.args));
+    act(() => mounted?.root.unmount());
+    mounted?.container.remove();
+    mounted = null;
+  }
+  assert.deepEqual(answers, [
+    { requestId: "req-1", decision: "allow", reason: null, rememberForSession: false },
+    { requestId: "req-1", decision: "allow", reason: null, rememberForSession: true },
+    { requestId: "req-1", decision: "deny", reason: "User rejected tool execution", rememberForSession: false },
+  ]);
+});
+
 test("a Write request shows its path and its content, newlines kept, with nothing to click first", async () => {
   await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one\n  two\n" })] });
   assert.match(requests()[0].textContent ?? "", /Write.*src\/a\.ts/);
