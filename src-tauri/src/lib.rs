@@ -80,6 +80,7 @@ pub fn run() {
     let a2a_router = A2ARouter::new();
     let machina_manager = MachinaManager::new();
     let surfaces = SurfaceTools::new();
+    surfaces.set_terminals(&pty_manager, &a2a_router);
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();

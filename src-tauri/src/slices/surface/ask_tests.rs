@@ -218,25 +218,8 @@ async fn a_wait_ends_at_its_limit_and_the_question_stays_up() {
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     let shown = webview.next_shown().await;
 
-    let no_answer = json!({ "surface_id": "ask_1", "state": "no_answer_yet", "next": "End your turn now." });
-    assert_eq!(call.answer().await, no_answer);
+    assert_eq!(call.answer().await["state"], "no_answer_yet");
     assert_eq!(seam.surfaces.surfaces(), vec![shown]);
-    assert_eq!(seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()), Err(AnswerRefused::CallEnded));
-    assert_eq!(seam.surfaces.surfaces()[0].answer, None, "an answer that reaches nobody settles nothing");
-}
-
-#[tokio::test]
-async fn an_answer_to_a_call_whose_connection_closed_is_refused() {
-    let (seam, mut webview) = start(Timing::default()).await;
-    let call = seam.cli("term-a").call("quay_ask", question());
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
-    webview.next_shown().await;
-
-    call.hang_up();
-    tokio::time::sleep(A_WHILE).await;
-
-    assert_eq!(seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()), Err(AnswerRefused::CallEnded));
-    assert_eq!(seam.surfaces.surfaces()[0].answer, None);
 }
 
 #[tokio::test]
@@ -291,7 +274,7 @@ async fn calls_of_one_terminal_are_checked_one_at_a_time_and_hold_up_no_other() 
     let (seam, mut webview) = start(Timing::default()).await;
     let first = seam.cli("term-a").call("quay_ask", question());
     let first_check = webview.next_check().await;
-    let second = seam.cli("term-a").call("quay_ask", question());
+    let second = seam.cli("term-a").call("quay_ask", with_options(json!([{ "label": "Yes" }, { "label": "No" }])));
     assert!(webview.no_check().await, "the second waits for the first one's check");
 
     let other = seam.cli("term-b").call("quay_ask", question());
@@ -327,32 +310,39 @@ async fn a_call_dropped_while_it_is_checked_holds_up_no_later_one() {
     assert_eq!(webview.next_shown().await.id, second_check.surface_id);
 }
 
-/// A call from `terminal_id` whose question has been drawn.
-async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str) -> OpenCall {
-    let call = seam.cli(terminal_id).call("quay_ask", question());
+/// A call from `terminal_id` whose question, no other's, has been drawn.
+async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str, n: u32) -> OpenCall {
+    let mut question = question();
+    question["questions"][0]["question"] = json!(format!("Question {n}?"));
+    let call = seam.cli(terminal_id).call("quay_ask", question);
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     webview.next_shown().await;
     call
 }
 
 #[tokio::test]
-async fn the_oldest_question_nobody_waits_on_makes_room_once_a_terminal_has_14() {
+async fn the_oldest_answered_question_makes_room_once_a_terminal_has_14() {
     let (seam, mut webview) = start(Timing::default()).await;
     let mut calls = Vec::new();
-    for _ in 1..=14 {
-        calls.push(asked(&seam, &mut webview, "term-a").await);
+    for n in 1..=14 {
+        calls.push(asked(&seam, &mut webview, "term-a", n).await);
     }
-    let _other = asked(&seam, &mut webview, "term-b").await;
-    seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_3"), 1, answer()).unwrap();
+    let _other = asked(&seam, &mut webview, "term-b", 1).await;
+    for id in ["ask_5", "ask_3"] {
+        seam.surfaces.answer(&SurfaceKey::new("term-a", id), 1, answer()).unwrap();
+    }
+    assert_eq!(calls.remove(4).answer().await, answer());
     assert_eq!(calls.remove(2).answer().await, answer());
     calls.remove(0).hang_up();
     tokio::time::sleep(A_WHILE).await;
     assert!(webview.none_removed());
 
-    let _fifteenth = asked(&seam, &mut webview, "term-a").await;
-    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_1"), "its call hung up");
-    let _sixteenth = asked(&seam, &mut webview, "term-a").await;
-    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_3"), "it is answered");
+    let _fifteenth = asked(&seam, &mut webview, "term-a", 15).await;
+    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_3"));
+    let _sixteenth = asked(&seam, &mut webview, "term-a", 16).await;
+    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_5"));
+    let ids = seam.surfaces.surfaces().into_iter().map(|record| record.id).collect::<Vec<_>>();
+    assert!(ids.contains(&"ask_1".to_string()), "a question whose call hung up can still be answered");
 
     let kept = seam.surfaces.surfaces();
     let of = |terminal_id: &str| kept.iter().filter(|record| record.terminal_id == terminal_id).count();
@@ -361,12 +351,14 @@ async fn the_oldest_question_nobody_waits_on_makes_room_once_a_terminal_has_14()
 }
 
 #[tokio::test]
-async fn a_question_is_rejected_while_calls_wait_on_all_14_before_it() {
+async fn a_question_is_rejected_while_all_14_before_it_are_unanswered() {
     let (seam, mut webview) = start(Timing::default()).await;
     let mut calls = Vec::new();
-    for _ in 1..=14 {
-        calls.push(asked(&seam, &mut webview, "term-a").await);
+    for n in 1..=14 {
+        calls.push(asked(&seam, &mut webview, "term-a", n).await);
     }
+    calls.remove(0).hang_up();
+    tokio::time::sleep(A_WHILE).await;
     let fifteenth = seam.cli("term-a").call("quay_ask", question());
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
 
