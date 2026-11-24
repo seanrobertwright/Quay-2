@@ -21,7 +21,6 @@ pub(super) const OPTION_COUNT: RangeInclusive<usize> = 2..=6;
 /// A checked `quay_ask` call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ask {
-    /// Markdown.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<String>,
     pub questions: Vec<Question>,
@@ -57,12 +56,12 @@ impl Ask {
         let Some(call) = args.object(arguments, "", "A call", &["context", "questions"]) else {
             return ask;
         };
-        ask.context = args.optional_text(call, "context", "", "The context", CONTEXT_LIMIT);
+        ask.context = args.optional_text(&call, "context", "The context", CONTEXT_LIMIT);
         let Some(questions) = call.get("questions").and_then(Value::as_array) else {
             args.invalid("/questions", "quay_ask needs a list of questions.");
             return ask;
         };
-        args.count(questions, QUESTION_COUNT, "/questions", "A call takes one to four questions");
+        args.count(questions, QUESTION_COUNT, "/questions", "A call takes", "questions");
         for (i, value) in questions.iter().enumerate() {
             ask.questions.extend(Question::read(args, value, &format!("/questions/{i}")));
         }
@@ -73,12 +72,12 @@ impl Ask {
 impl Question {
     fn read(args: &mut Arguments, value: &Value, path: &str) -> Option<Self> {
         let fields = args.object(value, path, "A question", &["question", "options", "multiple"])?;
-        let question = args.text(fields, "question", path, "A question", QUESTION_LIMIT);
+        let question = args.text(&fields, "question", "A question", QUESTION_LIMIT);
         let options = match fields.get("options") {
             None => Vec::new(),
-            Some(options) => AskOption::read_list(args, options, &format!("{path}/options")),
+            Some(options) => AskOption::read_list(args, options, &fields.path("options")),
         };
-        let multiple = args.flag(fields, "multiple", path);
+        let multiple = args.flag(&fields, "multiple");
         Some(Self { question, options, multiple })
     }
 }
@@ -89,7 +88,7 @@ impl AskOption {
             args.invalid(path, "A question's options are a list.");
             return Vec::new();
         };
-        args.count(values, OPTION_COUNT, path, "A question has two to six options");
+        args.count(values, OPTION_COUNT, path, "A question has", "options");
         let mut options = Vec::with_capacity(values.len());
         // Where each label was first
         let mut first_at: HashMap<String, usize> = HashMap::new();
@@ -123,9 +122,9 @@ impl AskOption {
     fn read(args: &mut Arguments, value: &Value, path: &str) -> Option<Self> {
         let fields = args.object(value, path, "An option", &["label", "description", "recommended"])?;
         Some(Self {
-            label: args.text(fields, "label", path, "An option label", LABEL_LIMIT),
-            description: args.optional_text(fields, "description", path, "An option description", DESCRIPTION_LIMIT),
-            recommended: args.flag(fields, "recommended", path),
+            label: args.text(&fields, "label", "An option label", LABEL_LIMIT),
+            description: args.optional_text(&fields, "description", "An option description", DESCRIPTION_LIMIT),
+            recommended: args.flag(&fields, "recommended"),
         })
     }
 }

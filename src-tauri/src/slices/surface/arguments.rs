@@ -6,6 +6,23 @@ use serde_json::{Map, Value};
 
 use super::rejection::Rejection;
 
+/// The fields of one object in a call, and where in the call it is.
+pub struct Fields<'a> {
+    map: &'a Map<String, Value>,
+    path: String,
+}
+
+impl<'a> Fields<'a> {
+    pub fn get(&self, field: &str) -> Option<&'a Value> {
+        self.map.get(field)
+    }
+
+    /// Where `field` is, or would be.
+    pub fn path(&self, field: &str) -> String {
+        format!("{}/{}", self.path, field.replace('~', "~0").replace('/', "~1"))
+    }
+}
+
 /// A reading of one call. What it returns for a value that is wrong only stands in for it: the call
 /// is rejected, so nothing uses it.
 pub struct Arguments {
@@ -40,21 +57,21 @@ impl Arguments {
         path: &str,
         what: &str,
         fields: &[&str],
-    ) -> Option<&'a Map<String, Value>> {
+    ) -> Option<Fields<'a>> {
         let Some(map) = value.as_object() else {
             self.invalid(path, format!("{what} is an object."));
             return None;
         };
+        let read = Fields { map, path: path.to_string() };
         for key in map.keys().filter(|key| !fields.contains(&key.as_str())) {
-            let path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
-            self.invalid(path, format!("{} has no field \"{key}\" here.", self.tool));
+            self.invalid(read.path(key), format!("{} has no field \"{key}\" here.", self.tool));
         }
-        Some(map)
+        Some(read)
     }
 
     /// The text in `field`, which may be neither missing nor blank.
-    pub fn text(&mut self, fields: &Map<String, Value>, field: &str, path: &str, what: &str, limit: usize) -> String {
-        let path = format!("{path}/{field}");
+    pub fn text(&mut self, fields: &Fields, field: &str, what: &str, limit: usize) -> String {
+        let path = fields.path(field);
         match fields.get(field).and_then(Value::as_str).filter(|text| !text.trim().is_empty()) {
             Some(text) => self.within(text, path, what, limit),
             None => {
@@ -65,15 +82,8 @@ impl Arguments {
     }
 
     /// The text in `field`, which may be left out.
-    pub fn optional_text(
-        &mut self,
-        fields: &Map<String, Value>,
-        field: &str,
-        path: &str,
-        what: &str,
-        limit: usize,
-    ) -> Option<String> {
-        let path = format!("{path}/{field}");
+    pub fn optional_text(&mut self, fields: &Fields, field: &str, what: &str, limit: usize) -> Option<String> {
+        let path = fields.path(field);
         match fields.get(field)? {
             Value::String(text) => Some(self.within(text, path, what, limit)),
             _ => {
@@ -84,24 +94,26 @@ impl Arguments {
     }
 
     /// Whether `field` is true. It may be left out.
-    pub fn flag(&mut self, fields: &Map<String, Value>, field: &str, path: &str) -> bool {
+    pub fn flag(&mut self, fields: &Fields, field: &str) -> bool {
         match fields.get(field) {
             None => false,
             Some(Value::Bool(flag)) => *flag,
             Some(_) => {
-                self.invalid(format!("{path}/{field}"), format!("{field} is true or false."));
+                self.invalid(fields.path(field), format!("{field} is true or false."));
                 false
             }
         }
     }
 
-    /// Checks that `list` holds as many as `count` allows, which `rule` says in words.
-    pub fn count(&mut self, list: &[Value], count: RangeInclusive<usize>, path: &str, rule: &str) {
+    /// Checks that `list` holds as many `items` as `count` allows. `takes` starts the message: "A call
+    /// takes" and "questions".
+    pub fn count(&mut self, list: &[Value], count: RangeInclusive<usize>, path: &str, takes: &str, items: &str) {
         let length = list.len();
         if count.contains(&length) {
             return;
         }
-        let mut message = format!("{rule}; this one has {length}.");
+        let (least, most) = (spelled(*count.start()), spelled(*count.end()));
+        let mut message = format!("{takes} {least} to {most} {items}; this one has {length}.");
         if length > *count.end() {
             message.push_str(&format!(" For more, send a surface with quay_surface and place {}.", self.place));
         }
@@ -121,4 +133,11 @@ impl Arguments {
         }
         text.to_string()
     }
+}
+
+/// `count` as a message says it: in words up to ten.
+fn spelled(count: usize) -> String {
+    const WORDS: [&str; 11] =
+        ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+    WORDS.get(count).map_or_else(|| count.to_string(), ToString::to_string)
 }
