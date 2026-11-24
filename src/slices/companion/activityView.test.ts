@@ -201,6 +201,12 @@ test("a request from an MCP tool with a path shows its other arguments, nested o
   ]);
 });
 
+test("the box is about ten lines high, then scrolls", async () => {
+  await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "line\n".repeat(50) })] });
+  // Ten lines of 1rem and the box's 1rem of padding, as classes: the test DOM lays nothing out.
+  for (const name of ["max-h-44", "leading-4", "p-2", "overflow-auto"]) assert.ok(inputBoxes()[0].classList.contains(name), name);
+});
+
 test("the scroll box's accessible name includes the tool", async () => {
   await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one" })] });
   assert.equal(inputBoxes()[0].getAttribute("aria-label"), "Rest of the Write input");
