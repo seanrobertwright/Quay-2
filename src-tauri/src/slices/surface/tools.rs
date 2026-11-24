@@ -15,7 +15,7 @@ use super::read;
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{
     AnswerRefused, Answered, BeingSent, CommitRefused, Committed, Creation, Dismissed, SurfaceKey, SurfaceRecord,
-    SurfaceStore,
+    SurfaceStore, MOST_IMAGES,
 };
 use super::timing::Timing;
 use super::typing::{NotTyped, Terminals};
@@ -210,6 +210,10 @@ impl SurfaceTools {
                     spelled(MOST_LIVE),
                     place.name()
                 );
+                self.reject(terminal_id, tool, &Rejection::invalid("", message))
+            }
+            CommitRefused::TooManyImages(images) => {
+                let message = format!("A surface has at most {MOST_IMAGES} images; this one would have {images}.");
                 self.reject(terminal_id, tool, &Rejection::invalid("", message))
             }
         })

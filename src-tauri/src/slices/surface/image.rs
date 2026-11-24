@@ -9,7 +9,7 @@ use tauri::State;
 use super::disk::ThisComputer;
 use super::image_file::{read_file, reading, NotRead, MOST_BYTES};
 use super::local_path::{resolve, Refused, STYLE};
-use super::store::{ImageRefused, SurfaceKey, MOST_IMAGES};
+use super::store::{ImageRefused, SurfaceKey};
 use super::tools::SurfaceTools;
 use crate::slices::pty::manager::PtyManager;
 
@@ -20,7 +20,7 @@ const READ_LIMIT: Duration = Duration::from_secs(10);
 /// directory. The path is judged before anything on it is touched. The error says why it is not
 /// shown, in words for the operator.
 pub async fn read_image(surfaces: &SurfaceTools, terminals: &PtyManager, key: SurfaceKey, path: String) -> Result<Vec<u8>, String> {
-    surfaces.store().check_image(&key, &path).map_err(not_named)?;
+    surfaces.store().check_image(&key, &path).map_err(not_served)?;
     let Some(terminal) = terminals.get_info(&key.terminal_id) else {
         return Err("Quay no longer has this terminal.".to_string());
     };
@@ -31,12 +31,12 @@ pub async fn read_image(surfaces: &SurfaceTools, terminals: &PtyManager, key: Su
     reading(READ_LIMIT, read).await.map_err(not_read)
 }
 
-fn not_named(refused: ImageRefused) -> String {
-    match refused {
-        ImageRefused::NoLiveSurface => "Quay no longer shows this surface.".to_string(),
-        ImageRefused::NotNamed => "This surface does not name this image.".to_string(),
-        ImageRefused::TooMany => format!("A surface shows at most {MOST_IMAGES} images."),
-    }
+fn not_served(refused: ImageRefused) -> String {
+    let why = match refused {
+        ImageRefused::NoLiveSurface => "Quay no longer shows this surface.",
+        ImageRefused::NotNamed => "This surface does not name this image.",
+    };
+    why.to_string()
 }
 
 fn not_read(why: NotRead) -> String {

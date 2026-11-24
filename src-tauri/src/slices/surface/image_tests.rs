@@ -3,9 +3,8 @@
 
 use std::path::PathBuf;
 
-use super::check::Verdict;
 use super::image::read_image;
-use super::test_seam::{accepted, answer_to, key, question, start, FakeWebview, OpenCall, Seam};
+use super::test_seam::{accepted_with_images, answer_to, key, question, start, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind, TerminalInfo};
 use crate::test_support::TempDir;
@@ -46,9 +45,7 @@ impl Quay {
     /// A question of `terminal` whose surface the webview found to name the images `paths`.
     async fn asked_with(&mut self, terminal: &str, title: &str, paths: &[&str]) -> OpenCall {
         let call = self.seam.cli(terminal).call("quay_ask", question(title));
-        let Verdict::Accepted(mut verdict) = accepted(true) else { unreachable!() };
-        verdict.image_paths = paths.iter().map(ToString::to_string).collect();
-        self.seam.surfaces.verdict(self.webview.next_check().await.call, Verdict::Accepted(verdict));
+        self.seam.surfaces.verdict(self.webview.next_check().await.call, accepted_with_images(paths.len(), paths));
         self.webview.next_shown().await;
         call
     }
@@ -102,22 +99,6 @@ async fn an_image_is_read_only_while_a_live_surface_of_that_terminal_names_it() 
     assert_eq!(quay.read("term-a", "ask_2", "two.png").await, Ok(PNG.to_vec()));
     quay.seam.surfaces.dismiss(&key("term-a", "ask_2")).unwrap();
     assert_eq!(quay.read("term-a", "ask_2", "two.png").await, refused(GONE));
-}
-
-#[tokio::test]
-async fn a_surface_has_at_most_twelve_images_read() {
-    let mut quay = Quay::new().await;
-    let names: Vec<String> = (1..=13).map(|n| format!("{n}.png")).collect();
-    for name in &names {
-        quay.write(&format!("a/{name}"), PNG);
-    }
-    let names: Vec<&str> = names.iter().map(String::as_str).collect();
-    let _call = quay.asked_with("term-a", "Which?", &names).await;
-
-    for name in &names[..12] {
-        assert_eq!(quay.read("term-a", "ask_1", name).await, Ok(PNG.to_vec()), "{name}");
-    }
-    assert_eq!(quay.read("term-a", "ask_1", "13.png").await, Err("A surface shows at most 12 images.".to_string()));
 }
 
 #[tokio::test]

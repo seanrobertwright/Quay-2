@@ -346,6 +346,14 @@ pub fn accepted(asks: bool) -> Verdict {
     .unwrap()
 }
 
+/// `accepted` for a question with this many images, of the files `paths`.
+pub fn accepted_with_images(images: usize, paths: &[&str]) -> Verdict {
+    let Verdict::Accepted(mut surface) = accepted(true) else { unreachable!() };
+    surface.images = u32::try_from(images).unwrap();
+    surface.image_paths = paths.iter().map(ToString::to_string).collect();
+    Verdict::Accepted(surface)
+}
+
 /// What a test captures of the error log, on the thread it runs on.
 #[derive(Clone, Default)]
 pub struct CapturedLog(Arc<Mutex<Vec<u8>>>);
