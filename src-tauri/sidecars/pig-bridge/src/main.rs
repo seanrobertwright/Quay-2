@@ -30,9 +30,11 @@ const LOG_NAME: &str = "pig-bridge.log";
 
 const MCP_URL_VAR: &str = "QUAY_MCP_URL";
 
-/// Seconds PiG waits on one request to Quay's MCP server: above the 60 seconds a
-/// `wait_for_reply` can take.
-const MCP_TIMEOUT_SECS: u64 = 120;
+/// Quay's own limits, so that PiG's on a call to Quay's MCP server is the one its waits are
+/// measured against. Of them, the extension uses only `CLI_LIMIT`.
+#[allow(dead_code)]
+#[path = "../../../src/slices/surface/timing.rs"]
+mod timing;
 
 /// The answer for a turn that was stopped before it finished.
 const INTERRUPTED: &str = "PiG's turn was interrupted before it finished.";
@@ -105,7 +107,8 @@ fn main() -> ExitCode {
 
 /// The config `registerMcpServer` gets for Quay's MCP server: its URL from `QUAY_MCP_URL`,
 /// which must be on loopback, and an `Authorization` header naming `${QUAY_A2A_TOKEN}`,
-/// which PiG expands from its environment. The tools are declared to the model directly.
+/// which PiG expands from its environment. The tools are declared to the model directly, and
+/// `timeout` is how many seconds PiG waits on a request to the server.
 fn mcp_server_config(var: &dyn Fn(&str) -> Option<String>) -> Result<Value, String> {
     let url = var(MCP_URL_VAR).filter(|url| !url.is_empty()).ok_or(format!("{} is not set", MCP_URL_VAR))?;
     parse_loopback_url(MCP_URL_VAR, &url)?;
@@ -116,7 +119,7 @@ fn mcp_server_config(var: &dyn Fn(&str) -> Option<String>) -> Result<Value, Stri
         "url": url,
         "headers": { "Authorization": format!("Bearer ${{{}}}", TOKEN_VAR) },
         "exposure": "direct",
-        "timeout": MCP_TIMEOUT_SECS,
+        "timeout": timing::CLI_LIMIT.as_secs(),
     }))
 }
 
@@ -343,7 +346,7 @@ mod tests {
                 "url": "http://127.0.0.1:4321/mcp",
                 "headers": { "Authorization": "Bearer ${QUAY_A2A_TOKEN}" },
                 "exposure": "direct",
-                "timeout": 120,
+                "timeout": 150,
             })
         );
         assert!(!config.to_string().contains("tok-secret"));

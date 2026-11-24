@@ -1,11 +1,12 @@
-//! How long a surface tool's call may take: the one home of these limits.
+//! How long a surface tool's call may take: the one home of these limits. Quay's PiG extension is
+//! built with this file too, so it uses nothing but the standard library.
 
 use std::time::Duration;
 
 /// How long a call stays open for the operator's answer. The surface outlives it.
 pub const WAIT: Duration = Duration::from_secs(100);
 
-/// The limit each CLI is to be launched with on a call to Quay's server.
+/// The limit each connected CLI is launched with on a call to Quay's server.
 pub const CLI_LIMIT: Duration = Duration::from_secs(150);
 
 /// How long the webview has to check a call.
