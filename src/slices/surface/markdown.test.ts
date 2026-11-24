@@ -201,7 +201,7 @@ test("a web link shows its real host beside it and its full address at the frame
 });
 
 test("the address shown is the one opened, in the letters the network uses", async () => {
-  const content = await drawText("[a](https://еxample.com/a%20b) [b](HTTPS://EXAMPLE.com\\\\@c.example) [c](<https://d.example/‮gnp.exe>)");
+  const content = await drawText("[a](https://еxample.com/a%20b) [b](HTTPS://EXAMPLE.com\\\\@c.example) [c](<https://d.example/\u202egnp.exe>)");
 
   assert.deepEqual(links(content).map((link) => link.textContent), ["a xn--xample-2of.com", "b example.com", "c d.example"]);
   for (const link of links(content)) {

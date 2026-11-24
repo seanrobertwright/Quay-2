@@ -20,11 +20,11 @@ const MAX_ADDRESS = 2048;
 const MAX_DECODES = 4;
 
 /** Control and invisible characters, which some parsers drop and no reader sees. */
-const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}�]/u;
+const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{fffd}]/u;
 
 /** The web address `href` is, spelled as the network spells it, or null when it is none. */
 export function webTarget(href: string): WebTarget | null {
-  if (href.length > MAX_ADDRESS || /[\p{Cc}�]/u.test(href) || !/^https?:\/\//i.test(href) || !URL.canParse(href)) return null;
+  if (href.length > MAX_ADDRESS || /[\p{Cc}\u{fffd}]/u.test(href) || !/^https?:\/\//i.test(href) || !URL.canParse(href)) return null;
   const { href: address, host } = new URL(href);
   return address.length > MAX_ADDRESS ? null : { kind: "web", address, host };
 }
