@@ -123,6 +123,26 @@ test("Connect writes the entry, and Remove takes out the one that is shown", asy
   assert.match(text(container), /Not connected/);
 });
 
+test("pressing Connect, Remove or Read it again leaves focus on the row, while it runs and after", async () => {
+  const container = await openRow();
+  for (const [name, after] of [
+    ["Connect", CONNECTED],
+    ["Remove", UNREADABLE],
+    ["Read it again", MISSING],
+  ] as const) {
+    const pressed = button(container, name);
+    assert.ok(pressed !== undefined, `button ${name}`);
+    let reply: (connection: AntigravityConnection) => void = () => {};
+    fakeInvoke(() => new Promise((resolve) => (reply = resolve)));
+    pressed.focus();
+    await act(async () => pressed.click());
+    assert.equal(document.activeElement === row(container), true, `${name}, while it runs`);
+
+    await act(async () => reply(after));
+    assert.equal(document.activeElement === row(container), true, `${name}, after`);
+  }
+});
+
 test("an entry the operator changed is shown before it is removed or replaced", async () => {
   now = CHANGED;
   const container = await openRow();
@@ -316,11 +336,16 @@ test("the note's link asks for the row and takes the note away", async () => {
   assert.equal(container.innerHTML, "");
 });
 
-test("the note can be dismissed", async () => {
+test("the note can be dismissed, which gives focus back to its terminal", async () => {
   const { container } = await render(note("a"));
+  const focused: string[] = [];
+  const onFocusAsked = (event: Event) => focused.push((event as CustomEvent<{ terminalId: string }>).detail.terminalId);
+  window.addEventListener("quay:focus-terminal", onFocusAsked);
 
   await press(container, "Dismiss the Connect note");
 
+  window.removeEventListener("quay:focus-terminal", onFocusAsked);
+  assert.deepEqual(focused, ["a"]);
   assert.equal(container.innerHTML, "");
   assert.equal(asked, 0);
 });

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import { focusTerminal } from "../terminal/terminalRequests.ts";
 import { askForConnectRow, dismissNote, sayNotConnected, useNoteTerminal } from "./antigravity.ts";
 
 interface ConnectNoteProps {
@@ -47,7 +48,10 @@ export const ConnectNote = ({ terminalId, shown }: ConnectNoteProps) => {
       </p>
       <button
         type="button"
-        onClick={dismissNote}
+        onClick={() => {
+          dismissNote();
+          focusTerminal(terminalId);
+        }}
         aria-label="Dismiss the Connect note"
         title="Dismiss"
         className="p-0.5 rounded text-[#8b949e] hover:text-white hover:bg-[#30363d] cursor-pointer shrink-0"

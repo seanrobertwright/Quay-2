@@ -109,6 +109,8 @@ export const AntigravityRow = ({ openRequest }: AntigravityRowProps) => {
     if (!open) void readAntigravity();
   };
   const act = async (what: () => Promise<unknown>) => {
+    // The button that was pressed is disabled, and may go
+    button.current?.focus();
     setBusy(true);
     setRefused(null);
     try {
