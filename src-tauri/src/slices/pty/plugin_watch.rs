@@ -114,7 +114,7 @@ impl PluginWatch {
         self.handshake
     }
 
-    /// Marks the launch's process exited, which ends what its CLI's handshake began.
+    /// Marks the launch's process exited and clears its CLI's handshake.
     pub fn exit(&mut self) {
         self.exited = true;
         self.handshake = false;

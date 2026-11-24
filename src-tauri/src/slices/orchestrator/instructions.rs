@@ -41,12 +41,19 @@ pub fn for_tools<'a>(tools: impl Iterator<Item = &'a str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::slices::orchestrator::mcp::tool_list;
+    use crate::slices::surface::names::SURFACE_TOOLS;
 
     #[test]
-    fn a_line_on_every_tool_fits_in_what_claude_code_shows() {
-        let text = for_tools(USES.iter().map(|(tool, _)| *tool)).unwrap();
+    fn every_tool_has_a_line_and_all_of_them_fit_in_what_claude_code_shows() {
+        let bus_tools = tool_list().as_array().unwrap().iter().map(|tool| tool["name"].as_str().unwrap());
+        let tools: Vec<&str> = bus_tools.chain(SURFACE_TOOLS).collect();
 
-        assert_eq!(text.lines().count(), 1 + 13, "{text}");
+        let text = for_tools(tools.iter().copied()).unwrap();
+
+        let named: Vec<&str> =
+            text.lines().skip(1).map(|line| line[2..].split_once(':').unwrap().0).collect();
+        assert_eq!(named, tools);
         assert!(text.len() <= 2048, "{}", text.len());
     }
 

@@ -175,8 +175,9 @@ pub async fn handle_mcp_request(
             let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
             let listed = tools(&ctx, caller_id).iter().any(|tool| tool["name"] == tool_name);
+            let unknown = || format!("Unknown tool: {}", tool_name);
             let result = match tool_name {
-                _ if !listed => Err(format!("Unknown tool: {}", tool_name)),
+                _ if !listed => Err(unknown()),
 
                 "quay_list_agents" => {
                     let terminals = ctx.pty_manager.list();
@@ -390,7 +391,7 @@ pub async fn handle_mcp_request(
                     .surfaces
                     .call(caller_id, tool_name, &arguments)
                     .await
-                    .ok_or_else(|| format!("Unknown tool: {}", tool_name)),
+                    .ok_or_else(unknown),
             };
 
             match result {
