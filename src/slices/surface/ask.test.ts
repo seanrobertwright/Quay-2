@@ -273,11 +273,25 @@ test("blank context draws nothing", async () => {
   assert.ok(!state.createSurface.components.some(({ id }) => id === "context"));
 });
 
-test("context is shown as it is written", async () => {
-  const context = '<img src="https://a.example/x.png" onerror="alert(1)"> **bold** [no](javascript:alert(1))';
-  const region = await ask({ context, questions: [BASE] });
-  assert.ok(region.textContent?.includes(context));
-  assert.equal(region.querySelectorAll("img, a, b, strong, script, [onerror]").length, 0);
+test("context is Markdown, with raw HTML and links to anything else shown as they are written", async () => {
+  const shown = '<img src="https://a.example/x.png" onerror="alert(1)"> and [no](javascript:alert(1))';
+  const region = await ask({ context: `**Two** branches. ${shown}`, questions: [BASE] });
+  assert.ok(region.textContent?.includes(`Two branches. ${shown}`));
+  assert.equal(region.querySelector("strong")?.textContent, "Two");
+  assert.equal(region.querySelectorAll('img, a, b, script, [onerror], [role="link"]').length, 0);
+});
+
+test("a question is drawn as it is written, alone and listed", async () => {
+  const question = "Use `foo_bar` or **baz**\\*, [this](https://a.example) &amp; &#42; &#10;?\n\tAnd <b>why</b>  ";
+  const alone = await ask({ questions: [{ ...BASE, question }] });
+  assert.equal(document.getElementById(alone.querySelector('[role="group"]')!.getAttribute("aria-labelledby")!)?.textContent, question);
+  assert.equal(alone.querySelectorAll('strong, code, b, [role="link"]').length, 0);
+  await unmount(mounted!);
+  mounted = null;
+
+  const listed = await ask({ questions: [{ ...BASE, question }, NAME] });
+  assert.equal(rows(listed)[0].textContent, `1${question}`);
+  assert.equal(listed.querySelector('[role="group"]')!.getAttribute("aria-label"), question);
 });
 
 test("Send and the count stay at the foot of the frame", async () => {

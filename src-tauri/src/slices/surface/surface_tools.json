@@ -7,7 +7,7 @@
       "properties": {
         "context": {
           "type": "string",
-          "description": "Why you ask, in at most 600 characters."
+          "description": "Why you ask, as Markdown, in at most 600 characters."
         },
         "questions": {
           "type": "array",

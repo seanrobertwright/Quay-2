@@ -3,6 +3,8 @@ import { X, type LucideIcon } from "lucide-react";
 import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { cliName } from "./cliName.ts";
+import { FrameNotice } from "./FrameNotice.tsx";
+import { SurfaceLinksProvider } from "./SurfaceLinksProvider.tsx";
 import type { Dismiss } from "./useDismiss.ts";
 
 interface SurfaceFrameProps {
@@ -46,15 +48,13 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refu
       </button>
     </header>
     {band}
-    {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside.
-        Neither it nor `overflow-clip` makes a box that scrolls, so a foot sticks to what scrolls around the frame. */}
-    <div data-surface-content className="relative isolate overflow-clip p-3 text-xs text-[#c9d1d9] contain-paint">
-      {children}
-    </div>
-    {refusal && (
-      <p role="alert" className="border-t border-[#da3633]/40 bg-[#da3633]/10 px-3 py-1.5 text-[11px] wrap-anywhere text-[#ff7b72]">
-        {refusal}
-      </p>
-    )}
+    <SurfaceLinksProvider terminalId={terminal.id}>
+      {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside.
+          Neither it nor `overflow-clip` makes a box that scrolls, so a foot sticks to what scrolls around the frame. */}
+      <div data-surface-content className="relative isolate overflow-clip p-3 text-xs text-[#c9d1d9] contain-paint">
+        {children}
+      </div>
+    </SurfaceLinksProvider>
+    {refusal && <FrameNotice>{refusal}</FrameNotice>}
   </section>
 );
