@@ -7,15 +7,10 @@ import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
-import { StageTabBar, type StageToolTab } from "./StageTabBar";
+import { StageTabBar } from "./StageTabBar";
+import type { StageTool } from "./stageTools.ts";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
-
-/** A full-stage tool open in a stage tab, such as the swarm builder. */
-export interface StageTool extends StageToolTab {
-  /** What the tool draws over the panes while its tab is in front. */
-  content: ReactNode;
-}
 
 interface StageProps {
   terminals: TerminalInfo[];
@@ -57,6 +52,8 @@ interface StageProps {
   frontToolId?: string | null;
   onSelectTool?: (id: string) => void;
   onCloseTool?: (id: string) => void;
+  /** The menu that locked surface tabs are folded under. */
+  earlierTabs?: ReactNode;
 }
 
 export const Stage: FC<StageProps> = ({
@@ -92,6 +89,7 @@ export const Stage: FC<StageProps> = ({
   frontToolId = null,
   onSelectTool,
   onCloseTool,
+  earlierTabs,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -283,12 +281,12 @@ export const Stage: FC<StageProps> = ({
     </div>
   ));
   const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
-  const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool };
+  const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool, earlierTabs };
 
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
       <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
-        {tools.length > 0 && (
+        {(tools.length > 0 || earlierTabs) && (
           <StageTabBar
             terminals={[]}
             currentTerminalId=""

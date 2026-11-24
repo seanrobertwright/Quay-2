@@ -60,7 +60,7 @@ export interface SurfaceKey {
   id: string;
 }
 
-/** Where a surface is drawn. Mirrors `Place`. */
+/** Where a surface is drawn: the companion's Surface view, a stage tab of its own, or its terminal's pane. Mirrors `Place`. */
 export type SurfacePlace = "companion" | "tab" | "strip";
 
 /** How a board's run stands, as its agent says it. Mirrors `Status`. */

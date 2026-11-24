@@ -87,7 +87,7 @@ export interface CompanionContext {
   activity: CompanionActivity | null;
   /** The Activity entry the latest show request asked for, or null. */
   focus: ActivityFocus | null;
-  /** The terminal's agent surfaces, oldest first. */
+  /** The terminal's companion surfaces, oldest first. */
   surfaces: readonly SurfaceRecord[];
   /** The surface the latest show request asked for, or null. */
   surfaceFocus: SurfaceFocus | null;
@@ -225,7 +225,7 @@ export const ACTIVITY_VIEW: CompanionView<CompanionContext> = {
     activity && <ActivityView key={terminal.id} terminal={terminal} activity={activity} focus={focus} />,
 };
 
-/** The Surface view: the selected terminal's agent surfaces, while it has any. */
+/** The Surface view: the selected terminal's companion surfaces, while it has any. */
 export const SURFACE_VIEW: CompanionView<CompanionContext> = {
   id: "surface",
   label: "Surface",

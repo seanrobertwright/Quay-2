@@ -29,10 +29,6 @@ impl Wait {
         Some(Self { tools: tools.clone(), terminal_id: terminal_id.to_string(), launch, number, rx })
     }
 
-    pub fn terminal_id(&self) -> &str {
-        &self.terminal_id
-    }
-
     /// The call's number in the store.
     pub fn number(&self) -> u64 {
         self.number

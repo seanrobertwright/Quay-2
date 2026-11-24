@@ -10,10 +10,9 @@ pub const MOST_LIVE: usize = 4;
 pub enum Place {
     /// The companion's Surface view.
     Companion,
-    /// A stage tab of its own. No tool shows a surface there yet.
-    #[allow(dead_code)]
+    /// A stage tab of its own.
     Tab,
-    /// A line on the terminal's pane.
+    /// A line on its terminal's pane.
     Strip,
 }
 

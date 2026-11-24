@@ -65,9 +65,18 @@ export async function verdictOn(request: CheckRequest): Promise<Verdict> {
   return verdicts().find((v) => v.call === request.call)!.verdict;
 }
 
-/** The question `id` of `terminal`, as Rust holds it once the webview has accepted `ask`. */
-export async function acceptedAsk(id: string, ask: unknown, terminal = "t1", order = 1): Promise<SurfaceRecord> {
-  const verdict = await verdictOn({ call: verdicts().length + 1, tool: "quay_ask", surface_id: id, arguments: ask });
-  assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: terminal, id, tool: "quay_ask", place: "companion", state: verdict.state, revision: 1, order, change: order, asks: true, shown_at: Date.now(), answer: null, answered_at: null, ended_at: null, board: null };
+/** What a surface has that its call's arguments do not say. */
+interface Committed extends Pick<SurfaceRecord, "tool" | "place" | "id" | "order"> {
+  terminal: string;
 }
+
+/** The surface that the call `args` makes, as Rust holds it once the webview has accepted it. */
+export async function acceptedSurface({ tool, place, id, terminal, order }: Committed, args: unknown): Promise<SurfaceRecord> {
+  const verdict = await verdictOn({ call: verdicts().length + 1, tool, surface_id: id, arguments: args });
+  assert.ok("state" in verdict, JSON.stringify(verdict));
+  return { terminal_id: terminal, id, tool, place, state: verdict.state, revision: 1, order, change: order, asks: true, shown_at: Date.now(), answer: null, answered_at: null, ended_at: null, board: null };
+}
+
+/** The question `id` of `terminal`, as Rust holds it once the webview has accepted `ask`. */
+export const acceptedAsk = (id: string, ask: unknown, terminal = "t1", order = 1): Promise<SurfaceRecord> =>
+  acceptedSurface({ tool: "quay_ask", place: "companion", id, terminal, order }, ask);

@@ -20,6 +20,8 @@ interface SurfaceFrameProps {
   dismiss: Dismiss;
   /** Why the operator's answer or dismissal was not taken, at the frame's foot. */
   refusal: string | null;
+  /** Fills what it is in, so its header bar and foot stay in view while what it holds scrolls. */
+  fills?: boolean;
   /** What the agent asked to show. */
   children: ReactNode;
 }
@@ -28,9 +30,14 @@ interface SurfaceFrameProps {
  * What Quay draws around every agent surface: who is asking, in a bar of Quay's own, and a box that
  * the content cannot draw outside.
  */
-export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refusal, children }: SurfaceFrameProps) => (
-  <section aria-label={`${kind} from ${terminal.name}`} data-surface={id} tabIndex={-1} className="overflow-clip rounded-lg border border-[#30363d] bg-[#0d1117]">
-    <header className="flex h-8 items-center gap-1.5 border-b border-[#30363d] bg-[#161b22] px-3 text-[11px]">
+export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refusal, fills = false, children }: SurfaceFrameProps) => (
+  <section
+    aria-label={`${kind} from ${terminal.name}`}
+    data-surface={id}
+    tabIndex={-1}
+    className={`overflow-clip rounded-lg border border-[#30363d] bg-[#0d1117] ${fills ? "flex min-h-0 w-full max-w-[1180px] flex-1 flex-col" : ""}`}
+  >
+    <header className="flex h-8 shrink-0 items-center gap-1.5 border-b border-[#30363d] bg-[#161b22] px-3 text-[11px]">
       <KindIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#d29922]" />
       <span aria-hidden="true" className="flex shrink-0">
         <AgentIcon kind={terminal.run_kind} className="h-3.5 w-3.5" />
@@ -50,10 +57,25 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refu
     {band}
     <SurfaceLinksProvider terminalId={terminal.id}>
       {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside.
-          Neither it nor `overflow-clip` makes a box that scrolls, so a foot sticks to what scrolls around the frame. */}
-      <div data-surface-content className="relative isolate overflow-clip p-3 text-xs text-[#c9d1d9] contain-paint">
-        {children}
-      </div>
+          Neither it nor `overflow-clip` makes a box that scrolls, so in a frame that fills nothing a foot
+          sticks to what scrolls around the frame. One that fills scrolls its content, and the size
+          container is what the layout in it measures itself by. */}
+      {fills ? (
+        <div
+          data-surface-content
+          role="group"
+          aria-label={kind}
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be reachable by keyboard
+          tabIndex={0}
+          className="relative isolate min-h-0 flex-1 overflow-y-auto p-3 text-xs text-[#c9d1d9] [container-type:size] contain-paint focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--quay-accent)"
+        >
+          {children}
+        </div>
+      ) : (
+        <div data-surface-content className="relative isolate overflow-clip p-3 text-xs text-[#c9d1d9] contain-paint">
+          {children}
+        </div>
+      )}
     </SurfaceLinksProvider>
     {refusal && <FrameNotice>{refusal}</FrameNotice>}
   </section>

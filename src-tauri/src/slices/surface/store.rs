@@ -348,16 +348,17 @@ impl Left {
 }
 
 /// A terminal that has been listed and not closed: its surfaces, in the order they were committed,
-/// where those that have left stand, the ids the operator dismissed, how many asks have been named, its
-/// rejected calls, and its calls that have not returned.
+/// where those that have left stand, the ids the operator dismissed, how many of its surfaces Quay has
+/// named, its rejected calls, and its calls that have not returned.
 #[derive(Default)]
 struct Terminal {
     /// Its latest launch.
     launch: u64,
     /// Whether that launch is not over.
     running: bool,
-    /// Also counted on by a later launch, so no id names a second ask while the terminal is open.
-    asks: u64,
+    /// How many surfaces have been named by each word. Also counted on by a later launch, so no id
+    /// names a second surface while the terminal is open.
+    named: HashMap<&'static str, u64>,
     /// By tool, how many of its calls have been rejected since one was accepted.
     rejected: HashMap<String, u32>,
     surfaces: Vec<Surface>,
@@ -503,14 +504,15 @@ impl SurfaceStore {
         closed.surfaces.into_iter().map(|surface| SurfaceKey::new(terminal_id, surface.id)).collect()
     }
 
-    /// A name for `terminal_id`'s next ask: `ask_1` and on, counted per terminal, never one in use or
-    /// one the operator dismissed. `None` when the terminal has closed.
-    pub fn name_ask(&self, terminal_id: &str) -> Option<SurfaceKey> {
+    /// A name for `terminal_id`'s next surface named by `word`: `ask_1` and on, counted per terminal and
+    /// word, never one in use or one the operator dismissed. `None` when the terminal has closed.
+    pub fn name(&self, terminal_id: &str, word: &'static str) -> Option<SurfaceKey> {
         let mut inner = self.0.lock();
         let terminal = inner.terminals.get_mut(terminal_id)?;
         loop {
-            terminal.asks += 1;
-            let id = format!("ask_{}", terminal.asks);
+            let named = terminal.named.entry(word).or_default();
+            *named += 1;
+            let id = format!("{word}_{named}");
             if terminal.find(&id).is_none() && !terminal.dismissed.contains(&id) {
                 return Some(SurfaceKey::new(terminal_id, id));
             }

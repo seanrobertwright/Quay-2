@@ -51,6 +51,34 @@
     }
   },
   {
+    "name": "quay_review",
+    "description": "Show the operator a plan, results or findings to decide on, in a tab of their own, when they should read before you go on. They keep or drop each item, may comment, and approve, request changes or reject. The call stays open for the verdict, up to 100 seconds, and returns {\"title\", \"verdict\", \"dropped\", \"comment\"}: verdict is approved, changes_requested or rejected, dropped the titles of the items to leave out, and comment is left out when empty.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Plain text, at most 80 characters." },
+        "body": { "type": "string", "description": "Markdown, at most 20000 characters." },
+        "items": {
+          "type": "array",
+          "maxItems": 30,
+          "description": "What can be kept or dropped one by one. All start kept.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "description": "At most 120 characters, and no other item's." },
+              "detail": { "type": "string", "description": "Plain text, at most 300 characters." },
+              "file": { "type": "string", "description": "A path to show, which may end in :line." }
+            },
+            "required": ["title"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["title", "body"],
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "quay_board",
     "description": "Show the operator how a long run stands, as a live line on this terminal's pane that opens into steps, progress and stats. Each call replaces the whole board, so send all of it each time. Returns {\"shown\": true} at once and sends nothing back. {\"dismissed\": true} means the operator closed this board: stop updating it, and use a new id for a later run.",
     "inputSchema": {

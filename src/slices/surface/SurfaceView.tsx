@@ -1,60 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { Earlier } from "./Earlier.tsx";
-import { lookOf } from "./looks/index.ts";
+import { LiveSurface } from "./LiveSurface.tsx";
 import { QueueLine } from "./QueueLine.tsx";
-import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
-import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { surfaceKey } from "./surfaceAttention.ts";
-import { answerSurface, loadA2ui, useSurfacesRead } from "./surfaceHost.ts";
-import { isLive, type SurfaceAction, type SurfaceRecord } from "./surfaceTypes.ts";
-import { typedTool } from "./typed/index.ts";
-import { useDismiss } from "./useDismiss.ts";
+import { isLive, type SurfaceRecord } from "./surfaceTypes.ts";
 import { useKeptFocus } from "./useKeptFocus.ts";
 import { useSurfaceQueue } from "./useSurfaceQueue.ts";
-
-const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
-
-const Loading = () => <p className="text-[#8b949e]">Loading…</p>;
-
-interface SurfaceProps {
-  record: SurfaceRecord;
-  terminal: TerminalInfo;
-}
-
-/** A surface the operator can act on. */
-const LiveSurface = ({ record, terminal }: SurfaceProps) => {
-  const { kind, KindIcon, layout } = lookOf(record.tool);
-  const [refusal, setRefusal] = useState<string | null>(null);
-  // What is unsent in it comes with the list
-  const read = useSurfacesRead();
-  const dismiss = useDismiss(record, setRefusal);
-  const onAction = useCallback(
-    async (action: SurfaceAction) => {
-      const collapse = typedTool(record.tool)?.collapse;
-      if (!collapse) {
-        setRefusal("Not sent: Quay cannot send an answer to this kind of surface.");
-        return;
-      }
-      setRefusal(null);
-      try {
-        await answerSurface(record, collapse(action));
-      } catch (error) {
-        setRefusal(String(error));
-      }
-    },
-    [record],
-  );
-  return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} dismiss={dismiss} refusal={refusal}>
-      <SurfaceBoundary key={record.revision}>
-        <Suspense fallback={<Loading />}>
-          {read ? <SurfaceContent record={record} layout={layout} onAction={onAction} /> : <Loading />}
-        </Suspense>
-      </SurfaceBoundary>
-    </SurfaceFrame>
-  );
-};
 
 /** The most questions one terminal may have waiting. Mirrors `MOST_LIVE`, which Rust holds all its live companion surfaces to. */
 const MOST_WAITING = 4;
