@@ -3,7 +3,7 @@
 // `[data-neon="…"]` rule per name here, which `neon.test.ts` checks.
 
 /** Every part the shell look draws, by its `data-neon` name. */
-export const NEON_PARTS = ["edge", "module", "dot", "underline", "row", "pane", "title", "ready"] as const;
+export const NEON_PARTS = ["edge", "module", "dot", "underline", "row", "pane", "title", "ready", "quay-card"] as const;
 
 /** A part the shell look draws. */
 export type NeonPart = (typeof NEON_PARTS)[number];

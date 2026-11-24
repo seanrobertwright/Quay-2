@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { InputField } from "../attention/permissionInput.ts";
+import { ScrollBox } from "./ScrollBox.tsx";
 
 /** The most characters (UTF-16 code units) of one value drawn before its "Show all" is pressed. */
 const VALUE_LIMIT = 20_000;
@@ -21,27 +22,21 @@ interface PermissionInputBoxProps {
 }
 
 /**
- * The rest of a permission request's input, in a scroll box of its own about ten lines high, so
- * that a long input does not push the request's answers away. The input is the agent's text: it is
- * drawn as plain text, never as Markdown, links or HTML, with a string's line breaks and spaces kept.
+ * The rest of a permission request's input, in a scroll box of its own about ten lines high
+ * (four in a short window), so that a long input does not push the request's answers away. The input
+ * is the agent's text: it is drawn as plain text, never as Markdown, links or HTML, with a string's
+ * line breaks and spaces kept.
  */
 export const PermissionInputBox = ({ tool, rest }: PermissionInputBoxProps) => {
   const box = useRef<HTMLDivElement>(null);
   // The pressed "Show all" goes away, so keyboard focus moves to the box it was in.
   const onShowAll = () => box.current?.focus({ preventScroll: true });
   return (
-    <div
-      ref={box}
-      role="group"
-      aria-label={`Rest of the ${tool} input`}
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be reachable by keyboard
-      tabIndex={0}
-      className="max-h-44 overflow-auto rounded border border-[#30363d] bg-[#0d1117] p-2 font-mono text-[11px] leading-4 text-[#c9d1d9] space-y-2 outline-none focus-visible:ring-1 focus-visible:ring-(--quay-accent)"
-    >
+    <ScrollBox ref={box} label={`Rest of the ${tool} input`} height="tall" className="font-mono space-y-2">
       {rest.map((field) => (
         <Field key={field.name ?? ""} field={field} onShowAll={onShowAll} />
       ))}
-    </div>
+    </ScrollBox>
   );
 };
 

@@ -144,5 +144,5 @@ test("Whole input in the reply strip shows the terminal's Activity view, over wh
   await act(async () => buttonNamed("Whole input")!.click());
   assert.ok(!buttonNamed("Close this ticket"));
   const request = activityView().querySelector('[aria-label="Permission request"]');
-  assert.match(request?.querySelector('[role="group"][tabindex="0"]')?.textContent ?? "", /dangerouslyDisableSandbox/);
+  assert.match(request?.querySelector('[role="group"][aria-label^="Rest of the "]')?.textContent ?? "", /dangerouslyDisableSandbox/);
 });
