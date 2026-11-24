@@ -96,7 +96,7 @@ import { APP_CURRENT_VERSION, checkForUpdates } from "./slices/updater/updaterSe
 import { UpdateInfo } from "./slices/updater/types";
 import { isSamePath, resolveRootRepo } from "./utils/paths";
 import { AlertCircle, Cpu, FileCode2, X, Zap } from "lucide-react";
-import type { StageTool } from "./slices/stage/Stage";
+import type { StageTool } from "./slices/stage/stageTools";
 
 /** What starting work on a ticket needs to know about it. */
 type IssueToStart = Pick<GithubIssue, "number" | "title">;

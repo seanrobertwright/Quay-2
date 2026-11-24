@@ -6,15 +6,10 @@ import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
-import { StageTabBar, type StageToolTab } from "./StageTabBar";
+import { StageTabBar } from "./StageTabBar";
+import type { StageTool } from "./stageTools.ts";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
-
-/** A full-stage tool open in a stage tab, such as the swarm builder. */
-export interface StageTool extends StageToolTab {
-  /** What the tool draws over the panes while its tab is in front. */
-  content: ReactNode;
-}
 
 interface StageProps {
   terminals: TerminalInfo[];
@@ -52,7 +47,7 @@ interface StageProps {
   frontToolId?: string | null;
   onSelectTool?: (id: string) => void;
   onCloseTool?: (id: string) => void;
-  /** The menu that finished surface tabs are folded under. */
+  /** The menu that locked surface tabs are folded under. */
   earlierTabs?: ReactNode;
 }
 

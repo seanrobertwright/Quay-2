@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { WAITING_ON_YOU } from "../../lib/waiting.ts";
 import { isSamePath } from "../../utils/paths.ts";
-import type { StageTool } from "../stage/Stage.tsx";
+import type { StageTool } from "../stage/stageTools.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { EarlierTabs } from "./EarlierTabs.tsx";
 import { lookOf } from "./looks/index.ts";
