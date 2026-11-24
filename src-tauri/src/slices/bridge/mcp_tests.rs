@@ -10,7 +10,7 @@ use tokio::net::TcpStream;
 use super::routes::{create_router, AppContext};
 use super::server::bind_bridge_listener;
 use super::state::BridgeState;
-use super::webview::WebviewEvents;
+use crate::webview::WebviewEvents;
 use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
@@ -63,7 +63,7 @@ impl TestBridge {
                 machina_dir.join("state.json"),
                 machina_dir.join("vault"),
             ),
-            webview: WebviewEvents::to(|_, _| Ok(())),
+            webview: WebviewEvents::to(|_, _| {}),
         });
         let server = tokio::spawn(async move {
             axum::serve(listener, router.into_make_service()).await.unwrap();

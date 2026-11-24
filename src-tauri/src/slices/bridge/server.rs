@@ -6,10 +6,10 @@ use super::opencode::start_watching;
 use super::port::BRIDGE_PORT_VAR;
 use super::routes::{create_router, AppContext};
 use super::state::BridgeState;
-use super::webview::WebviewEvents;
 use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
+use crate::webview::WebviewEvents;
 
 /// Binds the bridge's listener on loopback: on the pinned port when there is
 /// one, otherwise on a random port from the OS.

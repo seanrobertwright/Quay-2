@@ -65,7 +65,7 @@ pub fn start_watching(ctx: Arc<AppContext>, launch: LaunchRef, port: u16) {
                 CONNECT_BUDGET.as_secs()
             );
             if let Some(status) = ctx.pty_manager.lose_turn_sight(&launch) {
-                let _ = ctx.webview.emit("terminal-status", status);
+                ctx.webview.emit("terminal-status", status);
             }
         }
     });

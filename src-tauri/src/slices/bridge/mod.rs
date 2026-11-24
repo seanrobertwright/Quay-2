@@ -8,7 +8,6 @@ pub mod port;
 pub mod routes;
 pub mod server;
 pub mod state;
-pub mod webview;
 
 pub use commands::*;
 pub use models::*;
