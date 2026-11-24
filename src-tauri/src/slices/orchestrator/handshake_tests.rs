@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use super::mcp_tests::TestBridge;
 use crate::slices::connect::handshake::report_handshakes;
 use crate::slices::pty::handshake::Handshake;
-use crate::slices::pty::models::RunKind;
+use crate::slices::pty::models::{ClaudeStatus, RunKind};
 use crate::slices::pty::osc7501::TurnReport;
 use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::slices::pty::PtyManager;
@@ -132,12 +132,17 @@ async fn a_cli_that_connects_at_its_first_prompt_has_the_grace_from_then_too() {
     assert_eq!(told(terminals, GRACE), Some(Handshake { seen: false, grace_left_ms: 0, prompted_grace_left_ms: None }));
 
     let sent = listen(terminals);
-    let turn = || TurnReport { status: None, starts_turn: true, answer: None, ends_turn: false };
-    terminals.apply_turn_report(&launch, &turn());
+    let report = |status, starts_turn| TurnReport { status: Some(status), starts_turn, answer: None, ends_turn: false };
+    terminals.apply_turn_report(&launch, &report(ClaudeStatus::Waiting, true));
+    terminals.apply_turn_report(&launch, &report(ClaudeStatus::Idle, false));
+    assert_eq!(told(terminals, GRACE).unwrap().prompted_grace_left_ms, None, "a sign-in as it starts is no prompt");
+    assert!(sent.lock().is_empty());
+
+    terminals.apply_turn_report(&launch, &report(ClaudeStatus::Working, true));
     let left = told(terminals, GRACE / 2).unwrap().prompted_grace_left_ms.unwrap();
     assert!((29_000..=30_000).contains(&left), "{left}");
     tokio::time::sleep(Duration::from_millis(20)).await;
-    terminals.apply_turn_report(&launch, &turn());
+    terminals.apply_turn_report(&launch, &report(ClaudeStatus::Working, true));
     let again = told(terminals, GRACE / 2).unwrap().prompted_grace_left_ms.unwrap();
     assert!(again < left, "a later turn starts no new grace");
     assert_eq!(*sent.lock(), [("terminal-handshake".to_string(), json!({ "terminal_id": "term-mcp" }))]);
