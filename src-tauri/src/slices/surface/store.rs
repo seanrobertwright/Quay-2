@@ -11,10 +11,11 @@ use serde_json::Value;
 use tokio::sync::oneshot;
 
 use super::check::Accepted;
+use super::place::{Place, MOST_LIVE};
 use crate::dates::now_ms;
 
-/// The most surfaces a terminal keeps: the spec's four live and ten locked, not told apart yet.
-pub const MOST_KEPT: usize = 14;
+/// The most settled surfaces a terminal has when another surface is added.
+const MOST_SETTLED: usize = 10;
 
 /// Which surface: its id is one among its terminal's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -67,8 +68,8 @@ pub enum AnswerRefused {
 pub enum CommitRefused {
     /// The terminal has a surface of that id.
     IdInUse,
-    /// The terminal has `MOST_KEPT` surfaces, and a call waits on each.
-    Full,
+    /// The terminal has `MOST_LIVE` live surfaces in this place.
+    Full(Place),
 }
 
 /// A surface that was added.
@@ -76,7 +77,7 @@ pub struct Committed {
     pub record: SurfaceRecord,
     /// The call's wait, when the surface asks for something.
     pub wait: Option<Wait>,
-    /// The surface that left to make room for it.
+    /// The settled surface that left to make room for it.
     pub left: Option<SurfaceKey>,
 }
 
@@ -92,6 +93,7 @@ enum Phase {
 struct Surface {
     id: String,
     tool: String,
+    place: Place,
     state: Value,
     revision: u64,
     order: u64,
@@ -100,9 +102,9 @@ struct Surface {
 }
 
 impl Surface {
-    /// Whether an open call waits for its answer.
-    fn is_waited_on(&self) -> bool {
-        matches!(&self.phase, Phase::Asking { waiter: Some(waiter) } if !waiter.is_closed())
+    /// Whether it is not settled, which keeps it from making room for another.
+    fn is_live(&self) -> bool {
+        !matches!(self.phase, Phase::Settled { .. })
     }
 
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
@@ -181,22 +183,31 @@ impl SurfaceStore {
         *run
     }
 
-    /// Adds the surface `key` as the webview accepted it. A terminal that has `MOST_KEPT` loses its
-    /// oldest one that no call waits on: an answer to it would be refused, or it has or wants none.
-    pub fn commit(&self, key: &SurfaceKey, tool: &str, accepted: Accepted) -> Result<Committed, CommitRefused> {
+    /// Adds the surface `key` as the webview accepted it, if `place` has room for it. A terminal that
+    /// has `MOST_SETTLED` settled surfaces loses the oldest of them.
+    pub fn commit(
+        &self,
+        key: &SurfaceKey,
+        tool: &str,
+        place: Place,
+        accepted: Accepted,
+    ) -> Result<Committed, CommitRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.entry(key.terminal_id.clone()).or_default();
         if terminal.find(&key.id).is_some() {
             return Err(CommitRefused::IdInUse);
         }
-        let left = if terminal.surfaces.len() < MOST_KEPT {
-            None
-        } else {
-            let oldest = terminal.surfaces.iter().position(|surface| !surface.is_waited_on());
-            let left = terminal.surfaces.remove(oldest.ok_or(CommitRefused::Full)?);
-            Some(SurfaceKey::new(&key.terminal_id, left.id))
-        };
+        let live = terminal.surfaces.iter().filter(|surface| surface.is_live() && surface.place == place);
+        if live.count() >= MOST_LIVE {
+            return Err(CommitRefused::Full(place));
+        }
+        let mut settled = terminal.surfaces.iter().filter(|surface| !surface.is_live());
+        let oldest = settled.next().map(|surface| surface.id.clone());
+        let left = oldest.filter(|_| settled.count() + 1 >= MOST_SETTLED).map(|id| {
+            terminal.surfaces.retain(|surface| surface.id != id);
+            SurfaceKey::new(&key.terminal_id, id)
+        });
         let (phase, wait) = if accepted.asks {
             let (tx, rx) = oneshot::channel();
             let wait = Wait { store: self.clone(), key: key.clone(), rx };
@@ -207,6 +218,7 @@ impl SurfaceStore {
         let surface = Surface {
             id: key.id.clone(),
             tool: tool.to_string(),
+            place,
             state: accepted.state,
             revision: 1,
             order: change,

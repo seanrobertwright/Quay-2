@@ -7,6 +7,7 @@ mod arguments;
 mod ask;
 mod check;
 pub mod commands;
+mod place;
 mod rejection;
 mod store;
 pub mod timing;
@@ -14,6 +15,8 @@ mod tools;
 
 #[cfg(test)]
 mod ask_tests;
+#[cfg(test)]
+mod limit_tests;
 #[cfg(test)]
 mod test_seam;
 

@@ -7,9 +7,11 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::arguments::Arguments;
+use super::place::Place;
 use super::rejection::Rejection;
 
 pub const TOOL: &str = "quay_ask";
+pub const PLACE: Place = Place::Companion;
 
 pub(super) const CONTEXT_LIMIT: usize = 600;
 pub(super) const QUESTION_COUNT: RangeInclusive<usize> = 1..=4;

@@ -6,10 +6,12 @@ use std::sync::{Arc, OnceLock, Weak};
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 
+use super::arguments::spelled;
 use super::ask::{self, Ask};
 use super::check::{CheckRequest, Checks, Verdict};
+use super::place::{Place, MOST_LIVE};
 use super::rejection::{QuayFailed, Rejection};
-use super::store::{AnswerRefused, CommitRefused, Committed, SurfaceKey, SurfaceRecord, SurfaceStore, MOST_KEPT};
+use super::store::{AnswerRefused, CommitRefused, Committed, SurfaceKey, SurfaceRecord, SurfaceStore};
 use super::timing::Timing;
 
 /// The window that checks and draws surfaces.
@@ -86,7 +88,7 @@ impl SurfaceTools {
             let queue = self.queue(terminal_id);
             let _one_at_a_time = queue.lock().await;
             let key = self.0.store.name_ask(terminal_id);
-            match self.check_and_commit(&key, ask::TOOL, json!(ask)).await {
+            match self.check_and_commit(&key, ask::TOOL, ask::PLACE, json!(ask)).await {
                 Ok(Committed { record, wait, left }) => {
                     if let Some(left) = left {
                         self.remove(&left);
@@ -123,6 +125,7 @@ impl SurfaceTools {
         &self,
         key: &SurfaceKey,
         tool: &str,
+        place: Place,
         arguments: Value,
     ) -> Result<Committed, Value> {
         let SurfaceKey { terminal_id, id } = key;
@@ -143,13 +146,17 @@ impl SurfaceTools {
             }
             Some(Verdict::Accepted(accepted)) => accepted,
         };
-        self.0.store.commit(key, tool, accepted).map_err(|refused| match refused {
+        self.0.store.commit(key, tool, place, accepted).map_err(|refused| match refused {
             CommitRefused::IdInUse => {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
             }
-            CommitRefused::Full => {
-                let message = format!("This terminal has {MOST_KEPT} questions open, the most allowed. Wait for an answer.");
+            CommitRefused::Full(place) => {
+                let message = format!(
+                    "This terminal has {} live surfaces in {}, the most allowed. Wait for an answer, delete one, or put several questions in one quay_ask.",
+                    spelled(MOST_LIVE),
+                    place.name()
+                );
                 self.reject(terminal_id, tool, &Rejection::invalid("", message))
             }
         })
