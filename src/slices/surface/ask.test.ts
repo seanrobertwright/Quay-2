@@ -7,10 +7,10 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { epochMsFromLocalParts, parseUtcTimestamp } from "../../lib/dates.ts";
 import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import type { Mounted } from "./fixtures/surfaceFixtures.ts";
+import type { Mounted } from "./fixtures/askFixtures.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { askCheck, askRecord, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/surfaceFixtures.ts");
+const { askCheck, askRecord, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 let list: SurfaceRecord[];
 let verdicts: { call: number; verdict: Verdict }[];
@@ -321,6 +321,8 @@ test("once sent, the frame shows each question with its answer, and when it was 
   const at = epochMsFromLocalParts({ year: 2026, month: 11, day: 24, hour: 19, minute: 42 })! + 5_000;
   await act(async () => emitEvent("surface-changed", { ...asked, change: 2, answer, answered_at: at }));
   await settle();
+  // The companion went back to its earlier view
+  await act(async () => viewEntry(mounted!.container, "Surface")!.click());
 
   const settled = mounted!.container.querySelector<HTMLElement>("[data-surface]")!;
   assert.deepEqual(

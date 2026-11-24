@@ -18,6 +18,13 @@ Common questions, troubleshooting steps, and operational guidance for **Quay 2**
 - Ensure the target executable (e.g. `claude.exe`, `pwsh.exe`) is accessible on your system `PATH`.
 - Check `%LOCALAPPDATA%\Quay2\logs\` for any process spawn exceptions.
 
+### Issue: `node_modules` Packages Give "Permission denied" or `MODULE_NOT_FOUND`, and Commit Hooks Fail
+**Cause**: on Windows, Quay was started by a program that has RedirectionGuard enforced. Quay and every terminal and agent it starts inherit it and cannot follow symlinks or junctions, which pnpm's `node_modules` is made of. Quay warns of it at startup, under the stage tab bar, until you dismiss the warning.
+
+**Solution**:
+- Close Quay, then start it from the Start menu, the taskbar or Explorer.
+- Every start on Windows writes one line about the check, which names `RedirectionGuard`, to the daily log in `%LOCALAPPDATA%\Quay2\logs\`.
+
 ---
 
 ## 2. Agent-to-Agent (A2A) Bus

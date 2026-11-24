@@ -1,5 +1,5 @@
 // The webview's side of the surfaces: it answers Rust's checks and keeps what Rust says is shown.
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CheckRequest, SurfaceKey, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
@@ -9,12 +9,23 @@ export const loadA2ui = () => import("./a2ui/index.ts");
 
 const NONE: readonly SurfaceRecord[] = [];
 let byTerminal: ReadonlyMap<string, readonly SurfaceRecord[]> = new Map();
+/** Whether the surfaces Rust held when the page loaded are kept, or could not be read. */
+let listDone = false;
 const subscribers = new Set<() => void>();
 
 function set(next: typeof byTerminal): void {
   byTerminal = next;
   for (const subscriber of subscribers) subscriber();
 }
+
+/** Calls `changed` after every change to the surfaces kept, until the returned function is called. */
+export function subscribeToSurfaces(changed: () => void): () => void {
+  subscribers.add(changed);
+  return () => void subscribers.delete(changed);
+}
+
+/** Every surface kept, by terminal, each terminal's oldest first. A terminal with none is absent. */
+export const surfacesByTerminal = (): ReadonlyMap<string, readonly SurfaceRecord[]> => byTerminal;
 
 /** Keeps `record`, unless what is kept of that surface is as new. */
 function keep(record: SurfaceRecord): void {
@@ -68,13 +79,22 @@ export function startSurfaces(): () => void {
     listen<SurfaceRecord>("surface-changed", (event) => onRecord(event.payload)),
     listen<SurfaceKey>("surface-removed", (event) => onRemoved(event.payload)),
   ]);
-  const start = async () => {
+  const listRead = () => {
+    if (stopped) return;
+    listDone = true;
+    set(byTerminal);
+  };
+  const readList = async () => {
     await listening;
     if (stopped) return;
     for (const record of await invoke<SurfaceRecord[]>("surface_list")) onRecord(record);
     if (stopped) return;
     leftMeanwhile?.forEach(drop);
     leftMeanwhile = null;
+  };
+  const start = async () => {
+    await readList().finally(listRead);
+    if (stopped) return;
     for (const request of await invoke<CheckRequest[]>("surface_checks")) onCheck(request);
   };
   start().catch(failed("The surfaces could not be read"));
@@ -82,6 +102,7 @@ export function startSurfaces(): () => void {
   return () => {
     stopped = true;
     cancelAnimationFrame(frame);
+    listDone = false;
     set(new Map());
     listening.then((unlisten) => unlisten.forEach((stop) => stop()), failed("The surfaces could not be listened for"));
   };
@@ -89,12 +110,14 @@ export function startSurfaces(): () => void {
 
 /** `terminalId`'s surfaces, oldest first. */
 export function useSurfacesOf(terminalId: string | null): readonly SurfaceRecord[] {
-  const subscribe = useCallback((changed: () => void) => {
-    subscribers.add(changed);
-    return () => void subscribers.delete(changed);
-  }, []);
-  return useSyncExternalStore(subscribe, () => (terminalId === null ? NONE : (byTerminal.get(terminalId) ?? NONE)));
+  return useSyncExternalStore(subscribeToSurfaces, () => (terminalId === null ? NONE : (byTerminal.get(terminalId) ?? NONE)));
 }
+
+/**
+ * Whether the surfaces Rust held when the page loaded are known. Until then a surface that comes may
+ * be one the operator has seen already. Also true once they could not be read.
+ */
+export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSurfaces, () => listDone);
 
 /** Sends the operator's answer. It rejects with Quay's words for why it was not taken. */
 export function answerSurface(record: SurfaceRecord, answer: unknown): Promise<void> {

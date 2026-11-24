@@ -1,82 +1,58 @@
-// What the surface tests share: waiting, the record Rust makes of an accepted ask, and the companion
-// it is drawn in, worked as the operator would. The test owns what it mounts.
-import "../../../test-support/dom.ts";
-import assert from "node:assert/strict";
-import { act, createElement } from "react";
+// What the tests of asking surfaces share: the surfaces Rust sends, and something to draw in.
+import { emitEvent } from "../../../test-support/dom.ts";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { CheckRequest, SurfaceRecord } from "../surfaceTypes.ts";
-import { companionPrefs } from "../../companion/companionPrefs.ts";
-import { memoryStorage, terminalInfo } from "../../companion/fixtures/companionFixtures.ts";
-import type { TerminalInfo } from "../../terminal/types.ts";
+import type { SurfaceRecord } from "../surfaceTypes.ts";
 
-const { Companion, COMPANION_VIEWS } = await import("../../companion/Companion.tsx");
+let change = 0;
 
-/** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
-export const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
-
-/** Waits, for up to two seconds, until `holds`. */
-export async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await settle();
-  assert.ok(holds(), what);
+/** The surface `id`, of terminal `t1` unless `over` says another, as Rust holds it. One made later has a higher order and change. */
+export function surface(id: string, over: Partial<SurfaceRecord> = {}): SurfaceRecord {
+  change += 1;
+  const text = { id: "root", component: "Text", text: `What ${id} says` };
+  const state: SurfaceRecord["state"] = { version: "1.0", createSurface: { surfaceId: id, catalogId: "urn:quay:a2ui:catalog:v1", components: [text], dataModel: {} } };
+  return { terminal_id: "t1", id, tool: "quay_ask", state, revision: 1, order: change, change, asks: true, answer: null, answered_at: null, ...over };
 }
 
-/** The check of a `quay_ask` call that is to be the surface `ask_1`. */
-export const askCheck = (call: number, args: unknown): CheckRequest => ({ call, tool: "quay_ask", surface_id: "ask_1", arguments: args });
+/** `record` changed by `over`, as Rust holds it after. */
+export const changed = (record: SurfaceRecord, over: Partial<SurfaceRecord>): SurfaceRecord => ({ ...record, change: (change += 1), ...over });
 
-/** An ask as Rust holds it once the webview has accepted it with `state`, before any answer. */
-export const askRecord = (state: SurfaceRecord["state"], { id = "ask_1", terminal = "t1", order = 1 } = {}): SurfaceRecord => ({
-  terminal_id: terminal,
-  id,
-  tool: "quay_ask",
-  state,
-  revision: 1,
-  order,
-  change: order,
-  asks: true,
-  answer: null,
-  answered_at: null,
-});
+/** Lets what is under way finish: promises and what they draw. */
+export const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
 
-/** The terminal that asks, unless a test says otherwise. */
-export const TERMINAL: TerminalInfo = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
-
-/** The companion with `terminal` selected. */
-export function companion(terminal: TerminalInfo) {
-  const props = { projects: [], projectWorktrees: {}, views: COMPANION_VIEWS, prefs: companionPrefs(memoryStorage()) };
-  return createElement(Companion, { ...props, selectedTerminal: terminal });
+/** Sends `event` from Rust and draws what comes of it. */
+export async function emit(event: string, payload: unknown): Promise<void> {
+  await act(async () => emitEvent(event, payload));
+  await settle();
 }
+export const arrives = (record: SurfaceRecord) => emit("surface-changed", record);
+export const answered = (record: SurfaceRecord) => arrives(changed(record, { answer: { answers: [] }, answered_at: 1 }));
+export const removed = ({ terminal_id, id }: SurfaceRecord) => emit("surface-removed", { terminal_id, id });
 
-export interface Mounted {
-  root: Root;
-  container: HTMLElement;
-}
+type Drawn = Parameters<Root["render"]>[0];
 
-/** The companion, drawn with `terminal` selected. */
-export async function mountCompanion(terminal: TerminalInfo): Promise<Mounted> {
+let mounted: { root: Root; container: HTMLElement } | null = null;
+
+/** Draws `element` in the page, until `unmount`. */
+export async function mount(element: Drawn): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => root.render(companion(terminal)));
-  await settle();
-  return { root, container };
+  mounted = { root: createRoot(container), container };
+  await redraw(element);
+  return container;
 }
 
-/** Takes what `mountCompanion` drew off the page. */
-export async function unmount({ root, container }: Mounted): Promise<void> {
+/** Draws `element` where `mount` drew. */
+export async function redraw(element: Drawn): Promise<void> {
+  await act(async () => mounted!.root.render(element));
+  await settle();
+}
+
+/** Takes what `mount` drew out of the page, if it drew. */
+export async function unmount(): Promise<void> {
+  if (!mounted) return;
+  const { root, container } = mounted;
   await act(async () => root.unmount());
   container.remove();
-}
-
-/** What shows the companion view `name`, if the companion has it. */
-export const viewEntry = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll<HTMLElement>('[aria-label="Companion view"] [role="radio"]')].find((entry) => entry.textContent === name);
-
-/** The button named `name`, if there is one. */
-export const findButton = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll("button")].find((button) => button.textContent === name);
-
-/** Types `text` into a field as the operator would, so React hears it. */
-export async function typeInto(field: HTMLTextAreaElement, text: string): Promise<void> {
-  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!.call(field, text);
-  await act(async () => void field.dispatchEvent(new Event("input", { bubbles: true })));
+  mounted = null;
 }

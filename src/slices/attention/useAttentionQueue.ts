@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -21,6 +21,7 @@ import {
 } from "./attentionQueue.ts";
 import { onUserInput } from "../terminal/userInput.ts";
 import { onTerminalRelaunched } from "../terminal/terminalRelaunched.ts";
+import { useAskingSurfaces } from "../surface/surfaceAttention.ts";
 
 /** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
 const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>
@@ -58,6 +59,8 @@ export interface AttentionQueueView {
   items: AttentionItem[];
   /** The ids of every permission request still waiting, oldest first. */
   pendingPermissionIds: string[];
+  /** Whether the requests that were pending when the page loaded are in the queue, or could not be read. */
+  permissionsRead: boolean;
   /**
    * Sends the user's answer to the backend and clears the request once the backend takes it. When
    * the backend refuses it because no agent is waiting for that answer any more, the request
@@ -79,9 +82,9 @@ export interface AttentionQueueView {
 
 /**
  * The attention queue, fed from the backend: permission requests and their resolutions, the
- * bridge's turn events, terminal status, and the user's input to a terminal. It lives in memory
- * only, so an app restart starts it empty; on a webview reload the backend's pending permissions
- * rebuild its permission items.
+ * bridge's turn events, terminal status, the user's input to a terminal, and which surfaces ask. It
+ * lives in memory only, so an app restart starts it empty; on a webview reload the backend's pending
+ * permissions rebuild its permission items, and the surfaces it holds the surface items.
  *
  * A new turn starting is the bridge's `turn.started` from the terminal's own session (Claude,
  * OpenCode and PiG send it, including for a prompt a peer typed in over A2A), or a
@@ -91,7 +94,8 @@ export interface AttentionQueueView {
  * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
  * terminal list (closed), or the user relaunches it.
  *
- * Returns the waiting items, the ids of every pending request, the latest answer that reached no agent, each terminal's count of requests its cap
+ * Returns the waiting items, the ids of every pending request, whether those that were pending when the
+ * page loaded are among them, the latest answer that reached no agent, each terminal's count of requests its cap
  * dropped, and the user's actions on them, including dismissing a terminal's finished turn.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
@@ -117,6 +121,23 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     });
   }, [terminals]);
 
+  // Before paint, so a surface that settles takes every mark of it off the screen at once
+  const asking = useAskingSurfaces();
+  useLayoutEffect(() => {
+    dispatch({
+      type: "surfacesAsking",
+      surfaces: asking.map(({ terminal_id, id, order, tool }) => ({
+        terminalId: terminal_id,
+        project: projectOf(terminalsRef.current, terminal_id),
+        surfaceId: id,
+        tool,
+        order,
+      })),
+      at: Date.now(),
+    });
+  }, [asking]);
+
+  const [permissionsRead, setPermissionsRead] = useState(false);
   useEffect(() => {
     invoke<PermissionRequestPayload[]>("get_pending_permissions")
       .then((requests) =>
@@ -126,7 +147,8 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
           at: Date.now(),
         })
       )
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setPermissionsRead(true));
   }, []);
 
   useEffect(() => {
@@ -211,6 +233,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
   return {
     items,
     pendingPermissionIds: pending,
+    permissionsRead,
     answerPermission,
     undeliveredAnswer: undeliveredAnswer(queue),
     dismissUndeliveredAnswer,

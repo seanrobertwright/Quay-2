@@ -367,3 +367,85 @@ test("a terminal asks nothing once its requests are answered, or when it never a
   assert.equal(latestPermission(attentionItems(queue), "term-a"), null);
   assert.equal(latestPermission(attentionItems(queue), "term-z"), null);
 });
+
+const asking = (at: number, ...surfaces: [terminalId: string, surfaceId: string, order: number][]): AttentionEvent => ({
+  type: "surfacesAsking",
+  surfaces: surfaces.map(([terminalId, surfaceId, order]) => ({ terminalId, surfaceId, order, tool: "quay_ask", project: "E:/proj" })),
+  at,
+});
+
+/** Each item as `kind:id`: the surface, the request or the terminal. */
+const allKeys = (queue: AttentionQueue): string[] =>
+  attentionItems(queue).map((item) => {
+    if (item.kind === "surface") return `surface:${item.terminalId}/${item.surfaceId}`;
+    return item.kind === "permission" ? `permission:${item.requestId}` : `finishedTurn:${item.terminalId}`;
+  });
+
+test("an asking surface waits in the queue with its terminal, project, tool and time", () => {
+  assert.deepEqual(attentionItems(run(asking(100, ["term-a", "ask_1", 1]))), [
+    { kind: "surface", terminalId: "term-a", surfaceId: "ask_1", order: 1, tool: "quay_ask", project: "E:/proj", waitingSince: 100 },
+  ]);
+});
+
+test("a surface that still asks keeps its place in the queue, and one that no longer does goes", () => {
+  const queue = run(
+    asking(100, ["term-a", "ask_1", 1]),
+    requested("req-1", "term-b", 150),
+    asking(200, ["term-a", "ask_1", 1], ["term-a", "ask_2", 2]),
+  );
+  assert.deepEqual(allKeys(queue), ["surface:term-a/ask_1", "permission:req-1", "surface:term-a/ask_2"]);
+  assert.deepEqual(allKeys(applyAttentionEvent(queue, asking(300, ["term-a", "ask_2", 2]))), ["permission:req-1", "surface:term-a/ask_2"]);
+});
+
+test("surfaces that started waiting together are in the order they were shown", () => {
+  assert.deepEqual(allKeys(run(asking(100, ["term-b", "ask_1", 2], ["term-a", "ask_1", 1]))), ["surface:term-a/ask_1", "surface:term-b/ask_1"]);
+});
+
+test("the same surfaces asking again leave the queue as it is", () => {
+  const queue = run(asking(100, ["term-a", "ask_1", 1]));
+  assert.ok(applyAttentionEvent(queue, asking(200, ["term-a", "ask_1", 1])) === queue);
+});
+
+test("each waiting surface has a key of its own, whichever terminal's ask_1 it is", () => {
+  const items = attentionItems(run(asking(100, ["term-a", "ask_1", 1], ["term-b", "ask_1", 2], ["term-a", "ask_2", 3])));
+  assert.equal(new Set(items.map(attentionItemKey)).size, 3);
+});
+
+test("a terminal's finished turn is not shown beside its asking surface, and is back once that settles", () => {
+  const queue = run(finished("term-a", 100), finished("term-b", 110), asking(200, ["term-a", "ask_1", 1]));
+  assert.deepEqual(allKeys(queue), ["finishedTurn:term-b", "surface:term-a/ask_1"]);
+  assert.deepEqual(allKeys(applyAttentionEvent(queue, asking(300))), ["finishedTurn:term-a", "finishedTurn:term-b"]);
+});
+
+test("a permission request stays beside the same terminal's asking surface", () => {
+  assert.deepEqual(allKeys(run(requested("req-1", "term-a", 100), asking(200, ["term-a", "ask_1", 1]))), ["permission:req-1", "surface:term-a/ask_1"]);
+});
+
+test("input to a terminal and a new turn on it leave its asking surface waiting", () => {
+  const queue = run(
+    asking(100, ["term-a", "ask_1", 1]),
+    { type: "userInput", terminalId: "term-a" },
+    { type: "turnStarted", terminalId: "term-a", subagent: false },
+  );
+  assert.deepEqual(allKeys(queue), ["surface:term-a/ask_1"]);
+});
+
+test("a terminal that ended loses its asking surfaces for good, and a later launch's surface waits again", () => {
+  const ended = run(asking(100, ["term-a", "ask_1", 1], ["term-b", "ask_1", 2]), { type: "terminalEnded", terminalId: "term-a" });
+  assert.deepEqual(allKeys(ended), ["surface:term-b/ask_1"]);
+  // Still on the list of what asks, until the store lets it go
+  const heard = applyAttentionEvent(ended, asking(200, ["term-a", "ask_1", 1], ["term-b", "ask_1", 2]));
+  assert.deepEqual(allKeys(heard), ["surface:term-b/ask_1"]);
+  const relaunched = applyAttentionEvent(heard, asking(300, ["term-b", "ask_1", 2], ["term-a", "ask_1", 3]));
+  assert.deepEqual(allKeys(relaunched), ["surface:term-b/ask_1", "surface:term-a/ask_1"]);
+});
+
+test("an asking surface heard before its terminal was known takes its project", () => {
+  const early: AttentionEvent = {
+    type: "surfacesAsking",
+    surfaces: [{ terminalId: "term-a", surfaceId: "ask_1", order: 1, tool: "quay_ask", project: null }],
+    at: 100,
+  };
+  const queue = run(early, { type: "terminalsKnown", terminals: [{ terminalId: "term-a", project: "E:/late" }] });
+  assert.deepEqual(attentionItems(queue).map((item) => item.project), ["E:/late"]);
+});

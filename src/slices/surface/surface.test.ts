@@ -6,11 +6,11 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import type { CheckRequest, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import type { Mounted } from "./fixtures/surfaceFixtures.ts";
+import type { Mounted } from "./fixtures/askFixtures.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { askCheck, askRecord, companion, findButton, mountCompanion, settle, TERMINAL, typeInto: type, unmount, until, viewEntry } = await import("./fixtures/surfaceFixtures.ts");
+const { askCheck, askRecord, companion, findButton, mountCompanion, settle, TERMINAL, typeInto: type, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 /** What Rust holds, as the fake `invoke` answers it. */
 let list: SurfaceRecord[];
@@ -287,6 +287,8 @@ test("an answered question is locked with its answer, and an older record does n
   await act(async () => emitEvent("surface-changed", { ...asked, change: 2, answer: REBASE }));
   await act(async () => emitEvent("surface-changed", asked));
   await settle();
+  // The companion went back to its earlier view
+  await act(async () => viewEntry(container, "Surface")!.click());
   const region = regions(container)[0];
   assert.equal(region.querySelector('[role="status"]')?.textContent, "Answered and sent to the agent.");
   for (const text of ["Which base should this branch take?", "Rebase onto master", "skip the suite"]) assert.ok(region.textContent?.includes(text), text);

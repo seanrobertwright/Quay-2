@@ -6,6 +6,7 @@ import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { SwarmPreset } from "../orchestrator/swarmTypes.ts";
 import type { ClaudeSessionSummary } from "../sessions/types.ts";
 import { attentionItemKey, waitedLabel, type AttentionItem } from "../attention/attentionQueue.ts";
+import { lookOf } from "../surface/looks/index.ts";
 import { waitingTerminals, DOT_STATUS_LABELS } from "../shell/terminalStatus.ts";
 import { formatRelative } from "../../lib/dates.ts";
 import { agentRows, SESSIONS_SHOWN, sessionMatches, shownSavedSwarms, WAITING_ROWS_SHOWN } from "./agentRows.ts";
@@ -33,7 +34,7 @@ interface AgentsPanelProps {
   selectedTerminalId: string | null;
   sessionHistoryRequest: SessionHistoryRequest | null;
   onSelectTerminal: (terminalId: string) => void;
-  /** Opens a waiting item: its terminal, and a permission request in the companion's Activity view. */
+  /** Opens a waiting item: its terminal, a permission request in the companion's Activity view and a surface in its Surface view. */
   onOpenWaiting: (item: AttentionItem) => void;
   /** Opens the message an agent's latest reply answered in the companion's Activity view. */
   onOpenReply: (terminalId: string, messageId: string) => void;
@@ -155,6 +156,18 @@ const Section = ({ title, children, grow = false }: { title: string; children: R
   </section>
 );
 
+/** What a waiting item is, in Quay's words. */
+function whatWaits(item: AttentionItem): string {
+  switch (item.kind) {
+    case "permission":
+      return `${item.tool} permission request`;
+    case "finishedTurn":
+      return "finished its turn";
+    case "surface":
+      return `${lookOf(item.tool).kind.toLowerCase()} for you`;
+  }
+}
+
 /** Waiting on you: one row per waiting item, oldest first; five show, then the list scrolls. */
 const WaitingRows = ({
   waiting,
@@ -174,7 +187,7 @@ const WaitingRows = ({
     >
       {waiting.map((item) => {
         const name = nameOf(item.terminalId);
-        const what = item.kind === "permission" ? `${item.tool} permission request` : "finished its turn";
+        const what = whatWaits(item);
         let dropped = 0;
         if (item.kind === "permission" && !counted.has(item.terminalId)) {
           counted.add(item.terminalId);

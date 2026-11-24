@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { startSurfaces } from "./slices/surface/surfaceHost";
+import type { SurfaceKey } from "./slices/surface/surfaceTypes";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
@@ -31,6 +32,7 @@ import { canMerge, DEFAULT_MERGE_METHOD } from "./slices/companion/readiness";
 import type { PullRequestAsk } from "./slices/companion/PullRequestView";
 import type { MergeMethod } from "./slices/github/types";
 import { SlotLayer } from "./slices/stage/SlotLayer";
+import { warnOfRedirectionGuard } from "./slices/stage/redirectionGuard";
 import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
 import { messageEntryId } from "./slices/companion/activity";
@@ -209,6 +211,11 @@ export function App() {
   // The module whose panel shows beside the module bar; null while the panel is folded.
   const [openModule, setOpenModule] = useState<ModuleId | null>("projects");
   const modulePanelId = useId();
+
+  // Once at startup: whether Quay inherited RedirectionGuard, shown as a shell-wide warning (#629)
+  useEffect(() => {
+    void warnOfRedirectionGuard();
+  }, []);
 
   const handleOpenInVsCode = useCallback(
     async (projectPath: string) => {
@@ -596,7 +603,7 @@ export function App() {
     }
   };
 
-  // A terminal with a permission request or a finished turn waiting shows the amber waiting dot.
+  // A terminal with an attention item waiting shows the amber waiting dot.
   const asking = useMemo(() => waitingTerminals(waitingItems), [waitingItems]);
   const terminalStatusRows = useMemo(
     () => statusRows(terminals, projects, projectWorktrees, asking),
@@ -779,13 +786,14 @@ export function App() {
     terminalId: string;
     view: CompanionViewId;
     entryId?: string;
+    surfaceId?: string;
     pullRequest?: PullRequestAsk;
   } | null>(null);
   useEffect(() => {
     if (!pendingView || pendingView.terminalId !== activeTerminalId) return;
-    const { terminalId, view, entryId, pullRequest } = pendingView;
+    const { terminalId, view, entryId, surfaceId, pullRequest } = pendingView;
     setPendingView(null);
-    setCompanionRequest((prev) => ({ terminalId, view, entryId, pullRequest, seq: (prev?.seq ?? 0) + 1 }));
+    setCompanionRequest((prev) => ({ terminalId, view, entryId, surfaceId, pullRequest, seq: (prev?.seq ?? 0) + 1 }));
   }, [pendingView, activeTerminalId]);
 
   // The Projects panel's ticket pipeline (#651). A ticket picked with no terminal, or a lane's
@@ -838,10 +846,17 @@ export function App() {
     setPendingView({ terminalId, view, entryId });
   };
   const openActivity = (terminalId: string, entryId?: string) => showCompanionView(terminalId, "activity", entryId);
-  // A Waiting on you row selects its terminal; a permission request opens in Activity to answer.
+  // A terminal row's chip and its pane title's button open one of the terminal's surfaces.
+  const openSurface = ({ terminal_id, id }: SurfaceKey) => {
+    if (terminal_id !== activeTerminalId) showTerminal(terminal_id);
+    setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id });
+  };
+  // A Waiting on you row selects its terminal; a permission request opens in Activity to answer, and
+  // an asking surface in the Surface view.
   const openWaiting = (item: AttentionItem) => {
     if (!item.terminalId) return;
     if (item.kind === "permission") openActivity(item.terminalId);
+    else if (item.kind === "surface") openSurface({ terminal_id: item.terminalId, id: item.surfaceId });
     else showTerminal(item.terminalId);
   };
   const [sessionHistoryRequest, setSessionHistoryRequest] = useState<SessionHistoryRequest | null>(null);
@@ -967,6 +982,7 @@ export function App() {
   const companionRun = pickedSource && picked
     ? {
         key: picked.key,
+        undecided: rowOf(pickedSource, workflows.now).decision !== null,
         content: (
           <RunView
             key={picked.key}
@@ -1023,8 +1039,8 @@ export function App() {
   const stageTools: StageTool[] = openToolIds.flatMap((id) => (STAGE_TOOLS[id] ? [{ id, ...STAGE_TOOLS[id] }] : []));
 
   const companionActivity = useMemo<CompanionActivity>(
-    () => ({ events, messages: trailMessages, waiting: waitingItems, answer: attentionQueue.answerPermission }),
-    [events, trailMessages, waitingItems, attentionQueue.answerPermission]
+    () => ({ events, messages: trailMessages, waiting: waitingItems, permissionsRead: attentionQueue.permissionsRead, answer: attentionQueue.answerPermission }),
+    [events, trailMessages, waitingItems, attentionQueue.permissionsRead, attentionQueue.answerPermission]
   );
 
   // Chords `t` and `$` open the Project panel on This project, `u` on Check for updates.
@@ -1189,6 +1205,7 @@ export function App() {
               onOpenInVsCode={handleOpenInVsCode}
               onRelaunchTerminal={relaunchTerminal}
               onToggleTerminalAsk={toggleTerminalLiveMode}
+              onOpenSurface={openSurface}
               pipeline={projectsPipeline}
             />
           ),
@@ -1284,6 +1301,7 @@ export function App() {
         onRelaunchTerminal={relaunchTerminal}
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
+        onOpenSurface={openSurface}
         tools={stageTools}
         frontToolId={frontToolId}
         onSelectTool={setFrontToolId}

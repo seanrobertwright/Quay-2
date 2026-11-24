@@ -1,5 +1,6 @@
 import { neonPart } from "../../lib/neon.ts";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { WAITING_ON_YOU } from "../../lib/waiting.ts";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
@@ -21,9 +22,11 @@ import type { LinkChoice } from "./linkChoices.ts";
 import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
 import { ActivityView, type ActivityFocus, type CompanionActivity } from "./ActivityView.tsx";
-import { SurfaceView } from "../surface/SurfaceView.tsx";
-import { useSurfacesOf } from "../surface/surfaceHost.ts";
+import { SurfaceView, type SurfaceFocus } from "../surface/SurfaceView.tsx";
+import { useSurfacesOf, useSurfacesRead } from "../surface/surfaceHost.ts";
+import { askingOf } from "../surface/surfaceAttention.ts";
 import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
+import { useAskingOver, useAskingState, type AskedOfRender } from "./useAskingOver.ts";
 
 /** What the companion reads and changes about terminal links. */
 export interface CompanionLinking {
@@ -51,6 +54,8 @@ export interface CompanionRun {
   key: string;
   /** The Run view's content: the run and its decision. */
   content: ReactNode;
+  /** Whether the content is a decision that waits on the operator; absent means it is not. */
+  undecided?: boolean;
 }
 
 /**
@@ -82,6 +87,8 @@ export interface CompanionContext {
   focus: ActivityFocus | null;
   /** The terminal's agent surfaces, oldest first. */
   surfaces: readonly SurfaceRecord[];
+  /** The surface the latest show request asked for, or null. */
+  surfaceFocus: SurfaceFocus | null;
   /** The run picked in the Workflows panel, or null while none is. */
   run: CompanionRun | null;
   /** The Praxis Builder's inspector while its stage tab is in front, or null. */
@@ -221,7 +228,7 @@ export const SURFACE_VIEW: CompanionView<CompanionContext> = {
   id: "surface",
   label: "Surface",
   available: ({ surfaces }) => surfaces.length > 0,
-  render: ({ terminal, surfaces }) => <SurfaceView terminal={terminal} surfaces={surfaces} />,
+  render: ({ terminal, surfaces, surfaceFocus }) => <SurfaceView terminal={terminal} surfaces={surfaces} focus={surfaceFocus} />,
 };
 
 /**
@@ -275,6 +282,8 @@ export interface CompanionShowRequest {
   view: CompanionViewId;
   /** The Activity entry to show, such as the message an Agents panel reply preview names. */
   entryId?: string;
+  /** The surface to show, such as the one a terminal row's chip names. */
+  surfaceId?: string;
   /** What to ask of the pull request view, such as a pie stroke's Checks, Comment or confirm step. */
   pullRequest?: PullRequestAsk;
   seq: number;
@@ -352,7 +361,9 @@ export const Companion = ({
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
-  // Selecting another terminal forgets it, so every selection starts from the first view.
+  // Selecting another terminal forgets it, so every selection starts from the first view, unless a
+  // surface of the terminal asks: then the Surface view shows over it, or Activity when a
+  // permission request waits too.
   const [picked, setPicked] = useState<{ terminalId: string; view: CompanionViewId } | null>(null);
   // While the builder's inspector is given, the Inspector view shows, unless a view is picked over
   // it; `picked` keeps the view from before, which comes back once the inspector goes.
@@ -360,10 +371,30 @@ export const Companion = ({
   if (!inspector && overInspector !== null) setOverInspector(null);
   // The Activity entry the latest request asked for, while its terminal stays selected.
   const [focus, setFocus] = useState<(ActivityFocus & { terminalId: string }) | null>(null);
+  // The surface the latest request asked for, while its terminal stays selected.
+  const [surfaceFocus, setSurfaceFocus] = useState<(SurfaceFocus & { terminalId: string }) | null>(null);
   // What the latest request asked of the pull request view, while its terminal stays selected and
   // until the view takes it, so a view that comes back later does not act on it again.
   const [prAsk, setPrAsk] = useState<(NumberedPullRequestAsk & { terminalId: string }) | null>(null);
   const surfaces = useSurfacesOf(selectedTerminal?.id ?? null);
+  const asking = askingOf(surfaces);
+  const ready = useSurfacesRead() && activity?.permissionsRead !== false;
+  // While an asking surface of the terminal shows, the Surface view is over the view the state below gives.
+  const askingState = useAskingState(selectedTerminal?.id ?? null, asking);
+  const { open: openAsking, leave: leaveAsking } = askingState;
+  const asks = asking.length > 0;
+  const selectedId = selectedTerminal?.id ?? null;
+  const hasInspector = inspector !== null;
+  /** Makes `view` the one underneath. */
+  const showUnderneath = useCallback(
+    (view: CompanionViewId) => {
+      if (selectedId === null) return;
+      setSurfaceFocus(null);
+      if (hasInspector) setOverInspector(view);
+      else setPicked({ terminalId: selectedId, view });
+    },
+    [selectedId, hasInspector],
+  );
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
@@ -378,22 +409,38 @@ export const Companion = ({
             activity,
             focus: focus?.terminalId === selectedTerminal.id ? focus : null,
             surfaces,
+            surfaceFocus: surfaceFocus?.terminalId === selectedTerminal.id ? surfaceFocus : null,
             run,
             inspector,
             pullRequestAsk: prAsk?.terminalId === selectedTerminal.id ? prAsk : null,
             takePullRequestAsk: (seq: number) => setPrAsk((current) => (current?.seq === seq ? null : current)),
-            show: (view: CompanionViewId) =>
-              inspector ? setOverInspector(view) : setPicked({ terminalId: selectedTerminal.id, view }),
+            show: (view: CompanionViewId) => {
+              if (view === SURFACE_VIEW.id && asks) {
+                openAsking();
+                return;
+              }
+              leaveAsking();
+              showUnderneath(view);
+            },
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, surfaces, run, inspector, prAsk],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, surfaces, surfaceFocus, run, inspector, prAsk, asks, openAsking, leaveAsking, showUnderneath],
   );
-  const selectedId = context?.terminal.id ?? null;
   // A handed-in ticket shows until its Close, until a view is asked for over it, or until another
   // terminal is selected; a new seq shows it again.
   const [closedTicketSeq, setClosedTicketSeq] = useState<number | null>(null);
   const [ticketOver, setTicketOver] = useState<{ seq: number; terminalId: string | null } | null>(null);
-  if (ticket && ticket.seq !== ticketOver?.seq) setTicketOver({ seq: ticket.seq, terminalId: selectedId });
+  // What this render is asked for, which comes before the asking surfaces' own rule.
+  let asked: AskedOfRender | null = null;
+  if (ticket && ticket.seq !== ticketOver?.seq) {
+    setTicketOver({ seq: ticket.seq, terminalId: selectedId });
+    asked = "leave";
+  }
+  const [hadInspector, setHadInspector] = useState(hasInspector);
+  if (hadInspector !== hasInspector) {
+    setHadInspector(hasInspector);
+    if (hasInspector) asked = "leave";
+  }
   // Once a ticket is withdrawn the next one may carry its seq again, so nothing is kept of it.
   if (!ticket && ticketOver) {
     setTicketOver(null);
@@ -404,11 +451,20 @@ export const Companion = ({
   if (showRequest && showRequest.seq !== takenSeq) {
     setTakenSeq(showRequest.seq);
     if (showRequest.terminalId === selectedId) {
-      setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
-      if (inspector) setOverInspector(showRequest.view);
+      // A reload follows a merge and is not an ask to see the view, so an asking surface or a ticket stays over it.
+      const isAsk = showRequest.pullRequest?.kind !== "reload";
+      // An asking surface that is asked for shows over the view before it, as one that arrives does.
+      if (showRequest.view === SURFACE_VIEW.id && asks) {
+        asked = "open";
+      } else {
+        asked = isAsk ? "leave" : (asked ?? "wait");
+        setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
+        if (inspector) setOverInspector(showRequest.view);
+      }
       if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
-      // A reload follows a merge and is not an ask to see the view, so the ticket stays over it.
-      if (ticket && showRequest.pullRequest?.kind !== "reload") setClosedTicketSeq(ticket.seq);
+      const { terminalId, surfaceId, seq } = showRequest;
+      setSurfaceFocus(surfaceId ? { terminalId, surfaceId, seq } : null);
+      if (ticket && isAsk) setClosedTicketSeq(ticket.seq);
       if (showRequest.pullRequest) setPrAsk({ ...showRequest.pullRequest, terminalId: showRequest.terminalId, seq: showRequest.seq });
     }
   }
@@ -425,9 +481,27 @@ export const Companion = ({
       : picked?.terminalId === context.terminal.id
         ? choices.find((view) => view.id === picked.view)
         : undefined;
-  const pick = (view: CompanionViewId) => context?.show(view);
-  const shownId = pickedView?.id ?? (context ? firstView(views, context, prefs.readOpensOn()) : null);
+  const pick = (view: CompanionViewId) => {
+    // The view switch is on screen over a handed-in ticket only while an asking surface is over the ticket too.
+    if (ticket) setClosedTicketSeq(ticket.seq);
+    context?.show(view);
+  };
+  const underneathId = pickedView?.id ?? (context ? firstView(views, context, prefs.readOpensOn()) : null);
+  const handedIn =
+    ticket && ticket.seq !== closedTicketSeq && (ticket.seq !== ticketOver?.seq || ticketOver.terminalId === selectedId) ? ticket : null;
+  const permissionPending = activity?.waiting.some((item) => item.kind === "permission" && item.terminalId === selectedId) ?? false;
+  const askingOver = useAskingOver(askingState, {
+    asked,
+    ready,
+    cardShown:
+      !handedIn &&
+      ((underneathId === ACTIVITY_VIEW.id && permissionPending) || (underneathId === RUN_VIEW.id && run?.undecided === true)),
+    permissionPending,
+    showActivity: () => showUnderneath(ACTIVITY_VIEW.id),
+  });
+  const shownId = askingOver ? SURFACE_VIEW.id : underneathId;
   const shown = views.find((view) => view.id === shownId) ?? null;
+  const looseTicket = askingOver ? null : handedIn;
   // With no terminal selected, the Inspector and Run views still show while they are given.
   const body: { view: CompanionView<CompanionContext>; content: ReactNode } | null =
     context && shown
@@ -437,8 +511,6 @@ export const Companion = ({
         : run
           ? { view: RUN_VIEW, content: run.content }
           : null;
-  const looseTicket =
-    ticket && ticket.seq !== closedTicketSeq && (ticket.seq !== ticketOver?.seq || ticketOver.terminalId === selectedId) ? ticket : null;
   const resize = (next: number) => {
     setWidth(next);
     prefs.writeWidth(next);
@@ -488,6 +560,7 @@ export const Companion = ({
             <ViewSwitch
               views={viewChoices}
               shown={shown.id}
+              waiting={asks && shown.id !== SURFACE_VIEW.id ? SURFACE_VIEW.id : null}
               onPick={pick}
             />
             <div className="ml-auto shrink-0 flex items-center gap-2 pl-2">
@@ -575,15 +648,19 @@ const WideToggle = ({ topos }: { topos: CompanionTopos }) => (
 
 /**
  * The companion header's view switch: one radio per view the selected terminal has, the shown one
- * checked. Arrow keys move the choice and focus together, as in a radio group.
+ * checked. Arrow keys move the choice and focus together, as in a radio group. The view with
+ * something waiting on the operator has the amber waiting dot.
  */
 const ViewSwitch = ({
   views,
   shown,
+  waiting,
   onPick,
 }: {
   views: readonly CompanionView<CompanionContext>[];
   shown: CompanionViewId;
+  /** The view with something waiting on the operator that is not on screen, or null. */
+  waiting: CompanionViewId | null;
   onPick: (view: CompanionViewId) => void;
 }) => {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -605,6 +682,7 @@ const ViewSwitch = ({
             type="button"
             role="radio"
             aria-checked={checked}
+            aria-label={view.id === waiting ? `${view.label}, ${WAITING_ON_YOU}` : undefined}
             tabIndex={checked ? 0 : -1}
             onClick={() => onPick(view.id)}
             onKeyDown={(e) => {
@@ -622,6 +700,13 @@ const ViewSwitch = ({
             }`}
           >
             {view.label}
+            {view.id === waiting && (
+              <span
+                aria-hidden="true"
+                data-waiting-dot
+                className="ml-1.5 inline-block h-2 w-2 rounded-full bg-[#d29922] shadow-[0_0_0_3px_rgba(210,153,34,0.35)]"
+              />
+            )}
           </button>
         );
       })}
