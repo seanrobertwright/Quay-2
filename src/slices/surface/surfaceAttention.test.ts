@@ -213,6 +213,7 @@ test("the pane's button counts every question and opens the oldest", async () =>
   assert.equal(paneButton(container)!.textContent, "1 question for you");
   await arrives(surface("ask_2"));
   assert.equal(paneButton(container)!.textContent, "2 questions for you");
+  assert.equal(paneButton(container)!.getAttribute("aria-label"), "2 questions for you", "also where a narrow pane hides the words");
   await act(async () => paneButton(container)!.click());
   assert.deepEqual(openedSurfaces, [{ terminal_id: "t1", id: "ask_1" }]);
   await answered(first);

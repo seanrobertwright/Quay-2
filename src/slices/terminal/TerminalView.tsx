@@ -242,7 +242,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
             aria-label={`Pane ${terminal?.name ?? terminalId}`}
             onContextMenu={onContextMenu}
             onKeyDown={onKeyDown}
-            className={`h-7 px-2.5 border-b border-[#30363d]/60 flex items-center justify-between text-xs select-none shrink-0 transition-colors ${
+            className={`@container/pane h-7 px-2.5 border-b border-[#30363d]/60 flex items-center justify-between text-xs select-none shrink-0 transition-colors ${
               isFocused ? "bg-[#21262d] text-white" : "bg-[#161b22] text-[#8b949e]"
             }`}
           >
@@ -258,7 +258,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   onChange={(e) => onSwitchTerminal(e.target.value)}
                   onClick={(e: MouseEvent<HTMLSelectElement>) => e.stopPropagation()}
                   data-neon={neonPart("title", isFocused)}
-                  className={`bg-transparent font-medium text-xs ${isFocused ? "" : "text-[#c9d1d9] hover:text-white"} border-none focus:outline-hidden cursor-pointer max-w-[140px] truncate`}
+                  className={`bg-transparent font-medium text-xs ${isFocused ? "" : "text-[#c9d1d9] hover:text-white"} border-none focus:outline-hidden cursor-pointer min-w-0 max-w-[140px] truncate`}
                 >
                   {allTerminals.map((t) => (
                     <option key={t.id} value={t.id} className="bg-[#161b22] text-white">
@@ -279,7 +279,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
             {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}
             <div className="flex items-center gap-1 shrink-0">
               {framed && isFocused && (
-                <span className="text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
+                <span className="hidden @sm/pane:inline text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
                   ACTIVE
                 </span>
               )}
