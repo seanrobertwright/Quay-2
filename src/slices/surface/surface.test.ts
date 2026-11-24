@@ -4,15 +4,13 @@
 import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "react";
 import type { CheckRequest, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import { companionPrefs } from "../companion/companionPrefs.ts";
-import { memoryStorage, terminalInfo } from "../companion/fixtures/companionFixtures.ts";
+import type { Mounted } from "./fixtures/surfaceFixtures.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
+const { askCheck, askRecord, companion, findButton, mountCompanion, settle, TERMINAL, typeInto: type, unmount, until, viewEntry } = await import("./fixtures/surfaceFixtures.ts");
 
 /** What Rust holds, as the fake `invoke` answers it. */
 let list: SurfaceRecord[];
@@ -22,7 +20,7 @@ let calls: { cmd: string; args: Record<string, unknown> }[];
 /** What `surface_answer` does. */
 let onAnswer: () => Promise<void>;
 let stop: (() => void) | null = null;
-let mounted: { root: Root; container: HTMLElement } | null = null;
+let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
@@ -38,24 +36,11 @@ beforeEach(() => {
   });
 });
 afterEach(async () => {
-  if (mounted) {
-    const { root, container } = mounted;
-    await act(async () => root.unmount());
-    container.remove();
-    mounted = null;
-  }
+  if (mounted) await unmount(mounted);
+  mounted = null;
   stop?.();
   stop = null;
 });
-
-/** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
-
-/** Waits, for up to two seconds, until `holds`. */
-async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await settle();
-  assert.ok(holds(), what);
-}
 
 const ASK = {
   questions: [
@@ -68,7 +53,7 @@ const ASK = {
     },
   ],
 };
-const check = (call: number, args: unknown = ASK): CheckRequest => ({ call, tool: "quay_ask", surface_id: "ask_1", arguments: args });
+const check = (call: number, args: unknown = ASK) => askCheck(call, args);
 
 const called = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args);
 
@@ -148,49 +133,30 @@ test("a call of the wrong shape, or of a tool Quay does not have, gets a verdict
   }
 });
 
-const TERMINAL = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
-
 /** The surface `id` of `terminal`, as Rust holds it once the webview has accepted `ask`. */
 async function accepted(id: string, { ask = ASK as unknown, terminal = "t1", order = 1 } = {}): Promise<SurfaceRecord> {
   const verdict = await verdictOn({ ...check(order, ask), surface_id: id });
   assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: terminal, id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null, answered_at: null };
-}
-
-/** The companion with `terminal` selected. */
-function companion(terminal: TerminalInfo) {
-  const props = { projects: [], projectWorktrees: {}, views: COMPANION_VIEWS, prefs: companionPrefs(memoryStorage()) };
-  return createElement(Companion, { ...props, selectedTerminal: terminal });
+  return askRecord(verdict.state, { id, terminal, order });
 }
 
 /** Loads the page: what Rust holds is read, and the companion drawn on `terminal`'s Surface view, if it has one. */
 async function open(terminal: TerminalInfo = TERMINAL): Promise<HTMLElement> {
   stop?.();
   stop = startSurfaces();
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  mounted = { root, container };
-  await act(async () => root.render(companion(terminal)));
-  await settle();
+  mounted = await mountCompanion(terminal);
+  const { container } = mounted;
   await act(async () => viewEntry(container, "Surface")?.click());
   await until(() => !container.textContent?.includes("Loading"), "the surface was never drawn");
   return container;
 }
 
-const viewEntry = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll<HTMLElement>('[aria-label="Companion view"] [role="radio"]')].find((entry) => entry.textContent === name);
 const regions = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>("section[data-surface]")];
 const radios = (container: HTMLElement) => [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-const button = (container: HTMLElement, name: string) => [...container.querySelectorAll("button")].find((b) => b.textContent === name)!;
+const button = (container: HTMLElement, name: string) => findButton(container, name)!;
 /** The text of what `element`'s aria-describedby names. */
 const description = (element: Element) =>
   (element.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean).map((id) => document.getElementById(id)?.textContent);
-/** Types `text` into a field as the operator would, so React hears it. */
-async function type(field: HTMLTextAreaElement, text: string): Promise<void> {
-  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!.call(field, text);
-  await act(async () => void field.dispatchEvent(new Event("input", { bubbles: true })));
-}
 
 const REBASE = { answers: [{ question: "Which base should this branch take?", chosen: ["Rebase onto master"], text: "skip the suite" }] };
 

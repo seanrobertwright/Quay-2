@@ -4,22 +4,20 @@
 import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "react";
 import { epochMsFromLocalParts, parseUtcTimestamp } from "../../lib/dates.ts";
-import type { CheckRequest, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
-import { companionPrefs } from "../companion/companionPrefs.ts";
-import { memoryStorage, terminalInfo } from "../companion/fixtures/companionFixtures.ts";
+import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
+import type { Mounted } from "./fixtures/surfaceFixtures.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
-const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
+const { askCheck, askRecord, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/surfaceFixtures.ts");
 
 let list: SurfaceRecord[];
 let verdicts: { call: number; verdict: Verdict }[];
 /** What each `surface_answer` sent. */
 let sent: unknown[];
 let stop: (() => void) | null = null;
-let mounted: { root: Root; container: HTMLElement } | null = null;
+let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
@@ -33,35 +31,21 @@ beforeEach(() => {
   });
 });
 afterEach(async () => {
-  if (mounted) {
-    const { root, container } = mounted;
-    await act(async () => root.unmount());
-    container.remove();
-    mounted = null;
-  }
+  if (mounted) await unmount(mounted);
+  mounted = null;
   stop?.();
   stop = null;
 });
-
-/** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
-
-/** Waits, for up to two seconds, until `holds`. */
-async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await settle();
-  assert.ok(holds(), what);
-}
 
 /** The surface `ask` makes, as Rust holds it once the webview has accepted it. */
 async function accepted(ask: unknown): Promise<SurfaceRecord> {
   stop ??= startSurfaces();
   await settle();
-  const request: CheckRequest = { call: 1, tool: "quay_ask", surface_id: "ask_1", arguments: ask };
-  emitEvent("surface-check", request);
+  emitEvent("surface-check", askCheck(1, ask));
   await until(() => verdicts.length > 0, "no verdict was given");
   const { verdict } = verdicts[0];
   assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: "t1", id: "ask_1", tool: "quay_ask", state: verdict.state, revision: 1, order: 1, change: 1, asks: true, answer: null, answered_at: null };
+  return askRecord(verdict.state);
 }
 
 /** The frame of `record` in the companion's Surface view. */
@@ -69,13 +53,8 @@ async function draw(record: SurfaceRecord): Promise<HTMLElement> {
   list = [record];
   stop?.();
   stop = startSurfaces();
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  mounted = { root, container };
-  const props = { projects: [], projectWorktrees: {}, views: COMPANION_VIEWS, prefs: companionPrefs(memoryStorage()) };
-  await act(async () => root.render(createElement(Companion, { ...props, selectedTerminal: { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" } })));
-  await settle();
+  mounted = await mountCompanion(TERMINAL);
+  const { container } = mounted;
   await view("Surface");
   await until(() => container.querySelector("[data-surface]") !== null && !container.textContent?.includes("Loading"), "the surface was never drawn");
   return container.querySelector<HTMLElement>("[data-surface]")!;
@@ -83,8 +62,7 @@ async function draw(record: SurfaceRecord): Promise<HTMLElement> {
 
 /** Shows the companion view `name`. */
 async function view(name: string): Promise<void> {
-  const entries = [...mounted!.container.querySelectorAll<HTMLElement>('[aria-label="Companion view"] [role="radio"]')];
-  await act(async () => entries.find((entry) => entry.textContent === name)?.click());
+  await act(async () => viewEntry(mounted!.container, name)?.click());
   await settle();
 }
 
@@ -104,7 +82,6 @@ function words(element: Element): string {
 /** The rows of a listed ask: the button that opens each question. */
 const rows = (region: HTMLElement) => [...region.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")].filter((row) => row.closest("li"));
 const openRows = (region: HTMLElement) => rows(region).map((row) => row.getAttribute("aria-expanded") === "true");
-const button = (region: HTMLElement, name: string) => [...region.querySelectorAll("button")].find((b) => b.textContent === name);
 const click = (element: HTMLElement | undefined) => act(async () => element!.click());
 /** The options drawn, each with its kind. */
 const options = (region: HTMLElement) => [...region.querySelectorAll<HTMLInputElement>('input[type="radio"], input[type="checkbox"]')];
@@ -113,12 +90,8 @@ const boxes = (region: HTMLElement) => [...region.querySelectorAll("textarea")];
 /** The line at the foot that counts what is answered. */
 const counted = (region: HTMLElement) => /\d of \d answered/.exec(region.textContent ?? "")?.[0];
 
-/** Types `text` into the one text box drawn, as the operator would, so React hears it. */
-async function type(region: HTMLElement, text: string): Promise<void> {
-  const [field] = boxes(region);
-  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!.call(field, text);
-  await act(async () => void field.dispatchEvent(new Event("input", { bubbles: true })));
-}
+/** Types `text` into the one text box drawn. */
+const type = (region: HTMLElement, text: string) => typeInto(boxes(region)[0], text);
 
 const BASE = {
   question: "Which base should this branch take?",
