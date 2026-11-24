@@ -6,13 +6,14 @@ import { Button } from "./components/Button.tsx";
 import { ChoicePicker } from "./components/ChoicePicker.tsx";
 import { Column } from "./components/Column.tsx";
 import { FileLink } from "./components/FileLink.tsx";
+import { Image } from "./components/Image.tsx";
 import { Text } from "./components/Text.tsx";
 import { TextField } from "./components/TextField.tsx";
 import { EFFECTS } from "./effects.ts";
 
 export const CATALOG_ID = "urn:quay:a2ui:catalog:v1";
 
-const COMPONENTS: ReactCatalogComponent[] = [Text, Column, Button, TextField, ChoicePicker, FileLink];
+const COMPONENTS: ReactCatalogComponent[] = [Text, Column, Button, TextField, ChoicePicker, FileLink, Image];
 
 /** Its functions are Quay's own effects so far: the basic `openUrl` would open a window. */
 export const catalog = basicCatalog.derive({ catalogId: CATALOG_ID, components: COMPONENTS, functions: EFFECTS }) as Catalog<ReactCatalogComponent>;

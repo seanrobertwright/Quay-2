@@ -2,7 +2,9 @@
 // attribute a token carries is copied.
 import { createElement, Fragment, type ReactNode } from "react";
 import type { Token } from "markdown-it";
+import { MarkdownImage } from "./MarkdownImage.tsx";
 import { MarkdownLink } from "./MarkdownLink.tsx";
+import { imageOf } from "./parse.ts";
 
 type Draw = (token: Token, children: ReactNode[]) => ReactNode;
 
@@ -82,8 +84,7 @@ export const ELEMENTS: ReadonlyMap<string, Draw> = new Map<string, Draw>([
   ["s", element("s")],
   ["code_inline", ({ content }) => <code className={`px-1 font-mono text-[11px] ${BOX}`}>{content}</code>],
   ["link", (token, children) => createElement(MarkdownLink, { href: String(token.attrGet("href")) }, ...children)],
-  // Named as it was written. Nothing is loaded.
-  ["image", (token) => `![${token.content}](${token.attrGet("src")})`],
+  ["image", (token) => <MarkdownImage {...imageOf(token)} />],
   ["paragraph", paragraph],
   ["heading", heading],
   ["bullet_list", element("ul", "flex list-disc flex-col gap-1 pl-5")],

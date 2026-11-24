@@ -3,6 +3,7 @@ import type { CheckRequest, CreateSurface, SurfaceComponent, Verdict } from "../
 import { typedTool } from "../typed/index.ts";
 import { CATALOG_ID } from "./catalog.ts";
 import { engineError, engineFor, type EngineSurface } from "./engine.ts";
+import { namedImages } from "./images.ts";
 
 /** `surface`'s whole state as one `createSurface`. */
 function compact(surface: EngineSurface): CreateSurface {
@@ -32,7 +33,7 @@ export function check({ tool, surface_id, arguments: args }: CheckRequest): Verd
         state,
         asks: components.some(asks),
         components: components.length,
-        images: components.filter(({ component }) => component === "Image").length,
+        ...namedImages(scratch.surface),
       };
     } finally {
       scratch.dispose();

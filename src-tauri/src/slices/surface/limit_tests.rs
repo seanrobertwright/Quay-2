@@ -1,4 +1,4 @@
-//! How many surfaces a terminal may have, at the `/mcp` seam.
+//! How many surfaces a terminal may have, and how many images a surface, at the `/mcp` seam.
 
 use std::ops::RangeInclusive;
 use std::time::Duration;
@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::store::SurfaceKey;
-use super::test_seam::{accepted, answer_to, question, start, until, FakeWebview, OpenCall, Seam};
+use super::test_seam::{accepted, accepted_with_images, answer_to, question, start, until, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
 
 async fn four_asked(seam: &Seam, webview: &mut FakeWebview) -> Vec<OpenCall> {
@@ -156,4 +156,30 @@ async fn the_answered_past_ten_leave_as_they_are_answered_and_what_comes_next_ta
         ids(&seam, "term-a"),
         ["ask_4", "ask_5", "ask_6", "ask_7", "ask_8", "ask_9", "ask_10", "ask_11", "ask_12", "ask_13", "ask_14"]
     );
+}
+
+#[tokio::test]
+async fn a_surface_has_at_most_twelve_images_however_few_files_they_are_of() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    let files: Vec<String> = (1..=13).map(|n| format!("{n}.png")).collect();
+    let files: Vec<&str> = files.iter().map(String::as_str).collect();
+
+    let most = cli.call("quay_ask", question("Most?"));
+    seam.surfaces.verdict(webview.next_check().await.call, accepted_with_images(12, &files[..12]));
+    assert_eq!(webview.next_shown().await.id, "ask_1");
+
+    for (title, images, paths) in [("Repeated?", 13, &files[..1]), ("Each once?", 13, &files[..]), ("Miscounted?", 0, &files[..])] {
+        let over = cli.call("quay_ask", question(title));
+        seam.surfaces.verdict(webview.next_check().await.call, accepted_with_images(images, paths));
+        let failure: Value = serde_json::from_str(&over.failure().await).unwrap();
+        assert_eq!(
+            failure["errors"],
+            json!([{ "code": "VALIDATION_FAILED", "path": "", "message": "A surface has at most 12 images; this one would have 13." }]),
+            "{title}"
+        );
+    }
+    assert!(webview.nothing_shown().await);
+    assert!(most.is_open());
+    assert_eq!(ids(&seam, "term-a"), ["ask_1"]);
 }

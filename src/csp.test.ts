@@ -19,7 +19,7 @@ test("Quay's policy reaches Tauri IPC and the GitHub API the updater checks, and
   assert.deepEqual(csp["connect-src"], ["ipc:", "http://ipc.localhost", "https://api.github.com"]);
 });
 
-test("images load from Quay itself and from blob URLs, which Topos's image preview builds from git's bytes", () => {
+test("images load from Quay itself and from blob URLs, which Topos's image preview and the images of surfaces are", () => {
   assert.deepEqual(csp["img-src"], ["'self'", "blob:"]);
 });
 
