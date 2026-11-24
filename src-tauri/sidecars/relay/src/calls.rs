@@ -6,8 +6,8 @@ use tokio::task::AbortHandle;
 
 use crate::rpc::Id;
 
-/// How many messages may be on their way at once. With the limits on a request and a reply it
-/// bounds the relay's memory.
+/// How many messages may be on their way at once. With the limits on a request, a reply and
+/// the queue for stdout it bounds the relay's memory.
 const MAX_OPEN: usize = 16;
 
 struct Call {

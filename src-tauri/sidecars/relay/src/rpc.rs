@@ -76,8 +76,8 @@ impl Message {
         serde_json::from_slice(line).map_err(Unreadable::from)
     }
 
-    /// As `parse`, but holds no more of the message than its strings up to `MAX_SCANNED_STRING`.
-    /// One that has a longer string in its own object, or that nests deeper than
+    /// As `parse`, but holds no more of the message than strings up to `MAX_SCANNED_STRING` and
+    /// a byte for each open bracket. One that has a longer string in its own object, or that nests deeper than
     /// `MAX_SCANNED_DEPTH`, is not taken for a request.
     pub fn scan(line: impl Read) -> Result<Message, Unreadable> {
         let line = Scanned { line, depth: 0, string: None, escaped: false };
