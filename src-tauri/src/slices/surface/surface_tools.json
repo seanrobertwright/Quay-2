@@ -51,6 +51,34 @@
     }
   },
   {
+    "name": "quay_review",
+    "description": "Show the operator a plan, results or findings to decide on, in a tab of their own, when they should read before you go on. They keep or drop each item, may comment, and approve, request changes or reject. The call stays open for the verdict, up to 100 seconds, and returns {\"title\", \"verdict\", \"dropped\", \"comment\"}: verdict is approved, changes_requested or rejected, dropped the titles of the items to leave out, and comment is left out when empty.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Plain text, at most 80 characters." },
+        "body": { "type": "string", "description": "Markdown, at most 20000 characters." },
+        "items": {
+          "type": "array",
+          "maxItems": 30,
+          "description": "What can be kept or dropped one by one. All start kept.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "description": "At most 120 characters, and no other item's." },
+              "detail": { "type": "string", "description": "Plain text, at most 300 characters." },
+              "file": { "type": "string", "description": "A path to show, which may end in :line." }
+            },
+            "required": ["title"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["title", "body"],
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "quay_surface_read",
     "description": "Read where one of this terminal's surfaces stands, by the id a call returned. Use it for an answer you did not get, not to wait for one: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered, dismissed, or ended when the terminal exited first, and result is there only when answered.",
     "inputSchema": {

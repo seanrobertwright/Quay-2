@@ -45,7 +45,7 @@ fn answer() -> Value {
 async fn the_surface_tools_are_listed_after_the_seven() {
     let (seam, _webview) = start(Timing::default()).await;
 
-    assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &["quay_ask", "quay_surface_read"]].concat());
+    assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &["quay_ask", "quay_review", "quay_surface_read"]].concat());
 }
 
 #[tokio::test]
@@ -564,7 +564,6 @@ async fn what_is_no_surface_tools_call_is_answered_as_it_was_before_them() {
     let missing = "Missing target_terminal_id or message argument";
     for (tool, arguments, message) in [
         ("quay_dance", json!({}), "Unknown tool: quay_dance"),
-        ("quay_review", json!({}), "Unknown tool: quay_review"),
         ("quay_send_message", json!({}), missing),
         ("quay_broadcast", json!({}), "Missing text argument"),
     ] {

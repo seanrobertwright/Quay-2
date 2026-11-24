@@ -113,7 +113,8 @@ impl Arguments {
             return;
         }
         let (least, most) = (spelled(*count.start()), spelled(*count.end()));
-        let mut message = format!("{takes} {least} to {most} {items}; this one has {length}.");
+        let range = if *count.start() == 0 { format!("up to {most}") } else { format!("{least} to {most}") };
+        let mut message = format!("{takes} {range} {items}; this one has {length}.");
         if length > *count.end() {
             message.push_str(&format!(" For more, send a surface with quay_surface and place {}.", self.place));
         }

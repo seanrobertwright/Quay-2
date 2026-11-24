@@ -1,6 +1,6 @@
 //! Agent surfaces: what an agent shows the operator through a tool call, and the answer it gets back.
 //!
-//! An agent's call is checked here (`ask`), then by the webview on a scratch copy of the engine
+//! An agent's call is checked here (`ask`, `review`), then by the webview on a scratch copy of the engine
 //! (`check`), then committed (`store`), then drawn. `tools` runs those steps and waits for the answer
 //! (`wait`), which is typed into the terminal (`typing`) once no call is open to return it. `read` tells
 //! an agent where a surface stands. A terminal's surfaces end with its launch, and go when it closes.
@@ -16,6 +16,7 @@ pub mod names;
 mod place;
 mod read;
 mod rejection;
+mod review;
 mod show_file;
 mod store;
 pub mod timing;
@@ -41,6 +42,8 @@ mod over_tests;
 mod read_tests;
 #[cfg(test)]
 mod return_tests;
+#[cfg(test)]
+mod review_tests;
 #[cfg(test)]
 mod show_file_tests;
 #[cfg(test)]

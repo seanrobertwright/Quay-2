@@ -205,7 +205,7 @@ fn a_later_message_for_a_dismissed_id_finds_it_dismissed_until_the_terminal_exit
     assert_eq!(create(&store, "plan").err(), Some(CommitRefused::Dismissed));
     assert_eq!(store.rejected("term", "quay_ask"), 1, "it was accepted, which ends the row");
     assert!(store.list().is_empty());
-    assert_eq!(store.name_ask("term").unwrap().id, "ask_2", "no ask is given a dismissed id");
+    assert_eq!(store.name("term", "ask").unwrap().id, "ask_2", "no ask is given a dismissed id");
     store.launched("other", 1);
     assert!(store.standing(&SurfaceKey::new("other", "plan")).is_none());
 
