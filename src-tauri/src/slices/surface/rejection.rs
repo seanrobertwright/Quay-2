@@ -62,6 +62,11 @@ impl Rejection {
         }
     }
 
+    /// Counts `more` errors that are not listed.
+    pub fn add_more(&mut self, more: usize) {
+        self.more += more;
+    }
+
     pub fn is_empty(&self) -> bool {
         self.errors.is_empty()
     }

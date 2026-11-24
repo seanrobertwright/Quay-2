@@ -10,14 +10,18 @@ pub const MOST_LIVE: usize = 4;
 pub enum Place {
     /// The companion's Surface view.
     Companion,
-    /// A stage tab of its own. No tool shows a surface there yet.
-    #[allow(dead_code)]
+    /// A stage tab of its own.
     Tab,
     /// A line on the terminal's pane.
     Strip,
 }
 
 impl Place {
+    /// The place an agent calls `name`.
+    pub fn named(name: &str) -> Option<Self> {
+        [Self::Companion, Self::Tab, Self::Strip].into_iter().find(|place| place.name() == name)
+    }
+
     /// What an agent calls it.
     pub const fn name(self) -> &'static str {
         match self {
