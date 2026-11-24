@@ -1,6 +1,6 @@
 // How each verdict of a review says so: in words, with an icon of its own, and by colour.
 import { Check, MessageSquareWarning, X } from "lucide-react";
-import type { ReviewVerdict } from "../typed/review.ts";
+import type { ReviewAnswer, ReviewVerdict } from "../typed/review.ts";
 import type { SettledWords } from "./settledWords.ts";
 
 const VERDICTS: ReadonlyMap<string, SettledWords> = new Map<ReviewVerdict, SettledWords>([
@@ -11,6 +11,6 @@ const VERDICTS: ReadonlyMap<string, SettledWords> = new Map<ReviewVerdict, Settl
 
 /** How a review with this answer says what was decided, or null when the answer is none of a review's. */
 export function verdictWords(answer: unknown): SettledWords | null {
-  const verdict = typeof answer === "object" && answer !== null && "verdict" in answer ? answer.verdict : null;
-  return VERDICTS.get(String(verdict)) ?? null;
+  const verdict = (answer as Partial<ReviewAnswer> | null | undefined)?.verdict;
+  return (verdict && VERDICTS.get(verdict)) ?? null;
 }

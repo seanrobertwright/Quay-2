@@ -25,7 +25,7 @@ export const Fold = ({ height = FOLDED_HEIGHT, more = "Show all", less = "Show l
     if (!box) return;
     const measure = () => setLong(box.offsetHeight > height);
     measure();
-    // Its lines wrap anew as the companion's width changes
+    // Its lines wrap anew as the width it has changes
     const observer = new ResizeObserver(measure);
     observer.observe(box);
     return () => observer.disconnect();

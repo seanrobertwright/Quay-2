@@ -33,7 +33,7 @@ interface EarlierTabsProps {
   onOpen: (id: string) => void;
 }
 
-/** The tab bar's menu of finished surface tabs, each with its state. One opens in front again. */
+/** The tab bar's menu of locked surface tabs, each with its state. One opens in front again. */
 export const EarlierTabs = ({ tabs, onOpen }: EarlierTabsProps) => {
   const menuId = useId();
   const button = useRef<HTMLButtonElement>(null);
