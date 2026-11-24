@@ -63,13 +63,17 @@ pub async fn handle_mcp_request(
             "NOTIFICATION from {}: {} {}",
             caller.id(),
             req.method,
-            req.params.as_ref().map(Value::to_string).unwrap_or_default()
+            super::a2ui_proto::params_text(&req)
         ));
         return accepted;
     }
     let caller_id = caller.id();
     if req.method != "tools/call" {
-        super::a2ui_proto::log(&format!("REQUEST from {caller_id}: {}", req.method));
+        super::a2ui_proto::log(&format!(
+            "REQUEST from {caller_id}: {} {}",
+            req.method,
+            super::a2ui_proto::params_text(&req)
+        ));
     }
     let id = req.id.unwrap_or(Value::Null);
 
@@ -93,7 +97,9 @@ pub async fn handle_mcp_request(
                     "serverInfo": {
                         "name": "quay-a2a",
                         "version": "1.0.0"
-                    }
+                    },
+                    // PROTOTYPE (#709): a codeword that Quay sends only here, to see if the model gets it
+                    "instructions": super::a2ui_proto::INSTRUCTIONS
                 })),
                 error: None,
             };
@@ -357,6 +363,7 @@ pub async fn handle_mcp_request(
 
                 // PROTOTYPE (#693), throwaway
                 "quay_surface_proto" => super::a2ui_proto::hand_over(&ctx, caller_id, &arguments).await,
+                "quay_surface_reject_proto" => Ok(super::a2ui_proto::reject(caller_id)),
 
                 // PROTOTYPE (#711), throwaway
                 "quay_ask" | "quay_surface" => super::a2ui_live::call(&ctx, caller_id, tool_name, &arguments).await,
@@ -534,6 +541,9 @@ mod tests {
                 "machina_submit_work_order",
                 "machina_get_work_order",
                 "machina_submit_deliverable",
+                // PROTOTYPE (#693, #709), throwaway
+                "quay_surface_proto",
+                "quay_surface_reject_proto",
             ]
         );
         for tool in tools {

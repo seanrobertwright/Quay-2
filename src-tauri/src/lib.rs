@@ -124,6 +124,9 @@ pub fn run() {
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
+            // PROTOTYPE (#709), throwaway
+            slices::orchestrator::a2ui_proto::log_agent_events(&app_handle);
+
             // Every trail entry the router adds or changes updates Mission Control's trail,
             // and a message raises its toast when it is typed in, waited on or not.
             let a2a_events = app_handle.clone();
