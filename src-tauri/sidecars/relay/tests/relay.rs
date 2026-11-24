@@ -115,9 +115,9 @@ fn error_for(status: &str, headers: &str, body: &str) -> String {
     relay.send(r#"{"jsonrpc":"2.0","id":"x1","method":"tools/list"}"#);
     quay.next().respond(status, headers, body);
     let reply = relay.next();
-    assert_eq!(reply["jsonrpc"], "2.0", "{reply}");
-    assert_eq!(reply["id"], "x1", "{reply}");
-    assert_eq!(reply["error"]["code"], -32000, "{reply}");
+    assert_eq!(reply["jsonrpc"], "2.0");
+    assert_eq!(reply["id"], "x1");
+    assert_eq!(reply["error"]["code"], -32000);
     assert!(quay.stays_unused());
     let (stdout, stderr) = relay.finish();
     assert!(stdout.is_empty(), "{stdout:?}");
@@ -202,4 +202,206 @@ fn a_notification_is_forwarded_and_whatever_comes_back_is_dropped() {
     quay.next().respond("401 Unauthorized", "", "no");
 
     assert!(relay.stays_silent());
+}
+
+#[test]
+fn a_cancel_closes_the_named_requests_call_and_no_other() {
+    let quay = Listener::start();
+    let mut relay = Relay::start(&quay.url(), TOKEN);
+    let mut call = |id: &str| {
+        relay.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call","params":{{"name":"quay_ask"}}}}"#));
+        quay.next()
+    };
+    let mut number = call("1");
+    let mut text = call(r#""1""#);
+    let mut other = call("2");
+
+    let cancel = r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1,"reason":"context canceled"}}"#;
+    relay.send(cancel);
+    assert!(number.closes_soon());
+    assert!(text.stays_open() && other.stays_open());
+
+    // Quay is told too, as of any notification
+    let told = quay.next();
+    assert_eq!(told.body, cancel);
+    told.respond("202 Accepted", "", "");
+
+    // The cancelled call gets no reply, and the others still get theirs
+    other.answer(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 2);
+    text.answer(r#"{"jsonrpc":"2.0","id":"1","result":{}}"#);
+    assert_eq!(relay.next()["id"], "1");
+    assert!(relay.stays_silent());
+}
+
+#[test]
+fn a_cancel_for_a_finished_call_or_an_unknown_one_closes_nothing() {
+    let quay = Listener::start();
+    let mut relay = Relay::start(&quay.url(), TOKEN);
+    relay.send(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#);
+    quay.next().answer(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 1);
+    relay.send(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
+    let mut open = quay.next();
+
+    for params in [r#"{"requestId":1}"#, r#"{"requestId":99}"#, "{}", "[]", r#"{"requestId":null}"#] {
+        relay.send(&format!(r#"{{"jsonrpc":"2.0","method":"notifications/cancelled","params":{params}}}"#));
+        quay.next().respond("202 Accepted", "", "");
+    }
+
+    assert!(open.stays_open());
+    open.answer(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 2);
+}
+
+#[test]
+fn it_exits_when_its_stdin_closes_and_closes_every_open_call() {
+    let quay = Listener::start();
+    let mut relay = Relay::start(&quay.url(), TOKEN);
+    relay.send(r#"{"jsonrpc":"2.0","id":1,"method":"tools/call"}"#);
+    let mut call = quay.next();
+
+    relay.close_stdin();
+    let status = relay.exits_soon().expect("the relay did not exit");
+    assert!(status.success(), "{status}");
+    assert!(call.closes_soon());
+}
+
+#[test]
+fn what_it_has_answered_is_written_before_it_exits() {
+    let mut relay = Relay::with_env(&[]);
+    relay.send(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    relay.send(r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+    let (stdout, _) = relay.finish();
+    assert_eq!(stdout, [r#"{"id":1,"jsonrpc":"2.0","result":{}}"#, r#"{"id":2,"jsonrpc":"2.0","result":{}}"#]);
+}
+
+#[test]
+fn it_exits_when_its_stdin_closes_though_nobody_reads_its_stdout() {
+    let mut relay = Relay::unread(&[]);
+    // Each reply is more than a pipe holds
+    for id in [1, 2] {
+        relay.send(&initialize_of_a_megabyte(id));
+    }
+    relay.close_stdin();
+    assert!(relay.exits_soon().is_some(), "the relay did not exit");
+}
+
+#[test]
+fn it_exits_when_its_stdout_closes() {
+    let mut relay = Relay::unread(&[]);
+    relay.close_stdout();
+    relay.send(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    assert!(relay.exits_soon().is_some(), "the relay did not exit");
+}
+
+fn initialize_of_a_megabyte(id: u32) -> String {
+    let version = "v".repeat(1_000_000);
+    format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"initialize","params":{{"protocolVersion":"{version}"}}}}"#)
+}
+
+#[test]
+fn a_line_that_is_not_a_request_gets_an_error_and_the_next_one_still_goes_through() {
+    let quay = Listener::start();
+    let mut relay = Relay::start(&quay.url(), TOKEN);
+
+    relay.send("");
+    for (line, code) in [
+        ("not json", -32700),
+        (r#"{"jsonrpc":"2.0","id":1"#, -32700),
+        (r#"[{"jsonrpc":"2.0","id":1,"method":"ping"}]"#, -32600),
+        (r#"{"jsonrpc":"2.0","id":1}"#, -32600),
+        (r#"{"jsonrpc":"2.0","id":{},"method":"ping"}"#, -32600),
+    ] {
+        relay.send(line);
+        let reply = relay.next();
+        assert_eq!(reply["id"], serde_json::Value::Null, "{line}: {reply}");
+        assert_eq!(reply["error"]["code"], code, "{line}: {reply}");
+    }
+    assert!(quay.stays_unused());
+
+    relay.send("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\r");
+    let request = quay.next();
+    assert_eq!(request.body, r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    request.answer(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 1);
+}
+
+/// Two megabytes, the most `/mcp` takes in one request.
+const TWO_MB: usize = 2_097_152;
+
+/// A request of `size` bytes, whose `id` comes before its padding or after it.
+fn request_of(size: usize, id_first: bool) -> String {
+    let (before, after) = if id_first {
+        (r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"a":""#, r#""}}"#)
+    } else {
+        (r#"{"method":"tools/call","params":{"id":6,"a":""#, r#""},"jsonrpc":"2.0","id":5}"#)
+    };
+    format!("{before}{}{after}", "x".repeat(size - before.len() - after.len()))
+}
+
+#[test]
+fn a_request_over_2_mb_is_refused_by_its_id_and_the_next_one_still_goes_through() {
+    let quay = Listener::start();
+    let mut relay = Relay::start(&quay.url(), TOKEN);
+
+    for (size, id_first) in [(TWO_MB + 1, true), (TWO_MB + 1, false), (8 * TWO_MB, true), (4 * TWO_MB, false)] {
+        relay.send(&request_of(size, id_first));
+        let reply = relay.next();
+        assert_eq!(reply["id"], 5, "{reply}");
+        assert_eq!(reply["error"]["message"], "The request is over 2 MB, so the relay refuses it.");
+    }
+    // One with no id gets no reply, and one that is not JSON gets one with no id
+    relay.send(&request_of(TWO_MB + 100, true).replace(r#""id":5,"#, ""));
+    relay.send(&"x".repeat(3 * TWO_MB));
+    assert_eq!(relay.next()["id"], serde_json::Value::Null);
+    assert!(quay.stays_unused());
+
+    for line in [request_of(TWO_MB, true), request_of(TWO_MB, false) + "\r"] {
+        relay.send(&line);
+        let request = quay.next();
+        assert_eq!(request.body.len(), TWO_MB);
+        request.answer(r#"{"jsonrpc":"2.0","id":5,"result":{}}"#);
+        assert_eq!(relay.next()["result"], json!({}));
+    }
+}
+
+#[test]
+fn a_reply_over_4_mb_is_an_error() {
+    let body = format!(r#"{{"jsonrpc":"2.0","id":"x1","result":"{}"}}"#, "x".repeat(4 * 1024 * 1024));
+    assert_eq!(error_for("200 OK", "", &body), "Quay's reply is over 4 MB, so the relay dropped it.");
+}
+
+#[test]
+fn requests_run_side_by_side_up_to_a_limit() {
+    let quay = Listener::start();
+    let mut relay = Relay::start(&quay.url(), TOKEN);
+    let call = |relay: &mut Relay, id: usize| {
+        relay.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call"}}"#));
+    };
+    let mut open = Vec::new();
+    for id in 0..16 {
+        call(&mut relay, id);
+        open.push(quay.next());
+    }
+
+    call(&mut relay, 16);
+    let reply = relay.next();
+    assert_eq!(reply["id"], 16);
+    assert_eq!(reply["error"]["message"], "Too many requests are open. Try again when one has finished.");
+
+    // A cancel still closes its call, and makes room
+    relay.send(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":3}}"#);
+    assert!(open[3].closes_soon());
+    quay.next().respond("202 Accepted", "", "");
+    open.remove(3);
+
+    // They finish in any order
+    open.pop().unwrap().answer(r#"{"jsonrpc":"2.0","id":15,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 15);
+    open.remove(0).answer(r#"{"jsonrpc":"2.0","id":0,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 0);
+    call(&mut relay, 17);
+    quay.next().answer(r#"{"jsonrpc":"2.0","id":17,"result":{}}"#);
+    assert_eq!(relay.next()["id"], 17);
 }

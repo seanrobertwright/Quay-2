@@ -1,3 +1,20 @@
+//! Quay's relay, bundled with Quay as a sidecar. A CLI that reads only static configuration
+//! starts it as a stdio MCP server, and it connects that CLI to Quay's own MCP server:
+//!
+//! - it posts each message it reads to `/mcp`, as it was written and with the terminal's
+//!   token, and writes the reply back. It has no tools of its own, and keeps nothing but the
+//!   calls that are open;
+//! - on `notifications/cancelled` it closes the named request's HTTP call, which is how Quay
+//!   learns that nobody waits for it, and passes the notification on as well;
+//! - it ends when its stdin closes.
+//!
+//! The CLI passes its environment on, so the server's URL and the bearer token come from the
+//! `QUAY_*` variables Quay sets on the terminal, and neither the CLI's configuration nor the
+//! command line holds them. Where they are not set, the relay is an MCP server with no tools.
+//!
+//! The relay writes nothing but replies to stdout, nothing to stderr, and keeps no log.
+
+mod calls;
 mod outside;
 mod quay;
 mod rpc;
@@ -5,12 +22,22 @@ mod stdio;
 
 use std::process::ExitCode;
 
+use calls::OpenCalls;
+use hyper::body::Bytes;
 use quay::Quay;
-use rpc::Message;
+use rpc::{Id, Message, Unreadable};
+use stdio::{Line, Out};
 
+const REQUEST_TOO_LONG: &str = "The request is over 2 MB, so the relay refuses it.";
+const TOO_MANY: &str = "Too many requests are open. Try again when one has finished.";
+const NO_REPLY: &str = "Quay's MCP server sent no reply to this request.";
+
+/// Where requests go.
 enum Route {
     Quay(Quay),
+    /// The variables are set and can't be used, for this reason.
     Refused(&'static str),
+    /// A variable is not set, or is empty, so the CLI does not run in Quay.
     Outside,
 }
 
@@ -23,41 +50,76 @@ fn main() -> ExitCode {
         None => Route::Outside,
         Some((url, token)) => Quay::new(&url, &token).map_or_else(Route::Refused, Route::Quay),
     };
-    runtime.block_on(async {
-        let mut lines = stdio::read_lines();
-        let (out, written) = stdio::write_lines();
-        while let Some(line) = lines.recv().await {
-            let Some(message) = Message::parse(&line) else { continue };
-            match &route {
-                Route::Outside => {
-                    if let Some(id) = message.id {
-                        let _ = out.send(outside::answer(&id, &message.method, &line)).await;
-                    }
-                }
-                Route::Refused(why) => {
-                    if let Some(id) = message.id {
-                        let _ = out.send(rpc::error(&id, rpc::RELAY_FAILED, why)).await;
-                    }
-                }
-                Route::Quay(quay) => {
-                    let quay = quay.clone();
-                    let out = out.clone();
-                    tokio::spawn(async move {
-                        let answer = quay.post(line.into()).await;
-                        let Some(id) = message.id else { return };
-                        let reply = answer
-                            .and_then(|body| {
-                                rpc::reply_line(&id, body)
-                                    .ok_or_else(|| "Quay's MCP server sent no reply to this request.".to_string())
-                            })
-                            .unwrap_or_else(|why| rpc::error(&id, rpc::RELAY_FAILED, &why));
-                        let _ = out.send(reply).await;
-                    });
-                }
+    runtime.block_on(serve(route))
+}
+
+/// Serves the CLI until its end of stdin or stdout closes.
+async fn serve(route: Route) -> ExitCode {
+    let mut lines = stdio::read_lines();
+    let (out, written) = stdio::write_lines();
+    let calls = OpenCalls::default();
+    loop {
+        tokio::select! {
+            line = lines.recv() => match line {
+                Some(line) => take(line, &route, &calls, &out).await,
+                None => break,
+            },
+            () = out.closed() => return ExitCode::FAILURE,
+        }
+    }
+    calls.close();
+    drop(out);
+    written.finish().await;
+    ExitCode::SUCCESS
+}
+
+/// Takes one line from the CLI: answers it here, or sets it on its way to Quay.
+async fn take(line: Line, route: &Route, calls: &OpenCalls, out: &Out) {
+    let (message, line) = match line {
+        Line::Message(line) => (Message::parse(&line), Some(line)),
+        Line::TooLong(message) => (message, None),
+    };
+    let Message { id, method } = match message {
+        Ok(message) => message,
+        Err(Unreadable::NotJson) => return out.send(rpc::error(None, rpc::PARSE_ERROR, "Parse error")).await,
+        Err(Unreadable::NotRequest) => return out.send(rpc::error(None, rpc::INVALID_REQUEST, "Invalid request")).await,
+    };
+    // A notification gets no reply, a refusal included
+    let refuse = async |code: i32, why: &str| {
+        if let Some(id) = &id {
+            out.send(rpc::error(Some(id), code, why)).await;
+        }
+    };
+    let Some(line) = line else {
+        return refuse(rpc::INVALID_REQUEST, REQUEST_TOO_LONG).await;
+    };
+    match route {
+        Route::Outside => {
+            if let Some(id) = &id {
+                out.send(outside::answer(id, &method, &line)).await;
             }
         }
-        drop(out);
-        let _ = written.await;
-    });
-    ExitCode::SUCCESS
+        Route::Refused(why) => refuse(rpc::RELAY_FAILED, why).await,
+        Route::Quay(quay) => {
+            if method == "notifications/cancelled"
+                && let Some(cancelled) = rpc::cancelled_id(&line)
+            {
+                calls.cancel(&cancelled);
+            }
+            if !calls.start(id.clone(), forward(quay.clone(), id.clone(), line.into(), out.clone())) {
+                refuse(rpc::RELAY_FAILED, TOO_MANY).await;
+            }
+        }
+    }
+}
+
+/// Posts the message `line` to Quay, and writes the reply if it is request `id`. Whatever
+/// comes back for a notification is dropped.
+async fn forward(quay: Quay, id: Option<Id>, line: Bytes, out: Out) {
+    let answer = quay.post(line).await;
+    let Some(id) = id else { return };
+    let reply = answer
+        .and_then(|body| rpc::reply_line(&id, &body).ok_or_else(|| NO_REPLY.to_string()))
+        .unwrap_or_else(|why| rpc::error(Some(&id), rpc::RELAY_FAILED, &why));
+    out.send(reply).await;
 }

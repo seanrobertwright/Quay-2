@@ -139,6 +139,23 @@ impl Relay {
 
     /// Starts the relay with only the `QUAY_*` variables in `vars`.
     pub fn with_env(vars: &[(&str, &str)]) -> Relay {
+        let mut relay = Relay::unread(vars);
+        let (sender, stdout) = channel();
+        let out = BufReader::new(relay.child.stdout.take().unwrap());
+        std::thread::spawn(move || {
+            for line in out.lines() {
+                let Ok(line) = line else { break };
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        relay.stdout = stdout;
+        relay
+    }
+
+    /// As `with_env`, but nothing reads the relay's stdout.
+    pub fn unread(vars: &[(&str, &str)]) -> Relay {
         let mut command = Command::new(env!("CARGO_BIN_EXE_quay-relay"));
         for (name, _) in std::env::vars_os() {
             if name.to_string_lossy().to_uppercase().starts_with("QUAY_") {
@@ -152,16 +169,6 @@ impl Relay {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let (sender, stdout) = channel();
-        let out = BufReader::new(child.stdout.take().unwrap());
-        std::thread::spawn(move || {
-            for line in out.lines() {
-                let Ok(line) = line else { break };
-                if sender.send(line).is_err() {
-                    break;
-                }
-            }
-        });
         let mut err = child.stderr.take().unwrap();
         let stderr = std::thread::spawn(move || {
             let mut text = String::new();
@@ -169,7 +176,7 @@ impl Relay {
             text
         });
         let stdin = child.stdin.take();
-        Relay { child, stdin, stdout, stderr: Some(stderr) }
+        Relay { child, stdin, stdout: channel().1, stderr: Some(stderr) }
     }
 
     /// Writes `line` and a newline to the relay's stdin.
@@ -198,6 +205,11 @@ impl Relay {
     /// Closes the relay's stdin, as a CLI that is done with it does.
     pub fn close_stdin(&mut self) {
         self.stdin = None;
+    }
+
+    /// Closes the end of the relay's stdout that `unread` leaves unread.
+    pub fn close_stdout(&mut self) {
+        self.child.stdout = None;
     }
 
     /// How the relay exits, if it exits soon.
