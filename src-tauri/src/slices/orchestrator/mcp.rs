@@ -63,14 +63,17 @@ pub async fn handle_mcp_request(
             "NOTIFICATION from {}: {} {}",
             caller.id(),
             req.method,
-            req.params.as_ref().map(Value::to_string).unwrap_or_default()
+            super::a2ui_proto::params_text(&req)
         ));
         return accepted;
     }
     let caller_id = caller.id();
     if req.method != "tools/call" {
-        let params = req.params.as_ref().map(Value::to_string).unwrap_or_default();
-        super::a2ui_proto::log(&format!("REQUEST from {caller_id}: {} {params}", req.method));
+        super::a2ui_proto::log(&format!(
+            "REQUEST from {caller_id}: {} {}",
+            req.method,
+            super::a2ui_proto::params_text(&req)
+        ));
     }
     let id = req.id.unwrap_or(Value::Null);
 
@@ -95,7 +98,7 @@ pub async fn handle_mcp_request(
                         "name": "quay-a2a",
                         "version": "1.0.0"
                     },
-                    // PROTOTYPE (#709): a codeword found nowhere else, to see if the model gets it
+                    // PROTOTYPE (#709): a codeword that Quay sends only here, to see if the model gets it
                     "instructions": super::a2ui_proto::INSTRUCTIONS
                 })),
                 error: None,
@@ -535,6 +538,9 @@ mod tests {
                 "machina_submit_work_order",
                 "machina_get_work_order",
                 "machina_submit_deliverable",
+                // PROTOTYPE (#693, #709), throwaway
+                "quay_surface_proto",
+                "quay_surface_reject_proto",
             ]
         );
         for tool in tools {

@@ -18,7 +18,7 @@ log(
 );
 
 // #709: the calls still open, so a cancel can close the HTTP call it names
-const open = new Map();
+const openCalls = new Map();
 
 const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
@@ -34,9 +34,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   const started = Date.now();
   log(`-> ${name} id=${request.id ?? "-"}${request.method?.startsWith("notifications/") ? ` ${JSON.stringify(request.params ?? {})}` : ""}`);
   if (request.method === "notifications/cancelled") {
-    const call = open.get(request.params?.requestId);
-    log(`cancel of id=${request.params?.requestId}: ${call ? "closing its HTTP call" : "no open call with that id"}`);
-    call?.abort();
+    const cancelledCall = openCalls.get(request.params?.requestId);
+    log(`cancel of id=${request.params?.requestId}: ${cancelledCall ? "closing its HTTP call" : "no open call with that id"}`);
+    cancelledCall?.abort();
   }
   if (!url || !token) {
     if (request.id !== undefined) {
@@ -45,7 +45,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     return;
   }
   const call = new AbortController();
-  if (request.id !== undefined) open.set(request.id, call);
+  if (request.id !== undefined) openCalls.set(request.id, call);
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -63,7 +63,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       reply({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: `Quay relay: ${error}` } });
     }
   } finally {
-    open.delete(request.id);
+    openCalls.delete(request.id);
   }
 });
 

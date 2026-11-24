@@ -5,25 +5,29 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Listener, State};
 use tokio::sync::oneshot;
 
+use super::mcp::JsonRpcRequest;
 use super::models::A2ADispatchRequest;
 use super::router::A2ARouter;
+use crate::slices::bridge::models::Envelope;
 use crate::slices::bridge::routes::AppContext;
 use crate::slices::pty::manager::PtyManager;
 
-/// The `instructions` of `initialize` (#709). The codeword is in no tool name, description or file
-/// an agent in a scratch folder can read, so a model that names it was given this text.
+/// The `instructions` of `initialize` (#709). Quay sends the codeword nowhere else, so a model that
+/// names it got this text, in its context or from where its CLI put it: `agy` writes it to a file
+/// the agent can read.
 pub const INSTRUCTIONS: &str = "Quay shows surfaces beside this terminal. Use quay_surface_proto to ask the operator something. The Quay codeword is HERON-7042.";
 
-/// The spec's rejection object as a tool result with `isError` (#709). The code and the message
-/// carry marks a model would not write by itself.
+/// The spec's rejection object as a tool result with `isError` (#709). The message holds quotes and
+/// a made-up word, which a model would not write by itself.
 pub fn reject(caller_id: &str) -> Value {
     let text = json!({
         "errors": [{
@@ -53,11 +57,31 @@ fn surfaces() -> &'static Mutex<HashMap<String, Surface>> {
     SURFACES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Appends a UTC-stamped line to the prototype's log, `QUAY_A2UI_PROTO_LOG` or a file in temp.
+/// The thread that writes the prototype's log, started when `QUAY_A2UI_PROTO_LOG` names a file.
+fn log_writer() -> Option<&'static Sender<String>> {
+    static WRITER: OnceLock<Option<Sender<String>>> = OnceLock::new();
+    WRITER
+        .get_or_init(|| {
+            let path = std::env::var_os("QUAY_A2UI_PROTO_LOG").filter(|p| !p.is_empty())?;
+            let (tx, lines) = channel::<String>();
+            std::thread::spawn(move || {
+                for line in lines {
+                    if let Ok(mut file) =
+                        std::fs::OpenOptions::new().create(true).append(true).open(&path)
+                    {
+                        let _ = writeln!(file, "{line}");
+                    }
+                }
+            });
+            Some(tx)
+        })
+        .as_ref()
+}
+
+/// Sends a UTC-stamped line to the prototype's log. Without `QUAY_A2UI_PROTO_LOG` it does nothing.
+/// The file is written on a thread of its own.
 pub fn log(line: &str) {
-    let path = std::env::var("QUAY_A2UI_PROTO_LOG")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir().join("quay-a2ui-proto.log"));
+    let Some(writer) = log_writer() else { return };
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let day = now.as_secs() % 86_400;
     let stamp = format!(
@@ -67,9 +91,30 @@ pub fn log(line: &str) {
         day % 60,
         now.subsec_millis()
     );
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "{stamp} {line}");
+    let _ = writer.send(format!("{stamp} {line}"));
+}
+
+/// A request's `params` as it goes in the log.
+pub fn params_text(req: &JsonRpcRequest) -> String {
+    req.params.as_ref().map(Value::to_string).unwrap_or_default()
+}
+
+/// Logs the type, terminal and turn of every agent event (#709), to time a turn end against an
+/// open call. It leaves out the event's data, which holds prompts and tool input and output.
+pub fn log_agent_events(app: &AppHandle) {
+    if log_writer().is_none() {
+        return;
     }
+    app.listen("bridge-event", |event| {
+        let Ok(envelope) = serde_json::from_str::<Envelope>(event.payload()) else { return };
+        log(&format!(
+            "EVENT {} from {} turn={} reason={}",
+            envelope.event_type,
+            envelope.tag.as_deref().unwrap_or("-"),
+            envelope.data["turnId"].as_str().unwrap_or("-"),
+            envelope.data["reason"].as_str().unwrap_or("-")
+        ));
+    });
 }
 
 /// Logs when the hand-over future is dropped before it finished, which is how axum shows a

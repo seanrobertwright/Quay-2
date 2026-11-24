@@ -178,13 +178,6 @@ pub async fn handle_events(
 /// itself (see `opencode`). Typing a held message runs on a blocking thread, so this
 /// never blocks.
 pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
-    // PROTOTYPE (#709): every agent event, to time a turn end against an open call
-    crate::slices::orchestrator::a2ui_proto::log(&format!(
-        "EVENT tag={:?} {} {}",
-        envelope.tag,
-        envelope.event_type,
-        envelope.data.to_string().chars().take(400).collect::<String>()
-    ));
     ctx.bridge_state.pair_tool_call(&mut envelope);
     let tag = envelope.tag.clone();
     ctx.bridge_state.record_envelope(envelope.clone());
