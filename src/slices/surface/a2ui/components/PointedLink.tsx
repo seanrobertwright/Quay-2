@@ -1,5 +1,5 @@
 import { useEffect, useId, type ReactNode } from "react";
-import { FileText } from "lucide-react";
+import { File } from "lucide-react";
 import type { SurfaceLinks } from "../../links.ts";
 
 interface PointedLinkProps {
@@ -45,7 +45,7 @@ export const PointedLink = ({ links, address, onClick, children }: PointedLinkPr
 /** What a file link reads. */
 export const FileLabel = ({ children }: { children: ReactNode }) => (
   <>
-    <FileText aria-hidden="true" className="mr-0.5 inline h-3 w-3" />
+    <File aria-hidden="true" className="mr-0.5 inline h-3 w-3" />
     <bdi className="underline">{children}</bdi>
   </>
 );

@@ -107,7 +107,8 @@ enum Parsed {
 
 /// Where `written` leads, read in the folder `cwd`: a path with no link, no `.` and no `..` in it,
 /// on this computer. Every part of it is judged before it is touched, and nothing past a part that
-/// is refused is touched.
+/// is refused is touched. It is judged as the disk is now: a folder replaced by a link after that is
+/// not seen.
 pub fn resolve(written: &str, cwd: &str, style: Style, disk: &impl Disk) -> Result<String, Refused> {
     let (root, names) = place_in(parse(written, style)?, cwd, style)?;
     walk(root, names, style, disk)

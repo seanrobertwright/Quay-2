@@ -4,12 +4,14 @@ import { duringClick } from "../../clickOnly.ts";
 import { LinksContext } from "../../links.ts";
 import { linkTarget } from "../../linkTarget.ts";
 import { FileLabel, PointedLink } from "../components/PointedLink.tsx";
+import { InsideButton } from "../insideButton.ts";
 
-/** A Markdown link, or its label alone where it leads nowhere Quay opens. */
+/** A Markdown link, or its label alone inside a button. */
 export const MarkdownLink = ({ href, children }: { href: string; children?: ReactNode }) => {
   const links = useContext(LinksContext);
+  const insideButton = useContext(InsideButton);
   const target = linkTarget(href);
-  if (!links || !target) return children;
+  if (!links || insideButton || !target) return children;
   if (target.kind === "file") {
     const { path } = target;
     return (

@@ -44,7 +44,9 @@ function decoded(text: string): string | null {
  */
 function hasScheme(path: string): boolean {
   const plain = path.normalize("NFKC").replace(/^[a-z]:(?=[\\/])/i, "");
-  return plain.replace(/^([^:]*[./\\][^:]*):\d+(:\d+)?$/, "$1").includes(":");
+  const line = /:\d{1,9}(:\d{1,9})?$/.exec(plain);
+  const name = line ? plain.slice(0, line.index) : plain;
+  return name.includes(":") || (line !== null && !/[./\\]/.test(name));
 }
 
 function fileTarget(href: string): FileTarget | null {

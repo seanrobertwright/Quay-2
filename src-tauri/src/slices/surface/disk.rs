@@ -8,9 +8,9 @@
 //! - **macOS:** what `/sbin/mount` prints. A path is local when the mount it is on carries the
 //!   system's own `local` flag.
 //!
-//! Where the table cannot be read, and on any other system, nothing is local and every path is
-//! refused. A path that only looks local, such as a local program's own virtual drive or a folder a
-//! sync client fills, counts as local.
+//! Where Windows cannot tell a drive's type, where the table of mounts cannot be read or names a file
+//! system Quay does not know, and on any other system, nothing is local and the path is refused. A drive a program on this
+//! computer keeps up, and a folder a sync client fills, are local to the system and so to Quay.
 
 use std::io;
 use std::path::Path;

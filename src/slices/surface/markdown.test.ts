@@ -35,7 +35,7 @@ const settle = () => act(async () => void (await new Promise((resolve) => setTim
 
 /** A surface of `components` under a root Column, with `data` as its data model. */
 function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown> = {}): SurfaceRecord {
-  const inside = new Set(components.flatMap(({ child }) => (typeof child === "string" ? [child] : [])));
+  const inside = new Set(components.flatMap(({ child, children }) => [child, children].flat()));
   const children = components.map(({ id }) => id).filter((id) => !inside.has(id));
   return {
     terminal_id: "t1",
@@ -112,6 +112,7 @@ test("a table scrolls in its own box, and takes no more room than the surface ha
   assert.ok(table.querySelectorAll("th")[1].className.includes("text-right"));
   const box = table.parentElement!;
   for (const name of ["overflow-x-auto", "max-w-full"]) assert.ok(box.className.split(" ").includes(name), name);
+  assert.ok(table.className.split(" ").includes("w-max"), "it is not squeezed into the surface");
   assert.equal(table.querySelector("[style]"), null);
 });
 
@@ -488,4 +489,44 @@ test("an effect called after its click, or with no click, throws", async () => {
   assert.throws(() => duringClick("openUrl", () => { throw new Error("handler"); }), /handler/);
   assert.throws(() => effects.openUrl("https://a.example"), refused);
   assert.deepEqual(calls, []);
+});
+
+test("inside a Button only inline formatting is drawn, and no link", async () => {
+  const label = "# **Open** *the* `plan` [here](https://a.example) [file](a.ts)\n\n- one\n\n> two\n\n| a |\n| - |";
+  const container = await draw(
+    surfaceOf([
+      { id: "a", component: "Button", child: "a_label", action: { event: { name: "go" } } },
+      { id: "a_label", component: "Text", text: label },
+      { id: "b", component: "Button", child: "b_column", action: { event: { name: "go" } } },
+      { id: "b_column", component: "Column", children: ["b_label", "b_file"] },
+      { id: "b_label", component: "Text", text: "1. Show" },
+      { id: "b_file", component: "FileLink", path: "a.ts" },
+    ]),
+  );
+  const [first, second, ...others] = container.querySelectorAll("button");
+  assert.equal(others.length, 0, "no link is in one");
+  assert.equal(first.textContent?.replace(/\s+/g, " "), "# Open the plan here file - one > two | a | | - |");
+  assert.equal(second.textContent, "1. Showa.ts");
+  assert.deepEqual(texts(first, "strong, em, code"), ["Open", "the", "plan"]);
+  for (const button of [first, second]) assert.equal(button.querySelectorAll("h3, ol, ul, li, blockquote, table, p, pre, [role]").length, 0);
+});
+
+test("a text nested too deep or too long to draw at once is shown whole, as it is written", async () => {
+  const deep = `${">".repeat(150)} end`;
+  assert.equal((await drawText(deep)).textContent, deep);
+  await act(async () => mounted!.root.unmount());
+  mounted!.container.remove();
+  const long = `**bold** ${"x".repeat(20_000)}`;
+  const content = await drawText(long);
+  assert.equal(content.textContent, long);
+  assert.equal(content.querySelectorAll("strong").length, 0);
+  await act(async () => mounted!.root.unmount());
+  mounted!.container.remove();
+  // The limit counts characters, which some alphabets spell with two units each
+  const atLimit = await drawText(`**b**${"😀".repeat(19_995)}`);
+  assert.equal(atLimit.querySelectorAll("strong").length, 1);
+  await act(async () => mounted!.root.unmount());
+  mounted!.container.remove();
+  const emphasis = await drawText(`${"*a ".repeat(100)}end${" a*".repeat(100)}`);
+  assert.equal(emphasis.textContent, `${"a ".repeat(100)}end${" a".repeat(100)}`);
 });

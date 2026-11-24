@@ -4,6 +4,7 @@ import { createComponentImplementation } from "@a2ui/react";
 import { DynamicNumberSchema, DynamicStringSchema } from "@a2ui/web_core/v1_0";
 import { duringClick } from "../../clickOnly.ts";
 import { LinksContext } from "../../links.ts";
+import { InsideButton } from "../insideButton.ts";
 import { lineOf } from "../line.ts";
 import { FileLabel, PointedLink } from "./PointedLink.tsx";
 
@@ -27,8 +28,9 @@ interface FileLinkViewProps {
 
 const FileLinkView = ({ path, line, label }: FileLinkViewProps) => {
   const links = useContext(LinksContext);
+  const insideButton = useContext(InsideButton);
   const address = line === undefined ? path : `${path}:${line}`;
-  if (!links || path === "") return label ?? address;
+  if (!links || insideButton || path === "") return label ?? address;
   return (
     <PointedLink links={links} address={address} onClick={() => duringClick("showFile", () => links.effects.showFile(path, line))}>
       <FileLabel>{label ?? address}</FileLabel>

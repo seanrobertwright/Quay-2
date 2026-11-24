@@ -4,6 +4,7 @@ import { ButtonApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { Button as PlainButton } from "../../../parts/Button.tsx";
 import { duringClick, type Effect } from "../../clickOnly.ts";
 import { effectOf } from "../effects.ts";
+import { InsideButton } from "../insideButton.ts";
 
 interface ActionButtonProps {
   primary: boolean;
@@ -47,6 +48,6 @@ export const Button = createComponentImplementation(ButtonApi, ({ props, buildCh
     effect={effectOf(context.componentModel.properties.action)}
     action={props.action}
   >
-    {props.child && buildChild(props.child)}
+    <InsideButton.Provider value={true}>{props.child && buildChild(props.child)}</InsideButton.Provider>
   </ActionButton>
 ));

@@ -54,9 +54,9 @@ const diffBlock = (content: string) => {
 const fence: Draw = (token, children) =>
   token.info.trim().split(/\s/)[0] === "diff" ? diffBlock(token.content) : codeBlock(token, children);
 
-/** A table, in a box of its own that scrolls. */
+/** A table, as wide as what it holds, in a box of its own that scrolls. A long cell wraps at words. */
 const table: Draw = (_token, children) => (
-  <div className={`max-w-full overflow-x-auto ${BOX}`}>{createElement("table", { className: "border-collapse text-left" }, ...children)}</div>
+  <div className={`max-w-full overflow-x-auto ${BOX}`}>{createElement("table", { className: "w-max border-collapse text-left wrap-normal" }, ...children)}</div>
 );
 
 const ALIGN: ReadonlyMap<string, string> = new Map([
@@ -68,7 +68,7 @@ const cell =
   (tag: "th" | "td"): Draw =>
   (token, children) => {
     const align = ALIGN.get(String(token.attrGet("style"))) ?? "";
-    return createElement(tag, { className: `px-2 py-1 align-top ${tag === "th" ? "font-semibold text-white" : ""} ${align}` }, ...children);
+    return createElement(tag, { className: `max-w-64 px-2 py-1 align-top wrap-break-word ${tag === "th" ? "font-semibold text-white" : ""} ${align}` }, ...children);
   };
 
 /** How each token type is drawn, opening ones without their `_open`. */
