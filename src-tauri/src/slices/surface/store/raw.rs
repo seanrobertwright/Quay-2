@@ -4,12 +4,12 @@ use super::super::raw::{Held, TOOL};
 use super::{Creation, Phase, Surface, SurfaceKey, SurfaceStore};
 
 impl Surface {
-    /// Whether it leaves for what `creation` creates under its id. Both are raw, and either it is an
-    /// earlier launch's, or it is settled and the same call is made again.
+    /// Whether it leaves for what `creation` creates under its id: both are raw, it is settled, and the
+    /// same call is made again. An ended one never does, as what the operator typed in it stays.
     pub(super) fn makes_way(&self, creation: Creation) -> bool {
         let both_raw = self.tool == TOOL && creation.tool == TOOL;
         let settled = matches!(self.phase, Phase::Settled { .. });
-        both_raw && (self.launch_over || (settled && self.arguments == *creation.arguments))
+        both_raw && settled && self.arguments == *creation.arguments
     }
 }
 

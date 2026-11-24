@@ -400,15 +400,47 @@ async fn a_repeat_of_a_settled_one_makes_a_new_surface_in_its_place() {
 }
 
 #[tokio::test]
-async fn an_earlier_launchs_surface_makes_way_for_a_later_ones() {
+async fn an_ended_surface_keeps_its_id_and_what_was_typed_in_it() {
     let (seam, mut webview) = start(Timing::default()).await;
     let (_open, first) = created(&seam, &mut webview, &seam.cli("term-a"), "plan", "companion", true).await;
+    let page = seam.surfaces.open_page();
+    let typed = json!({ "page": page.page, "save": 1, "order": first.order, "revision": first.revision, "values": { "/note": "half a thought" } });
+    seam.surfaces.save_unsent(&key("term-a", "plan"), serde_json::from_value(typed).unwrap()).unwrap();
     seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Working);
-    assert!(webview.next_shown().await.ended_at.is_some());
+    let ended = webview.next_shown().await;
+    assert!(ended.ended_at.is_some());
 
-    let (second, again) = created(&seam, &mut webview, &seam.cli("term-a"), "plan", "tab", true).await;
-    assert!(again.order > first.order && again.ended_at.is_none() && second.is_open());
-    assert_eq!(seam.surfaces.surfaces(), vec![again]);
+    let in_use = "Surface \"plan\" already exists. Update it, or delete it and create it again.";
+    let mut other = plan("plan", "companion");
+    other["messages"] = json!([update_text("plan")]);
+    for call in [other, plan("plan", "companion")] {
+        let errors = told_by_rust(&seam, &mut webview, call).await;
+        assert_eq!(errors, json!([about_plan("INTEGRITY_ERROR", "/messages/0/createSurface", in_use)]));
+    }
+
+    assert_eq!(seam.surfaces.surfaces(), vec![ended]);
+    let unsent = json!(seam.surfaces.open_page())["unsent"].clone();
+    assert_eq!(unsent[0]["values"], json!({ "/note": "half a thought" }));
+}
+
+#[tokio::test]
+async fn an_earlier_launchs_settled_surface_makes_way_for_the_same_call_only() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let (first, _) = created(&seam, &mut webview, &seam.cli("term-a"), "plan", "companion", true).await;
+    seam.surfaces.answer(&key("term-a", "plan"), 1, action()).unwrap();
+    first.answer().await;
+    let settled = webview.next_shown().await;
+    seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Working);
+
+    let mut other = plan("plan", "companion");
+    other["messages"] = json!([update_text("plan")]);
+    let errors = told_by_rust(&seam, &mut webview, other).await;
+    assert_eq!(errors[0]["code"], "INTEGRITY_ERROR");
+    assert_eq!(seam.surfaces.surfaces(), vec![settled]);
+
+    let (again, shown) = created(&seam, &mut webview, &seam.cli("term-a"), "plan", "companion", true).await;
+    assert!(again.is_open());
+    assert_eq!(seam.surfaces.surfaces(), vec![shown]);
 }
 
 #[tokio::test]
