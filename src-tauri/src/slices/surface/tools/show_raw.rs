@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use super::super::check::{AcceptedSurface, HeldSurface};
 use super::super::raw::{RawCall, TOOL};
-use super::super::raw_changes::{in_use, unknown, Held};
+use super::super::raw_changes::{in_use, unknown};
 use super::super::rejection::{CallError, QuayFailed, Rejection};
 use super::super::store::{Creation, RawChange, RawRefused, SurfaceKey};
 use super::super::wait::Wait;
@@ -12,8 +12,8 @@ use super::{dismissed_result, text_result, SurfaceTools, Verdict};
 
 /// What a call does once it is accepted.
 enum Next {
-    /// It waits for the first answer to these surfaces of its terminal, of which there is one at least.
-    Waits(Vec<String>),
+    /// It waits for the first answer to these surfaces of its terminal.
+    Waits { first: String, others: Vec<String> },
     /// It returns this result at once.
     Returns(Value),
 }
@@ -21,7 +21,11 @@ enum Next {
 impl Next {
     /// For a call whose surfaces `asking` ask.
     fn of(asking: Vec<String>) -> Self {
-        if asking.is_empty() { Self::Returns(shown_result()) } else { Self::Waits(asking) }
+        let mut asking = asking.into_iter();
+        match asking.next() {
+            None => Self::Returns(shown_result()),
+            Some(first) => Self::Waits { first, others: asking.collect() },
+        }
     }
 }
 
@@ -56,9 +60,9 @@ impl SurfaceTools {
         };
         match next {
             Next::Returns(result) => result,
-            Next::Waits(asking) => {
-                let asking: Vec<_> = asking.into_iter().map(|id| SurfaceKey::new(terminal_id, id)).collect();
-                self.answered(wait, &asking[0], &asking[1..]).await
+            Next::Waits { first, others } => {
+                let others: Vec<_> = others.into_iter().map(|id| SurfaceKey::new(terminal_id, id)).collect();
+                self.answered(wait, &SurfaceKey::new(terminal_id, first), &others).await
             }
         }
     }
@@ -75,7 +79,7 @@ impl SurfaceTools {
         let held = |id: &str| self.0.store.held(&SurfaceKey::new(terminal_id, id), creation);
         let mut rejection = found;
         call.check_surfaces(&mut rejection, held);
-        let updated = call.updated().into_iter().filter_map(held).filter(Held::takes_updates);
+        let updated = call.updated().into_iter().filter_map(held).filter(|its| its.no_update.is_none());
         let updated = updated.map(|its| HeldSurface { place: its.place, state: its.state }).collect();
         let key = SurfaceKey::new(terminal_id, call.creates());
         let surfaces = match self.verdict_on(&key, TOOL, creation.arguments.clone(), updated).await {
@@ -95,7 +99,7 @@ impl SurfaceTools {
             }
             Some(Verdict::Accepted(_)) => {
                 tracing::error!("{terminal_id}: a {TOOL} call was given a typed call's verdict");
-                return Err(QuayFailed::Expansion.result());
+                return Err(QuayFailed::WrongVerdict.result());
             }
             Some(Verdict::Surfaces { surfaces }) => surfaces,
         };
@@ -126,12 +130,11 @@ impl SurfaceTools {
                 RawRefused::Dismissed => dismissed_result(),
                 RawRefused::IdInUse(id) => reject(call.at(&id, "INTEGRITY_ERROR", in_use(&id))),
                 RawRefused::Gone(id) => reject(call.at(&id, "INTEGRITY_ERROR", unknown(&id))),
-                // In a moment it is answered, and the same call then says what that makes of it
-                RawRefused::BeingSent => QuayFailed::NoVerdict.result(),
+                RawRefused::BeingSent => QuayFailed::AnswerBeingSent.result(),
                 RawRefused::PastLimit(id, past) => reject(call.at(&id, "VALIDATION_FAILED", past.words())),
                 RawRefused::NoState(id) => {
                     tracing::error!("{terminal_id}: the verdict on a {TOOL} call left out the surface {id}");
-                    QuayFailed::NoVerdict.result()
+                    QuayFailed::WrongVerdict.result()
                 }
             }
         })?;

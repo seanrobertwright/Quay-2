@@ -6,9 +6,8 @@ use serde_json::Value;
 
 use super::carried::DataPath;
 use super::place::Place;
-use super::raw::{RawCall, TOOL};
+use super::raw::RawCall;
 use super::rejection::{CallError, Rejection};
-use super::store::Standing;
 
 /// What a message is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,37 +63,36 @@ pub struct Change<'a> {
     pub path: &'a str,
 }
 
+/// Why a surface takes no update. An answered raw one takes one, and is opened again by it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoUpdate {
+    /// This typed tool made it.
+    Typed(String),
+    Ended,
+    Withdrawn,
+}
+
+impl NoUpdate {
+    /// What an agent that updates the surface `id` is told.
+    fn words(&self, id: &str) -> String {
+        let over = match self {
+            Self::Typed(tool) => return format!("Surface \"{id}\" was made by {tool}. Call {tool} again."),
+            Self::Ended => "ended when this terminal exited",
+            Self::Withdrawn => "was deleted before the operator answered",
+        };
+        format!("Surface \"{id}\" {over}. Delete it and create it again.")
+    }
+}
+
 /// What the terminal has as a surface that a message names.
 pub struct Held {
-    pub tool: String,
     pub place: Place,
     pub title: String,
-    pub standing: Standing,
+    pub no_update: Option<NoUpdate>,
     /// The accepted state as one compact `createSurface`.
     pub state: Value,
     /// Whether a create of this call may have its id.
     pub makes_way: bool,
-}
-
-impl Held {
-    /// Why it takes no update. An answered one is opened again by one.
-    fn takes_no_update(&self, id: &str) -> Option<String> {
-        if self.tool != TOOL {
-            let tool = &self.tool;
-            return Some(format!("Surface \"{id}\" was made by {tool}. Call {tool} again."));
-        }
-        let over = match self.standing {
-            Standing::Ended => "ended when this terminal exited",
-            Standing::Withdrawn => "was deleted before the operator answered",
-            _ => return None,
-        };
-        Some(format!("Surface \"{id}\" {over}. Delete it and create it again."))
-    }
-
-    /// Whether a call may update it.
-    pub fn takes_updates(&self) -> bool {
-        self.takes_no_update("").is_none()
-    }
 }
 
 /// Where a surface is as a call's messages are read.
@@ -169,8 +167,8 @@ impl RawCall {
                 (Kind::Update { .. }, At::Created) => {}
                 (Kind::Update { .. }, At::Deleted | At::Held(None)) => tell("INTEGRITY_ERROR", path, unknown(id)),
                 (Kind::Update { .. }, At::Held(Some(its))) => {
-                    if let Some(why) = its.takes_no_update(id) {
-                        tell("VALIDATION_FAILED", path, why);
+                    if let Some(no_update) = &its.no_update {
+                        tell("VALIDATION_FAILED", path, no_update.words(id));
                     } else if first {
                         self.check_repeated(id, its, tell);
                     }

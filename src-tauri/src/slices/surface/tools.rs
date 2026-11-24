@@ -301,7 +301,7 @@ impl SurfaceTools {
             Some(Verdict::Accepted(accepted)) => Ok(accepted),
             Some(Verdict::Surfaces { .. }) => {
                 tracing::error!("{terminal_id}: a {tool} call was given a raw call's verdict");
-                Err(QuayFailed::Expansion.result())
+                Err(QuayFailed::WrongVerdict.result())
             }
         }
     }

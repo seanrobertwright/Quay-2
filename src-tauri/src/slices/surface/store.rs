@@ -198,6 +198,13 @@ pub struct Creation<'a> {
     pub call: u64,
 }
 
+/// What a call makes a surface of, once the webview has accepted it, and the change it is made with.
+struct Content<'a> {
+    creation: Creation<'a>,
+    accepted: Accepted,
+    change: u64,
+}
+
 /// Why a surface was not added. Nothing was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommitRefused {
@@ -240,6 +247,16 @@ enum Phase {
 }
 
 impl Phase {
+    /// Has the call `call` wait with those of `calls` that do and are open, if it asks. Whether it does.
+    fn join(&mut self, call: u64, calls: &OpenCalls) -> bool {
+        let Self::Asking { waiters } = self else {
+            return false;
+        };
+        waiters.retain(|call| calls.is_open(*call));
+        waiters.push(call);
+        true
+    }
+
     /// Whether it was answered, or will not be.
     fn is_over(&self) -> bool {
         matches!(self, Self::Settled { .. } | Self::Ended { .. } | Self::Withdrawn { .. })
@@ -285,8 +302,17 @@ struct Surface {
 }
 
 impl Surface {
-    /// The surface `id` as a call creates it with the change `change`. It asks for nothing.
-    fn new(id: &str, creation: Creation, accepted: Accepted, change: u64) -> Self {
+    /// The surface `id` as a call creates it, which waits for it if it asks.
+    fn created(id: &str, content: Content) -> Self {
+        let phase = match content.accepted.asks {
+            true => Phase::Asking { waiters: vec![content.creation.call] },
+            false => Phase::NotAsking,
+        };
+        Self { phase, ..Self::new(id, content) }
+    }
+
+    /// The surface `id` as a call creates it. It asks for nothing.
+    fn new(id: &str, Content { creation, accepted, change }: Content) -> Self {
         let now = now_ms();
         Self {
             id: id.to_string(),
@@ -434,10 +460,15 @@ impl Terminal {
         dismissed
     }
 
+    /// How many live surfaces `place` has, of those that `counts` says.
+    fn live_in(&self, place: Place, counts: impl Fn(&Surface) -> bool) -> usize {
+        let live = self.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
+        live.filter(|surface| counts(surface)).count()
+    }
+
     /// Whether `place` takes another live surface.
     fn has_room(&self, place: Place) -> Result<(), PastLimit> {
-        let live = self.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
-        if live.count() < MOST_LIVE { Ok(()) } else { Err(PastLimit::Live(place)) }
+        if self.live_in(place, |_| true) < MOST_LIVE { Ok(()) } else { Err(PastLimit::Live(place)) }
     }
 
     /// Takes the locked surfaces past `MOST_LOCKED` out, the one whose last change is the oldest first.
@@ -623,15 +654,11 @@ impl SurfaceStore {
         let mut inner = self.0.lock();
         let terminal = inner.terminals.get_mut(terminal_id).filter(|terminal| terminal.calls.has(creation.call))?;
         let Terminal { surfaces, calls, rejected, .. } = terminal;
-        surfaces.iter_mut().find_map(|surface| match &mut surface.phase {
-            Phase::Asking { waiters } if surface.tool == creation.tool && surface.arguments == *creation.arguments => {
-                waiters.retain(|call| calls.is_open(*call));
-                waiters.push(creation.call);
-                rejected.remove(creation.tool);
-                Some(SurfaceKey::new(terminal_id, &surface.id))
-            }
-            _ => None,
-        })
+        let mut same =
+            surfaces.iter_mut().filter(|surface| surface.tool == creation.tool && surface.arguments == *creation.arguments);
+        let surface = same.find_map(|surface| surface.phase.join(creation.call, calls).then_some(surface))?;
+        rejected.remove(creation.tool);
+        Some(SurfaceKey::new(terminal_id, &surface.id))
     }
 
     /// Counts a rejected call of `tool`, and says how many of the terminal's are now in a row. A call
@@ -677,11 +704,7 @@ impl SurfaceStore {
         }
         within_limits(&accepted)?;
         terminal.has_room(creation.place)?;
-        let phase = match accepted.asks {
-            true => Phase::Asking { waiters: vec![creation.call] },
-            false => Phase::NotAsking,
-        };
-        let surface = Surface { phase, ..Surface::new(&key.id, creation, accepted, change) };
+        let surface = Surface::created(&key.id, Content { creation, accepted, change });
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
@@ -716,8 +739,8 @@ impl SurfaceStore {
         if run.stopped_at.is_none() && there.is_none_or(Surface::is_locked) {
             terminal.has_room(creation.place)?;
         }
-        let mut surface =
-            Surface { board: Some(run), shown_at: now, ..Surface::new(&key.id, creation, accepted, change) };
+        let content = Content { creation, accepted, change };
+        let mut surface = Surface { board: Some(run), shown_at: now, ..Surface::new(&key.id, content) };
         if let Some(same) = same {
             surface.revision = same.revision + 1;
             surface.carried = Carried::new(surface.revision);

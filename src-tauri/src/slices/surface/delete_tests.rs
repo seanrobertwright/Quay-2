@@ -2,21 +2,14 @@
 
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 use super::place::Place;
-use super::raw_seam::{about_plan, action, create, created, delete, makes, makes_one, messages, plan, says, surface, told_by_rust, update};
+use super::raw_seam::{about_plan, action, create, created, delete, makes, makes_one, messages, plan, read, says, sent, surface, told_by_rust, update};
 use super::store::{AnswerRefused, SurfaceRecord};
 use super::test_seam::{accepted, answer_to, key, question, start, FakeCli, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
 use super::unsent::UnsentRefused;
-
-/// Has `cli` send these messages, which the webview accepts as making no surface.
-async fn sent(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, written: &[Value]) -> OpenCall {
-    let call = cli.call("quay_surface", messages(written));
-    seam.surfaces.verdict(webview.next_check().await.call, makes(vec![]));
-    call
-}
 
 /// Has `cli` delete and create the surface `plan` in one call, in `place`.
 async fn replaced(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, place: &str, asks: bool) -> (OpenCall, SurfaceRecord) {
@@ -28,10 +21,6 @@ async fn replaced(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, place: 
     assert_eq!((check.surface_id.as_str(), check.held.len()), ("plan", 0), "it is made of nothing that was there");
     seam.surfaces.verdict(check.call, makes(vec![("plan", says(asks, "new"))]));
     (call, webview.next_shown().await)
-}
-
-async fn read(cli: &FakeCli, id: &str) -> Value {
-    cli.call("quay_surface_read", json!({ "surface_id": id })).answer().await
 }
 
 fn ids(seam: &Seam) -> Vec<String> {
@@ -48,7 +37,7 @@ async fn a_delete_of_a_live_asking_surface_withdraws_it_and_ends_its_wait() {
     let typed = seam.asked(&mut webview, "term-a", "One?").await;
 
     for (id, waiting) in [("plan", raw), ("ask_1", typed)] {
-        let call = sent(&seam, &mut webview, &cli, &[delete(id)]).await;
+        let call = sent(&seam, &mut webview, &cli, &[delete(id)], &[]).await;
         assert_eq!(call.answer().await, json!({ "deleted": true }));
         assert_eq!(waiting.answer().await, json!({ "surface_id": id, "state": "withdrawn" }));
         let withdrawn = webview.next_shown().await;
@@ -77,7 +66,7 @@ async fn every_call_that_waits_on_a_withdrawn_surface_ends_once_and_one_that_wai
     webview.next_shown().await;
     webview.next_shown().await;
 
-    sent(&seam, &mut webview, &cli, &[delete("plan")]).await.answer().await;
+    sent(&seam, &mut webview, &cli, &[delete("plan")], &[]).await.answer().await;
     for call in [one, again] {
         assert_eq!(call.answer().await, json!({ "surface_id": "plan", "state": "withdrawn" }));
     }
@@ -96,7 +85,7 @@ async fn a_call_that_waits_on_two_is_told_once_when_both_are_withdrawn() {
     seam.surfaces.verdict(webview.next_check().await.call, makes(vec![("one", surface(true)), ("two", surface(true))]));
     webview.next_shown().await;
     webview.next_shown().await;
-    sent(&seam, &mut webview, &cli, &[delete("two"), delete("one"), delete("two")]).await.answer().await;
+    sent(&seam, &mut webview, &cli, &[delete("two"), delete("one"), delete("two")], &[]).await.answer().await;
     let told = both.answer().await;
     assert_eq!((&told["state"], told.as_object().unwrap().len()), (&json!("withdrawn"), 2));
 }
@@ -107,7 +96,7 @@ async fn a_withdrawn_surface_that_nothing_waits_for_is_told_to_nobody() {
     let cli = seam.cli("term-a");
     let (call, _) = created(&seam, &mut webview, &cli, "plan", "companion", true).await;
     assert_eq!(call.answer().await["state"], "no_answer_yet");
-    sent(&seam, &mut webview, &cli, &[delete("plan")]).await.answer().await;
+    sent(&seam, &mut webview, &cli, &[delete("plan")], &[]).await.answer().await;
     cli.event("turn.completed", json!({})).await;
     tokio::time::sleep(super::test_seam::A_WHILE).await;
     assert_eq!(seam.typed("term-a"), "");
@@ -130,7 +119,7 @@ async fn a_delete_of_any_other_surface_removes_it() {
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer_to("One?")).unwrap();
     ask.answer().await;
 
-    let call = sent(&seam, &mut webview, &cli, &[delete("shown"), delete("board"), delete("plan"), delete("ask_1")]).await;
+    let call = sent(&seam, &mut webview, &cli, &[delete("shown"), delete("board"), delete("plan"), delete("ask_1")], &[]).await;
     assert_eq!(call.answer().await, json!({ "deleted": true }));
     for id in ["shown", "board", "plan", "ask_1"] {
         assert_eq!(webview.next_removed().await, key("term-a", id));
@@ -150,16 +139,16 @@ async fn a_delete_twice_does_nothing_more_and_a_withdrawn_one_is_removed_by_the_
     created(&seam, &mut webview, &cli, "shown", "companion", false).await;
     let (_open, _) = created(&seam, &mut webview, &cli, "plan", "companion", true).await;
     for _ in 0..2 {
-        let call = sent(&seam, &mut webview, &cli, &[delete("shown"), delete("shown"), delete("never")]).await;
+        let call = sent(&seam, &mut webview, &cli, &[delete("shown"), delete("shown"), delete("never")], &[]).await;
         assert_eq!(call.answer().await, json!({ "deleted": true }));
     }
     assert_eq!(webview.next_removed().await, key("term-a", "shown"));
     assert!(webview.none_removed());
 
-    let call = sent(&seam, &mut webview, &cli, &[delete("plan"), delete("plan")]).await;
+    let call = sent(&seam, &mut webview, &cli, &[delete("plan"), delete("plan")], &[]).await;
     assert_eq!(call.answer().await, json!({ "deleted": true }));
     assert!(webview.next_shown().await.withdrawn_at.is_some(), "twice in one call is once");
-    sent(&seam, &mut webview, &cli, &[delete("plan")]).await.answer().await;
+    sent(&seam, &mut webview, &cli, &[delete("plan")], &[]).await.answer().await;
     assert_eq!(webview.next_removed().await, key("term-a", "plan"));
     assert_eq!(read(&cli, "plan").await["state"], "withdrawn");
     created(&seam, &mut webview, &cli, "plan", "tab", false).await;
@@ -175,7 +164,7 @@ async fn a_withdrawn_surface_keeps_its_id_and_what_was_typed_in_it() {
         seam.surfaces.save_unsent(&key("term-a", "plan"), serde_json::from_value(save).unwrap())
     };
     typed(1, "half a").unwrap();
-    sent(&seam, &mut webview, &cli, &[delete("plan")]).await.answer().await;
+    sent(&seam, &mut webview, &cli, &[delete("plan")], &[]).await.answer().await;
     let withdrawn = webview.next_shown().await;
     typed(2, "half a thought").unwrap();
 
@@ -197,7 +186,7 @@ async fn a_withdrawn_surface_counts_as_locked_and_the_oldest_past_ten_leaves() {
     for n in 0..11 {
         let id = format!("plan{n}");
         let (_, _) = created(&seam, &mut webview, &cli, &id, "companion", true).await;
-        sent(&seam, &mut webview, &cli, &[delete(&id)]).await.answer().await;
+        sent(&seam, &mut webview, &cli, &[delete(&id)], &[]).await.answer().await;
         webview.next_shown().await;
     }
     assert_eq!(webview.next_removed().await, key("term-a", "plan0"));
@@ -212,7 +201,7 @@ async fn a_withdrawn_surface_is_dismissed_without_a_word_and_does_not_end_with_i
     let cli = seam.cli("term-a");
     for id in ["plan", "other"] {
         let (_, _) = created(&seam, &mut webview, &cli, id, "companion", true).await;
-        sent(&seam, &mut webview, &cli, &[delete(id)]).await.answer().await;
+        sent(&seam, &mut webview, &cli, &[delete(id)], &[]).await.answer().await;
         webview.next_shown().await;
     }
     seam.surfaces.dismiss(&key("term-a", "plan")).unwrap();
@@ -253,7 +242,7 @@ async fn a_locked_surface_and_a_typed_one_are_replaced_too_and_a_locked_ones_pla
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
     let (call, _) = created(&seam, &mut webview, &cli, "plan", "companion", true).await;
-    sent(&seam, &mut webview, &cli, &[delete("plan")]).await.answer().await;
+    sent(&seam, &mut webview, &cli, &[delete("plan")], &[]).await.answer().await;
     call.answer().await;
     webview.next_shown().await;
     let ask = seam.asked(&mut webview, "term-a", "One?").await;

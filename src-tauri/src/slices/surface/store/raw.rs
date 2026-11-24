@@ -5,13 +5,14 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use super::super::calls::OpenCalls;
 use super::super::carried::{Carried, DataPath};
 use super::super::check::Accepted;
 use super::super::past_limit::{within_limits, PastLimit};
 use super::super::place::{Place, MOST_LIVE};
 use super::super::raw::TOOL;
-use super::super::raw_changes::{Effect, Held};
-use super::{now_ms, Creation, Inner, Phase, Reopened, Surface, SurfaceKey, SurfaceRecord, SurfaceStore, Terminal};
+use super::super::raw_changes::{Effect, Held, NoUpdate};
+use super::{now_ms, Content, Creation, Inner, Phase, Reopened, Surface, SurfaceKey, SurfaceRecord, SurfaceStore, Terminal};
 
 /// What a call does to one surface, with what the webview accepted of one that is there after it.
 pub struct RawChange<'a> {
@@ -64,6 +65,13 @@ impl WaitOver {
     }
 }
 
+/// What a delete did to a surface.
+enum Deleted {
+    /// It asked, so it stays, locked. Its waits are over.
+    Withdrawn(WaitOver),
+    Left,
+}
+
 impl Surface {
     /// Whether it leaves for what `creation` creates under its id: both are raw, it is settled, and the
     /// same call is made again. An ended or withdrawn one never does, as what the operator typed in it
@@ -74,21 +82,31 @@ impl Surface {
         both_raw && settled && self.arguments == *creation.arguments
     }
 
+    /// Why no call may update it, if none may.
+    fn no_update(&self) -> Option<NoUpdate> {
+        match self.phase {
+            _ if self.tool != TOOL => Some(NoUpdate::Typed(self.tool.clone())),
+            Phase::Ended { .. } => Some(NoUpdate::Ended),
+            Phase::Withdrawn { .. } => Some(NoUpdate::Withdrawn),
+            Phase::NotAsking | Phase::Asking { .. } | Phase::Typing { .. } | Phase::Settled { .. } => None,
+        }
+    }
+
     fn held(&self, creation: Creation) -> Held {
         Held {
-            tool: self.tool.clone(),
             place: self.place,
             title: self.title.clone(),
-            standing: self.phase.standing(),
+            no_update: self.no_update(),
             state: self.state.clone(),
             makes_way: self.makes_way(creation),
         }
     }
 
-    /// Changes it to what its agent's update made of it, at `change`, and opens it again if it was
-    /// answered. The call `call` waits for it from here on, if it asks. Returns the waits that are over by
-    /// it.
-    fn update(&mut self, accepted: Accepted, sets: &[DataPath], call: u64, change: u64) -> Option<WaitOver> {
+    /// Changes it to what its agent's update, which sets the data paths `sets`, made of it, and opens it
+    /// again if it was answered. The update's call waits for it from here on, if it asks, with those of
+    /// `calls` that did and are open. Returns the waits that are over by it.
+    fn update(&mut self, content: Content, sets: &[DataPath], calls: &OpenCalls) -> Option<WaitOver> {
+        let Content { creation, accepted, change } = content;
         self.revision += 1;
         self.change = change;
         self.updated_at = now_ms();
@@ -111,8 +129,8 @@ impl Surface {
             }
         }
         if accepted.asks {
-            waiters.push(call);
             self.phase = Phase::Asking { waiters };
+            self.phase.join(creation.call, calls);
             return None;
         }
         Some(WaitOver::of(&self.id, waiters, "shown"))
@@ -131,16 +149,15 @@ impl Surface {
 }
 
 impl Terminal {
-    /// The live surfaces in each place once `changes` are made, or the change whose surface has no room.
+    /// Whether the places have room for the surfaces that `changes` create, in `place`, or open again. The
+    /// error names the first that has none.
     fn check_room(&self, changes: &[RawChange], place: Place) -> Result<(), RawRefused> {
-        let named = |id: &str| changes.iter().find(|change| change.id == id);
+        // Of those the call names, an update leaves a live one in its place
+        let stays = |surface: &Surface| {
+            let named = changes.iter().find(|change| change.id == surface.id);
+            named.is_none_or(|change| matches!(change.effect, Effect::Update { .. }))
+        };
         let mut live: HashMap<Place, usize> = HashMap::new();
-        for surface in self.surfaces.iter().filter(|surface| !surface.is_locked()) {
-            // Of those the call names, an update leaves a live one in its place
-            if named(&surface.id).is_none_or(|change| matches!(change.effect, Effect::Update { .. })) {
-                *live.entry(surface.place).or_default() += 1;
-            }
-        }
         for change in changes {
             let there = self.surfaces.iter().find(|surface| surface.id == change.id);
             let place = match (&change.effect, there) {
@@ -148,7 +165,7 @@ impl Terminal {
                 (Effect::Update { .. }, Some(there)) if there.is_locked() => there.place,
                 _ => continue,
             };
-            let live = live.entry(place).or_default();
+            let live = live.entry(place).or_insert_with(|| self.live_in(place, stays));
             if *live == MOST_LIVE {
                 return Err(RawRefused::PastLimit(change.id.to_string(), PastLimit::Live(place)));
             }
@@ -171,7 +188,7 @@ impl Terminal {
                 Effect::Create { replaces: false } if there.is_some_and(|there| !there.makes_way(creation)) => {
                     return Err(RawRefused::IdInUse(id.to_string()));
                 }
-                Effect::Update { .. } if !there.is_some_and(|there| there.held(creation).takes_updates()) => {
+                Effect::Update { .. } if !there.is_some_and(|there| there.no_update().is_none()) => {
                     return Err(RawRefused::Gone(id.to_string()));
                 }
                 _ => {}
@@ -184,40 +201,32 @@ impl Terminal {
         self.check_room(changes, creation.place)
     }
 
-    /// Deletes its surface `id`: one that asks is withdrawn, and any other leaves.
-    fn delete(&mut self, terminal_id: &str, id: &str, change: u64, changed: &mut RawChanged) -> Option<WaitOver> {
+    /// Deletes its surface `id`, if it has one: one that asks is withdrawn, and any other leaves.
+    fn delete(&mut self, id: &str, change: u64) -> Option<Deleted> {
         let at = self.surfaces.iter().position(|surface| surface.id == id)?;
         let surface = &mut self.surfaces[at];
         if let Phase::Asking { waiters } = &mut surface.phase {
             let waiters = std::mem::take(waiters);
             surface.phase = Phase::Withdrawn { at: now_ms() };
             surface.change = change;
-            changed.shown.push(surface.record(terminal_id));
-            return Some(WaitOver::of(id, waiters, "withdrawn"));
+            return Some(Deleted::Withdrawn(WaitOver::of(id, waiters, "withdrawn")));
         }
         let surface = self.surfaces.remove(at);
-        changed.left.push(SurfaceKey::new(terminal_id, id));
         self.left.add(surface.id, surface.phase.standing());
-        None
+        Some(Deleted::Left)
     }
 
-    /// Changes its surface `id` to what the call of `creation` made of it.
-    fn update(&mut self, id: &str, creation: Creation, accepted: Accepted, sets: &[DataPath], change: u64) -> Option<WaitOver> {
+    /// Changes its surface `id` to what a call that sets the data paths `sets` made of it. Returns the waits
+    /// that are over by it.
+    fn update(&mut self, id: &str, content: Content, sets: &[DataPath]) -> Option<WaitOver> {
         let Terminal { surfaces, calls, .. } = self;
-        let surface = surfaces.iter_mut().find(|surface| surface.id == id)?;
-        if let Phase::Asking { waiters } = &mut surface.phase {
-            waiters.retain(|call| calls.is_open(*call));
-        }
-        surface.update(accepted, sets, creation.call, change)
+        surfaces.iter_mut().find(|surface| surface.id == id)?.update(content, sets, calls)
     }
 
-    /// Puts in what the call of `creation` creates as its surface `id`, in place of the one of that id.
-    fn create(&mut self, id: &str, creation: Creation, accepted: Accepted, change: u64) -> Option<WaitOver> {
-        let phase = match accepted.asks {
-            true => Phase::Asking { waiters: vec![creation.call] },
-            false => Phase::NotAsking,
-        };
-        let mut surface = Surface { phase, ..Surface::new(id, creation, accepted, change) };
+    /// Puts in what a call creates as its surface `id`, in place of the one of that id. Returns the waits
+    /// that are over by it.
+    fn create(&mut self, id: &str, content: Content) -> Option<WaitOver> {
+        let mut surface = Surface::created(id, content);
         let Some(at) = self.surfaces.iter().position(|there| there.id == id) else {
             self.surfaces.push(surface);
             return None;
@@ -277,9 +286,7 @@ impl SurfaceStore {
         let mut asking = Vec::new();
         let Terminal { surfaces, calls, rejected, .. } = terminal;
         for surface in surfaces.iter_mut().filter(|surface| shows.contains(&surface.id.as_str())) {
-            if let Phase::Asking { waiters } = &mut surface.phase {
-                waiters.retain(|call| calls.is_open(*call));
-                waiters.push(creation.call);
+            if surface.phase.join(creation.call, calls) {
                 asking.push(surface.id.clone());
             }
         }
@@ -301,24 +308,34 @@ impl SurfaceStore {
         terminal.check_changes(creation, &changes)?;
         let mut changed = RawChanged::default();
         let mut over = Vec::new();
-        let mut shows = Vec::new();
+        let (mut withdrawn, mut shows) = (Vec::new(), Vec::new());
         for RawChange { id, effect, accepted } in changes {
             *last_change += 1;
-            over.extend(match (effect, accepted) {
+            let change = *last_change;
+            match (effect, accepted) {
                 (Effect::Create { .. }, Some(accepted)) => {
                     shows.push(id);
-                    terminal.create(id, creation, accepted, *last_change)
+                    over.extend(terminal.create(id, Content { creation, accepted, change }));
                 }
                 (Effect::Update { sets }, Some(accepted)) => {
                     shows.push(id);
-                    terminal.update(id, creation, accepted, &sets, *last_change)
+                    over.extend(terminal.update(id, Content { creation, accepted, change }, &sets));
                 }
-                _ => terminal.delete(terminal_id, id, *last_change, &mut changed),
-            });
+                _ => match terminal.delete(id, change) {
+                    Some(Deleted::Withdrawn(wait)) => {
+                        withdrawn.push(id);
+                        over.push(wait);
+                    }
+                    Some(Deleted::Left) => changed.left.push(SurfaceKey::new(terminal_id, id)),
+                    None => {}
+                },
+            }
         }
         terminal.end_waits(over);
         terminal.rejected.remove(creation.tool);
-        for surface in shows.iter().filter_map(|id| terminal.surfaces.iter().find(|surface| surface.id == *id)) {
+        let there = |id: &&str| terminal.surfaces.iter().find(|surface| surface.id == **id);
+        changed.shown.extend(withdrawn.iter().filter_map(there).map(|surface| surface.record(terminal_id)));
+        for surface in shows.iter().filter_map(there) {
             changed.shown.push(surface.record(terminal_id));
             if matches!(surface.phase, Phase::Asking { .. }) {
                 changed.asking.push(surface.id.clone());

@@ -296,6 +296,21 @@ async fn a_call_with_no_verdict_is_quays_failure_unless_rust_rejects_it() {
 }
 
 #[tokio::test]
+async fn a_verdict_that_is_not_one_on_the_call_is_quays_failure_and_shows_nothing() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    let left_out = makes(vec![]);
+    let of_a_typed_call = accepted(false);
+    for verdict in [left_out, makes_one("other", false), of_a_typed_call] {
+        let call = cli.call("quay_surface", plan("plan", "companion"));
+        seam.surfaces.verdict(webview.next_check().await.call, verdict);
+        let failed = "Quay could not show this; your call was not at fault. Nothing was shown. Say it in the terminal instead.";
+        assert_eq!(call.failure().await, failed);
+    }
+    assert!(webview.nothing_shown().await && seam.surfaces.surfaces().is_empty());
+}
+
+#[tokio::test]
 async fn the_same_creating_call_again_rejoins_its_unanswered_surface_and_both_get_the_action() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");

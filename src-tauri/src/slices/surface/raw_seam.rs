@@ -72,6 +72,24 @@ pub async fn created(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, id: 
     (call, webview.next_shown().await)
 }
 
+/// Has `cli` send `written`, which the webview accepts as making the surfaces `made`, each of which asks.
+pub async fn sent(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, written: &[Value], made: &[&str]) -> OpenCall {
+    let mut arguments = messages(written);
+    if written.iter().any(|message| message.get("createSurface").is_some()) {
+        arguments = plan("plan", "companion");
+        arguments["messages"] = json!(written);
+    }
+    let call = cli.call("quay_surface", arguments);
+    let made = made.iter().map(|id| (*id, surface(true))).collect();
+    seam.surfaces.verdict(webview.next_check().await.call, makes(made));
+    call
+}
+
+/// What `cli` reads of the surface `id`.
+pub async fn read(cli: &FakeCli, id: &str) -> Value {
+    cli.call("quay_surface_read", json!({ "surface_id": id })).answer().await
+}
+
 /// What a rejected call was told: its errors, and what to do next.
 pub async fn told(call: OpenCall) -> (Value, String) {
     let text = call.failure().await;

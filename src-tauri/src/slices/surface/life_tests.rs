@@ -1,9 +1,9 @@
 //! A surface's life at the `/mcp` seam: a test for each row of the event table in the A2UI spec (#706),
 //! in the table's order and named by its row. The details of a row are in the tests of what it is about.
 
-use serde_json::{json, Value};
+use serde_json::json;
 
-use super::raw_seam::{action, create, created, delete, makes, makes_one, messages, plan, told, update};
+use super::raw_seam::{action, create, created, delete, makes_one, messages, plan, read, sent, told, update};
 use super::store::{AnswerRefused, SurfaceRecord};
 use super::test_seam::{accepted, answer_to, key, question, start, FakeCli, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
@@ -22,30 +22,13 @@ fn answer(seam: &Seam, revision: u64) -> Result<(), AnswerRefused> {
     seam.surfaces.answer(&key("term-a", "plan"), revision, action())
 }
 
-/// Has `cli` send `written`, which the webview accepts as making the surfaces `made`, each of which asks.
-async fn sent(seam: &Seam, webview: &mut FakeWebview, cli: &FakeCli, written: &[Value], made: &[&str]) -> OpenCall {
-    let mut arguments = plan("plan", "companion");
-    arguments["messages"] = json!(written);
-    if !written.iter().any(|message| message.get("createSurface").is_some()) {
-        arguments = messages(written);
-    }
-    let call = cli.call("quay_surface", arguments);
-    let verdict = makes(made.iter().map(|id| (*id, super::raw_seam::surface(true))).collect());
-    seam.surfaces.verdict(webview.next_check().await.call, verdict);
-    call
-}
-
-async fn read(cli: &FakeCli, id: &str) -> Value {
-    cli.call("quay_surface_read", json!({ "surface_id": id })).answer().await["state"].clone()
-}
-
 #[tokio::test]
 async fn the_first_answer_settles_the_surface_and_a_second_is_refused() {
     let (seam, _webview, cli, call, _) = with_plan().await;
     answer(&seam, 1).unwrap();
     assert_eq!(call.answer().await, action());
     assert_eq!(answer(&seam, 1), Err(AnswerRefused::AlreadyAnswered));
-    assert_eq!(read(&cli, "plan").await, "answered");
+    assert_eq!(read(&cli, "plan").await["state"], "answered");
 }
 
 #[tokio::test]
@@ -179,7 +162,7 @@ async fn a_delete_of_a_live_asking_surface_locks_it_as_withdrawn() {
     assert_eq!(call.answer().await, json!({ "surface_id": "plan", "state": "withdrawn" }));
     assert!(webview.next_shown().await.withdrawn_at.is_some() && webview.none_removed());
     assert_eq!(answer(&seam, 1), Err(AnswerRefused::Withdrawn));
-    assert_eq!(read(&cli, "plan").await, "withdrawn");
+    assert_eq!(read(&cli, "plan").await["state"], "withdrawn");
 }
 
 #[tokio::test]
