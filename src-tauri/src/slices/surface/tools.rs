@@ -91,8 +91,8 @@ impl SurfaceTools {
             let key = self.0.store.name_ask(terminal_id);
             match self.check_and_commit(&key, ask::TOOL, ask::PLACE, json!(ask)).await {
                 Ok(Committed { record, wait, left }) => {
-                    if let Some(left) = left {
-                        self.remove(&left);
+                    for left in &left {
+                        self.remove(left);
                     }
                     self.show(&record);
                     (key, wait)

@@ -15,7 +15,8 @@ use super::place::{Place, MOST_LIVE};
 use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
-/// The most settled surfaces a terminal has when another surface is added.
+/// The most settled surfaces a terminal keeps when another surface is added. What settles after that
+/// stays until the next is.
 const MOST_SETTLED: usize = 10;
 
 /// Which surface: its id is one among its terminal's.
@@ -80,8 +81,8 @@ pub struct Committed {
     pub record: SurfaceRecord,
     /// The call's wait, when the surface asks for something.
     pub wait: Option<Wait>,
-    /// The settled surface that left to make room for it.
-    pub left: Option<SurfaceKey>,
+    /// The settled surfaces that left as it was added, oldest first.
+    pub left: Vec<SurfaceKey>,
 }
 
 enum Phase {
@@ -209,8 +210,8 @@ impl SurfaceStore {
         *run
     }
 
-    /// Adds the surface `key` as the webview accepted it, if `place` has room for it. A terminal that
-    /// has `MOST_SETTLED` settled surfaces loses the oldest of them.
+    /// Adds the surface `key` as the webview accepted it, if `place` has room for it. The terminal's
+    /// settled surfaces past `MOST_SETTLED` leave, oldest first.
     pub fn commit(
         &self,
         key: &SurfaceKey,
@@ -228,11 +229,16 @@ impl SurfaceStore {
         if live.count() >= MOST_LIVE {
             return Err(CommitRefused::Full(place));
         }
-        let mut settled = terminal.surfaces.iter().filter(|surface| !surface.is_live());
-        let oldest = settled.next().map(|surface| surface.id.clone());
-        let left = oldest.filter(|_| settled.count() + 1 >= MOST_SETTLED).map(|id| {
-            terminal.surfaces.retain(|surface| surface.id != id);
-            SurfaceKey::new(&key.terminal_id, id)
+        let settled = terminal.surfaces.iter().filter(|surface| !surface.is_live()).count();
+        let mut past = settled.saturating_sub(MOST_SETTLED);
+        let mut left = Vec::new();
+        terminal.surfaces.retain(|surface| {
+            let leaves = past > 0 && !surface.is_live();
+            if leaves {
+                past -= 1;
+                left.push(SurfaceKey::new(&key.terminal_id, &surface.id));
+            }
+            !leaves
         });
         let (phase, wait) = if accepted.asks {
             let (tx, rx) = oneshot::channel();

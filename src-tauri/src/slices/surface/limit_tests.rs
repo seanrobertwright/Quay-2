@@ -1,5 +1,7 @@
 //! How many surfaces a terminal may have, at the `/mcp` seam.
 
+use std::ops::RangeInclusive;
+
 use serde_json::{json, Value};
 
 use super::ask_tests::{answer, asked, question};
@@ -94,25 +96,51 @@ async fn a_surface_that_asks_for_nothing_counts_too() {
     assert!(fifth.failure().await.contains("four live surfaces in companion"));
 }
 
+/// Has `term-a` ask these of its asks, by number, each answered before the next.
+async fn asked_and_answered(seam: &Seam, webview: &mut FakeWebview, asks: RangeInclusive<usize>) {
+    for n in asks {
+        asked(seam, webview, "term-a").await;
+        settle(seam, webview, n).await;
+    }
+}
+
+/// Answers `term-a`'s `n`th ask.
+async fn settle(seam: &Seam, webview: &mut FakeWebview, n: usize) {
+    seam.surfaces.answer(&SurfaceKey::new("term-a", format!("ask_{n}")), 1, answer()).unwrap();
+    webview.next_shown().await;
+}
+
 #[tokio::test]
-async fn an_answer_makes_room_and_the_oldest_of_ten_answered_leaves_for_the_next() {
+async fn an_answer_makes_room_and_ten_answered_all_stay() {
     let (seam, mut webview) = start(Timing::default()).await;
     let _waiting = four_asked(&seam, &mut webview).await;
-    let settle = |id: String| seam.surfaces.answer(&SurfaceKey::new("term-a", id), 1, answer()).unwrap();
     // Ten answered, with the first three still waiting
-    settle("ask_4".to_string());
-    webview.next_shown().await;
-    for n in 5..=13 {
-        asked(&seam, &mut webview, "term-a").await;
-        settle(format!("ask_{n}"));
-        webview.next_shown().await;
-    }
-    assert!(webview.none_removed());
-    assert_eq!(ids(&seam, "term-a").len(), 13);
+    settle(&seam, &mut webview, 4).await;
+    asked_and_answered(&seam, &mut webview, 5..=13).await;
 
     let _next = asked(&seam, &mut webview, "term-a").await;
 
-    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_4"));
-    let kept = ids(&seam, "term-a");
-    assert_eq!((kept.len(), &kept[..4]), (13, &["ask_1", "ask_2", "ask_3", "ask_5"].map(String::from)[..]));
+    assert!(webview.none_removed());
+    assert_eq!(ids(&seam, "term-a").len(), 14);
+}
+
+#[tokio::test]
+async fn the_answered_past_ten_leave_oldest_first_for_the_next() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    asked_and_answered(&seam, &mut webview, 1..=9).await;
+    let _waiting = four_asked(&seam, &mut webview).await;
+    for n in 10..=13 {
+        settle(&seam, &mut webview, n).await;
+    }
+
+    let _next = asked(&seam, &mut webview, "term-a").await;
+
+    for id in ["ask_1", "ask_2", "ask_3"] {
+        assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", id));
+    }
+    assert!(webview.none_removed());
+    assert_eq!(
+        ids(&seam, "term-a"),
+        ["ask_4", "ask_5", "ask_6", "ask_7", "ask_8", "ask_9", "ask_10", "ask_11", "ask_12", "ask_13", "ask_14"]
+    );
 }
