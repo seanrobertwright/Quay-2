@@ -21,6 +21,9 @@ use crate::dates::now_ms;
 /// counts as deleted.
 const MOST_LOCKED: usize = 10;
 
+/// The most images a surface may have, each time one is shown counted.
+pub const MOST_IMAGES: usize = 12;
+
 /// How many of a terminal's surfaces that have left can still be read. Past it the one that left first
 /// is forgotten, with its answer.
 const MOST_READABLE: usize = 100;
@@ -111,6 +114,15 @@ pub struct OpenedCall {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BeingSent;
 
+/// Why an image is not read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageRefused {
+    /// The terminal has no live surface of that id.
+    NoLiveSurface,
+    /// The surface names no image by that path.
+    NotNamed,
+}
+
 /// Where a surface stands, as its agent is told.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Standing {
@@ -159,6 +171,8 @@ pub enum CommitRefused {
     IdInUse,
     /// The terminal has `MOST_LIVE` live surfaces in this place.
     Full(Place),
+    /// It has this many images, which is more than `MOST_IMAGES`.
+    TooManyImages(usize),
 }
 
 /// A surface that has just locked: it was settled, or it ended.
@@ -201,6 +215,8 @@ struct Surface {
     title: String,
     place: Place,
     state: Value,
+    /// The image files `state` names.
+    image_paths: Vec<String>,
     revision: u64,
     order: u64,
     change: u64,
@@ -527,7 +543,8 @@ impl SurfaceStore {
         terminal.is_some_and(|terminal| terminal.is_dismissed(&key.id, creation.tool))
     }
 
-    /// Adds the surface `key` as the webview accepted it, if its place has room for it. Returns it.
+    /// Adds the surface `key` as the webview accepted it, if its place has room for it and it has no more
+    /// than `MOST_IMAGES` images. Returns it.
     pub fn commit(
         &self,
         key: &SurfaceKey,
@@ -543,6 +560,11 @@ impl SurfaceStore {
         }
         if terminal.find(&key.id).is_some() {
             return Err(CommitRefused::IdInUse);
+        }
+        // Each file it names is an image of it, whatever its count says
+        let images = (accepted.images as usize).max(accepted.image_paths.len());
+        if images > MOST_IMAGES {
+            return Err(CommitRefused::TooManyImages(images));
         }
         let place = creation.place;
         let live = terminal.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
@@ -560,6 +582,7 @@ impl SurfaceStore {
             title: creation.title.to_string(),
             place,
             state: accepted.state,
+            image_paths: accepted.image_paths,
             revision: 1,
             order: change,
             change,
@@ -673,6 +696,15 @@ impl SurfaceStore {
         let mut inner = self.0.lock();
         let surface = inner.terminals.get_mut(&key.terminal_id)?.find(&key.id)?;
         Some(surface.record(&key.terminal_id))
+    }
+
+    /// Whether the surface `key` is live and names the image `path`, spelled so.
+    pub fn check_image(&self, key: &SurfaceKey, path: &str) -> Result<(), ImageRefused> {
+        let inner = self.0.lock();
+        let terminal = inner.terminals.get(&key.terminal_id).ok_or(ImageRefused::NoLiveSurface)?;
+        let surface = terminal.surfaces.iter().find(|surface| surface.id == key.id && !surface.is_locked());
+        let paths = &surface.ok_or(ImageRefused::NoLiveSurface)?.image_paths;
+        if paths.iter().any(|named| named == path) { Ok(()) } else { Err(ImageRefused::NotNamed) }
     }
 
     /// Every surface, in no order.

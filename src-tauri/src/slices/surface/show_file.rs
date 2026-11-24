@@ -7,12 +7,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use super::disk::ThisComputer;
-use super::local_path::{named, resolve, Named, Refused, Style};
+use super::local_path::{named, resolve, Named, Refused, STYLE};
 use crate::slices::git::file_change::{file_change, ChangeSide, FileChange};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::workspace::WorkspaceManager;
-
-const STYLE: Style = if cfg!(windows) { Style::Windows } else { Style::Unix };
 
 /// The most characters of a path a refusal quotes.
 const MOST_QUOTED: usize = 200;
