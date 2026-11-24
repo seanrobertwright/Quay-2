@@ -48,7 +48,7 @@ Every agent terminal on the A2A bus, whatever its CLI and its level (full peer, 
 | :--- | :--- |
 | `QUAY_TERMINAL_ID` | The terminal id |
 | `QUAY_A2A_TOKEN` | The terminal's bearer token for the bridge |
-| `QUAY_MCP_URL` | Quay's MCP server (`http://127.0.0.1:<port>/mcp`) |
+| `QUAY_MCP_URL` | Quay's MCP server (`http://127.0.0.1:<port>/mcp/<launch>`) |
 | `QUAY_EVENTS_URL` | The bridge's event endpoint (`http://127.0.0.1:<port>/v1/events`) |
 
 A workspace environment variable with one of these names doesn't replace it. The [CLI flags reference](../reference/cli-flags.md#injected-environment-variables) lists the variables each CLI gets besides these.

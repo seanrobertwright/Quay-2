@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -396,8 +396,11 @@ async fn decide_permission(
     Ok(Json(response).into_response())
 }
 
+/// `/mcp`, and `/mcp/<launch>`, where Quay points the CLI it launches. The bearer token alone says
+/// which terminal calls; the launch is which of that terminal's launches the CLI is from.
 pub async fn handle_mcp(
     State(ctx): State<Arc<McpContext>>,
+    launch: Option<Path<u64>>,
     headers: HeaderMap,
     Json(req): Json<crate::slices::orchestrator::mcp::JsonRpcRequest>,
 ) -> Response {
@@ -407,7 +410,8 @@ pub async fn handle_mcp(
         Err(rejection) => return rejection.into_response(),
     };
     let a2a = Arc::new(ctx.a2a_router.clone());
-    crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), caller, Json(req)).await
+    let launch = launch.map(|Path(launch)| launch);
+    crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), caller, launch, Json(req)).await
 }
 
 /// Quay's MCP server sends nothing unprompted, so it offers no event stream to `GET`. MCP's
@@ -429,6 +433,7 @@ pub async fn handle_machina_agent_card(State(ctx): State<Arc<AppContext>>) -> Re
 pub fn mcp_router(ctx: McpContext) -> Router {
     Router::new()
         .route("/mcp", post(handle_mcp).get(handle_mcp_get))
+        .route("/mcp/{launch}", post(handle_mcp).get(handle_mcp_get))
         .with_state(Arc::new(ctx))
 }
 

@@ -10,6 +10,7 @@ mod ask;
 mod calls;
 mod check;
 pub mod commands;
+pub mod names;
 mod place;
 mod read;
 mod rejection;
