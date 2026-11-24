@@ -1,11 +1,11 @@
 //! Quay's relay, bundled with Quay as a sidecar. A CLI that reads only static configuration
 //! starts it as a stdio MCP server, and it connects that CLI to Quay's own MCP server:
 //!
-//! - it posts each message it reads to `/mcp`, as it was written and with the terminal's
-//!   token, and writes the reply back. It has no tools of its own, and keeps nothing but the
-//!   calls that are open;
+//! - it posts each message it reads, other than a cancel, to `/mcp`, as it was written and with
+//!   the terminal's token, and writes the reply back. It has no tools of its own, and keeps
+//!   nothing but the calls that are open;
 //! - on `notifications/cancelled` it closes the named request's HTTP call, which is how Quay
-//!   learns that nobody waits for it, and passes the notification on as well;
+//!   learns that nobody waits for it. The notification itself goes no further;
 //! - it ends when its stdin closes.
 //!
 //! The CLI passes its environment on, so the server's URL and the bearer token come from the
@@ -101,10 +101,11 @@ async fn take(line: Line, route: &Route, calls: &OpenCalls, out: &Out) {
         }
         Route::Refused(why) => refuse(rpc::RELAY_FAILED, why).await,
         Route::Quay(quay) => {
-            if method == "notifications/cancelled"
-                && let Some(cancelled) = rpc::cancelled_id(&line)
-            {
-                calls.cancel(&cancelled);
+            if id.is_none() && method == "notifications/cancelled" {
+                if let Some(cancelled) = rpc::cancelled_id(&line) {
+                    calls.cancel(&cancelled);
+                }
+                return;
             }
             // A CLI takes this code as the sign to start with `initialize` instead. Quay's own sign,
             // a 400 with an empty body, has no form on stdio

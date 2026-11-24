@@ -150,9 +150,7 @@ async fn the_bundled_relay_reaches_mcp_as_its_terminal_and_a_cancel_hangs_up_one
     assert_eq!(relay.next().await, json!({ "jsonrpc": "2.0", "id": 3, "result": {} }));
 
     relay.send(json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 1 } }));
-    let told = [next(&mut seen).await, next(&mut seen).await];
-    assert!(told.contains(&Seen::HungUp(json!(1))), "{told:?}");
-    assert!(told.contains(&Seen::Called(json!("notifications/cancelled"))), "{told:?}");
+    assert_eq!(next(&mut seen).await, Seen::HungUp(json!(1)));
 
     // The other call hangs up only with the relay, which ends with its stdin
     assert!(seen.try_recv().is_err());

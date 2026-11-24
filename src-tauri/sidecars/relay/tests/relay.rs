@@ -246,15 +246,15 @@ fn a_cancel_closes_the_named_requests_call_and_no_other() {
     let mut text = call(r#""1""#);
     let mut other = call("2");
 
-    let cancel = r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1,"reason":"context canceled"}}"#;
-    relay.send(cancel);
+    relay.send(
+        r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1,"reason":"context canceled"}}"#,
+    );
     assert!(number.closes_soon());
     assert!(text.stays_open() && other.stays_open());
 
-    // Quay is told too, as of any notification
-    let told = quay.next();
-    assert_eq!(told.body, cancel);
-    told.respond("202 Accepted", "", "");
+    // The closed connection is all Quay sees of it: another relay in this terminal may have a
+    // call with the same id
+    assert!(quay.stays_unused());
 
     // The cancelled call gets no reply, and the others still get theirs
     other.answer(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#);
@@ -276,10 +276,9 @@ fn a_cancel_for_a_finished_call_or_an_unknown_one_closes_nothing() {
 
     for params in [r#"{"requestId":1}"#, r#"{"requestId":99}"#, "{}", "[]", r#"{"requestId":null}"#] {
         relay.send(&format!(r#"{{"jsonrpc":"2.0","method":"notifications/cancelled","params":{params}}}"#));
-        quay.next().respond("202 Accepted", "", "");
     }
 
-    assert!(open.stays_open());
+    assert!(open.stays_open() && quay.stays_unused());
     open.answer(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#);
     assert_eq!(relay.next()["id"], 2);
 }
@@ -435,7 +434,6 @@ fn requests_run_side_by_side_up_to_a_limit() {
     // A cancel still closes its call, and makes room
     relay.send(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":3}}"#);
     assert!(open[3].closes_soon());
-    quay.next().respond("202 Accepted", "", "");
     open.remove(3);
 
     // They finish in any order
