@@ -18,6 +18,7 @@ use slices::bridge::{
     get_bridge_port, get_pending_permissions, resolve_permission, set_terminal_live_mode,
     BridgeServer, BridgeState,
 };
+use slices::connect::handshake::{report_handshakes, terminal_handshake};
 use slices::connect::{antigravity_connect, antigravity_connection, antigravity_remove, Connect};
 use slices::git::{
     check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_graph_refresh, git_graph_watch, git_refs, git_repo_fingerprint,
@@ -58,7 +59,6 @@ use slices::praxis::host::{
     praxis_host_graph_submit, praxis_host_graph_withdraw, praxis_host_graphs_list, praxis_host_run, praxis_host_runs, praxis_host_status, praxis_host_template_preview, praxis_host_terminal_argv, praxis_host_trigger_check, praxis_host_trigger_disable, praxis_host_trigger_fires, praxis_host_trigger_retire, praxis_host_trigger_revision, praxis_host_trigger_revisions, praxis_host_trigger_show, praxis_host_trigger_submit, praxis_host_trigger_withdraw, praxis_host_triggers_list, praxis_host_event_sources_list, praxis_host_workflow_show, praxis_host_workflows_list,
     PraxisCli,
 };
-use slices::pty::handshake::{report_handshakes, terminal_handshake};
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,

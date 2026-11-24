@@ -8,7 +8,8 @@ use parking_lot::Mutex;
 use serde_json::{json, Value};
 
 use super::mcp_tests::TestBridge;
-use crate::slices::pty::handshake::{report_handshakes, Handshake};
+use crate::slices::connect::handshake::report_handshakes;
+use crate::slices::pty::handshake::Handshake;
 use crate::slices::pty::models::RunKind;
 use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::slices::pty::PtyManager;

@@ -840,8 +840,8 @@ impl PtyManager {
         self.with_running(launch, |info| info.claude_status = status);
     }
 
-    /// Starts a new launch of `terminal_id`: no plugin heard and no clock running. The one before
-    /// it, if there was one, is over.
+    /// Starts a new launch of `terminal_id`: no plugin heard, no silence clock running, and
+    /// the grace for its handshake running from now. The one before it, if there was one, is over.
     pub fn begin_launch(&self, terminal_id: &str, run_kind: RunKind) -> LaunchRef {
         let watch = PluginWatch::new(run_kind);
         let launch = LaunchRef {
