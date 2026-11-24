@@ -4,22 +4,20 @@
 import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "react";
 import type { CheckRequest, SurfaceRecord } from "./surfaceTypes.ts";
-import { companionPrefs } from "../companion/companionPrefs.ts";
-import { memoryStorage, terminalInfo } from "../companion/fixtures/companionFixtures.ts";
+import type { Mounted } from "./fixtures/askFixtures.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { acceptedAsk, called, calls, loadSurfaces, settle, startRust, unloadSurfaces, until, verdictOn, verdicts } from "./fixtures/fakeRust.ts";
 
-const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
+const { askCheck, companion, findButton, mountCompanion, TERMINAL, typeInto: type, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 /** What Rust holds, as the fake `invoke` answers it. */
 let list: SurfaceRecord[];
 let checks: CheckRequest[];
 /** What `surface_answer` does. */
 let onAnswer: () => Promise<void>;
-let mounted: { root: Root; container: HTMLElement } | null = null;
+let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
@@ -28,12 +26,8 @@ beforeEach(() => {
   startRust({ surface_list: () => list, surface_checks: () => checks, surface_answer: () => onAnswer() });
 });
 afterEach(async () => {
-  if (mounted) {
-    const { root, container } = mounted;
-    await act(async () => root.unmount());
-    container.remove();
-    mounted = null;
-  }
+  if (mounted) await unmount(mounted);
+  mounted = null;
   unloadSurfaces();
 });
 
@@ -48,7 +42,7 @@ const ASK = {
     },
   ],
 };
-const check = (call: number, args: unknown = ASK): CheckRequest => ({ call, tool: "quay_ask", surface_id: "ask_1", arguments: args });
+const check = (call: number, args: unknown = ASK) => askCheck(call, args);
 
 test("a check the webview missed while it loaded is answered, after it listens and reads the list", async () => {
   checks = [check(7)];
@@ -113,44 +107,25 @@ test("a call of the wrong shape, or of a tool Quay does not have, gets a verdict
   }
 });
 
-const TERMINAL = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
-
 /** The surface `id` of `terminal`, as Rust holds it once the webview has accepted `ask`. */
 const accepted = (id: string, { ask = ASK as unknown, terminal = "t1", order = 1 } = {}) => acceptedAsk(id, ask, terminal, order);
-
-/** The companion with `terminal` selected. */
-function companion(terminal: TerminalInfo) {
-  const props = { projects: [], projectWorktrees: {}, views: COMPANION_VIEWS, prefs: companionPrefs(memoryStorage()) };
-  return createElement(Companion, { ...props, selectedTerminal: terminal });
-}
 
 /** Loads the page: what Rust holds is read, and the companion drawn on `terminal`'s Surface view, if it has one. */
 async function open(terminal: TerminalInfo = TERMINAL): Promise<HTMLElement> {
   loadSurfaces();
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  mounted = { root, container };
-  await act(async () => root.render(companion(terminal)));
-  await settle();
+  mounted = await mountCompanion(terminal);
+  const { container } = mounted;
   await act(async () => viewEntry(container, "Surface")?.click());
   await until(() => !container.textContent?.includes("Loading"), "the surface was never drawn");
   return container;
 }
 
-const viewEntry = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll<HTMLElement>('[aria-label="Companion view"] [role="radio"]')].find((entry) => entry.textContent === name);
 const regions = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>("section[data-surface]")];
 const radios = (container: HTMLElement) => [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-const button = (container: HTMLElement, name: string) => [...container.querySelectorAll("button")].find((b) => b.textContent === name)!;
+const button = (container: HTMLElement, name: string) => findButton(container, name)!;
 /** The text of what `element`'s aria-describedby names. */
 const description = (element: Element) =>
   (element.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean).map((id) => document.getElementById(id)?.textContent);
-/** Types `text` into a field as the operator would, so React hears it. */
-async function type(field: HTMLTextAreaElement, text: string): Promise<void> {
-  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!.call(field, text);
-  await act(async () => void field.dispatchEvent(new Event("input", { bubbles: true })));
-}
 
 const REBASE = { answers: [{ question: "Which base should this branch take?", chosen: ["Rebase onto master"], text: "skip the suite" }] };
 
@@ -187,7 +162,7 @@ test("content cannot draw outside the frame", async () => {
   const region = regions(container)[0];
   const content = region.querySelector<HTMLElement>("[data-surface-content]")!;
   // Paint containment clips what overflows and holds fixed and absolute elements inside.
-  for (const name of ["contain-paint", "overflow-hidden", "relative", "isolate"]) assert.ok(content.className.split(" ").includes(name), name);
+  for (const name of ["contain-paint", "overflow-clip", "relative", "isolate"]) assert.ok(content.className.split(" ").includes(name), name);
   assert.ok(content.contains(button(region, "Send")));
   assert.ok(!content.contains(region.querySelector("header")));
 });

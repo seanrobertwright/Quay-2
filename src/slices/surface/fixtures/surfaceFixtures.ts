@@ -11,7 +11,7 @@ export function surface(id: string, over: Partial<SurfaceRecord> = {}): SurfaceR
   change += 1;
   const text = { id: "root", component: "Text", text: `What ${id} says` };
   const state: SurfaceRecord["state"] = { version: "1.0", createSurface: { surfaceId: id, catalogId: "urn:quay:a2ui:catalog:v1", components: [text], dataModel: {} } };
-  return { terminal_id: "t1", id, tool: "quay_ask", state, revision: 1, order: change, change, asks: true, answer: null, ...over };
+  return { terminal_id: "t1", id, tool: "quay_ask", state, revision: 1, order: change, change, asks: true, answer: null, answered_at: null, ...over };
 }
 
 /** `record` changed by `over`, as Rust holds it after. */
@@ -26,7 +26,7 @@ export async function emit(event: string, payload: unknown): Promise<void> {
   await settle();
 }
 export const arrives = (record: SurfaceRecord) => emit("surface-changed", record);
-export const answered = (record: SurfaceRecord) => arrives(changed(record, { answer: { answers: [] } }));
+export const answered = (record: SurfaceRecord) => arrives(changed(record, { answer: { answers: [] }, answered_at: 1 }));
 export const removed = ({ terminal_id, id }: SurfaceRecord) => emit("surface-removed", { terminal_id, id });
 
 type Drawn = Parameters<Root["render"]>[0];

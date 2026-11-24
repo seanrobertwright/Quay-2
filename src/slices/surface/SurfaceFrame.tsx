@@ -27,7 +27,7 @@ interface SurfaceFrameProps {
  * the content cannot draw outside.
  */
 export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refusal, children }: SurfaceFrameProps) => (
-  <section aria-label={`${kind} from ${terminal.name}`} data-surface={id} className="overflow-hidden rounded-lg border border-[#30363d] bg-[#0d1117]">
+  <section aria-label={`${kind} from ${terminal.name}`} data-surface={id} className="overflow-clip rounded-lg border border-[#30363d] bg-[#0d1117]">
     <header className="flex h-8 items-center gap-1.5 border-b border-[#30363d] bg-[#161b22] px-3 text-[11px]">
       <KindIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#d29922]" />
       <span aria-hidden="true" className="flex shrink-0">
@@ -46,8 +46,9 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, refu
       </button>
     </header>
     {band}
-    {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside. */}
-    <div data-surface-content className="relative isolate overflow-hidden p-3 text-xs text-[#c9d1d9] contain-paint">
+    {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside.
+        Neither it nor `overflow-clip` makes a box that scrolls, so a foot sticks to what scrolls around the frame. */}
+    <div data-surface-content className="relative isolate overflow-clip p-3 text-xs text-[#c9d1d9] contain-paint">
       {children}
     </div>
     {refusal && (

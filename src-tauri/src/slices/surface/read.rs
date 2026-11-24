@@ -2,17 +2,19 @@
 
 use serde_json::{json, Map, Value};
 
-use super::rejection::Rejection;
+use super::arguments::Arguments;
+use super::rejection::{CallError, Rejection};
 use super::store::{Standing, SurfaceKey, SurfaceStore};
 
 pub const TOOL: &str = "quay_surface_read";
 
-/// What `terminal_id`'s call asks for, or the result that rejects it.
-pub fn read(store: &SurfaceStore, terminal_id: &str, arguments: &Value) -> Result<Value, Value> {
-    let id = surface_id(arguments).map_err(rejected)?;
+/// What `terminal_id`'s call asks for.
+pub fn read(store: &SurfaceStore, terminal_id: &str, arguments: &Value) -> Result<Value, Rejection> {
+    let id = surface_id(arguments)?;
     let standing = store.standing(&SurfaceKey::new(terminal_id, id)).ok_or_else(|| {
-        rejected(Rejection {
-            code: "INTEGRITY_ERROR",
+        Rejection::of(CallError {
+            code: "INTEGRITY_ERROR".into(),
+            surface_id: None,
             path: "/surface_id".to_string(),
             message: format!("No surface \"{id}\" in this terminal."),
         })
@@ -27,13 +29,13 @@ pub fn read(store: &SurfaceStore, terminal_id: &str, arguments: &Value) -> Resul
 }
 
 fn surface_id(arguments: &Value) -> Result<&str, Rejection> {
-    if let Some(field) = arguments.as_object().and_then(|fields| fields.keys().find(|field| *field != "surface_id")) {
-        return Err(Rejection::unknown_field(TOOL, "", field));
+    let mut args = Arguments::new(TOOL, "tab");
+    let Some(call) = args.object(arguments, "", "A call", &["surface_id"]) else {
+        return args.finish("");
+    };
+    let id = call.get("surface_id").and_then(Value::as_str).filter(|id| !id.is_empty());
+    if id.is_none() {
+        args.invalid(call.path("surface_id"), format!("{TOOL} needs a surface_id."));
     }
-    let id = arguments.get("surface_id").and_then(Value::as_str).filter(|id| !id.is_empty());
-    id.ok_or_else(|| Rejection::invalid("/surface_id", format!("{TOOL} needs a surface_id.")))
-}
-
-fn rejected(rejection: Rejection) -> Value {
-    rejection.result("Nothing was changed. Correct the call and send it again.")
+    args.finish(id.unwrap_or_default())
 }

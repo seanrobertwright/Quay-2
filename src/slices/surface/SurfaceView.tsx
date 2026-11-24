@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
+import { formatClock, formatDateTime, formatUtcTimestamp } from "../../lib/dates.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
@@ -55,10 +56,17 @@ const SettledSurface = ({ record, terminal }: SurfaceProps) => {
   const [refusal, setRefusal] = useState<string | null>(null);
   const dismiss = useDismiss(record, setRefusal);
   const band = (
-    <p role="status" className="flex items-center gap-1.5 border-b border-[#30363d] px-3 py-1.5 text-[11px] text-[#3fb950]">
-      <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-      Answered and sent to the agent.
-    </p>
+    <div className="flex flex-wrap items-center gap-x-1.5 border-b border-[#30363d] px-3 py-1.5 text-[11px] text-[#8b949e]">
+      <p role="status" className="flex items-center gap-1.5 text-[#3fb950]">
+        <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        Answered and sent to the agent.
+      </p>
+      {record.answered_at !== null && (
+        <time dateTime={formatUtcTimestamp(record.answered_at)} title={formatDateTime(record.answered_at)}>
+          {formatClock(record.answered_at)}
+        </time>
+      )}
+    </div>
   );
   return (
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal}>

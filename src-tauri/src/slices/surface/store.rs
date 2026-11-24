@@ -13,6 +13,7 @@ use super::calls::{Handed, OpenCalls};
 use super::check::Accepted;
 use super::typed_line::typed_line;
 use super::typing::NotTyped;
+use crate::dates::now_ms;
 
 /// The most surfaces a terminal keeps: the spec's four live and ten locked, not told apart yet.
 pub const MOST_KEPT: usize = 14;
@@ -52,6 +53,8 @@ pub struct SurfaceRecord {
     pub asks: bool,
     /// The answer, once there is one.
     pub answer: Option<Value>,
+    /// When the answer was sent, in milliseconds since the epoch.
+    pub answered_at: Option<i64>,
 }
 
 /// Why an answer was not taken. The surface is as it was.
@@ -140,7 +143,8 @@ enum Phase {
     Asking { waiters: Vec<u64> },
     /// Its one answer is being typed in.
     Typing { answer: Value },
-    Settled { answer: Value },
+    /// `at` is when it was answered, in milliseconds since the epoch.
+    Settled { answer: Value, at: i64 },
 }
 
 impl Phase {
@@ -148,7 +152,7 @@ impl Phase {
         match self {
             Self::NotAsking => Standing::Shown,
             Self::Asking { .. } | Self::Typing { .. } => Standing::NoAnswerYet,
-            Self::Settled { answer } => Standing::Answered(answer.clone()),
+            Self::Settled { answer, .. } => Standing::Answered(answer.clone()),
         }
     }
 }
@@ -173,6 +177,10 @@ impl Surface {
     }
 
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
+        let (answer, answered_at) = match &self.phase {
+            Phase::Settled { answer, at } => (Some(answer.clone()), Some(*at)),
+            Phase::NotAsking | Phase::Asking { .. } | Phase::Typing { .. } => (None, None),
+        };
         SurfaceRecord {
             terminal_id: terminal_id.to_string(),
             id: self.id.clone(),
@@ -182,10 +190,8 @@ impl Surface {
             order: self.order,
             change: self.change,
             asks: !matches!(self.phase, Phase::NotAsking),
-            answer: match &self.phase {
-                Phase::Settled { answer } => Some(answer.clone()),
-                Phase::NotAsking | Phase::Asking { .. } | Phase::Typing { .. } => None,
-            },
+            answer,
+            answered_at,
         }
     }
 }
@@ -209,10 +215,12 @@ impl Left {
 }
 
 /// One terminal's surfaces, in the order they were committed, where those that have left stand, how
-/// many asks have been named, and the calls that are open.
+/// many asks have been named, its rejected calls, and the calls that are open.
 #[derive(Default)]
 struct Terminal {
     asks: u64,
+    /// By tool, how many of its calls have been rejected since one was accepted.
+    rejected: HashMap<String, u32>,
     surfaces: Vec<Surface>,
     left: Left,
     calls: OpenCalls,
@@ -300,15 +308,33 @@ impl SurfaceStore {
     /// one. Returns that surface's key.
     pub fn rejoin(&self, terminal_id: &str, creation: Creation) -> Option<SurfaceKey> {
         let mut inner = self.0.lock();
-        let Terminal { surfaces, calls, .. } = inner.terminals.get_mut(terminal_id)?;
+        let Terminal { surfaces, calls, rejected, .. } = inner.terminals.get_mut(terminal_id)?;
         surfaces.iter_mut().find_map(|surface| match &mut surface.phase {
             Phase::Asking { waiters } if surface.tool == creation.tool && surface.arguments == *creation.arguments => {
                 waiters.retain(|call| calls.is_open(*call));
                 waiters.push(creation.call);
+                rejected.remove(creation.tool);
                 Some(SurfaceKey::new(terminal_id, &surface.id))
             }
             _ => None,
         })
+    }
+
+    /// Counts a rejected call of `tool`, and says how many of the terminal's are now in a row. A call
+    /// that is accepted ends the row.
+    pub fn rejected(&self, terminal_id: &str, tool: &str) -> u32 {
+        let mut inner = self.0.lock();
+        let terminal = inner.terminals.entry(terminal_id.to_string()).or_default();
+        let run = terminal.rejected.entry(tool.to_string()).or_default();
+        *run = run.saturating_add(1);
+        *run
+    }
+
+    /// Ends `tool`'s row of rejected calls, for a call that is accepted and shows nothing.
+    pub fn accepted(&self, terminal_id: &str, tool: &str) {
+        if let Some(terminal) = self.0.lock().terminals.get_mut(terminal_id) {
+            terminal.rejected.remove(tool);
+        }
     }
 
     /// Adds the surface `key` as the webview accepted it. A terminal that has `MOST_KEPT` loses its
@@ -345,6 +371,7 @@ impl SurfaceStore {
         };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
+        terminal.rejected.remove(creation.tool);
         Ok(Committed { record, left })
     }
 
@@ -366,7 +393,7 @@ impl SurfaceStore {
         }
         let line = typed_line(&surface.title, &surface.id, &answer);
         if calls.hand(waiters, &answer, &line) {
-            surface.phase = Phase::Settled { answer };
+            surface.phase = Phase::Settled { answer, at: now_ms() };
             surface.change = change;
             return Ok(Answered::Returned(surface.record(&key.terminal_id)));
         }
@@ -397,7 +424,7 @@ impl SurfaceStore {
         let surface = surfaces.remove(at);
         // What an agent was answered stays readable
         let standing = match surface.phase {
-            Phase::Settled { answer } => Standing::Answered(answer),
+            Phase::Settled { answer, .. } => Standing::Answered(answer),
             _ => Standing::Dismissed,
         };
         left.add(surface.id, standing);
@@ -406,7 +433,7 @@ impl SurfaceStore {
 
     /// Settles a surface whose answer has been typed in. `None` when it has left meanwhile.
     pub fn typed(&self, key: &SurfaceKey) -> Option<SurfaceRecord> {
-        self.end_typing(key, |answer| Phase::Settled { answer })
+        self.end_typing(key, |answer| Phase::Settled { answer, at: now_ms() })
     }
 
     /// Opens a surface again whose answer could not be typed in.

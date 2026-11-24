@@ -63,5 +63,5 @@ export async function verdictOn(request: CheckRequest): Promise<Verdict> {
 export async function acceptedAsk(id: string, ask: unknown, terminal: string, order: number): Promise<SurfaceRecord> {
   const verdict = await verdictOn({ call: order, tool: "quay_ask", surface_id: id, arguments: ask });
   assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: terminal, id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null };
+  return { terminal_id: terminal, id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null, answered_at: null };
 }

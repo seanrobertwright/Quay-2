@@ -95,13 +95,32 @@ async fn a_read_without_one_id_is_rejected() {
         (json!({}), "/surface_id", needs),
         (json!({ "surface_id": 1 }), "/surface_id", needs),
         (json!({ "surface_id": "" }), "/surface_id", needs),
-        (json!(["ask_1"]), "/surface_id", needs),
+        (json!(["ask_1"]), "", "A call is an object."),
         (json!({ "surface_id": "ask_1", "a/b~": 1 }), "/a~1b~0", "quay_surface_read has no field \"a/b~\" here."),
     ] {
         let failure = seam.cli("term-a").call("quay_surface_read", arguments).failure().await;
         let body: Value = serde_json::from_str(&failure).unwrap();
         assert_eq!(body["errors"], json!([{ "code": "VALIDATION_FAILED", "path": path, "message": message }]));
     }
+}
+
+#[tokio::test]
+async fn reads_have_a_row_of_rejections_of_their_own_which_an_accepted_one_ends() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let _call = seam.asked(&mut webview, "term-a", "One?").await;
+    let cli = seam.cli("term-a");
+    let mut advice = Vec::new();
+    for id in ["none", "none", "none", "ask_1", "none"] {
+        if id == "ask_1" {
+            read(&cli, id).await;
+            continue;
+        }
+        cli.call("quay_ask", json!({})).failure().await;
+        let failure = cli.call("quay_surface_read", json!({ "surface_id": id })).failure().await;
+        let next = serde_json::from_str::<Value>(&failure).unwrap()["next"].clone();
+        advice.push(next.as_str().unwrap().split('.').next().unwrap().to_string());
+    }
+    assert_eq!(advice, ["Nothing was changed", "Nothing was changed", "Stop guessing", "Nothing was changed"]);
 }
 
 #[tokio::test]

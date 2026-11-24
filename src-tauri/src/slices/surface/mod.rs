@@ -5,6 +5,7 @@
 //! (`wait`), which is typed into the terminal (`typing`) once no call is open to return it. `read` tells
 //! an agent where a surface stands.
 
+mod arguments;
 mod ask;
 mod calls;
 mod check;

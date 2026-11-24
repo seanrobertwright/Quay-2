@@ -4,9 +4,12 @@ import type { CreateSurface, SurfaceAction, SurfaceComponent } from "../surfaceT
 
 /** A checked `quay_ask` call. Mirrors `Ask`. */
 export interface AskArguments {
+  context?: string;
   questions: {
     question: string;
+    /** None for a question answered in words. */
     options: { label: string; description?: string; recommended: boolean }[];
+    multiple: boolean;
   }[];
 }
 
@@ -18,6 +21,9 @@ export interface AskAnswer {
   text?: string;
 }
 
+/** The part that says why the agent asks, when it does. */
+export const CONTEXT_PART = "context";
+
 /** The parts of question `i`. */
 export const questionParts = (i: number) => ({ question: `q${i}_question`, choice: `q${i}_choice`, text: `q${i}_text` });
 
@@ -27,35 +33,84 @@ export const SEND_PART = "send";
 /** Where the answers are in the data model: a list of `chosen` and `text`, one per question. */
 export const ANSWERS = "/answers";
 
-/** The frame's own path in the data model that holds Send: true once every question is answered. */
+/** The frame's own path in the data model that holds Send: true once every question has been opened and is answered. */
 export const READY = "/frame/ready";
 
-/** A single choice is answered by an option or some text. */
-export const isAnswered = (answer: { chosen?: unknown; text?: unknown } | undefined) =>
-  (Array.isArray(answer?.chosen) && answer.chosen.length > 0) || (typeof answer?.text === "string" && answer.text.trim() !== "");
+/** The frame's own path to the index of the question that is open. */
+export const OPEN = "/frame/open";
+
+/** The frame's own path to the indexes of the questions that have been opened. */
+export const OPENED = "/frame/opened";
+
+/** How a question is answered: with one option, with any number of them, or in words. Each takes words too. */
+export type QuestionKind = "one" | "several" | "words";
+
+/** A question, as the surface `expand` made holds it. */
+export interface AskedQuestion {
+  parts: ReturnType<typeof questionParts>;
+  question: string;
+  kind: QuestionKind;
+}
+
+/** The questions of a surface `expand` made, in order. */
+export function questionsIn(components: readonly SurfaceComponent[]): AskedQuestion[] {
+  const byId = new Map(components.map((component) => [component.id, component]));
+  const questions: AskedQuestion[] = [];
+  for (let parts = questionParts(0); byId.has(parts.question); parts = questionParts(questions.length)) {
+    const choice = byId.get(parts.choice);
+    const ofOptions = choice?.variant === "multipleSelection" ? "several" : "one";
+    questions.push({ parts, question: String(byId.get(parts.question)?.text), kind: choice ? ofOptions : "words" });
+  }
+  return questions;
+}
+
+interface Given {
+  chosen: readonly string[];
+  text: string;
+}
+
+/** Whether what was given is an answer: an option or some text, or nothing at all when any number of options may be picked. */
+export const isAnswered = (kind: QuestionKind, { chosen, text }: Given) => kind === "several" || chosen.length > 0 || text.trim() !== "";
+
+/** What stands for an answer with nothing ticked and nothing written. */
+export const NOTHING_GIVEN = "None of these";
+
+/** An answer, in one line. */
+export const inOneLine = ({ chosen, text }: Given) => [...chosen, text.trim()].filter((said) => said !== "").join(" · ") || NOTHING_GIVEN;
 
 export function expand(ask: AskArguments, surfaceId: string): CreateSurface {
-  const parts: SurfaceComponent[] = ask.questions.flatMap(({ question, options }, i): SurfaceComponent[] => {
+  const context: SurfaceComponent[] = ask.context?.trim() ? [{ id: CONTEXT_PART, component: "Text", text: ask.context }] : [];
+  const questions = ask.questions.flatMap(({ question, options, multiple }, i): SurfaceComponent[] => {
     const names = questionParts(i);
     return [
       { id: names.question, component: "Text", text: question },
+      ...(options.length > 0
+        ? [
+            {
+              id: names.choice,
+              component: "ChoicePicker",
+              variant: multiple ? "multipleSelection" : "mutuallyExclusive",
+              label: question,
+              options: options.map((option) => ({ ...option, value: option.label })),
+              value: { "@path": `${ANSWERS}/${i}/chosen` },
+            },
+          ]
+        : []),
       {
-        id: names.choice,
-        component: "ChoicePicker",
-        variant: "mutuallyExclusive",
-        label: question,
-        options: options.map((option) => ({ ...option, value: option.label })),
-        value: { "@path": `${ANSWERS}/${i}/chosen` },
+        id: names.text,
+        component: "TextField",
+        variant: "longText",
+        label: options.length > 0 ? "Other, or a note" : "Your answer",
+        value: { "@path": `${ANSWERS}/${i}/text` },
       },
-      { id: names.text, component: "TextField", variant: "longText", label: "Other, or a note", value: { "@path": `${ANSWERS}/${i}/text` } },
     ];
   });
-  parts.push({
+  const send: SurfaceComponent = {
     id: SEND_PART,
     component: "Button",
     variant: "primary",
     child: "send_label",
-    "@checks": [{ condition: { "@path": READY }, message: "Answer the question first." }],
+    "@checks": [{ condition: { "@path": READY }, message: "Open and answer every question first." }],
     action: {
       event: {
         name: "send",
@@ -68,7 +123,8 @@ export function expand(ask: AskArguments, surfaceId: string): CreateSurface {
         ),
       },
     },
-  });
+  };
+  const parts = [...context, ...questions, send];
   return {
     version: "1.0",
     createSurface: {
