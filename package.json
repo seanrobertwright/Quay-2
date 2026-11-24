@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "proto:a2ui-look": "vite --config src/slices/stage/prototype-a2ui-look/vite.config.ts --open",
     "proto:a2ui-placement": "vite --port 1427 --strictPort --open \"/?prototype=a2ui-placement&variant=A\"",
     "build": "tsc && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
@@ -53,6 +54,9 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@a2ui/markdown-it": "0.2.2",
+    "@a2ui/react": "0.15.0",
+    "@a2ui/web_core": "0.15.0",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
@@ -75,6 +79,7 @@
     "typescript-eslint": "^8.72.0",
     "vite": "^8.0.16",
     "vitepress": "^1.6.4",
-    "vitepress-plugin-mermaid": "^2.0.17"
+    "vitepress-plugin-mermaid": "^2.0.17",
+    "zod": "3.25.76"
   }
 }

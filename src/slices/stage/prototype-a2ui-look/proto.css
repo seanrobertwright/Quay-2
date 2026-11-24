@@ -1,0 +1,8 @@
+/* PROTOTYPE (#696), throwaway. */
+@import "tailwindcss" source("./");
+@source "../../companion/buttonStyles.ts";
+@source "../../terminal/AgentIcons.tsx";
+@import "../../shell/shellLook.css" layer(base);
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { margin: 0; background: #0d1117; }
