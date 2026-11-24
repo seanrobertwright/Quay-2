@@ -88,6 +88,7 @@ async fn a_build_that_offers_no_surfaces_neither_lists_nor_accepts_the_tool() {
 #[tokio::test]
 async fn an_answer_inside_the_wait_is_the_calls_result() {
     let (seam, mut webview) = start(Timing::default()).await;
+    let called = now_ms();
     let call = seam.cli("term-a").call("quay_ask", question());
 
     let check = webview.next_check().await;
@@ -112,6 +113,7 @@ async fn an_answer_inside_the_wait_is_the_calls_result() {
     assert_eq!(shown.state, json!({ "version": "1.0", "createSurface": { "surfaceId": "ask_1" } }));
     assert!(call.is_open(), "the call waits for its answer");
     let before = now_ms();
+    assert!(called <= shown.shown_at && shown.shown_at <= before, "{called} {} {before}", shown.shown_at);
     seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()).unwrap();
 
     assert_eq!(call.answer().await, answer());

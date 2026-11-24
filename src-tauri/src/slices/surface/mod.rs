@@ -12,6 +12,7 @@ mod rejection;
 mod store;
 pub mod timing;
 mod tools;
+mod unsent;
 
 #[cfg(test)]
 mod ask_tests;
@@ -19,8 +20,11 @@ mod ask_tests;
 mod limit_tests;
 #[cfg(test)]
 mod test_seam;
+#[cfg(test)]
+mod unsent_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
 pub use store::{AnswerRefused, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
+pub use unsent::{Page, UnsentRefused, UnsentSave};

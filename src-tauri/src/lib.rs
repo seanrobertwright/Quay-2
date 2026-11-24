@@ -65,7 +65,7 @@ use slices::redirection_guard::{
     dismiss_redirection_guard_warning, get_redirection_guard_warning, RedirectionGuardState,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
-use slices::surface::{surface_answer, surface_checks, surface_list, surface_verdict, AppWebview, SurfaceTools};
+use slices::surface::{surface_answer, surface_checks, surface_list, surface_open_page, surface_save_unsent, surface_verdict, AppWebview, SurfaceTools};
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
     list_recent_projects, open_in_vscode, open_project_places, remove_project, save_project_view, set_active_project,
@@ -329,6 +329,8 @@ pub fn run() {
             surface_answer,
             surface_checks,
             surface_list,
+            surface_open_page,
+            surface_save_unsent,
             surface_verdict,
             run_pre_pr_audit,
             list_claude_sessions,

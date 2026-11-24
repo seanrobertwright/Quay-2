@@ -12,6 +12,7 @@ use tokio::sync::oneshot;
 
 use super::check::Accepted;
 use super::place::{Place, MOST_LIVE};
+use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
 /// The most settled surfaces a terminal has when another surface is added.
@@ -46,6 +47,8 @@ pub struct SurfaceRecord {
     pub change: u64,
     /// Whether the surface has an action to its agent.
     pub asks: bool,
+    /// When it was shown, in milliseconds since the epoch.
+    pub shown_at: i64,
     /// The answer, once there is one.
     pub answer: Option<Value>,
     /// When the answer was sent, in milliseconds since the epoch.
@@ -98,13 +101,34 @@ struct Surface {
     revision: u64,
     order: u64,
     change: u64,
+    shown_at: i64,
     phase: Phase,
+    /// What the operator has put in it and not sent, while it is live.
+    unsent: Option<UnsentSave>,
 }
 
 impl Surface {
     /// Whether it is not settled, which keeps it from making room for another.
     fn is_live(&self) -> bool {
         !matches!(self.phase, Phase::Settled { .. })
+    }
+
+    /// Settles it, which what is unsent in it does not outlive.
+    fn settle(&mut self, answer: Value, change: u64) {
+        self.phase = Phase::Settled { answer, at: now_ms() };
+        self.change = change;
+        self.unsent = None;
+    }
+
+    fn unsent(&self, terminal_id: &str) -> Option<Unsent> {
+        let UnsentSave { order, revision, values, .. } = self.unsent.as_ref()?;
+        Some(Unsent {
+            terminal_id: terminal_id.to_string(),
+            id: self.id.clone(),
+            order: *order,
+            revision: *revision,
+            values: values.clone(),
+        })
     }
 
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
@@ -121,6 +145,7 @@ impl Surface {
             order: self.order,
             change: self.change,
             asks: !matches!(self.phase, Phase::NotAsking),
+            shown_at: self.shown_at,
             answer,
             answered_at,
         }
@@ -146,6 +171,7 @@ impl Terminal {
 #[derive(Default)]
 struct Inner {
     last_change: u64,
+    last_page: u64,
     terminals: HashMap<String, Terminal>,
 }
 
@@ -223,7 +249,9 @@ impl SurfaceStore {
             revision: 1,
             order: change,
             change,
+            shown_at: now_ms(),
             phase,
+            unsent: None,
         };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
@@ -252,8 +280,7 @@ impl SurfaceStore {
         let waiter = waiter.take().ok_or(AnswerRefused::CallEnded)?;
         // Fails when the call was dropped with its connection
         waiter.send(answer.clone()).map_err(|_| AnswerRefused::CallEnded)?;
-        surface.phase = Phase::Settled { answer, at: now_ms() };
-        surface.change = change;
+        surface.settle(answer, change);
         Ok(surface.record(&key.terminal_id))
     }
 
@@ -265,6 +292,43 @@ impl SurfaceStore {
             .iter()
             .flat_map(|(terminal_id, terminal)| terminal.surfaces.iter().map(|surface| surface.record(terminal_id)))
             .collect()
+    }
+
+    /// Opens a page of the webview, and gives it what is unsent in every surface, in no order.
+    pub fn open_page(&self) -> Page {
+        let mut inner = self.0.lock();
+        inner.last_page += 1;
+        let unsent = inner
+            .terminals
+            .iter()
+            .flat_map(|(terminal_id, terminal)| {
+                terminal.surfaces.iter().filter_map(|surface| surface.unsent(terminal_id))
+            })
+            .collect();
+        Page { page: inner.last_page, unsent }
+    }
+
+    /// Keeps what is unsent in a surface, in place of what was kept. Saves may arrive in any order: one
+    /// made before the one that is kept is refused.
+    pub fn save_unsent(&self, key: &SurfaceKey, save: UnsentSave) -> Result<(), UnsentRefused> {
+        if save.is_too_large() {
+            return Err(UnsentRefused::TooLarge);
+        }
+        let mut inner = self.0.lock();
+        let surface = inner
+            .terminals
+            .get_mut(&key.terminal_id)
+            .and_then(|terminal| terminal.find(&key.id))
+            .filter(|surface| surface.is_live() && surface.order == save.order)
+            .ok_or(UnsentRefused::NoSuchSurface)?;
+        if save.revision != surface.revision {
+            return Err(UnsentRefused::OtherRevision);
+        }
+        if surface.unsent.as_ref().is_some_and(|kept| (kept.page, kept.save) >= (save.page, save.save)) {
+            return Err(UnsentRefused::OlderSave);
+        }
+        surface.unsent = Some(save);
+        Ok(())
     }
 
     /// Ends the wait on a surface that is not settled. The surface stays up.

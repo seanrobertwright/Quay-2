@@ -13,6 +13,7 @@ use super::place::{Place, MOST_LIVE};
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{AnswerRefused, CommitRefused, Committed, SurfaceKey, SurfaceRecord, SurfaceStore};
 use super::timing::Timing;
+use super::unsent::{Page, UnsentRefused, UnsentSave};
 
 /// The window that checks and draws surfaces.
 pub trait Webview: Send + Sync {
@@ -192,6 +193,16 @@ impl SurfaceTools {
     /// Every surface, for a webview that has just loaded.
     pub fn surfaces(&self) -> Vec<SurfaceRecord> {
         self.0.store.list()
+    }
+
+    /// Opens a page of the webview, which has just loaded, and gives it what is unsent.
+    pub fn open_page(&self) -> Page {
+        self.0.store.open_page()
+    }
+
+    /// Keeps what the operator has put in a surface and not sent.
+    pub fn save_unsent(&self, key: &SurfaceKey, save: UnsentSave) -> Result<(), UnsentRefused> {
+        self.0.store.save_unsent(key, save)
     }
 
     /// The operator's answer, as the result its agent is to get.
