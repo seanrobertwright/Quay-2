@@ -1,6 +1,4 @@
 pub mod commands;
-#[cfg(test)]
-mod mcp_tests;
 pub mod models;
 pub mod opencode;
 pub mod pending;

@@ -1,24 +1,19 @@
 //! Quay's MCP server as a CLI sees it: `POST /mcp` over a real loopback listener, with a terminal's
 //! token. The routes are the app's own; only the webview their events go to is left out.
 
-use std::time::Duration;
-
 use serde_json::{json, Value};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 
-use super::routes::{create_router, AppContext};
-use super::server::bind_bridge_listener;
-use super::state::BridgeState;
-use crate::webview::WebviewEvents;
+use super::mcp::tool_list;
+use super::A2ARouter;
+use crate::slices::bridge::routes::{create_router, AppContext};
+use crate::slices::bridge::server::bind_bridge_listener;
+use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
-use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
+use crate::test_support::loopback::{post_json, read_reply, Reply};
 use crate::test_support::TempDir;
-
-/// How long a reply may take before the test fails.
-const REPLY_LIMIT: Duration = Duration::from_secs(10);
+use crate::webview::WebviewEvents;
 
 /// The bridge's routes on a free loopback port, with one open terminal, until dropped.
 struct TestBridge {
@@ -31,17 +26,6 @@ struct TestBridge {
 impl Drop for TestBridge {
     fn drop(&mut self) {
         self.server.abort();
-    }
-}
-
-struct Reply {
-    status: u16,
-    body: String,
-}
-
-impl Reply {
-    fn json(&self) -> Value {
-        serde_json::from_str(&self.body).unwrap_or_else(|e| panic!("{e}: {:?}", self.body))
     }
 }
 
@@ -73,28 +57,12 @@ impl TestBridge {
 
     /// Posts `message` to `/mcp` with the open terminal's token.
     async fn post(&self, message: &Value) -> Reply {
-        tokio::time::timeout(REPLY_LIMIT, self.exchange(message)).await.expect("a reply from /mcp")
-    }
-
-    async fn exchange(&self, message: &Value) -> Reply {
-        let body = message.to_string();
-        let request = format!(
-            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\n\
-             Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\n\
-             Content-Length: {}\r\nConnection: close\r\n\r\n{}",
-            self.port,
-            self.token,
-            body.len(),
-            body
-        );
-        let mut stream = TcpStream::connect(("127.0.0.1", self.port)).await.unwrap();
-        stream.write_all(request.as_bytes()).await.unwrap();
-        let mut reply = String::new();
-        stream.read_to_string(&mut reply).await.unwrap();
-
-        let (head, body) = reply.split_once("\r\n\r\n").expect("an HTTP reply");
-        let status = head.split(' ').nth(1).and_then(|code| code.parse().ok()).expect("a status code");
-        Reply { status, body: body.to_string() }
+        let bearer = format!("Bearer {}", self.token);
+        let headers = [
+            ("Authorization", bearer.as_str()),
+            ("Accept", "application/json, text/event-stream"),
+        ];
+        read_reply(post_json(self.port, "/mcp", &headers, message).await).await
     }
 }
 
@@ -163,23 +131,5 @@ async fn a_cli_that_falls_back_completes_the_handshake_and_lists_quays_tools() {
     assert_eq!(initialized.status, 200);
     assert_eq!(initialized.json()["result"]["protocolVersion"], "2025-11-25");
     assert_eq!(listed.status, 200);
-    let listed = listed.json();
-    let names: Vec<&str> = listed["result"]["tools"]
-        .as_array()
-        .expect("a tool list")
-        .iter()
-        .map(|tool| tool["name"].as_str().expect("a tool name"))
-        .collect();
-    assert_eq!(
-        names,
-        [
-            "quay_list_agents",
-            "quay_send_message",
-            "quay_broadcast",
-            "quay_get_agent_status",
-            "machina_submit_work_order",
-            "machina_get_work_order",
-            "machina_submit_deliverable",
-        ]
-    );
+    assert_eq!(listed.json()["result"]["tools"], *tool_list());
 }

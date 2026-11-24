@@ -400,7 +400,7 @@ pub async fn handle_mcp_request(
 const TOOL_LIST: &str = include_str!("mcp_tools.json");
 
 /// `TOOL_LIST`, parsed once.
-fn tool_list() -> &'static Value {
+pub(super) fn tool_list() -> &'static Value {
     static TOOLS: OnceLock<Value> = OnceLock::new();
     TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
 }
