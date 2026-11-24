@@ -155,7 +155,8 @@ terminal.
 _Avoid_: banner, status strip (removed from the shell); and "reply strip", which is a lens's foot
 
 **Surface view**:
-The companion view that shows the selected terminal's companion surfaces.
+The companion view that shows the selected terminal's surfaces that are drawn in the companion: those
+with that place, but for the ones the operator has moved to a stage tab.
 _Avoid_: question view, inbox
 
 **Surface frame**:
@@ -171,8 +172,14 @@ The bounded time a tool call stays open for the operator's answer. The surface o
 _Avoid_: timeout, which is the CLI's own limit on the call
 
 **Settled**:
-Said of a surface whose one answer has been given, or of a board marked done or failed.
+Said of a surface whose answer has been given, or of a board marked done or failed. It takes one answer
+each time it is settled: a raw one can be reopened.
 _Avoid_: closed, completed
+
+**Reopened**:
+Said of an answered raw surface its agent updated: it is live again, at the end of the queue, and shows
+the answer it had.
+_Avoid_: unlocked, restored
 
 **Ended**:
 Said of a surface whose terminal exited before it was settled.
@@ -187,9 +194,9 @@ Said of a surface that is settled, ended or withdrawn: it can be read, and not a
 _Avoid_: frozen, archived
 
 **Earlier**:
-The fold beneath a terminal's questions in the Surface view that its locked companion surfaces are in,
-and the menu on the stage tab bar that the active project's locked tab surfaces are in once their tabs
-are left.
+The fold beneath a terminal's questions in the Surface view that its locked surfaces drawn in the
+companion are in, and the menu on the stage tab bar that the active project's locked surfaces drawn in
+tabs are in once their tabs are left.
 _Avoid_: history, archive
 
 **Relay**:
