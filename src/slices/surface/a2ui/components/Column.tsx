@@ -12,11 +12,11 @@ interface ColumnViewProps {
 const ColumnView = ({ children, part }: ColumnViewProps) => {
   const layout = useContext(LayoutContext);
   if (!layout) return <div className="flex min-w-0 flex-col gap-2">{children}</div>;
-  const { Layout, data } = layout;
+  const { Layout, components, data } = layout;
   // Only the root is laid out by the frame; a Column inside one of its parts is drawn plainly.
   return (
     <LayoutContext.Provider value={null}>
-      <Layout part={part} data={data} />
+      <Layout part={part} components={components} data={data} />
     </LayoutContext.Provider>
   );
 };

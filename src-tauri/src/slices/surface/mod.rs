@@ -3,6 +3,7 @@
 //! An agent's call is checked here (`ask`), then by the webview on a scratch copy of the engine
 //! (`check`), then committed (`store`), then drawn. `tools` runs those steps and waits for the answer.
 
+mod arguments;
 mod ask;
 mod check;
 pub mod commands;
