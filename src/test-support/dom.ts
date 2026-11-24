@@ -31,18 +31,33 @@ type Invoke = (cmd: string, args: Record<string, unknown>) => Promise<unknown>;
 const window = new Window({ url: "http://localhost/" });
 let invokeImpl: Invoke = (cmd) => Promise.reject(new Error(`no fake for ${cmd}`));
 // A component's `listen` and its unlisten reach Tauri's event internals and the event plugin's
-// commands as well as `invoke`. They get stand-ins that do nothing, so a test fakes only the
-// commands its component calls, and no event is ever delivered.
-const fakeEventCommands = new Map<string, unknown>([["plugin:event|listen", 1], ["plugin:event|unlisten", null]]);
+// commands as well as `invoke`. They get stand-ins, so a test fakes only the commands its component
+// calls, and an event is delivered only when the test sends it with `emitEvent`.
+type Callback = (event: { event: string; id: number; payload: unknown }) => void;
+const callbacks: Callback[] = [];
+const listeners = new Map<number, { event: string; callback: Callback }>();
+let lastListener = 0;
+const fakeEventCommands = new Map<string, (args: Record<string, unknown>) => unknown>([
+  [
+    "plugin:event|listen",
+    ({ event, handler }) => {
+      listeners.set((lastListener += 1), { event: String(event), callback: callbacks[Number(handler)] });
+      return lastListener;
+    },
+  ],
+  ["plugin:event|unlisten", () => null],
+]);
 Object.assign(window, {
   __TAURI_INTERNALS__: {
-    invoke: (cmd: string, args: Record<string, unknown>) =>
-      fakeEventCommands.has(cmd) ? Promise.resolve(fakeEventCommands.get(cmd)) : invokeImpl(cmd, args),
-    transformCallback: () => 1,
+    invoke: (cmd: string, args: Record<string, unknown>) => {
+      const fake = fakeEventCommands.get(cmd);
+      return fake ? Promise.resolve(fake(args)) : invokeImpl(cmd, args);
+    },
+    transformCallback: (callback: Callback) => callbacks.push(callback) - 1,
     // A component that asks which window it is in, with `getCurrentWindow()`, is in Quay's main one.
     metadata: { currentWindow: { label: "main" } },
   },
-  __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
+  __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: (_event: string, id: number) => void listeners.delete(id) },
 });
 
 const globals = globalThis as Record<string, unknown>;
@@ -68,4 +83,9 @@ globals.IS_REACT_ACT_ENVIRONMENT = true;
 /** Answers the components' Tauri `invoke` calls, except event listening, with `impl` until the next call. */
 export function fakeInvoke(impl: Invoke): void {
   invokeImpl = impl;
+}
+
+/** Delivers the Tauri event `event` to whatever listens for it. */
+export function emitEvent(event: string, payload: unknown): void {
+  for (const [id, listener] of [...listeners]) if (listener.event === event) listener.callback({ event, id, payload });
 }

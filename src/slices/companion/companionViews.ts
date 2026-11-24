@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /** The companion's views. */
-export type CompanionViewId = "pull-request" | "ticket" | "repository" | "activity" | "run" | "topos" | "inspector";
+export type CompanionViewId = "pull-request" | "ticket" | "repository" | "activity" | "surface" | "run" | "topos" | "inspector";
 
 /** The Repository view's id: the view the companion falls back to. */
 export const REPOSITORY_VIEW_ID: CompanionViewId = "repository";
