@@ -7,6 +7,8 @@ import { useSyncExternalStore } from "react";
 export interface ShellWarning {
   id: string;
   message: string;
+  /** Called when the operator dismisses it, before it leaves the screen. */
+  onDismiss?: () => void;
 }
 
 /** The stack with `warning` on top, and any earlier warning with the same id removed. */

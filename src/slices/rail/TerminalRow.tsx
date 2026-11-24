@@ -7,6 +7,8 @@ import { TerminalMenu } from "../terminal/TerminalMenu.tsx";
 import { RenameInput } from "../terminal/RenameInput.tsx";
 import { onTerminalRequest, requestTerminal } from "../terminal/terminalRequests.ts";
 import { useTerminalMenu } from "../terminal/useTerminalMenu.ts";
+import { SurfaceChips, SurfaceDot } from "../surface/SurfaceChips.tsx";
+import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import {
   Terminal as TerminalIcon,
   X,
@@ -29,6 +31,8 @@ interface TerminalRowProps {
   onRelaunch?: (id: string) => void;
   /** Switches the terminal between Skip and Ask, as the pane header's Skip/Ask pill does. */
   onToggleAsk?: (id: string, currentMode: PermissionMode) => void;
+  /** Opens one of the terminal's agent surfaces, from its chip. */
+  onOpenSurface?: (key: SurfaceKey) => void;
 }
 
 export const TerminalRow = ({
@@ -40,6 +44,7 @@ export const TerminalRow = ({
   onRename,
   onRelaunch,
   onToggleAsk,
+  onOpenSurface,
 }: TerminalRowProps) => {
   const [hasRecentA2A, setHasRecentA2A] = useState(false);
   const [recentA2APrompt, setRecentA2APrompt] = useState<string | null>(null);
@@ -267,7 +272,10 @@ export const TerminalRow = ({
             <span className="font-mono text-[#484f58] w-3 shrink-0 text-right text-[11px]">
               {index}
             </span>
-            {renderIcon()}
+            <span className="relative flex shrink-0">
+              {renderIcon()}
+              <SurfaceDot terminalId={terminal.id} />
+            </span>
 
             {isRenaming ? (
               <RenameInput name={terminal.name} onDone={renameDone} />
@@ -371,6 +379,8 @@ export const TerminalRow = ({
             </span>
           )}
         </div>
+
+        {onOpenSurface && <SurfaceChips terminalId={terminal.id} terminalName={terminal.name} onOpen={onOpenSurface} />}
       </div>
 
         {/* Outside the row, whose click selects the terminal: the portal still bubbles React

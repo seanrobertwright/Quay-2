@@ -68,7 +68,8 @@ export const PaneStatus: FC<PaneStatusProps> = ({ terminal, activeTool, onToggle
   if (!isAgentRunKind(terminal.run_kind)) return null;
   const liveMode = LIVE_MODES[terminal.live_mode];
   return (
-    <span className="flex min-w-0 items-center gap-2 text-[10px]">
+    // No box of its own: in a narrow pane the state gives way, never the pill.
+    <span className="contents text-[10px]">
       <AgentState terminal={terminal} activeTool={activeTool} />
       {offersAskToggle(terminal.run_kind) && onToggleAsk ? (
         <button

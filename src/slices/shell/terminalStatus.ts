@@ -2,6 +2,7 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
 import type { AttentionItem } from "../attention/attentionQueue.ts";
+import { WAITING_ON_YOU } from "../../lib/waiting.ts";
 import { isSamePath, isSubpathOf } from "../../utils/paths.ts";
 
 /** The four dots of the module bar's terminal status list. */
@@ -10,7 +11,7 @@ export type DotStatus = "working" | "waiting" | "idle" | "exited";
 /** Each dot's status as a screen reader and the tooltip say it. */
 export const DOT_STATUS_LABELS: Record<DotStatus, string> = {
   working: "working",
-  waiting: "waiting on you",
+  waiting: WAITING_ON_YOU,
   idle: "idle",
   exited: "exited",
 };
@@ -42,7 +43,7 @@ export function dotStatus(terminal: Pick<TerminalInfo, "claude_status">): DotSta
   }
 }
 
-/** The terminals with anything waiting on the operator among `items`: a permission request or a finished turn. */
+/** The terminals with anything waiting on the operator among `items`: a permission request, a finished turn or an asking surface. */
 export function waitingTerminals(items: readonly AttentionItem[]): Set<string> {
   return new Set(items.flatMap((item) => (item.terminalId ? [item.terminalId] : [])));
 }
@@ -79,7 +80,7 @@ export interface StatusRow {
  * project that holds it. The Projects panel does not list such a terminal yet; the bar still
  * gives every terminal a row.
  *
- * A terminal in `asking`, the terminals with an attention item waiting on the operator (a permission request or a finished turn), shows
+ * A terminal in `asking`, the terminals with an attention item waiting on the operator, shows
  * the waiting dot whatever its status.
  */
 export function statusRows(

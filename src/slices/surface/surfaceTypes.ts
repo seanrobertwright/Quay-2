@@ -61,4 +61,6 @@ export interface SurfaceRecord extends SurfaceKey {
   asks: boolean;
   /** The result its agent got, once the operator has answered. */
   answer: unknown;
+  /** When the answer was sent, in milliseconds since the epoch, or null while there is none. */
+  answered_at: number | null;
 }

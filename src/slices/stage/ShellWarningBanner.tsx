@@ -24,7 +24,10 @@ export const ShellWarningBanner: FC = () => {
           </span>
           <button
             type="button"
-            onClick={() => dismissShellWarning(warning.id)}
+            onClick={() => {
+              warning.onDismiss?.();
+              dismissShellWarning(warning.id);
+            }}
             className="shrink-0 p-1 rounded text-[#e3b341] hover:text-white hover:bg-[#30363d] cursor-pointer"
             aria-label="Dismiss warning"
             title="Dismiss"

@@ -3,7 +3,8 @@
  * and returns the ordered list of waiting items. It knows nothing of Tauri or React; the hook
  * that feeds it (`useAttentionQueue`) turns bridge events into these events. The module bar's
  * Agents icon renders its count, the Agents panel's Waiting on you its rows, and the companion's
- * Activity view a terminal's permission requests.
+ * Activity view a terminal's permission requests. An asking surface's item says only that it waits;
+ * the companion's Surface view draws the surface from the surface store.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */
@@ -37,8 +38,28 @@ export interface FinishedTurnItem {
   waitingSince: number;
 }
 
+/** A live surface that asks the user for something. */
+export interface AskingSurface {
+  terminalId: string;
+  /** The terminal's project, or null while the terminal is not known yet. */
+  project: string | null;
+  /** The surface's id, one among its terminal's. */
+  surfaceId: string;
+  /** The tool that showed it. */
+  tool: string;
+  /** Where it stands among the surfaces of every terminal: one shown later has a higher order. */
+  order: number;
+}
+
+/** An asking surface that waits for the user's answer. Its terminal's own status says nothing of it. */
+export interface SurfaceItem extends AskingSurface {
+  kind: "surface";
+  /** When the item started waiting, in epoch milliseconds. */
+  waitingSince: number;
+}
+
 /** One thing waiting on the user. A tagged union on `kind`, so more kinds can join later. */
-export type AttentionItem = PermissionItem | FinishedTurnItem;
+export type AttentionItem = PermissionItem | FinishedTurnItem | SurfaceItem;
 
 /**
  * An answer the user gave that reached no agent, because the agent had stopped waiting for it.
@@ -93,6 +114,11 @@ export type AttentionEvent =
     }
   /** The user typed or pasted into the terminal. Focusing it is not input. */
   | { type: "userInput"; terminalId: string }
+  /**
+   * Every surface that asks now. One that is no longer among them goes, one that still is keeps its
+   * waiting time, and a new one waits from `at`.
+   */
+  | { type: "surfacesAsking"; surfaces: readonly AskingSurface[]; at: number }
   /** The user dismissed the terminal's finished turn without acting on it. */
   | { type: "finishedTurnDismissed"; terminalId: string }
   /**
@@ -117,6 +143,10 @@ export interface AttentionQueue {
   readonly permissions: ReadonlyMap<string, PermissionItem>;
   /** Finished-turn items by terminal id, so a terminal has at most one. */
   readonly finishedTurns: ReadonlyMap<string, FinishedTurnItem>;
+  /** Asking surfaces by `surfaceKey`. */
+  readonly surfaces: ReadonlyMap<string, SurfaceItem>;
+  /** The keys of surfaces that were waiting when their terminal ended, while they are still said to ask. */
+  readonly endedSurfaces: ReadonlySet<string>;
   /** By terminal id, how many permission items the cap dropped; a terminal with none is absent. */
   readonly droppedPermissions: ReadonlyMap<string | null, number>;
   /** The latest answer that reached nobody, until the user closes its notice. */
@@ -126,6 +156,8 @@ export interface AttentionQueue {
 export const emptyAttentionQueue: AttentionQueue = {
   permissions: new Map(),
   finishedTurns: new Map(),
+  surfaces: new Map(),
+  endedSurfaces: new Set(),
   droppedPermissions: new Map(),
   undeliveredAnswer: null,
 };
@@ -172,6 +204,8 @@ export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent
     }
     case "turnStarted":
       return event.subagent ? queue : clearFinishedTurn(queue, event.terminalId);
+    case "surfacesAsking":
+      return setSurfaces(queue, event.surfaces, event.at);
     case "userInput":
     case "finishedTurnDismissed":
       return clearFinishedTurn(queue, event.terminalId);
@@ -214,6 +248,23 @@ function addPermissions(
   return { ...queue, permissions, droppedPermissions };
 }
 
+/** Names one asking of a surface: a terminal may use an id again, for a surface of a higher order. */
+const surfaceKey = ({ terminalId, surfaceId, order }: AskingSurface): string => JSON.stringify([terminalId, surfaceId, order]);
+
+/** The queue with `asking` as its surfaces, except those that were waiting when their terminal ended. */
+function setSurfaces(queue: AttentionQueue, asking: readonly AskingSurface[], at: number): AttentionQueue {
+  const surfaces = new Map<string, SurfaceItem>();
+  const endedSurfaces = new Set<string>();
+  for (const surface of asking) {
+    const key = surfaceKey(surface);
+    if (queue.endedSurfaces.has(key)) endedSurfaces.add(key);
+    else surfaces.set(key, queue.surfaces.get(key) ?? { kind: "surface", ...surface, waitingSince: at });
+  }
+  const sameKeys = surfaces.size === queue.surfaces.size && [...surfaces.keys()].every((key) => queue.surfaces.has(key));
+  if (sameKeys && endedSurfaces.size === queue.endedSurfaces.size) return queue;
+  return { ...queue, surfaces, endedSurfaces };
+}
+
 /** The queue with each item that has no project given its terminal's project from `terminals`. */
 function fillProjects(queue: AttentionQueue, terminals: readonly KnownTerminal[]): AttentionQueue {
   const projects = new Map(terminals.map((t) => [t.terminalId, t.project]));
@@ -230,8 +281,9 @@ function fillProjects(queue: AttentionQueue, terminals: readonly KnownTerminal[]
   };
   const permissions = fill(queue.permissions);
   const finishedTurns = fill(queue.finishedTurns);
-  if (permissions === queue.permissions && finishedTurns === queue.finishedTurns) return queue;
-  return { ...queue, permissions, finishedTurns };
+  const surfaces = fill(queue.surfaces);
+  if (permissions === queue.permissions && finishedTurns === queue.finishedTurns && surfaces === queue.surfaces) return queue;
+  return { ...queue, permissions, finishedTurns, surfaces };
 }
 
 /** The queue without any of `terminalId`'s items, and with its dropped count back at zero. */
@@ -241,7 +293,14 @@ function endTerminal(queue: AttentionQueue, terminalId: string): AttentionQueue 
   );
   const droppedPermissions = new Map(queue.droppedPermissions);
   droppedPermissions.delete(terminalId);
-  return { ...clearFinishedTurn(queue, terminalId), permissions, droppedPermissions };
+  const surfaces = new Map(queue.surfaces);
+  const endedSurfaces = new Set(queue.endedSurfaces);
+  for (const [key, item] of queue.surfaces) {
+    if (item.terminalId !== terminalId) continue;
+    surfaces.delete(key);
+    endedSurfaces.add(key);
+  }
+  return { ...clearFinishedTurn(queue, terminalId), permissions, surfaces, endedSurfaces, droppedPermissions };
 }
 
 /** The queue without `terminalId`'s finished-turn item. */
@@ -259,19 +318,32 @@ export function pendingPermissionIds(queue: AttentionQueue): string[] {
     .map((item) => item.requestId);
 }
 
-/** Every waiting item, oldest first by when it started waiting, across all kinds. */
+/**
+ * Every waiting item, oldest first by when it started waiting, across all kinds. Surfaces that
+ * started waiting together are in the order they were shown. A terminal's finished turn stands
+ * aside while one of its surfaces asks.
+ */
 export function attentionItems(queue: AttentionQueue): AttentionItem[] {
-  return [...queue.permissions.values(), ...queue.finishedTurns.values()].sort(
-    (a, b) => a.waitingSince - b.waitingSince
-  );
+  const surfaces = [...queue.surfaces.values()].sort((a, b) => a.order - b.order);
+  const asking = new Set(surfaces.map((item) => item.terminalId));
+  const finishedTurns = [...queue.finishedTurns.values()].filter((item) => !asking.has(item.terminalId));
+  return [...queue.permissions.values(), ...finishedTurns, ...surfaces].sort((a, b) => a.waitingSince - b.waitingSince);
 }
 
 /**
  * A key for `item` that names the thing waiting, never its place in the list: the request id
- * for a permission, the terminal for a finished turn (a terminal has at most one).
+ * for a permission, the terminal for a finished turn (a terminal has at most one), and the
+ * terminal, id and order of a surface.
  */
 export function attentionItemKey(item: AttentionItem): string {
-  return item.kind === "permission" ? `permission:${item.requestId}` : `finishedTurn:${item.terminalId}`;
+  switch (item.kind) {
+    case "permission":
+      return `permission:${item.requestId}`;
+    case "finishedTurn":
+      return `finishedTurn:${item.terminalId}`;
+    case "surface":
+      return `surface:${surfaceKey(item)}`;
+  }
 }
 
 /**

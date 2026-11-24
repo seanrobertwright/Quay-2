@@ -61,8 +61,11 @@ use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,
 };
+use slices::redirection_guard::{
+    dismiss_redirection_guard_warning, get_redirection_guard_warning, RedirectionGuardState,
+};
 use slices::sessions::{get_claude_stats, list_claude_sessions};
-use slices::surface::{surface_answer, surface_checks, surface_list, surface_verdict, AppWebview, SurfaceTools};
+use slices::surface::{surface_answer, surface_checks, surface_dismiss, surface_list, surface_verdict, AppWebview, SurfaceTools};
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
     list_recent_projects, open_in_vscode, open_project_places, remove_project, save_project_view, set_active_project,
@@ -73,6 +76,8 @@ use slices::workspace::{
 pub fn run() {
     // Held until the app exits so the background log writer keeps draining.
     let _log_guard = slices::logging::init(&slices::logging::logs_dir());
+    // After logging starts, so its one line reaches the daily log (#629)
+    let redirection_guard = RedirectionGuardState::check_at_startup();
 
     let pty_manager = PtyManager::new();
     let bridge_state = BridgeState::new();
@@ -80,6 +85,7 @@ pub fn run() {
     let a2a_router = A2ARouter::new();
     let machina_manager = MachinaManager::new();
     let surfaces = SurfaceTools::new();
+    slices::orchestrator::connect_surfaces(&surfaces, &pty_manager, &a2a_router);
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();
@@ -115,6 +121,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(pty_manager)
         .manage(bridge_state)
+        .manage(redirection_guard)
         .manage(workspace_manager)
         .manage(a2a_router)
         .manage(SwarmStore::new())
@@ -185,6 +192,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_logs_folder,
+            get_redirection_guard_warning,
+            dismiss_redirection_guard_warning,
             get_bridge_port,
             spawn_terminal,
             get_terminal_output,
@@ -320,6 +329,7 @@ pub fn run() {
             get_github_pr_commits,
             surface_answer,
             surface_checks,
+            surface_dismiss,
             surface_list,
             surface_verdict,
             run_pre_pr_audit,
