@@ -11,6 +11,8 @@ mod calls;
 mod check;
 pub mod commands;
 mod disk;
+mod image;
+mod image_file;
 mod local_path;
 pub mod names;
 mod place;
@@ -30,6 +32,10 @@ mod ask_tests;
 #[cfg(test)]
 mod disk_tests;
 #[cfg(test)]
+mod image_file_tests;
+#[cfg(test)]
+mod image_tests;
+#[cfg(test)]
 mod limit_tests;
 #[cfg(test)]
 mod local_path_tests;
@@ -46,6 +52,7 @@ mod unsent_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
+pub use image::*;
 pub use show_file::*;
 pub use store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
