@@ -9,7 +9,7 @@ import type { SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
 import { READY } from "./typed/ask.ts";
 
 /** How long after the operator's last change it is sent to Rust, in milliseconds. */
-export const PAUSE_MS = 400;
+const PAUSE_MS = 400;
 
 /** What is unsent in a surface, as Rust holds it. Mirrors `Unsent`. */
 interface Unsent extends SurfaceKey {
