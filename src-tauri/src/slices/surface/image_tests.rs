@@ -102,6 +102,22 @@ async fn an_image_is_read_only_while_a_live_surface_of_that_terminal_names_it() 
 }
 
 #[tokio::test]
+async fn an_image_is_not_read_for_a_surface_that_ended_with_its_launch() {
+    let mut quay = Quay::new().await;
+    quay.write("a/one.png", PNG);
+    let launch = quay.seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Working);
+    let mut info = quay.seam.pty_manager.get_info("term-a").unwrap();
+    info.project_path = quay.file("a").to_str().unwrap().to_string();
+    quay.seam.pty_manager.insert_test_terminal(info);
+    let _call = quay.asked_with("term-a", "Which?", &["one.png"]).await;
+    assert_eq!(quay.read("term-a", "ask_1", "one.png").await, Ok(PNG.to_vec()));
+
+    assert!(quay.seam.pty_manager.exit_launch(&launch, Some(0)));
+
+    assert_eq!(quay.read("term-a", "ask_1", "one.png").await, Err(GONE.to_string()));
+}
+
+#[tokio::test]
 async fn the_kind_of_an_image_is_told_by_what_is_in_it_and_never_by_its_name() {
     let mut quay = Quay::new().await;
     let files: [(&str, &[u8], bool); 18] = [
