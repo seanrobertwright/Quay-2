@@ -29,8 +29,9 @@ mod ask_tests;
 #[cfg(test)]
 mod disk_tests;
 #[cfg(test)]
-mod local_path_tests;
 mod limit_tests;
+#[cfg(test)]
+mod local_path_tests;
 #[cfg(test)]
 mod read_tests;
 #[cfg(test)]
