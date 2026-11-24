@@ -42,6 +42,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     terminal_id: "t1",
     id: "plan",
     tool: "quay_surface",
+    title: "",
     place: "companion",
     state: {
       version: "1.0",

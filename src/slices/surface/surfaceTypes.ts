@@ -35,16 +35,23 @@ export interface CheckRequest {
   arguments: unknown;
 }
 
-/** An engine error, as its `mapErrorToRendererMessage` gives it. */
+/** One thing wrong with a call. A typed tool's is the engine's, as its `mapErrorToRendererMessage` gives it. */
 export interface EngineError {
   code: string;
+  /** The surface it is about, when that is known. */
+  surfaceId?: string;
+  /** For a raw call, a JSON Pointer into the call as its agent wrote it. */
   path?: string;
   message: string;
 }
 
 /** What the webview made of a check. Mirrors `Verdict`. */
 export type Verdict =
-  | { errors: EngineError[] }
+  | {
+      errors: EngineError[];
+      /** How many more there are. Left out for none. */
+      more?: number;
+    }
   | {
       state: CreateSurface;
       asks: boolean;
@@ -80,6 +87,8 @@ export interface BoardRun {
 /** A surface as Rust holds it. Mirrors `SurfaceRecord`. */
 export interface SurfaceRecord extends SurfaceKey {
   tool: string;
+  /** What its agent calls it: its title, or an ask's first question. */
+  title: string;
   place: SurfacePlace;
   state: CreateSurface;
   revision: number;
