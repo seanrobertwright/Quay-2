@@ -34,6 +34,7 @@ import type {
   ArchonRunDetail,
   ArchonWorkflow,
 } from "./types.ts";
+import { QuayBadge } from "../cards/QuayBadge.tsx";
 import { computeDagLayout, COMPACT_DAG_SIZING } from "./dagLayout.ts";
 import { shortWorkflowName } from "./workflowName.ts";
 import { formatClock, formatDateTime, formatDuration, formatRelative } from "../../lib/dates.ts";
@@ -396,6 +397,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
               )}
               {run.status === "failed" && (
                 <>
+                  <QuayBadge />
                   <button
                     type="button"
                     onClick={() => runAction("resume")}
@@ -434,9 +436,12 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
               <div className="flex items-start gap-2 text-xs text-[#e3b341]">
                 <ShieldQuestion className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <p className="font-semibold">
-                    Waiting for approval{detail.pending_approval.node_id ? ` at ${detail.pending_approval.node_id}` : ""}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="min-w-0 font-semibold">
+                      Waiting for approval{detail.pending_approval.node_id ? ` at ${detail.pending_approval.node_id}` : ""}
+                    </p>
+                    <QuayBadge />
+                  </div>
                   <p className="text-[#c9d1d9] whitespace-pre-wrap">{detail.pending_approval.prompt}</p>
                 </div>
               </div>
