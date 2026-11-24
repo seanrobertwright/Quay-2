@@ -97,7 +97,8 @@ fn bytes_of(path: &Path) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(bytes))
 }
 
-/// A new file that only its owner may read until it is given other permissions.
+/// A new, empty file. On Unix only its owner may read it, until it is given other permissions; on
+/// Windows it has the access its folder gives.
 fn create_private(path: &Path) -> std::io::Result<File> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);

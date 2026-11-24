@@ -18,11 +18,8 @@ pub struct Connect {
 impl Connect {
     /// The operator's own configuration and this Quay's relay. Reads and writes no file.
     pub fn for_operator() -> Self {
-        let antigravity = get_home_dir().ok().filter(|_| OFFERED).map(|home| {
-            let file = home.join(".gemini").join("config").join("mcp_config.json");
-            Arc::new(Antigravity::new(file, sidecar_program(RELAY_NAME)))
-        });
-        Self { antigravity }
+        let antigravity = || Arc::new(Antigravity::in_home(get_home_dir(), sidecar_program(RELAY_NAME)));
+        Self { antigravity: OFFERED.then(antigravity) }
     }
 }
 

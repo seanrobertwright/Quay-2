@@ -34,8 +34,8 @@ struct Member {
 }
 
 /// A member that was asked for: its text, its key included, and its value.
-pub struct Found<'a> {
-    pub text: &'a str,
+pub struct Found {
+    pub text: String,
     pub value: Value,
 }
 
@@ -70,12 +70,12 @@ impl<'a> JsonText<'a> {
     }
 
     /// The member `name` of the object `parent`.
-    pub fn member(&self, parent: &str, name: &str) -> Result<Option<Found<'a>>, String> {
+    pub fn member(&self, parent: &str, name: &str) -> Result<Option<Found>, String> {
         let Some(object) = self.object(parent)? else { return Ok(None) };
         let Some(member) = object.find(name) else { return Ok(None) };
         let value = serde_json::from_str(&self.text[member.value..member.span.end])
             .map_err(|e| format!("it is not JSON: {e}"))?;
-        Ok(Some(Found { text: &self.text[member.span.clone()], value }))
+        Ok(Some(Found { text: self.text[member.span.clone()].to_string(), value }))
     }
 
     /// The text with the member `name` of the object `parent` set to `value`: in place of the one

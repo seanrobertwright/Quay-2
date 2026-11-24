@@ -11,12 +11,15 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::config_file::ConfigFile;
-use super::json_text::JsonText;
+use super::json_text::{Found, JsonText};
 use crate::slices::surface::timing::CLI_LIMIT;
 
 /// The object in the file that holds the servers, and Quay's key in it.
 const SERVERS: &str = "mcpServers";
 const QUAY: &str = "quay";
+
+/// Where the file is in the operator's home folder.
+const IN_HOME: [&str; 3] = [".gemini", "config", "mcp_config.json"];
 
 const NOT_SHOWN: &str = "the file's entry is not the one shown";
 
@@ -39,7 +42,7 @@ pub enum State {
 /// What the Connect row shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Connection {
-    /// The file's path.
+    /// The file's path, with `~` for a home folder that is not known.
     pub file: String,
     /// The entry Connect writes.
     pub entry: String,
@@ -50,15 +53,10 @@ pub struct Connection {
     pub problem: Option<String>,
 }
 
-/// The entry that is in the file: its text, its key included, and its value.
-struct Found {
-    text: String,
-    value: Value,
-}
-
 /// Antigravity's configuration file and the relay an entry in it starts.
 pub struct Antigravity {
-    file: PathBuf,
+    /// Its path, or why that is not known.
+    file: Result<PathBuf, String>,
     relay: PathBuf,
     /// Held from reading the file to having replaced it.
     editing: Mutex<()>,
@@ -66,6 +64,15 @@ pub struct Antigravity {
 
 impl Antigravity {
     pub fn new(file: PathBuf, relay: PathBuf) -> Self {
+        Self { file: Ok(file), relay, editing: Mutex::new(()) }
+    }
+
+    /// The file where Antigravity has it in the folder `home`, or why there is no such folder.
+    pub fn in_home(home: Result<PathBuf, String>, relay: PathBuf) -> Self {
+        let file = home.map(|mut path| {
+            path.extend(IN_HOME);
+            path
+        });
         Self { file, relay, editing: Mutex::new(()) }
     }
 
@@ -81,7 +88,10 @@ impl Antigravity {
             Some(found) => self.state_of(&found.value),
         };
         Connection {
-            file: self.file.to_string_lossy().into_owned(),
+            file: match &self.file {
+                Ok(file) => file.to_string_lossy().into_owned(),
+                Err(_) => format!("~/{}", IN_HOME.join("/")),
+            },
             entry: format!("\"{QUAY}\": {:#}", self.entry()),
             state,
             found: found.map(|found| found.text),
@@ -116,10 +126,10 @@ impl Antigravity {
     ) -> Result<(), String> {
         let _editing = self.editing.lock();
         let replace = || {
-            let file = ConfigFile::read(&self.file)?;
+            let file = self.read()?;
             let text = file.text()?.map(JsonText::parse).transpose()?;
             let found = text.as_ref().map(|text| text.member(SERVERS, QUAY)).transpose()?.flatten();
-            if found.map(|found| found.text) != seen {
+            if found.map(|found| found.text).as_deref() != seen {
                 return Err(NOT_SHOWN.to_string());
             }
             file.replace(&edited(text)?)
@@ -129,10 +139,13 @@ impl Antigravity {
 
     /// The entry that is in the file.
     fn found(&self) -> Result<Option<Found>, String> {
-        let file = ConfigFile::read(&self.file)?;
+        let file = self.read()?;
         let Some(text) = file.text()? else { return Ok(None) };
-        let found = JsonText::parse(text)?.member(SERVERS, QUAY)?;
-        Ok(found.map(|found| Found { text: found.text.to_string(), value: found.value }))
+        JsonText::parse(text)?.member(SERVERS, QUAY)
+    }
+
+    fn read(&self) -> Result<ConfigFile, String> {
+        ConfigFile::read(self.file.as_deref().map_err(String::clone)?)
     }
 
     fn state_of(&self, found: &Value) -> State {

@@ -105,6 +105,31 @@ fn connection_shows_the_file_and_the_entry_before_anything_is_written() {
 }
 
 #[test]
+fn antigravitys_file_is_in_the_home_folder() {
+    let seam = Seam::empty();
+
+    Antigravity::in_home(Ok(seam.dir.join("home")), seam.relay.clone()).connect(None).unwrap();
+
+    let file = seam.dir.join("home").join(".gemini").join("config").join("mcp_config.json");
+    assert!(std::fs::read_to_string(file).unwrap().contains("quay"));
+}
+
+#[test]
+fn with_no_home_folder_the_reason_is_shown_and_nothing_is_written() {
+    let seam = Seam::empty();
+    let antigravity = Antigravity::in_home(Err("there is no home folder".to_string()), seam.relay.clone());
+
+    let shown = antigravity.connection();
+
+    assert_eq!(shown.file, "~/.gemini/config/mcp_config.json");
+    assert_eq!((shown.state, shown.found), (State::Unreadable, None));
+    assert_eq!(shown.problem.as_deref(), Some("there is no home folder"));
+    let refused = Err("Nothing was written: there is no home folder.".to_string());
+    assert_eq!(antigravity.connect(None), refused);
+    assert_eq!(antigravity.remove("\"quay\": {}"), refused);
+}
+
+#[test]
 fn connect_follows_how_the_file_is_laid_out() {
     for (before, after) in [
         (r#"{}"#, "{\n  \"mcpServers\": {\n    \"quay\": {\n      \"command\": RELAY,\n      \"timeoutSeconds\": 150\n    }\n  }\n}"),
