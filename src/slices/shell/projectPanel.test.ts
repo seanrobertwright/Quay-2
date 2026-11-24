@@ -9,6 +9,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { ShellPrefKey, ShellPrefs } from "./shellPrefs.ts";
 
 const { ProjectPanel } = await import("./ProjectPanel.tsx");
+const { AntigravityRow } = await import("../connect/AntigravityRow.tsx");
 
 const DEFAULTS: ShellPrefs = {
   piePalette: "spectrum",
@@ -45,6 +46,7 @@ async function render(over: Partial<Props> = {}) {
     appVersion: "0.7.0",
     prefs: DEFAULTS,
     focusRequest: null,
+    connectRow: null,
     onOpenWorkspaceSettings: () => calls.push("settings"),
     onOpenInVsCode: () => calls.push("vscode"),
     onOpenTokenSpend: () => calls.push("spend"),
@@ -216,13 +218,13 @@ test("Quay · every project holds the Connect row for Antigravity, which its foc
   fakeInvoke(async (cmd) =>
     cmd === "antigravity_connection" ? { file: "C:/a/mcp_config.json", entry: '"quay": {}', state: "missing", found: null, problem: null } : null
   );
-  const { container, rerender } = await render();
+  const { container, rerender } = await render({ connectRow: createElement(AntigravityRow) });
   const quay = group(container, "Quay · every project");
   const row = [...quay.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")].find((b) => b.textContent?.includes("Antigravity"));
   assert.ok(row !== undefined, "the Connect row");
   assert.equal(row.getAttribute("aria-expanded"), "false");
 
-  await rerender({ focusRequest: { target: "connect-antigravity", seq: 1 } });
+  await rerender({ focusRequest: { target: "connect-antigravity", seq: 1 }, connectRow: createElement(AntigravityRow, { openRequest: 1 }) });
 
   assert.equal(row.getAttribute("aria-expanded"), "true");
   assert.equal(document.activeElement === row, true);

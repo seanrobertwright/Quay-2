@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ArrowUpCircle, Coins, FolderOpen, Settings } from "lucide-react";
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
-import { AntigravityRow } from "../connect/AntigravityRow.tsx";
 import { PieWire } from "../pie/PieWire.tsx";
 import { pieRing } from "../pie/pieRing.ts";
 import { SHELL_SETTINGS, type SetShellPref, type ShellPrefKey, type ShellPrefs, type ShellSetting } from "./shellPrefs.ts";
@@ -25,6 +24,8 @@ interface ProjectPanelProps {
   appVersion: string;
   prefs: ShellPrefs;
   focusRequest: ProjectPanelFocus | null;
+  /** The Connect row, which opens and focuses itself when it is asked for. */
+  connectRow: ReactNode;
   onOpenWorkspaceSettings: () => void;
   onOpenInVsCode: () => void;
   onOpenTokenSpend: () => void;
@@ -243,7 +244,7 @@ export const ProjectPanel = (props: ProjectPanelProps) => {
           {SHELL_SETTINGS.map((setting) => (
             <SettingControl key={setting.key} setting={setting} prefs={props.prefs} onSetPref={props.onSetPref} />
           ))}
-          <AntigravityRow openRequest={focusTarget === "connect-antigravity" ? focusSeq : undefined} />
+          {props.connectRow}
           <ul ref={updatesRow} className="mt-1">
             <ActionRow
               label="Check for updates"

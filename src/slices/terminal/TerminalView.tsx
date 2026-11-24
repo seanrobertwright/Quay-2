@@ -7,7 +7,6 @@ import { TerminalInfo, isAgentRunKind, relaunchLabel } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
-import { ConnectNote } from "../connect/ConnectNote.tsx";
 import { PaneStatus } from "./PaneStatus.tsx";
 import { SkipBanner } from "./SkipBanner";
 // The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
@@ -49,6 +48,8 @@ interface TerminalViewProps {
   onCloseTerminal?: () => void;
   /** What the pane header shows after the session's state. */
   headerExtra?: ReactNode;
+  /** A line the pane shows above the terminal, after the pane's own notices. */
+  note?: ReactNode;
   /** How many panes the stage shows, which decides whether Close pane can run. */
   paneCount?: number;
   className?: string;
@@ -73,6 +74,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onToggleAsk,
   onCloseTerminal,
   headerExtra,
+  note,
   paneCount = 1,
   className = "",
   style,
@@ -362,9 +364,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
           />
         )}
 
-        {terminal?.run_kind === "antigravity" && (
-          <ConnectNote terminalId={terminalId} shown={isVisible && terminal.claude_status !== "exited"} />
-        )}
+        {note}
 
         {/* Terminal Viewport */}
         <div className="flex-1 w-full h-full min-h-0 relative overflow-hidden bg-[#0d1117] p-2">
