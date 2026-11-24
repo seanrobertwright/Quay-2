@@ -445,5 +445,3 @@ test("a raw strip says when it was last updated, and opened it shows the latest"
   assert.ok(line(container, "plan")!.textContent!.endsWith("updated just now"));
   await until(() => opened(container)?.textContent?.includes("Second") ?? false, "the update was never drawn");
 });
-
-
