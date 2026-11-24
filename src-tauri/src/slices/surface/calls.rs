@@ -1,4 +1,5 @@
-//! The calls Quay believes an agent still listens to, and the answer on its way to them.
+//! A terminal's calls that have not returned, which of them Quay believes an agent still listens to,
+//! and the answer on its way to those.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -30,10 +31,11 @@ struct Call {
     number: u64,
     /// The id its JSON-RPC request has, as its CLI wrote it.
     request: Value,
-    answer: oneshot::Sender<Handed>,
+    /// Where its answer goes while it waits. It is told that its wait has ended by this going.
+    answer: Option<oneshot::Sender<Handed>>,
 }
 
-/// One terminal's open calls. A call that leaves ends its wait, and is told so by its sender going.
+/// One terminal's calls that have not returned. One is open until its wait ends.
 #[derive(Default)]
 pub struct OpenCalls(Vec<Call>);
 
@@ -41,39 +43,61 @@ impl OpenCalls {
     /// Opens the call `number`, which must be no other's.
     pub fn open(&mut self, number: u64, request: Value) -> oneshot::Receiver<Handed> {
         let (answer, rx) = oneshot::channel();
-        self.0.push(Call { number, request, answer });
+        self.0.push(Call { number, request, answer: Some(answer) });
         rx
     }
 
+    /// Ends the wait of the call `number`.
     pub fn end(&mut self, number: u64) {
+        self.end_where(|call| call.number == number);
+    }
+
+    /// Ends the waits of the calls whose request id is `request`.
+    pub fn end_named(&mut self, request: &Value) {
+        self.end_where(|call| call.request == *request);
+    }
+
+    /// Ends every wait.
+    pub fn end_all(&mut self) {
+        self.end_where(|_| true);
+    }
+
+    fn end_where(&mut self, ends: impl Fn(&Call) -> bool) {
+        for call in self.0.iter_mut().filter(|call| ends(call)) {
+            call.answer = None;
+        }
+    }
+
+    /// Forgets the call `number`, which has returned or was dropped.
+    pub fn forget(&mut self, number: u64) {
         self.0.retain(|call| call.number != number);
     }
 
-    /// Ends the calls whose request id is `request`.
-    pub fn end_named(&mut self, request: &Value) {
-        self.0.retain(|call| call.request != *request);
-    }
-
-    pub fn end_all(&mut self) {
+    /// Forgets every call, which ends the waits. None of them changes anything after.
+    pub fn forget_all(&mut self) {
         self.0.clear();
     }
 
-    pub fn is_open(&self, number: u64) -> bool {
+    /// Whether the call `number` has not returned, and was not forgotten.
+    pub fn has(&self, number: u64) -> bool {
         self.0.iter().any(|call| call.number == number)
     }
 
-    /// Returns `result` through those of `numbers` that are open, which ends them. `line` is what is
-    /// typed in if every one of them drops it unread. `false` when none is open.
+    pub fn is_open(&self, number: u64) -> bool {
+        self.0.iter().any(|call| call.number == number && call.answer.is_some())
+    }
+
+    /// Returns `result` through those of `numbers` that are open, which ends their waits. `line` is
+    /// what is typed in if every one of them drops it unread. `false` when none is open.
     pub fn hand(&mut self, numbers: &[u64], result: &Value, line: &str) -> bool {
-        let (waiting, others): (Vec<Call>, Vec<Call>) =
-            self.0.drain(..).partition(|call| numbers.contains(&call.number));
-        self.0 = others;
+        let named = self.0.iter_mut().filter(|call| numbers.contains(&call.number));
+        let waiting: Vec<_> = named.filter_map(|call| call.answer.take()).collect();
         let held = Arc::new(AtomicUsize::new(waiting.len()));
         let line: Arc<str> = line.into();
         // A call ends itself before it stops listening, so one that is open takes what it is sent
-        let taken = waiting.into_iter().map(|call| {
+        let taken = waiting.into_iter().map(|answer| {
             let handed = Handed { result: result.clone(), held: held.clone(), line: line.clone() };
-            call.answer.send(handed).is_ok()
+            answer.send(handed).is_ok()
         });
         taken.fold(false, |any, taken| any | taken)
     }

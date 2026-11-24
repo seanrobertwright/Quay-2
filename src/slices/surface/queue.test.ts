@@ -178,5 +178,5 @@ test("four waiting say that they are the most one terminal may have, and fewer d
   await answered(records[0]);
   await showView();
   assert.ok(!mounted!.container.textContent?.includes("questions waiting"));
-  assert.equal(regions().length, 4);
+  assert.deepEqual(queue(), ["ask_2 open", "ask_3 line", "ask_4 line"], "the answered one is in their way no more");
 });

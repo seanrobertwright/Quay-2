@@ -14,8 +14,8 @@ use super::place::MOST_LIVE;
 use super::read;
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{
-    AnswerRefused, Answered, BeingSent, CommitRefused, Committed, Creation, Dismissed, SurfaceKey, SurfaceRecord,
-    SurfaceStore,
+    AnswerRefused, Answered, BeingSent, CommitRefused, Creation, Dismissed, Locked, Standing, SurfaceKey,
+    SurfaceRecord, SurfaceStore, ToType,
 };
 use super::timing::Timing;
 use super::typing::{NotTyped, Terminals};
@@ -88,6 +88,27 @@ impl SurfaceTools {
         &self.0.store
     }
 
+    /// Says that `terminal_id` is listed with its launch `launch` running. Its calls are taken from
+    /// here on.
+    pub fn launched(&self, terminal_id: &str, launch: u64) {
+        self.0.store.launched(terminal_id, launch);
+    }
+
+    /// Says that `terminal_id`'s launch `launch` is over: its process exited, or a later one has begun.
+    /// Each of its surfaces that is not settled ends, and so does each open wait.
+    pub fn launch_over(&self, terminal_id: &str, launch: u64) {
+        let (ended, left) = self.0.store.launch_over(terminal_id, launch);
+        for record in &ended {
+            self.show(record);
+        }
+        self.remove_all(&left);
+    }
+
+    /// Says that `terminal_id` has closed. Nothing of it is kept.
+    pub fn terminal_closed(&self, terminal_id: &str) {
+        self.remove_all(&self.0.store.close(terminal_id));
+    }
+
     /// Ends the waits of `terminal_id`'s calls, when its own turn has ended or been interrupted:
     /// nothing in it listens any more.
     pub fn turn_ended(&self, terminal_id: &str) {
@@ -115,7 +136,10 @@ impl SurfaceTools {
         match tool {
             ask::TOOL => Some(match Ask::parse(arguments) {
                 Err(rejection) => self.reject(terminal_id, ask::TOOL, &rejection),
-                Ok(ask) => self.show_ask(Wait::start(self, terminal_id, request), arguments, &ask).await,
+                Ok(ask) => match Wait::start(self, terminal_id, request) {
+                    Some(wait) => self.show_ask(wait, arguments, &ask).await,
+                    None => QuayFailed::TerminalOver.result(),
+                },
             }),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Err(rejection) => self.reject(terminal_id, read::TOOL, &rejection),
@@ -138,13 +162,12 @@ impl SurfaceTools {
             match self.0.store.rejoin(terminal_id, creation) {
                 Some(key) => key,
                 None => {
-                    let key = self.0.store.name_ask(terminal_id);
+                    let Some(key) = self.0.store.name_ask(terminal_id) else {
+                        return QuayFailed::TerminalOver.result();
+                    };
                     match self.check_and_commit(&key, creation, json!(ask)).await {
                         Err(failure) => return failure,
-                        Ok(Committed { record, left }) => {
-                            for left in &left {
-                                self.remove(left);
-                            }
+                        Ok(record) => {
                             self.show(&record);
                             if !record.asks {
                                 return text_result(json!({ "shown": true }));
@@ -157,6 +180,9 @@ impl SurfaceTools {
         };
         match wait.answer(self.0.timing.wait).await {
             Some(answer) => text_result(answer),
+            None if self.0.store.standing(&key).is_none_or(|standing| standing == Standing::Ended) => {
+                text_result(json!({ "surface_id": key.id, "state": Standing::Ended.state() }))
+            }
             None => text_result(json!({ "surface_id": key.id, "state": "no_answer_yet", "next": NO_ANSWER_NEXT })),
         }
     }
@@ -172,16 +198,20 @@ impl SurfaceTools {
         queue
     }
 
-    /// Commits a call once the webview has found nothing wrong with it. Nothing is committed for a
-    /// verdict that came too late. The error is the result its agent gets.
-    async fn check_and_commit(
+    /// Commits a call once the webview has found nothing wrong with it. One for a dismissed id is not
+    /// checked. Nothing is committed for a verdict that came too late. The error is the result its agent
+    /// gets.
+    pub(super) async fn check_and_commit(
         &self,
         key: &SurfaceKey,
         creation: Creation<'_>,
         arguments: Value,
-    ) -> Result<Committed, Value> {
+    ) -> Result<SurfaceRecord, Value> {
         let SurfaceKey { terminal_id, id } = key;
         let tool = creation.tool;
+        if self.0.store.is_dismissed(key, creation) {
+            return Err(dismissed_result());
+        }
         let send = |request: &CheckRequest| {
             // One sent before the window is named is handed over when it has loaded
             if let Some(webview) = self.0.webview.get() {
@@ -200,6 +230,8 @@ impl SurfaceTools {
             Some(Verdict::Accepted(accepted)) => accepted,
         };
         self.0.store.commit(key, creation, accepted).map_err(|refused| match refused {
+            CommitRefused::TerminalOver => QuayFailed::TerminalOver.result(),
+            CommitRefused::Dismissed => dismissed_result(),
             CommitRefused::IdInUse => {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
@@ -221,8 +253,14 @@ impl SurfaceTools {
     }
 
     fn show(&self, record: &SurfaceRecord) {
-        if let Some(webview) = self.0.webview.get() {
-            webview.show(record);
+        let Some(webview) = self.0.webview.get() else {
+            return;
+        };
+        webview.show(record);
+        // One that left meanwhile may have been taken off the screen before it was drawn
+        let key = SurfaceKey::new(&record.terminal_id, &record.id);
+        if self.0.store.record(&key).is_none() {
+            webview.remove(&key);
         }
     }
 
@@ -230,6 +268,18 @@ impl SurfaceTools {
         if let Some(webview) = self.0.webview.get() {
             webview.remove(key);
         }
+    }
+
+    fn remove_all(&self, keys: &[SurfaceKey]) {
+        for key in keys {
+            self.remove(key);
+        }
+    }
+
+    /// Draws a surface that has locked, and takes what left for it off the screen.
+    fn show_locked(&self, Locked { record, left }: &Locked) {
+        self.show(record);
+        self.remove_all(left);
     }
 
     /// The webview's verdict on the check `call`. One that is late, or a second one, is dropped.
@@ -261,27 +311,31 @@ impl SurfaceTools {
     /// its terminal. One to an older revision has the surface drawn again. Blocks while it types.
     pub fn answer(&self, key: &SurfaceKey, revision: u64, answer: Value) -> Result<(), AnswerRefused> {
         let store = &self.0.store;
-        let (record, taken) = match store.answer(key, revision, answer) {
-            Ok(Answered::Returned(record)) => (Some(record), Ok(())),
-            Ok(Answered::ToType(line)) => match self.type_in(&key.terminal_id, &line) {
-                Ok(()) => (store.typed(key), Ok(())),
+        let locked = match store.answer(key, revision, answer) {
+            Ok(Answered::Returned(locked)) => Some(locked),
+            Ok(Answered::ToType(to_type)) => match self.type_in(&key.terminal_id, &to_type) {
+                Ok(()) => store.typed(key),
                 Err(why) => {
                     store.not_typed(key);
-                    (None, Err(AnswerRefused::NotTyped(why)))
+                    return Err(AnswerRefused::NotTyped(why));
                 }
             },
-            Err(AnswerRefused::OlderRevision) => (store.record(key), Err(AnswerRefused::OlderRevision)),
-            Err(refused) => (None, Err(refused)),
+            Err(refused) => {
+                if let (AnswerRefused::OlderRevision, Some(record)) = (refused, store.record(key)) {
+                    self.show(&record);
+                }
+                return Err(refused);
+            }
         };
-        if let Some(record) = record {
-            self.show(&record);
+        if let Some(locked) = locked {
+            self.show_locked(&locked);
         }
-        taken
+        Ok(())
     }
 
-    fn type_in(&self, terminal_id: &str, line: &str) -> Result<(), NotTyped> {
+    fn type_in(&self, terminal_id: &str, ToType { launch, line }: &ToType) -> Result<(), NotTyped> {
         match self.0.terminals.get() {
-            Some(terminals) => terminals.type_in(terminal_id, line),
+            Some(terminals) => terminals.type_in(terminal_id, *launch, line),
             None => {
                 tracing::error!("{terminal_id}: an answer came before the surfaces' terminals were set");
                 Err(NotTyped::Failed)
@@ -302,18 +356,24 @@ impl SurfaceTools {
         Ok(())
     }
 
+    /// The operator's dismissal of those of `terminal_id`'s surfaces `ids` that are locked. No agent is
+    /// told.
+    pub fn dismiss_locked(&self, terminal_id: &str, ids: &[String]) {
+        self.remove_all(&self.0.store.dismiss_locked(terminal_id, ids));
+    }
+
     /// `type_in`, for a surface that has no way back: a failure is only logged, and
     /// `quay_surface_read` still tells its agent.
-    fn type_in_or_log(&self, terminal_id: &str, line: &str) {
+    fn type_in_or_log(&self, terminal_id: &str, line: &ToType) {
         if self.type_in(terminal_id, line) == Err(NotTyped::TerminalOver) {
             tracing::info!("{terminal_id}: the terminal is over, so a surface's answer was not typed in");
         }
     }
 
     /// Types in, on a thread of its own, what a call dropped unread.
-    pub(super) fn type_in_later(&self, terminal_id: &str, line: String) {
+    pub(super) fn type_in_later(&self, terminal_id: &str, launch: u64, line: String) {
         let (tools, terminal_id) = (self.clone(), terminal_id.to_string());
-        std::thread::spawn(move || tools.type_in_or_log(&terminal_id, &line));
+        std::thread::spawn(move || tools.type_in_or_log(&terminal_id, &ToType { launch, line }));
     }
 }
 
@@ -323,6 +383,11 @@ const NO_ANSWER_NEXT: &str = "End your turn now. The answer will be typed into t
 
 fn text_result(body: Value) -> Value {
     json!({ "content": [{ "type": "text", "text": body.to_string() }] })
+}
+
+/// What a message for a dismissed id is told.
+fn dismissed_result() -> Value {
+    text_result(json!({ "dismissed": true }))
 }
 
 /// The surface tools, listed after those of `mcp_tools.json`.

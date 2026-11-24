@@ -50,7 +50,7 @@ pub struct Page {
 /// Why a save was not kept. What was kept before it still is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsentRefused {
-    /// The terminal has no such live surface.
+    /// The terminal has no such surface that is not settled.
     NoSuchSurface,
     /// It is over `UNSENT_LIMIT`.
     TooLarge,

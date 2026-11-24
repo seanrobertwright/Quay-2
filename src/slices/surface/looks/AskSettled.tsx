@@ -1,4 +1,8 @@
-import { NOTHING_GIVEN, questionParts, type AskAnswer } from "../typed/ask.ts";
+import { inOneLine, NOTHING_GIVEN, questionParts, type AskAnswer } from "../typed/ask.ts";
+
+/** What the operator sent to an ask, in a line. */
+export const askAnswerInLine = (answer: unknown): string =>
+  (answer as { answers: AskAnswer[] }).answers.map(({ chosen, text = "" }) => inOneLine({ chosen, text })).join("; ");
 
 /** An answered ask: each question with what the operator sent. */
 export const AskSettled = ({ answer }: { answer: unknown }) => {

@@ -6,6 +6,7 @@ use serde_json::Value;
 use tokio::sync::oneshot;
 
 use super::calls::Handed;
+use super::store::OpenedCall;
 use super::tools::SurfaceTools;
 
 /// One call's wait, from the call's arrival until it returns or its connection closes, which drops
@@ -14,15 +15,18 @@ use super::tools::SurfaceTools;
 pub struct Wait {
     tools: SurfaceTools,
     terminal_id: String,
+    /// The launch of the terminal that the call came from.
+    launch: u64,
     number: u64,
     rx: oneshot::Receiver<Handed>,
 }
 
 impl Wait {
     /// Opens a call of `terminal_id`, whose JSON-RPC request has the id `request`, and starts its wait.
-    pub fn start(tools: &SurfaceTools, terminal_id: &str, request: &Value) -> Self {
-        let (number, rx) = tools.store().open_call(terminal_id, request);
-        Self { tools: tools.clone(), terminal_id: terminal_id.to_string(), number, rx }
+    /// `None` when the terminal has exited or closed.
+    pub fn start(tools: &SurfaceTools, terminal_id: &str, request: &Value) -> Option<Self> {
+        let OpenedCall { launch, number, rx } = tools.store().open_call(terminal_id, request)?;
+        Some(Self { tools: tools.clone(), terminal_id: terminal_id.to_string(), launch, number, rx })
     }
 
     pub fn terminal_id(&self) -> &str {
@@ -49,9 +53,9 @@ impl Wait {
 /// An answer handed over just before the connection closed, and read by no call, is typed in.
 impl Drop for Wait {
     fn drop(&mut self) {
-        self.tools.store().end_call(&self.terminal_id, self.number);
+        self.tools.store().forget_call(&self.terminal_id, self.number);
         if let Some(line) = self.rx.try_recv().ok().and_then(Handed::drop_unread) {
-            self.tools.type_in_later(&self.terminal_id, line.to_string());
+            self.tools.type_in_later(&self.terminal_id, self.launch, line.to_string());
         }
     }
 }
