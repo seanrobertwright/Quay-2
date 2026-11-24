@@ -45,6 +45,16 @@ export function formatRelative(ms: number, now: number = Date.now()): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/** How long something has waited since `ms`, as "just now", "12 min", "1 h 39 min" or "2 d 3 h"; a future start reads as "just now". */
+export function formatTimeWaited(ms: number, now: number = Date.now()): string {
+  const min = Math.floor((now - ms) / 60_000);
+  if (!Number.isFinite(min) || min < 1) return "just now";
+  if (min < 60) return `${min} min`;
+  const hours = Math.floor(min / 60);
+  const [whole, rest] = hours < 24 ? [`${hours} h`, min % 60] : [`${Math.floor(hours / 24)} d`, hours % 24];
+  return rest === 0 ? whole : `${whole} ${rest} ${hours < 24 ? "min" : "h"}`;
+}
+
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** A local calendar date, e.g. "2026-10-21". */

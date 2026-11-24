@@ -53,16 +53,15 @@ async fn an_answer_is_read_after_its_surface_has_left_the_screen() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
     let answered = json!({ "surface_id": "ask_1", "state": "answered", "result": answer() });
-    let mut calls = vec![seam.asked(&mut webview, "term-a", "One?").await];
-    seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
-    webview.next_shown().await;
-    for n in 2..=15 {
-        calls.push(seam.asked(&mut webview, "term-a", &format!("Question {n}?")).await);
+    for n in 1..=11 {
+        seam.asked(&mut webview, "term-a", &format!("Question {n}?")).await;
+        seam.surfaces.answer(&key("term-a", &format!("ask_{n}")), 1, answer()).unwrap();
+        webview.next_shown().await;
     }
-    assert_eq!(webview.next_removed().await, key("term-a", "ask_1"), "it made room");
+    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
+    assert_eq!(webview.next_removed().await, key("term-a", "ask_1"), "ten answered stay");
     assert_eq!(read(&cli, "ask_1").await, answered);
 
-    seam.surfaces.answer(&key("term-a", "ask_2"), 1, answer()).unwrap();
     seam.surfaces.dismiss(&key("term-a", "ask_2")).unwrap();
     assert_eq!(read(&cli, "ask_2").await["result"], answer(), "the operator dismissed an answered question");
 }

@@ -1,59 +1,40 @@
 /// <reference types="node" />
 // The whole of quay_ask in the webview (#717), with only Tauri's `invoke` faked: one to four questions
 // of each kind, what holds Send, and what the agent gets.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { epochMsFromLocalParts, parseUtcTimestamp } from "../../lib/dates.ts";
-import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
+import type { SurfaceRecord } from "./surfaceTypes.ts";
 import type { Mounted } from "./fixtures/askFixtures.ts";
-import { settle, until } from "./fixtures/fakeRust.ts";
+import { acceptedAsk, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
-const { startSurfaces } = await import("./surfaceHost.ts");
-const { askCheck, askRecord, findButton: button, mountCompanion, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { findButton: button, mountCompanion, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 let list: SurfaceRecord[];
-let verdicts: { call: number; verdict: Verdict }[];
 /** What each `surface_answer` sent. */
 let sent: unknown[];
-let stop: (() => void) | null = null;
 let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
-  verdicts = [];
   sent = [];
-  fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as (typeof verdicts)[number]);
-    if (cmd === "surface_answer") sent.push(args.answer);
-    if (cmd === "surface_list") return list;
-    return cmd === "surface_checks" ? [] : null;
-  });
+  startRust({ surface_list: () => list, surface_checks: () => [], surface_answer: ({ answer }) => void sent.push(answer) });
 });
 afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = null;
-  stop?.();
-  stop = null;
+  unloadSurfaces();
 });
 
 /** The surface `ask` makes, as Rust holds it once the webview has accepted it. */
-async function accepted(ask: unknown): Promise<SurfaceRecord> {
-  stop ??= startSurfaces();
-  await settle();
-  emitEvent("surface-check", askCheck(1, ask));
-  await until(() => verdicts.length > 0, "no verdict was given");
-  const { verdict } = verdicts[0];
-  assert.ok("state" in verdict, JSON.stringify(verdict));
-  return askRecord(verdict.state);
-}
+const accepted = (ask: unknown) => acceptedAsk("ask_1", ask);
 
 /** The frame of `record` in the companion's Surface view. */
 async function draw(record: SurfaceRecord): Promise<HTMLElement> {
   list = [record];
-  stop?.();
-  stop = startSurfaces();
+  loadSurfaces();
   mounted = await mountCompanion(TERMINAL);
   const { container } = mounted;
   await view("Surface");

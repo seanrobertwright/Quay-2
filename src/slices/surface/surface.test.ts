@@ -51,7 +51,7 @@ test("a check the webview missed while it loaded is answered, after it listens a
 
   assert.deepEqual(
     calls.map((c) => c.cmd),
-    ["surface_list", "surface_checks", "surface_verdict"],
+    ["surface_open_page", "surface_list", "surface_checks", "surface_verdict"],
   );
   assert.equal(verdicts()[0].call, 7);
   assert.ok("state" in verdicts()[0].verdict, "accepted");
@@ -200,8 +200,9 @@ test("a note alone answers, and a choice alone is sent without a text", async ()
 
   await type(first.querySelector("textarea")!, "Neither: wait for CI");
   await act(async () => button(first, "Send").click());
-  await act(async () => radios(second)[1].click());
-  await act(async () => button(second, "Send").click());
+  await act(async () => second.querySelector("button")!.click());
+  await act(async () => radios(regions(container)[1])[1].click());
+  await act(async () => button(regions(container)[1], "Send").click());
   await settle();
 
   const question = "Which base should this branch take?";
@@ -371,7 +372,8 @@ test("a surface that cannot be drawn says so in its frame and leaves the others"
     const [first, second] = regions(container);
     assert.equal(first.querySelector('[role="alert"]')?.textContent, "Quay could not draw this.");
     assert.ok(first.querySelector("header")?.textContent?.includes("fix-75"));
-    assert.equal(radios(second).length, 2);
+    await act(async () => second.querySelector("button")!.click());
+    assert.equal(radios(regions(container)[1]).length, 2);
   } finally {
     console.error = error;
   }

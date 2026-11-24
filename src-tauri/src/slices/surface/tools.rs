@@ -6,16 +6,19 @@ use std::sync::{Arc, OnceLock, Weak};
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 
+use super::arguments::spelled;
 use super::ask::{self, Ask};
 use super::check::{CheckRequest, Checks, Verdict};
+use super::place::MOST_LIVE;
 use super::read;
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{
     AnswerRefused, Answered, BeingSent, CommitRefused, Committed, Creation, Dismissed, SurfaceKey, SurfaceRecord,
-    SurfaceStore, MOST_KEPT,
+    SurfaceStore,
 };
 use super::timing::Timing;
 use super::typing::{NotTyped, Terminals};
+use super::unsent::{Page, UnsentRefused, UnsentSave};
 use super::wait::Wait;
 
 /// The window that checks and draws surfaces.
@@ -127,7 +130,7 @@ impl SurfaceTools {
     async fn show_ask(&self, wait: Wait, arguments: &Value, ask: &Ask) -> Value {
         let terminal_id = wait.terminal_id();
         let title = &ask.questions[0].question;
-        let creation = Creation { tool: ask::TOOL, arguments, title, call: wait.number() };
+        let creation = Creation { tool: ask::TOOL, arguments, title, place: ask::PLACE, call: wait.number() };
         let key = {
             let queue = self.queue(terminal_id);
             let _one_at_a_time = queue.lock().await;
@@ -138,8 +141,8 @@ impl SurfaceTools {
                     match self.check_and_commit(&key, creation, json!(ask)).await {
                         Err(failure) => return failure,
                         Ok(Committed { record, left }) => {
-                            if let Some(left) = left {
-                                self.remove(&left);
+                            for left in &left {
+                                self.remove(left);
                             }
                             self.show(&record);
                             if !record.asks {
@@ -200,8 +203,12 @@ impl SurfaceTools {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
             }
-            CommitRefused::Full => {
-                let message = format!("This terminal has {MOST_KEPT} questions open, the most allowed. Wait for an answer.");
+            CommitRefused::Full(place) => {
+                let message = format!(
+                    "This terminal has {} live surfaces in {}, the most allowed. Wait for an answer, delete one, or put several questions in one quay_ask.",
+                    spelled(MOST_LIVE),
+                    place.name()
+                );
                 self.reject(terminal_id, tool, &Rejection::invalid("", message))
             }
         })
@@ -237,6 +244,16 @@ impl SurfaceTools {
     /// Every surface, for a webview that has just loaded.
     pub fn surfaces(&self) -> Vec<SurfaceRecord> {
         self.0.store.list()
+    }
+
+    /// Opens a page of the webview, which has just loaded, and gives it what is unsent.
+    pub fn open_page(&self) -> Page {
+        self.0.store.open_page()
+    }
+
+    /// Keeps what the operator has put in a surface and not sent.
+    pub fn save_unsent(&self, key: &SurfaceKey, save: UnsentSave) -> Result<(), UnsentRefused> {
+        self.0.store.save_unsent(key, save)
     }
 
     /// The operator's answer, as the result its agent is to get: from its open call, or typed into

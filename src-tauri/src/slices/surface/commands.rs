@@ -7,6 +7,7 @@ use super::check::{CheckRequest, Verdict};
 use super::store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
 use super::tools::{SurfaceTools, Webview};
 use super::typing::NotTyped;
+use super::unsent::{Page, UnsentRefused, UnsentSave, UNSENT_LIMIT};
 
 /// Quay's window, reached through Tauri's events.
 pub struct AppWebview(pub AppHandle);
@@ -48,6 +49,28 @@ pub async fn surface_list(surfaces: State<'_, SurfaceTools>) -> Result<Vec<Surfa
 #[tauri::command]
 pub async fn surface_checks(surfaces: State<'_, SurfaceTools>) -> Result<Vec<CheckRequest>, String> {
     Ok(surfaces.unanswered_checks())
+}
+
+/// Opens a page for a webview that has just loaded: its number, and what is unsent in each surface.
+#[tauri::command]
+pub async fn surface_open_page(surfaces: State<'_, SurfaceTools>) -> Result<Page, String> {
+    Ok(surfaces.open_page())
+}
+
+/// Keeps what the operator has put in a surface and not sent. An error is only that it is too large:
+/// a save that comes after its surface was settled, removed or changed, or after a later save, is
+/// dropped as a matter of course.
+#[tauri::command]
+pub async fn surface_save_unsent(
+    terminal_id: String,
+    id: String,
+    unsent: UnsentSave,
+    surfaces: State<'_, SurfaceTools>,
+) -> Result<(), String> {
+    match surfaces.save_unsent(&SurfaceKey::new(terminal_id, id), unsent) {
+        Err(UnsentRefused::TooLarge) => Err(format!("More than {} kB is unsent in this surface.", UNSENT_LIMIT / 1024)),
+        Err(UnsentRefused::NoSuchSurface | UnsentRefused::OtherRevision | UnsentRefused::OlderSave) | Ok(()) => Ok(()),
+    }
 }
 
 /// The operator's answer to `revision` of a surface. An error says why it was not taken, in words

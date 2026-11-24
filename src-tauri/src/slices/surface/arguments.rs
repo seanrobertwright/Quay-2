@@ -136,7 +136,7 @@ impl Arguments {
 }
 
 /// `count` as a message says it: in words up to ten.
-fn spelled(count: usize) -> String {
+pub fn spelled(count: usize) -> String {
     const WORDS: [&str; 11] =
         ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
     WORDS.get(count).map_or_else(|| count.to_string(), ToString::to_string)

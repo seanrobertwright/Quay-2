@@ -31,6 +31,7 @@ let list: SurfaceRecord[];
 beforeEach(() => {
   list = [];
   fakeInvoke(async (cmd) => {
+    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd === "surface_list") return list;
     return cmd === "surface_checks" || cmd === "list_claude_sessions" || cmd === "get_pending_permissions" ? [] : null;
   });

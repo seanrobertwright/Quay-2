@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use super::ask::{CONTEXT_LIMIT, DESCRIPTION_LIMIT, LABEL_LIMIT, OPTION_COUNT, QUESTION_COUNT, QUESTION_LIMIT};
 use super::check::Verdict;
 use super::store::{AnswerRefused, SurfaceKey};
-use super::test_seam::{accepted, start, start_with, CapturedLog, FakeWebview, OpenCall, Seam, A_WHILE};
+use super::test_seam::{accepted, start, start_with, CapturedLog, OpenCall, Seam};
 use super::timing::{Timing, WAIT};
 use crate::dates::now_ms;
 
@@ -88,6 +88,7 @@ async fn a_build_that_offers_no_surfaces_neither_lists_nor_accepts_the_tool() {
 #[tokio::test]
 async fn an_answer_inside_the_wait_is_the_calls_result() {
     let (seam, mut webview) = start(Timing::default()).await;
+    let called = now_ms();
     let call = seam.cli("term-a").call("quay_ask", question());
 
     let check = webview.next_check().await;
@@ -112,6 +113,7 @@ async fn an_answer_inside_the_wait_is_the_calls_result() {
     assert_eq!(shown.state, json!({ "version": "1.0", "createSurface": { "surfaceId": "ask_1" } }));
     assert!(call.is_open(), "the call waits for its answer");
     let before = now_ms();
+    assert!(called <= shown.shown_at && shown.shown_at <= before, "{called} {} {before}", shown.shown_at);
     seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()).unwrap();
 
     assert_eq!(call.answer().await, answer());
@@ -321,73 +323,6 @@ async fn a_call_dropped_while_it_is_checked_holds_up_no_later_one() {
     assert_eq!(webview.next_shown().await.id, second_check.surface_id);
 }
 
-/// A call from `terminal_id` whose question, no other's, has been drawn.
-async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str, n: u32) -> OpenCall {
-    let mut question = question();
-    question["questions"][0]["question"] = json!(format!("Question {n}?"));
-    let call = seam.cli(terminal_id).call("quay_ask", question);
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
-    webview.next_shown().await;
-    call
-}
-
-#[tokio::test]
-async fn the_oldest_answered_question_makes_room_once_a_terminal_has_14() {
-    let (seam, mut webview) = start(Timing::default()).await;
-    let mut calls = Vec::new();
-    for n in 1..=14 {
-        calls.push(asked(&seam, &mut webview, "term-a", n).await);
-    }
-    let _other = asked(&seam, &mut webview, "term-b", 1).await;
-    for id in ["ask_5", "ask_3"] {
-        seam.surfaces.answer(&SurfaceKey::new("term-a", id), 1, answer()).unwrap();
-    }
-    assert_eq!(calls.remove(4).answer().await, answer());
-    assert_eq!(calls.remove(2).answer().await, answer());
-    calls.remove(0).hang_up();
-    tokio::time::sleep(A_WHILE).await;
-    assert!(webview.none_removed());
-
-    let _fifteenth = asked(&seam, &mut webview, "term-a", 15).await;
-    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_3"));
-    let _sixteenth = asked(&seam, &mut webview, "term-a", 16).await;
-    assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", "ask_5"));
-    let ids = seam.surfaces.surfaces().into_iter().map(|record| record.id).collect::<Vec<_>>();
-    assert!(ids.contains(&"ask_1".to_string()), "a question whose call hung up can still be answered");
-
-    let kept = seam.surfaces.surfaces();
-    let of = |terminal_id: &str| kept.iter().filter(|record| record.terminal_id == terminal_id).count();
-    assert_eq!((of("term-a"), of("term-b")), (14, 1), "another terminal's make no room");
-    assert!(calls.iter().all(OpenCall::is_open));
-}
-
-#[tokio::test]
-async fn a_question_is_rejected_while_all_14_before_it_are_unanswered() {
-    let (seam, mut webview) = start(Timing::default()).await;
-    let mut calls = Vec::new();
-    for n in 1..=14 {
-        calls.push(asked(&seam, &mut webview, "term-a", n).await);
-    }
-    calls.remove(0).hang_up();
-    tokio::time::sleep(A_WHILE).await;
-    let fifteenth = seam.cli("term-a").call("quay_ask", question());
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
-
-    assert_eq!(
-        serde_json::from_str::<Value>(&fifteenth.failure().await).unwrap(),
-        json!({
-            "errors": [{
-                "code": "VALIDATION_FAILED",
-                "path": "",
-                "message": "This terminal has 14 questions open, the most allowed. Wait for an answer.",
-            }],
-            "next": "Nothing was shown. Correct the call and send it again.",
-        })
-    );
-    assert!(webview.nothing_shown().await && webview.none_removed());
-    assert!(calls.iter().all(OpenCall::is_open));
-}
-
 /// A question with these options.
 fn with_options(options: Value) -> Value {
     json!({ "questions": [{ "question": "Which?", "options": options }] })
@@ -586,7 +521,7 @@ async fn the_advice_changes_from_the_third_rejection_in_a_row_and_nothing_is_blo
     }
     assert_eq!(next_of_a_bad_call(&seam, "term-b").await, SEND_AGAIN, "each terminal's are counted apart");
 
-    let open = asked(&seam, &mut webview, "term-a", 1).await;
+    let open = seam.asked(&mut webview, "term-a", "Another?").await;
     assert_eq!(next_of_a_bad_call(&seam, "term-a").await, SEND_AGAIN, "an accepted call starts the count again");
     assert!(open.is_open(), "before it has its answer");
     assert_eq!(next_of_a_bad_call(&seam, "term-b").await, SEND_AGAIN, "and only its own terminal's");
