@@ -7,6 +7,7 @@ import { TerminalInfo, isAgentRunKind, relaunchLabel } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
+import { ConnectNote } from "../connect/ConnectNote.tsx";
 import { PaneStatus } from "./PaneStatus.tsx";
 import { SkipBanner } from "./SkipBanner";
 // The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
@@ -359,6 +360,10 @@ export const TerminalView: FC<TerminalViewProps> = ({
               );
             }}
           />
+        )}
+
+        {terminal?.run_kind === "antigravity" && (
+          <ConnectNote terminalId={terminalId} shown={isVisible && terminal.claude_status !== "exited"} />
         )}
 
         {/* Terminal Viewport */}

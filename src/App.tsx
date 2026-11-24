@@ -33,6 +33,7 @@ import type { PullRequestAsk } from "./slices/companion/PullRequestView";
 import type { MergeMethod } from "./slices/github/types";
 import { SlotLayer } from "./slices/stage/SlotLayer";
 import { warnOfRedirectionGuard } from "./slices/stage/redirectionGuard";
+import { offerConnectAgain, onConnectRowAsked } from "./slices/connect/antigravity";
 import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
 import { messageEntryId } from "./slices/companion/activity";
@@ -215,6 +216,11 @@ export function App() {
   // Once at startup: whether Quay inherited RedirectionGuard, shown as a shell-wide warning (#629)
   useEffect(() => {
     void warnOfRedirectionGuard();
+  }, []);
+
+  // Once at startup: whether Antigravity's entry is gone or names an old relay (#732)
+  useEffect(() => {
+    void offerConnectAgain();
   }, []);
 
   const handleOpenInVsCode = useCallback(
@@ -1043,7 +1049,8 @@ export function App() {
     [events, trailMessages, waitingItems, attentionQueue.permissionsRead, attentionQueue.answerPermission]
   );
 
-  // Chords `t` and `$` open the Project panel on This project, `u` on Check for updates.
+  // Chords `t` and `$` open the Project panel on This project, `u` on Check for updates. A link to
+  // the Connect row opens it on that row.
   const [projectFocus, setProjectFocus] = useState<ProjectPanelFocus | null>(null);
   const openProjectPanel = (target: ProjectPanelFocus["target"]) => {
     setOpenModule("project");
@@ -1053,6 +1060,14 @@ export function App() {
     openThisProject: () => openProjectPanel("this-project"),
     openCheckForUpdates: () => openProjectPanel("check-for-updates"),
   };
+  useEffect(
+    () =>
+      onConnectRowAsked(() => {
+        setOpenModule("project");
+        setProjectFocus((prev) => ({ target: "connect-antigravity", seq: (prev?.seq ?? 0) + 1 }));
+      }),
+    []
+  );
   const openUpdateModal = () => setIsUpdateModalOpen(true);
 
   // The palette's three most recent commands, which the pie's Palette slices copy and run (#649).
