@@ -6,6 +6,7 @@ import { duringClick } from "../../clickOnly.ts";
 import { LinksContext } from "../../links.ts";
 import { InsideButton } from "../insideButton.ts";
 import { FILE_FIELDS, namedFile } from "../namedFile.ts";
+import { textOf } from "../textOf.ts";
 import { FileLabel, PointedLink } from "./PointedLink.tsx";
 
 /** Quay's own component: a link to a file. */
@@ -39,5 +40,5 @@ const FileLinkView = ({ path, line, label }: FileLinkViewProps) => {
 
 /** A link that shows a file at the operator's click. The path is judged then. */
 export const FileLink = createComponentImplementation(FileLinkApi, ({ props }) => (
-  <FileLinkView {...namedFile(props)} label={props.label} />
+  <FileLinkView {...namedFile(props)} label={textOf(props.label) || undefined} />
 ));

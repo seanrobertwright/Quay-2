@@ -26,6 +26,12 @@ export interface SurfaceAction {
   context: Record<string, unknown>;
 }
 
+/** An action as its click sent it. */
+export interface SentAction extends SurfaceAction {
+  /** The A2UI 1.0 `action` message it makes. */
+  message: Record<string, unknown>;
+}
+
 /** A call for the webview to check. Mirrors `CheckRequest`. */
 export interface CheckRequest {
   call: number;

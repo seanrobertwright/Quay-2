@@ -3,12 +3,13 @@ import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { LinksContext } from "../links.ts";
 import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
-import type { SurfaceAction, SurfaceRecord } from "../surfaceTypes.ts";
+import type { SentAction, SurfaceRecord } from "../surfaceTypes.ts";
 import { followUnsent, unsentIn } from "../unsent.ts";
+import { actionMessage } from "./actionMessage.ts";
 import { giveEffects } from "./effects.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
 
-type OnAction = (action: SurfaceAction) => Promise<void>;
+type OnAction = (action: SentAction) => Promise<void>;
 
 const noAction: OnAction = async () => {};
 
@@ -25,7 +26,7 @@ const lives = new WeakMap<SurfaceRecord, Live>();
 function liveOf(record: SurfaceRecord): Live {
   const kept = lives.get(record);
   if (kept) return kept;
-  const { surface } = engineFor(record.state, (action) => live.onAction({ name: action.name, context: action.context }));
+  const { surface } = engineFor(record.state, (action) => live.onAction({ name: action.name, context: action.context, message: actionMessage(action) }));
   const { dataModel } = surface;
   for (const [path, value] of Object.entries(unsentIn(record))) dataModel.set(path, value, true);
   const live: Live = {

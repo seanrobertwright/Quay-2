@@ -4,21 +4,23 @@ import { FoldButton } from "./FoldButton.tsx";
 import { LockedBand } from "./LockedBand.tsx";
 import { lookOf } from "./looks/index.ts";
 import { NotSent } from "./NotSent.tsx";
+import { RAW_TOOL } from "./rawTool.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { useSurfacesRead } from "./surfaceHost.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 import { unsentIn } from "./unsent.ts";
+import { wordsOf } from "./surfaceWords.ts";
 import { useDismiss } from "./useDismiss.ts";
 
-/** What was asked, folded. */
-const Folded = ({ children }: { children: ReactNode }) => {
+/** What was asked, folded behind `label`. */
+const Folded = ({ label, children }: { label: string; children: ReactNode }) => {
   const id = useId();
   const [shown, setShown] = useState(false);
   return (
     <div className="min-w-0">
       <FoldButton folds={id} shown={shown} onToggle={() => setShown(!shown)} className="min-h-6 text-[#58a6ff] hover:underline">
-        What was asked
+        {label}
       </FoldButton>
       {shown && (
         <div id={id} className="mt-1.5">
@@ -36,7 +38,7 @@ interface LockedSurfaceProps {
 
 /** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
 export const LockedSurface = ({ record, terminal }: LockedSurfaceProps) => {
-  const { kind, KindIcon, asksFor, Settled, Asked, typedIn } = lookOf(record.tool);
+  const { kind, KindIcon, Settled, Asked, typedIn } = lookOf(record.tool);
   const { components } = record.state.createSurface;
   const ended = record.ended_at !== null;
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -48,12 +50,12 @@ export const LockedSurface = ({ record, terminal }: LockedSurfaceProps) => {
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} refusal={refusal}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
-          {ended && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(components)}</p>}
+          {(ended || record.tool === RAW_TOOL) && <p className="wrap-anywhere whitespace-pre-wrap">{wordsOf(record)}</p>}
           {!ended && Settled && <Settled answer={record.answer} />}
           {texts.length > 0 && <NotSent texts={texts} />}
           {Asked && (
-            <Folded>
-              <Asked components={components} />
+            <Folded label={record.asks ? "What was asked" : "What was shown"}>
+              <Asked components={components} record={record} />
             </Folded>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { createComponentImplementation } from "@a2ui/react";
 import { ImageApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { imageTarget } from "../../imageTarget.ts";
+import { textOf } from "../textOf.ts";
 import { LocalImage } from "./LocalImage.tsx";
 
 const VARIANTS = {
@@ -37,6 +38,6 @@ function labelOf(props: object): string {
  */
 export const Image = createComponentImplementation(ImageApi, ({ props, accessibilityRef }) => {
   const url = typeof props.url === "string" ? props.url : "";
-  const name = labelOf(props) || String(props.description ?? "").trim();
+  const name = labelOf(props) || textOf(props.description).trim();
   return <LocalImage ref={accessibilityRef} target={imageTarget(url)} address={url} name={name} className={imageLook(props.variant, props.fit)} />;
 });

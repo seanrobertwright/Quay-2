@@ -3,12 +3,16 @@ import type { ComponentType } from "react";
 import { LayoutList, MessageCircleQuestionMark, Shapes, type LucideIcon } from "lucide-react";
 import type { DataValues } from "../differences.ts";
 import type { Layout } from "../layout.ts";
-import type { SurfaceComponent } from "../surfaceTypes.ts";
+import { RAW_TOOL } from "../rawTool.ts";
+import type { SurfaceComponent, SurfaceRecord } from "../surfaceTypes.ts";
 import { questionsIn } from "../typed/ask.ts";
 import { AskLayout } from "./AskLayout.tsx";
 import { AskAsked, askTypedIn } from "./AskAsked.tsx";
 import { askAnswerInLine, AskSettled } from "./AskSettled.tsx";
 import { BoardLayout } from "./BoardLayout.tsx";
+import { RawAsked } from "./RawAsked.tsx";
+import { RawSettled } from "./RawSettled.tsx";
+import { rawTypedIn } from "./rawTyped.ts";
 import type { TypedText } from "./typedText.ts";
 
 export interface Look {
@@ -23,8 +27,8 @@ export interface Look {
   Settled: ComponentType<{ answer: unknown }> | null;
   /** An answered surface's answer, in a line, or null when it has no words of its own. */
   answerInLine: (answer: unknown) => string | null;
-  /** Draws what a surface with these components asked, with nothing in it to click, or null when it has no look of its own. */
-  Asked: ComponentType<{ components: readonly SurfaceComponent[] }> | null;
+  /** Draws what a surface with these components asked, with nothing in it to act on, or null when it has no look of its own. */
+  Asked: ComponentType<{ components: readonly SurfaceComponent[]; record: SurfaceRecord }> | null;
   /** The texts the operator typed in a surface with these components, of what is unsent in it. */
   typedIn: (components: readonly SurfaceComponent[], unsent: DataValues) => TypedText[];
 }
@@ -34,6 +38,7 @@ const PLAIN: Look = { kind: "Surface", KindIcon: Shapes, layout: null, asksFor: 
 const LOOKS: ReadonlyMap<string, Look> = new Map<string, Look>([
   ["quay_ask", { kind: "Question", KindIcon: MessageCircleQuestionMark, layout: AskLayout, asksFor: (components) => questionsIn(components).map(({ question }) => question)[0] ?? "Question", Settled: AskSettled, answerInLine: askAnswerInLine, Asked: AskAsked, typedIn: askTypedIn }],
   ["quay_board", { ...PLAIN, kind: "Board", KindIcon: LayoutList, layout: BoardLayout, asksFor: () => "Board" }],
+  [RAW_TOOL, { ...PLAIN, Settled: RawSettled, Asked: RawAsked, typedIn: rawTypedIn }],
 ]);
 
 /** How the surfaces of `tool` look. */

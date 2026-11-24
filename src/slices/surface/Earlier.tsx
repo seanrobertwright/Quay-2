@@ -7,6 +7,7 @@ import { lookOf } from "./looks/index.ts";
 import { surfaceKey } from "./surfaceAttention.ts";
 import { dismissLocked } from "./surfaceHost.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
+import { wordsOf } from "./surfaceWords.ts";
 import { When } from "./When.tsx";
 
 interface LockedLineProps {
@@ -17,9 +18,9 @@ interface LockedLineProps {
 
 /** A locked surface in a line that opens it: its state, what was answered or asked, and when it locked. */
 const LockedLine = ({ record, open, onToggle }: LockedLineProps) => {
-  const { asksFor, answerInLine } = lookOf(record.tool);
+  const { answerInLine } = lookOf(record.tool);
   const { word, Icon, tone, at } = lockedState(record);
-  const asked = asksFor(record.state.createSurface.components);
+  const asked = wordsOf(record);
   const answer = record.ended_at === null ? answerInLine(record.answer) : null;
   return (
     <button

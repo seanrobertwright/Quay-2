@@ -4,6 +4,9 @@ import { mapErrorToRendererMessage, MessageProcessor, STRICT_VALIDATION, type Ac
 import type { CreateSurface, EngineError } from "../surfaceTypes.ts";
 import { catalog } from "./catalog.ts";
 
+/** What an action listener is given. */
+export type A2uiClientAction = Parameters<ActionListener>[0];
+
 export type EngineSurface = SurfaceModel<ReactCatalogComponent>;
 
 /** An engine that holds the surface `state` creates. It throws what the engine finds wrong with it. */
