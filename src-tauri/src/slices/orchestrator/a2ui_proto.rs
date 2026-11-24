@@ -1,6 +1,7 @@
 //! PROTOTYPE (#693), throwaway. The roughest surface round trip: an agent hands A2UI 1.0
 //! messages to `quay_surface_proto`, the call waits for the operator's click, and an answer
 //! that comes after the wait is typed into the terminal. None of this is the build.
+//! #708 adds the spec's 100 s wait, an `isError` rejection and an `instructions` text.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -51,6 +52,31 @@ pub fn log(line: &str) {
     }
 }
 
+/// The `instructions` text of Quay's handshake reply: the file `QUAY_A2UI_PROTO_INSTRUCTIONS`
+/// names, read at each handshake, or none.
+pub fn instructions() -> Option<String> {
+    let path = std::env::var("QUAY_A2UI_PROTO_INSTRUCTIONS").ok()?;
+    std::fs::read_to_string(path).ok().filter(|text| !text.trim().is_empty())
+}
+
+/// The `quay_reject_proto` tool: always the spec's rejection object, as an `isError` result.
+/// The text has JSON quotes, line breaks, a non-ASCII character and a nonce, so a CLI that
+/// rewrites it can be told from one that does not.
+pub fn rejection(caller_id: &str) -> Value {
+    let text = serde_json::to_string_pretty(&json!({
+        "errors": [{
+            "code": "VALIDATION_FAILED",
+            "surfaceId": "plan",
+            "path": "/messages/1/updateComponents/components/2/variant",
+            "message": "A title is at most 80 characters; this one is 96 \u{2014} nonce zebra-4471."
+        }],
+        "next": "Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples."
+    }))
+    .unwrap_or_default();
+    log(&format!("REJECTING a call from {caller_id} with isError, text {text:?}"));
+    json!({ "content": [{ "type": "text", "text": text }], "isError": true })
+}
+
 /// Logs when the hand-over future is dropped before it finished, which is how axum shows a
 /// client that closed its connection while the call waited.
 struct CallGuard {
@@ -84,7 +110,7 @@ pub async fn hand_over(ctx: &AppContext, caller_id: &str, arguments: &Value) -> 
         .filter(|m| m.is_array())
         .cloned()
         .ok_or("messages must be an array of A2UI 1.0 messages")?;
-    let wait = arguments.get("wait_seconds").and_then(Value::as_u64).unwrap_or(110);
+    let wait = arguments.get("wait_seconds").and_then(Value::as_u64).unwrap_or(100);
     let id = format!("s-{}", NEXT.fetch_add(1, Ordering::Relaxed));
     let (tx, rx) = oneshot::channel();
     surfaces().lock().insert(

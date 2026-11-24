@@ -169,12 +169,20 @@
         },
         "wait_seconds": {
           "type": "integer",
-          "description": "How long the call waits for the operator. Default 110."
+          "description": "How long the call waits for the operator. Default 100."
         }
       },
       "required": [
         "messages"
       ]
+    }
+  },
+  {
+    "name": "quay_reject_proto",
+    "description": "PROTOTYPE. Always fails with the text of a rejection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
     }
   }
 ]

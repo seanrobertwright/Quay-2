@@ -504,6 +504,18 @@ fn proto_knobs(kind: RunKind) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+/// PROTOTYPE (#708), throwaway: lays `patch` over `base`, object by object.
+fn proto_merge(base: &mut serde_json::Value, patch: &serde_json::Value) {
+    match (base.as_object_mut(), patch.as_object()) {
+        (Some(base), Some(patch)) => {
+            for (key, value) in patch {
+                proto_merge(base.entry(key.clone()).or_insert(serde_json::Value::Null), value);
+            }
+        }
+        _ => *base = patch.clone(),
+    }
+}
+
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
 /// the launch prompt and, last, Quay's MCP config. `server_port` is the loopback port an
 /// OpenCode terminal serves its events on; other CLIs ignore it.
@@ -694,6 +706,14 @@ pub(crate) fn build_command(
         for (key, value) in env {
             cmd.env(key, value.as_str().unwrap_or_default());
         }
+    }
+    // #708: OpenCode's config layer, laid over the one Quay passes
+    if request.run_kind == RunKind::OpenCode && knobs["config"].is_object() {
+        let passed = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
+        let mut config: serde_json::Value =
+            passed.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
+        proto_merge(&mut config, &knobs["config"]);
+        cmd.env(OPENCODE_CONFIG_VAR, config.to_string());
     }
     if let Some(args) = knobs["args"].as_array() {
         for arg in args {

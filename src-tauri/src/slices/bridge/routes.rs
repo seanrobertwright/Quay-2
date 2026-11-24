@@ -182,6 +182,16 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
     let tag = envelope.tag.clone();
     ctx.bridge_state.record_envelope(envelope.clone());
 
+    // PROTOTYPE (#708): when Quay sees a turn start and end, beside the call it waits on
+    if envelope.event_type.starts_with("turn.") || envelope.event_type.starts_with("session.") {
+        crate::slices::orchestrator::a2ui_proto::log(&format!(
+            "EVENT from {}: {} {}",
+            tag.as_deref().unwrap_or("-"),
+            envelope.event_type,
+            envelope.data
+        ));
+    }
+
     let mut status = None;
     let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
     if let Some(terminal_id) = own_terminal {

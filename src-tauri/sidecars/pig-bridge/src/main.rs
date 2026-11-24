@@ -18,7 +18,10 @@ use std::process::ExitCode;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
-use pig_sdk::{EVENT_AGENT_END, EVENT_AGENT_SETTLED, EVENT_AGENT_START, EVENT_SESSION_START, Extension};
+use pig_sdk::{
+    EVENT_AGENT_END, EVENT_AGENT_SETTLED, EVENT_AGENT_START, EVENT_BEFORE_PROVIDER_REQUEST, EVENT_SESSION_START,
+    EVENT_TOOL_RESULT, Extension,
+};
 use quay_bridge_post::{Bridge, TOKEN_VAR, append_log, log_path, parse_loopback_url, unix_ms};
 use serde_json::{Value, json};
 
@@ -32,7 +35,7 @@ const MCP_URL_VAR: &str = "QUAY_MCP_URL";
 
 /// Seconds PiG waits on one request to Quay's MCP server: above the 60 seconds a
 /// `wait_for_reply` can take.
-const MCP_TIMEOUT_SECS: u64 = 120;
+const MCP_TIMEOUT_SECS: u64 = 150;
 
 /// The answer for a turn that was stopped before it finished.
 const INTERRUPTED: &str = "PiG's turn was interrupted before it finished.";
@@ -53,6 +56,22 @@ fn main() -> ExitCode {
     match mcp_server_config(&var) {
         Ok(config) => ext.register_mcp_server("quay", config),
         Err(e) => write_log(&format!("no MCP server: {}", e)),
+    }
+
+    // PROTOTYPE (#708), throwaway: what PiG sends its model, request by request, and each tool
+    // result, as JSON lines in the file the variable names
+    if let Some(wire) = var("QUAY_A2UI_PROTO_PIG_WIRE") {
+        for event in [EVENT_BEFORE_PROVIDER_REQUEST, EVENT_TOOL_RESULT] {
+            let wire = wire.clone();
+            ext.on_event(event, move |_ctx, data| {
+                use std::io::Write;
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&wire) {
+                    let line = json!({ "at": unix_ms() as u64, "event": event, "data": data });
+                    let _ = writeln!(file, "{}", line);
+                }
+                None
+            });
+        }
     }
 
     // Posts go out in order on a thread of their own, so a slow bridge never holds PiG up
@@ -116,7 +135,8 @@ fn mcp_server_config(var: &dyn Fn(&str) -> Option<String>) -> Result<Value, Stri
         "url": url,
         "headers": { "Authorization": format!("Bearer ${{{}}}", TOKEN_VAR) },
         "exposure": "direct",
-        "timeout": MCP_TIMEOUT_SECS,
+        // PROTOTYPE (#708): the variable is for the control runs
+        "timeout": var("QUAY_A2UI_PROTO_PIG_TIMEOUT").and_then(|s| s.parse().ok()).unwrap_or(MCP_TIMEOUT_SECS),
     }))
 }
 
@@ -343,7 +363,7 @@ mod tests {
                 "url": "http://127.0.0.1:4321/mcp",
                 "headers": { "Authorization": "Bearer ${QUAY_A2A_TOKEN}" },
                 "exposure": "direct",
-                "timeout": 120,
+                "timeout": 150,
             })
         );
         assert!(!config.to_string().contains("tok-secret"));

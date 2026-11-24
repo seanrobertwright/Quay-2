@@ -82,7 +82,12 @@ pub async fn handle_mcp_request(
                 .and_then(|v| v.as_str())
                 .unwrap_or("2024-11-05");
 
-            let res = JsonRpcResponse {
+            // PROTOTYPE (#708): who is connecting, as it says itself
+            super::a2ui_proto::log(&format!(
+                "INITIALIZE from {caller_id}: {}",
+                req.params.as_ref().map(Value::to_string).unwrap_or_default()
+            ));
+            let mut res = JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id,
                 result: Some(json!({
@@ -97,6 +102,9 @@ pub async fn handle_mcp_request(
                 })),
                 error: None,
             };
+            if let (Some(result), Some(text)) = (res.result.as_mut(), super::a2ui_proto::instructions()) {
+                result["instructions"] = text.into();
+            }
             Json(res).into_response()
         }
 
@@ -357,6 +365,8 @@ pub async fn handle_mcp_request(
 
                 // PROTOTYPE (#693), throwaway
                 "quay_surface_proto" => super::a2ui_proto::hand_over(&ctx, caller_id, &arguments).await,
+                // PROTOTYPE (#708), throwaway
+                "quay_reject_proto" => Ok(super::a2ui_proto::rejection(caller_id)),
 
                 _ => Err(format!("Unknown tool: {}", tool_name)),
             };
