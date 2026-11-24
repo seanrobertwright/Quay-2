@@ -26,6 +26,7 @@ beforeEach(() => {
   fakeInvoke(async (cmd, args) => {
     if (cmd === "surface_verdict") verdicts.push(args as (typeof verdicts)[number]);
     if (cmd === "surface_answer") sent.push(args.answer);
+    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd === "surface_list") return list;
     return cmd === "surface_checks" ? [] : null;
   });

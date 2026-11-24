@@ -29,6 +29,7 @@ beforeEach(() => {
   onAnswer = async () => {};
   fakeInvoke(async (cmd, args) => {
     calls.push({ cmd, args });
+    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd === "surface_list") return list;
     if (cmd === "surface_checks") return checks;
     if (cmd === "surface_answer") return onAnswer();
@@ -95,6 +96,7 @@ test("a check is answered with the surface's state, as one createSurface under Q
 test("what comes while the list is read is not missed", async () => {
   fakeInvoke(async (cmd, args) => {
     calls.push({ cmd, args });
+    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd !== "surface_list") return cmd === "surface_checks" ? [] : null;
     emitEvent("surface-check", check(3));
     return [];
@@ -231,8 +233,9 @@ test("a note alone answers, and a choice alone is sent without a text", async ()
 
   await type(first.querySelector("textarea")!, "Neither: wait for CI");
   await act(async () => button(first, "Send").click());
-  await act(async () => radios(second)[1].click());
-  await act(async () => button(second, "Send").click());
+  await act(async () => second.querySelector("button")!.click());
+  await act(async () => radios(regions(container)[1])[1].click());
+  await act(async () => button(regions(container)[1], "Send").click());
   await settle();
 
   const question = "Which base should this branch take?";
@@ -309,6 +312,7 @@ test("a surface Quay no longer has leaves the screen", async () => {
 test("a surface that left while the list was read is not drawn", async () => {
   const asked = [await accepted("ask_1"), await accepted("ask_2", { order: 2 })];
   fakeInvoke(async (cmd) => {
+    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
     if (cmd !== "surface_list") return cmd === "surface_checks" ? [] : null;
     emitEvent("surface-removed", { terminal_id: "t1", id: "ask_1" });
     return asked;
@@ -402,7 +406,8 @@ test("a surface that cannot be drawn says so in its frame and leaves the others"
     const [first, second] = regions(container);
     assert.equal(first.querySelector('[role="alert"]')?.textContent, "Quay could not draw this.");
     assert.ok(first.querySelector("header")?.textContent?.includes("fix-75"));
-    assert.equal(radios(second).length, 2);
+    await act(async () => second.querySelector("button")!.click());
+    assert.equal(radios(regions(container)[1]).length, 2);
   } finally {
     console.error = error;
   }

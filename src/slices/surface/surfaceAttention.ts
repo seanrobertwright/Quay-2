@@ -3,10 +3,9 @@
 // changes.
 import { useSyncExternalStore } from "react";
 import { subscribeToSurfaces, surfacesByTerminal, useSurfacesOf } from "./surfaceHost.ts";
-import type { SurfaceRecord } from "./surfaceTypes.ts";
+import { isLive, type SurfaceRecord } from "./surfaceTypes.ts";
 
-/** A live surface has had no answer. */
-export const isLive = ({ answer }: SurfaceRecord): boolean => answer === null || answer === undefined;
+export { isLive };
 
 interface Attention {
   live: readonly SurfaceRecord[];

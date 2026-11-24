@@ -33,6 +33,7 @@ export const askRecord = (state: SurfaceRecord["state"], { id = "ask_1", termina
   order,
   change: order,
   asks: true,
+  shown_at: Date.now(),
   answer: null,
   answered_at: null,
 });

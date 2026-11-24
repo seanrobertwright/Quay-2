@@ -3,14 +3,18 @@ import { Check } from "lucide-react";
 import { formatClock, formatDateTime, formatUtcTimestamp } from "../../lib/dates.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
+import { QueueLine } from "./QueueLine.tsx";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { isLive } from "./surfaceAttention.ts";
-import { answerSurface, loadA2ui } from "./surfaceHost.ts";
+import { answerSurface, loadA2ui, useSurfacesRead } from "./surfaceHost.ts";
 import type { SurfaceAction, SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
+import { useSurfaceQueue } from "./useSurfaceQueue.ts";
 
 const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
+
+const Loading = () => <p className="text-[#8b949e]">Loading…</p>;
 
 interface SurfaceProps {
   record: SurfaceRecord;
@@ -21,6 +25,8 @@ interface SurfaceProps {
 const LiveSurface = ({ record, terminal }: SurfaceProps) => {
   const { kind, KindIcon, layout } = lookOf(record.tool);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // What is unsent in it comes with the list
+  const read = useSurfacesRead();
   const onAction = useCallback(
     async (action: SurfaceAction) => {
       const typed = typedTool(record.tool);
@@ -40,8 +46,8 @@ const LiveSurface = ({ record, terminal }: SurfaceProps) => {
   return (
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} refusal={refusal}>
       <SurfaceBoundary>
-        <Suspense fallback={<p className="text-[#8b949e]">Loading…</p>}>
-          <SurfaceContent record={record} layout={layout} onAction={onAction} />
+        <Suspense fallback={<Loading />}>
+          {read ? <SurfaceContent record={record} layout={layout} onAction={onAction} /> : <Loading />}
         </Suspense>
       </SurfaceBoundary>
     </SurfaceFrame>
@@ -71,6 +77,9 @@ const SettledSurface = ({ record, terminal }: SurfaceProps) => {
   );
 };
 
+/** The most questions one terminal may have waiting. Rust holds to it. */
+const MOST_WAITING = 4;
+
 /** The surface a request asked to show. Each request has a `seq` of its own. */
 export interface SurfaceFocus {
   surfaceId: string;
@@ -83,23 +92,37 @@ interface SurfaceViewProps {
   focus?: SurfaceFocus | null;
 }
 
-/** The Surface view: a terminal's companion surfaces, oldest first. The one `focus` names is brought into view. */
+/**
+ * The Surface view: a terminal's companion surfaces, oldest first. Of those that ask one is open and
+ * the rest are lines. The one `focus` names is brought into view.
+ */
 export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewProps) => {
   const listRef = useRef<HTMLDivElement | null>(null);
+  const queue = useSurfaceQueue(surfaces, focus);
+  const regionOf = (id: string) =>
+    [...(listRef.current?.querySelectorAll<HTMLElement>("[data-surface]") ?? [])].find((region) => region.dataset.surface === id);
+  // The one a click opened. Its line leaves the screen, and would take the focus with it.
+  const clicked = useRef<string | null>(null);
+  useEffect(() => {
+    if (clicked.current !== null) regionOf(clicked.current)?.focus();
+    clicked.current = null;
+  }, [queue.open]);
+  const open = (record: SurfaceRecord) => {
+    clicked.current = record.id;
+    queue.choose(record);
+  };
   useEffect(() => {
     if (!focus) return;
-    const regions = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-surface]") ?? [])];
-    regions.find((region) => region.dataset.surface === focus.surfaceId)?.scrollIntoView?.({ block: "start" });
+    regionOf(focus.surfaceId)?.scrollIntoView?.({ block: "start" });
   }, [focus]);
   return (
     <div ref={listRef} className="flex flex-col gap-2 p-2">
+      {queue.waiting === MOST_WAITING && <p className="px-1 text-[11px] text-[#8b949e]">{MOST_WAITING} questions waiting, the most one terminal may have.</p>}
       {surfaces.map((record) => {
         const key = `${record.terminal_id} ${record.id} ${record.revision}`;
-        return isLive(record) ? (
-          <LiveSurface key={key} record={record} terminal={terminal} />
-        ) : (
-          <SettledSurface key={key} record={record} terminal={terminal} />
-        );
+        if (!isLive(record)) return <SettledSurface key={key} record={record} terminal={terminal} />;
+        if (!record.asks || record === queue.open) return <LiveSurface key={key} record={record} terminal={terminal} />;
+        return <QueueLine key={key} record={record} terminal={terminal} onOpen={() => open(record)} />;
       })}
     </div>
   );
