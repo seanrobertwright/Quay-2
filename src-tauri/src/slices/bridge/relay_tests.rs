@@ -2,10 +2,7 @@
 //! serves and authenticates `/mcp` as Quay's bridge does. The relay's own package tests the
 //! rest of what it does.
 
-use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
-use std::process::{Child, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -18,6 +15,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use super::routes::authenticate_mcp_caller;
 use super::state::BridgeState;
+use crate::test_support::relay::{built_sidecar, Relay};
 
 const SOON: Duration = Duration::from_secs(10);
 
@@ -76,70 +74,14 @@ async fn next(seen: &mut UnboundedReceiver<Seen>) -> Seen {
     tokio::time::timeout(SOON, seen.recv()).await.expect("nothing reached Quay").unwrap()
 }
 
-/// The built relay as a child process, killed when dropped.
-struct Relay {
-    child: Child,
-    replies: UnboundedReceiver<Value>,
-}
-
-impl Relay {
-    fn start(url: &str, token: &str) -> Relay {
-        let program = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries").join(format!(
-            "quay-relay-{}{}",
-            env!("QUAY_SIDECAR_TARGET"),
-            std::env::consts::EXE_SUFFIX
-        ));
-        let mut child = crate::spawn::hidden_command(&program)
-            .env("QUAY_MCP_URL", url)
-            .env("QUAY_A2A_TOKEN", token)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|e| panic!("the app's build makes {}: {e}", program.display()));
-        let (sender, replies) = unbounded_channel();
-        let stdout = BufReader::new(child.stdout.take().unwrap());
-        std::thread::spawn(move || {
-            for line in stdout.lines().map_while(Result::ok) {
-                let reply = serde_json::from_str(&line).expect("only protocol on stdout");
-                if sender.send(reply).is_err() {
-                    break;
-                }
-            }
-        });
-        Relay { child, replies }
-    }
-
-    fn send(&mut self, message: Value) {
-        writeln!(self.child.stdin.as_mut().unwrap(), "{message}").unwrap();
-    }
-
-    async fn next(&mut self) -> Value {
-        tokio::time::timeout(SOON, self.replies.recv()).await.expect("no reply").unwrap()
-    }
-
-    async fn exits(&mut self) -> bool {
-        let deadline = Instant::now() + SOON;
-        while Instant::now() < deadline {
-            if self.child.try_wait().unwrap().is_some() {
-                return true;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        false
-    }
-}
-
-impl Drop for Relay {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
+fn start_relay(url: &str, token: &str) -> Relay {
+    Relay::start(built_sidecar("quay-relay"), &[("QUAY_MCP_URL", url), ("QUAY_A2A_TOKEN", token)])
 }
 
 #[tokio::test]
 async fn the_bundled_relay_reaches_mcp_as_its_terminal_and_a_cancel_hangs_up_one_call() {
     let (url, token, mut seen) = start_quay().await;
-    let mut relay = Relay::start(&url, &token);
+    let mut relay = start_relay(&url, &token);
 
     relay.send(json!({ "jsonrpc": "2.0", "id": 1, "method": "wait" }));
     assert_eq!(next(&mut seen).await, Seen::Called(json!("wait")));
@@ -154,7 +96,7 @@ async fn the_bundled_relay_reaches_mcp_as_its_terminal_and_a_cancel_hangs_up_one
 
     // The other call hangs up only with the relay, which ends with its stdin
     assert!(seen.try_recv().is_err());
-    relay.child.stdin = None;
+    relay.close_stdin();
     assert_eq!(next(&mut seen).await, Seen::HungUp(json!(2)));
     assert!(relay.exits().await, "the relay outlived its stdin");
 }
@@ -162,7 +104,7 @@ async fn the_bundled_relay_reaches_mcp_as_its_terminal_and_a_cancel_hangs_up_one
 #[tokio::test]
 async fn the_bundled_relay_tells_the_cli_when_quay_refuses_its_token() {
     let (url, _, mut seen) = start_quay().await;
-    let mut relay = Relay::start(&url, "stale");
+    let mut relay = start_relay(&url, "stale");
 
     relay.send(json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" }));
     assert_eq!(next(&mut seen).await, Seen::Refused);

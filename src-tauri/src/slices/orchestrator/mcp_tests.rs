@@ -20,8 +20,8 @@ use crate::webview::WebviewEvents;
 /// The bridge's routes on a free loopback port, with one open terminal, until dropped.
 pub(super) struct TestBridge {
     pub(super) pty_manager: PtyManager,
-    port: u16,
-    token: String,
+    pub(super) port: u16,
+    pub(super) token: String,
     server: tokio::task::JoinHandle<()>,
     _machina_dir: TempDir,
 }

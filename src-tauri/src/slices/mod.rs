@@ -1,6 +1,7 @@
 pub mod archon;
 pub mod audit;
 pub mod bridge;
+pub mod connect;
 pub mod git;
 pub mod github;
 pub mod logging;

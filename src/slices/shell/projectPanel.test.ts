@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // Component tests for the Project panel (#647): the This project group, the Quay · every project
 // group's inline settings, and the chords' focus targets.
-import "../../test-support/dom.ts";
+import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -9,6 +9,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { ShellPrefKey, ShellPrefs } from "./shellPrefs.ts";
 
 const { ProjectPanel } = await import("./ProjectPanel.tsx");
+const { AntigravityRow } = await import("../connect/AntigravityRow.tsx");
 
 const DEFAULTS: ShellPrefs = {
   piePalette: "spectrum",
@@ -45,6 +46,7 @@ async function render(over: Partial<Props> = {}) {
     appVersion: "0.7.0",
     prefs: DEFAULTS,
     focusRequest: null,
+    connectRow: null,
     onOpenWorkspaceSettings: () => calls.push("settings"),
     onOpenInVsCode: () => calls.push("vscode"),
     onOpenTokenSpend: () => calls.push("spend"),
@@ -210,4 +212,20 @@ test("the preview pie redraws live as the pie palette and label outline change",
   await rerender({ prefs: { ...DEFAULTS, piePalette: "acid", pieLabelOutline: false } });
   assert.equal(label().getAttribute("stroke"), null);
   assert.equal(preview()!.querySelector('[data-wedge="E"] path')!.getAttribute("stroke"), "#b6ff1a");
+});
+
+test("Quay · every project holds the Connect row for Antigravity, which its focus request opens", async () => {
+  fakeInvoke(async (cmd) =>
+    cmd === "antigravity_connection" ? { file: "C:/a/mcp_config.json", entry: '"quay": {}', state: "missing", found: null, problem: null } : null
+  );
+  const { container, rerender } = await render({ connectRow: createElement(AntigravityRow) });
+  const quay = group(container, "Quay · every project");
+  const row = [...quay.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")].find((b) => b.textContent?.includes("Antigravity"));
+  assert.ok(row !== undefined, "the Connect row");
+  assert.equal(row.getAttribute("aria-expanded"), "false");
+
+  await rerender({ focusRequest: { target: "connect-antigravity", seq: 1 }, connectRow: createElement(AntigravityRow, { openRequest: 1 }) });
+
+  assert.equal(row.getAttribute("aria-expanded"), "true");
+  assert.equal(document.activeElement === row, true);
 });
