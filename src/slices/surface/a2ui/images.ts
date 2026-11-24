@@ -37,7 +37,7 @@ export function namedImages(surface: EngineSurface): { images: number; image_pat
   try {
     const root = peekValue(resolver.rootNode);
     const targets = root ? imagesUnder(root, false) : [];
-    return { images: targets.length, image_paths: [...new Set(targets.flatMap((target) => ("path" in target ? [target.path] : [])))] };
+    return { images: targets.length, image_paths: [...new Set(targets.flatMap((target) => (target.kind === "file" ? [target.path] : [])))] };
   } finally {
     resolver.dispose();
   }

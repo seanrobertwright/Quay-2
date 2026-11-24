@@ -59,4 +59,4 @@ const ReadImage = ({ path, address, name, className, ref }: Omit<LocalImageProps
 
 /** An image file on this computer, or a box that says why there is none. */
 export const LocalImage = ({ target, ...image }: LocalImageProps) =>
-  "path" in target ? <ReadImage path={target.path} {...image} /> : <RefusedImage why={target.why} name={image.name} address={image.address} />;
+  target.kind === "file" ? <ReadImage path={target.path} {...image} /> : <RefusedImage why={target.why} name={image.name} address={image.address} />;
