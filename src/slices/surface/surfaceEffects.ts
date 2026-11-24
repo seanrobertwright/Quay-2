@@ -1,14 +1,13 @@
 // What a surface may cause, each at the operator's click and never otherwise.
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { requestFileDiff } from "../git/fileDiffRequest.ts";
-import type { Side } from "../git/topos/stagingLists.ts";
+import { requestFileDiff, type FileDiffRequest } from "../git/fileDiffRequest.ts";
 import { spendClick } from "./clickOnly.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
 
 /** How Rust showed a file. Mirrors `Shown`. */
-type Shown = { kind: "revealed" } | { kind: "diff"; path: string; side: Side; line: number | null };
+type Shown = { kind: "revealed" } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
 
 async function open(url: string): Promise<string | null> {
   const target = webTarget(url);
@@ -24,7 +23,9 @@ async function open(url: string): Promise<string | null> {
 async function show(terminalId: string, path: string, line: number | null): Promise<string | null> {
   try {
     const shown = await invoke<Shown>("surface_show_file", { terminalId, path, line });
-    if (shown.kind === "revealed" || requestFileDiff({ terminalId, path: shown.path, side: shown.side, line: shown.line })) return null;
+    if (shown.kind === "revealed") return null;
+    const { worktree, path: inWorktree, side, line: shownLine } = shown;
+    if (requestFileDiff({ terminalId, worktree, path: inWorktree, side, line: shownLine })) return null;
     return `Not opened: the diff view is not there for ${shown.path}. Select its terminal and try again.`;
   } catch (error) {
     return String(error);

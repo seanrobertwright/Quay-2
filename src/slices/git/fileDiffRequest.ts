@@ -2,13 +2,17 @@
 // agent's surface.
 import type { Side } from "./topos/stagingLists.ts";
 
-/** A file with uncommitted changes, in the worktree that is its terminal's folder. */
+/** Which of Topos's lists a file's change is in. Mirrors `ChangeSide`. */
+export type ChangeSide = Side | "conflicted";
+
+/** A file with uncommitted changes that an agent of `terminalId` named. */
 export interface FileDiffRequest {
   terminalId: string;
-  /** Relative to the worktree root, with `/` separators. */
+  /** The root of the worktree the file is in. */
+  worktree: string;
+  /** Relative to that root, with `/` separators. */
   path: string;
-  /** The staging list its change is in. */
-  side: Side;
+  side: ChangeSide;
   /** The line the link named, or null. The diff view does not go to it yet. */
   line: number | null;
 }

@@ -43,6 +43,8 @@ import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
 import { diffLensFor, type DiffLensTarget } from "./slices/companion/diffLensTarget";
 import { terminalRepository, worktreeDisplayName } from "./slices/companion/terminalRepository";
+import { toposTargetOf } from "./slices/companion/toposTarget";
+import { useToposFile } from "./slices/companion/useToposFile";
 import { ReplyStrip } from "./slices/lens/ReplyStrip";
 import { latestPermission } from "./slices/attention/attentionQueue";
 import { companionPrefs } from "./slices/companion/companionPrefs";
@@ -82,7 +84,6 @@ import { BuilderProject, PraxisBuilder, type PraxisBuilderHandle } from "./slice
 import { Topos, type ToposTarget } from "./slices/git/topos/Topos";
 import { ToposLayer, ToposLens, useToposDock } from "./slices/companion/ToposDock";
 import type { ToposRequestKind } from "./slices/git/topos/toposPalette";
-import { onFileDiffRequest, type FileDiffRequest } from "./slices/git/fileDiffRequest";
 import { commandLine, shellFor, typeCommand } from "./slices/terminal/typedCommand";
 import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
@@ -685,19 +686,12 @@ export function App() {
     () => (selectedTerminal ? terminalRepository(selectedTerminal, projects, projectWorktrees) : null),
     [selectedTerminal, projects, projectWorktrees]
   );
+  const selectedFolder = selectedTerminal?.project_path ?? null;
   const toposTarget = useMemo<ToposTarget | null>(
-    () =>
-      selectedTerminal && selectedRepository
-        ? {
-            path: selectedTerminal.project_path,
-            name: selectedRepository.worktree
-              ? worktreeDisplayName(selectedRepository.name, selectedRepository.branch)
-              : selectedRepository.name,
-            repoPath: selectedRepository.path,
-          }
-        : null,
-    [selectedTerminal, selectedRepository]
+    () => (selectedFolder === null ? null : toposTargetOf(selectedFolder, { projects, projectWorktrees })),
+    [selectedFolder, projects, projectWorktrees]
   );
+  const toposFile = useToposFile({ dock: toposDock, terminalId: activeTerminalId, own: toposTarget, projects, projectWorktrees });
   // The selected terminal's pull request, read so the pie's Merge shows only while it can merge.
   const selectedPrSlot = selectedTerminal ? linking.linkOf(selectedTerminal)?.pull_request : null;
   const { selected: selectedPr, reload: reloadSelectedPr } = useSelectedPullRequest(
@@ -720,10 +714,12 @@ export function App() {
   };
 
   // Chord `c`, the palette and the panels' Topos buttons show the Topos view in the companion for
-  // the selected terminal; with none selected there is no repository to show.
+  // the selected terminal, whose own worktree it works on again; with none selected there is no
+  // repository to show.
   const openToposView = () => {
     if (!selectedTerminal) return;
     const terminalId = selectedTerminal.id;
+    toposFile.release();
     setCompanionRequest((prev) => ({ terminalId, view: "topos", seq: (prev?.seq ?? 0) + 1 }));
     setToposFocus((n) => n + 1);
   };
@@ -734,21 +730,6 @@ export function App() {
     setToposRequest((prev) => ({ kind, seq: (prev?.seq ?? 0) + 1 }));
     openToposView();
   };
-
-  // A file link in the selected terminal's surface opens the file's diff in the Topos lens (#721); the
-  // count makes a repeat run again.
-  const [toposFile, setToposFile] = useState<(FileDiffRequest & { seq: number }) | null>(null);
-  const openToposLens = toposDock.companion.openWide;
-  useEffect(
-    () =>
-      onFileDiffRequest((request) => {
-        if (request.terminalId !== activeTerminalId) return false;
-        setToposFile((prev) => ({ ...request, seq: (prev?.seq ?? 0) + 1 }));
-        openToposLens();
-        return true;
-      }),
-    [activeTerminalId, openToposLens]
-  );
 
   // Picking a terminal anywhere brings the terminals back in front of a stage tab; a tab stays open
   // until closed.
@@ -1334,7 +1315,7 @@ export function App() {
         <ToposLens
           dock={toposDock}
           terminalId={selectedTerminal.id}
-          title={toposTarget ? `Topos · ${toposTarget.name}` : "Topos"}
+          title={toposFile.target ? `Topos · ${toposFile.target.name}` : "Topos"}
           replyStrip={replyStrip}
         />
       )}
@@ -1578,14 +1559,14 @@ export function App() {
           isOpen={toposDock.placement !== null}
           wide={toposDock.placement === "lens"}
           focusKey={toposFocus}
-          project={toposTarget}
+          project={toposFile.target}
           terminals={terminals}
           onOpenTerminal={openToposTerminal}
           onNewAgent={startToposAgent}
           onShowWorktree={showToposWorktree}
           onRunInTerminal={runInToposTerminal}
           request={toposRequest}
-          fileRequest={toposFile?.terminalId === activeTerminalId ? toposFile : null}
+          fileRequest={toposFile.request}
         />
       </ToposLayer>
 

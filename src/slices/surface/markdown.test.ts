@@ -356,16 +356,16 @@ test("a FileLink shows its file on a click", async () => {
   ]);
 });
 
-test("a file with uncommitted changes opens the diff view of its terminal's worktree", async () => {
+test("a file with uncommitted changes opens the diff view of its worktree", async () => {
   const { onFileDiffRequest } = await import("../git/fileDiffRequest.ts");
   const asked: unknown[] = [];
   const stop = onFileDiffRequest((request) => (asked.push(request), true));
-  fakeInvoke(async () => ({ kind: "diff", path: "src/a.ts", side: "staged", line: 12 }));
+  fakeInvoke(async () => ({ kind: "diff", worktree: "E:/alpha", path: "src/a.ts", side: "staged", line: 12 }));
   const content = await drawText("[a](src/a.ts:12)");
   await act(async () => links(content)[0].click());
   stop();
 
-  assert.deepEqual(asked, [{ terminalId: "t1", path: "src/a.ts", side: "staged", line: 12 }]);
+  assert.deepEqual(asked, [{ terminalId: "t1", worktree: "E:/alpha", path: "src/a.ts", side: "staged", line: 12 }]);
   assert.equal(notice(), null);
   // Nothing in the window takes the request
   await act(async () => links(content)[0].click());

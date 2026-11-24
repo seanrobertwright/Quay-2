@@ -1,7 +1,7 @@
 //! Showing the operator a file an agent named: in the file manager, or in Quay's diff view when it has
 //! uncommitted changes. Never in the file's own program.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -10,6 +10,7 @@ use super::disk::ThisComputer;
 use super::local_path::{named, resolve, Named, Refused, Style};
 use crate::slices::git::file_change::{file_change, ChangeSide, FileChange};
 use crate::slices::pty::manager::PtyManager;
+use crate::slices::workspace::WorkspaceManager;
 
 const STYLE: Style = if cfg!(windows) { Style::Windows } else { Style::Unix };
 
@@ -22,16 +23,18 @@ const MOST_QUOTED: usize = 200;
 pub enum Shown {
     /// The file manager shows it in its folder.
     Revealed,
-    /// Nothing is shown yet: the webview is to open the diff view on `path`, in the worktree that is
-    /// the terminal's folder. `line` is the line the agent named.
-    Diff { path: String, side: ChangeSide, line: Option<u32> },
+    /// Nothing is shown yet: the webview is to open the diff view on `path`, in the worktree whose root
+    /// is `worktree`. `line` is the line the agent named.
+    Diff { worktree: String, path: String, side: ChangeSide, line: Option<u32> },
 }
 
 /// Shows the file `written` names in `terminal_id`'s working directory, which may end in `:line` when
-/// `line` is not given. The path is judged before anything on it is touched. The error says why
-/// nothing was shown, in words for the operator.
+/// `line` is not given. The path is judged before anything on it is touched. A changed file is for the
+/// diff view when its repository is the terminal's or one that a folder of `projects`, the projects
+/// added to Quay, is in. The error says why nothing was shown, in words for the operator.
 pub fn show_file(
     terminals: &PtyManager,
+    projects: &[String],
     terminal_id: &str,
     written: &str,
     line: Option<u32>,
@@ -45,9 +48,10 @@ pub fn show_file(
     let disk = ThisComputer::now();
     let path = resolve(&written, folder, STYLE, &disk).map_err(|refused| refusal(refused, &written))?;
     let path = Path::new(&path);
-    let change = resolve(".", folder, STYLE, &disk).ok().and_then(|folder| file_change(Path::new(&folder), path));
-    if let Some(FileChange { path, side }) = change {
-        return Ok(Shown::Diff { path, side, line: line.or(written_line) });
+    let local = |folder: &String| resolve(".", folder, STYLE, &disk).ok().map(PathBuf::from);
+    let folders: Vec<PathBuf> = std::iter::once(folder).chain(projects).filter_map(local).collect();
+    if let Some(FileChange { worktree, path, side }) = file_change(&folders, path) {
+        return Ok(Shown::Diff { worktree, path, side, line: line.or(written_line) });
     }
     match reveal(path) {
         Ok(()) => Ok(Shown::Revealed),
@@ -84,10 +88,12 @@ pub async fn surface_show_file(
     path: String,
     line: Option<u32>,
     terminals: State<'_, PtyManager>,
+    workspace: State<'_, WorkspaceManager>,
 ) -> Result<Shown, String> {
     let terminals = terminals.inner().clone();
+    let projects: Vec<String> = workspace.list_projects().into_iter().map(|project| project.path).collect();
     let reveal = |path: &Path| tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string());
-    tauri::async_runtime::spawn_blocking(move || show_file(&terminals, &terminal_id, &path, line, reveal))
+    tauri::async_runtime::spawn_blocking(move || show_file(&terminals, &projects, &terminal_id, &path, line, reveal))
         .await
         .map_err(|e| format!("Not opened: {e}"))?
 }
