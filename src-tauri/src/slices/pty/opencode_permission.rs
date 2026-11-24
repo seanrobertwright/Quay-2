@@ -24,11 +24,18 @@ pub struct Surroundings<'a> {
 }
 
 /// Those of `tools`, Quay's tools by name, that nothing in the operator's configuration denies.
-/// Configuration that can't be read might deny any of them. An organization's configuration that
-/// OpenCode fetches is not looked at.
+/// Configuration that can't be read might deny any of them, so then there are none, and the log says
+/// why. An organization's configuration that OpenCode fetches is not looked at.
 pub fn not_denied(tools: &'static [&'static str], at: &Surroundings) -> Vec<&'static str> {
-    let Some(configs) = operators_configs(at) else {
+    if tools.is_empty() {
         return Vec::new();
+    }
+    let configs = match operators_configs(at) {
+        Ok(configs) => configs,
+        Err(e) => {
+            tracing::warn!("Letting OpenCode ask before each of Quay's tools: can't read {}", e);
+            return Vec::new();
+        }
     };
     tools.iter().copied().filter(|tool| !configs.iter().any(|config| denies(config, tool))).collect()
 }
@@ -62,22 +69,24 @@ fn opencode_name(tool: &str) -> String {
     format!("quay_{tool}")
 }
 
-/// Every configuration of the operator's there is, or `None` when one of them can't be read.
-fn operators_configs(at: &Surroundings) -> Option<Vec<Map<String, Value>>> {
+/// Every configuration of the operator's there is, or which of them can't be read and why.
+fn operators_configs(at: &Surroundings) -> Result<Vec<Map<String, Value>>, String> {
     let mut configs = Vec::new();
     for file in config_files(at) {
-        if let Some(text) = read(&file)? {
-            configs.push(object(&text)?);
+        let in_file = |e: String| format!("{}: {}", file.display(), e);
+        if let Some(text) = read(&file).map_err(in_file)? {
+            configs.push(jsonc::object(&text).map_err(in_file)?);
         }
     }
     if let Some(content) = at.content.filter(|content| !content.is_empty()) {
-        configs.push(object(content)?);
+        configs.push(jsonc::object(content).map_err(|e| format!("OPENCODE_CONFIG_CONTENT: {}", e))?);
     }
-    if let Some(permission) = set_var(at, "OPENCODE_PERMISSION") {
-        let rules = object(&permission.to_string_lossy())?;
+    if let Some(permission) = non_empty_var(at, "OPENCODE_PERMISSION") {
+        let rules = jsonc::object(&permission.to_string_lossy())
+            .map_err(|e| format!("OPENCODE_PERMISSION: {}", e))?;
         configs.push(Map::from_iter([("permission".to_string(), Value::Object(rules))]));
     }
-    Some(configs)
+    Ok(configs)
 }
 
 /// Every file OpenCode 1.x may read its configuration from, whether or not it is there. Those of
@@ -87,14 +96,14 @@ fn config_files(at: &Surroundings) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = Vec::new();
     let mut folder = |dir: PathBuf| files.extend(NAMES.map(|name| dir.join(name)));
 
-    let global = set_var(at, "XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| Some(at.home?.join(".config")));
+    let global = non_empty_var(at, "XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| Some(at.home?.join(".config")));
     if let Some(global) = &global {
         folder(global.join("opencode"));
     }
     if let Some(home) = at.home {
         folder(home.join(".opencode"));
     }
-    if let Some(dir) = set_var(at, "OPENCODE_CONFIG_DIR") {
+    if let Some(dir) = non_empty_var(at, "OPENCODE_CONFIG_DIR") {
         folder(dir.into());
     }
     if let Some(managed) = managed_folder(at) {
@@ -109,14 +118,14 @@ fn config_files(at: &Surroundings) -> Vec<PathBuf> {
         }
     }
     files.extend(global.map(|global| global.join("opencode").join("config.json")));
-    files.extend(set_var(at, "OPENCODE_CONFIG").map(PathBuf::from));
+    files.extend(non_empty_var(at, "OPENCODE_CONFIG").map(PathBuf::from));
     files
 }
 
 /// Where an administrator puts OpenCode's configuration.
 fn managed_folder(at: &Surroundings) -> Option<PathBuf> {
     if cfg!(windows) {
-        Some(PathBuf::from(set_var(at, "ProgramData")?).join("opencode"))
+        Some(PathBuf::from(non_empty_var(at, "ProgramData")?).join("opencode"))
     } else if cfg!(target_os = "macos") {
         Some("/Library/Application Support/opencode".into())
     } else {
@@ -125,25 +134,17 @@ fn managed_folder(at: &Surroundings) -> Option<PathBuf> {
 }
 
 /// The variable `name` of the terminal's environment, unless it is empty.
-fn set_var(at: &Surroundings, name: &str) -> Option<OsString> {
+fn non_empty_var(at: &Surroundings, name: &str) -> Option<OsString> {
     (at.var)(name).filter(|value| !value.is_empty())
 }
 
-/// The text of `file`, which is `Some(None)` when there is no such file and `None` when it can't
-/// be read.
-fn read(file: &Path) -> Option<Option<String>> {
+/// The text of `file`, or `None` when there is no such file.
+fn read(file: &Path) -> Result<Option<String>, String> {
     match std::fs::metadata(file) {
-        Ok(found) if found.len() > LARGEST_FILE => None,
-        Ok(_) => Some(Some(std::fs::read_to_string(file).ok()?)),
-        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) => Some(None),
-        Err(_) => None,
-    }
-}
-
-fn object(text: &str) -> Option<Map<String, Value>> {
-    match jsonc::parse(text)? {
-        Value::Object(object) => Some(object),
-        _ => None,
+        Ok(found) if found.len() > LARGEST_FILE => Err(format!("it is larger than {} bytes", LARGEST_FILE)),
+        Ok(_) => std::fs::read_to_string(file).map(Some).map_err(|e| e.to_string()),
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) => Ok(None),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -174,30 +175,28 @@ fn is_denial(rule: &Value) -> bool {
 
 /// Whether OpenCode's `pattern` fits `name`: `*` is any characters and `?` is one, in any case.
 fn fits(pattern: &str, name: &str) -> bool {
-    fn fits(pattern: &[u8], name: &[u8]) -> bool {
-        // Where to take up again when the rest doesn't fit: after the last `*`, one character on
-        let (mut p, mut n, mut star) = (0, 0, None);
-        while n < name.len() {
-            match pattern.get(p) {
-                Some(b'*') => {
-                    star = Some((p + 1, n));
-                    p += 1;
-                }
-                Some(&byte) if byte == b'?' || byte.eq_ignore_ascii_case(&name[n]) => {
-                    p += 1;
-                    n += 1;
-                }
-                _ => match star {
-                    Some((after, at)) => {
-                        star = Some((after, at + 1));
-                        p = after;
-                        n = at + 1;
-                    }
-                    None => return false,
-                },
+    let (pattern, name) = (pattern.as_bytes(), name.as_bytes());
+    // Where to take up again when the rest doesn't fit: after the last `*`, one character on
+    let (mut p, mut n, mut star) = (0, 0, None);
+    while n < name.len() {
+        match pattern.get(p) {
+            Some(b'*') => {
+                star = Some((p + 1, n));
+                p += 1;
             }
+            Some(&byte) if byte == b'?' || byte.eq_ignore_ascii_case(&name[n]) => {
+                p += 1;
+                n += 1;
+            }
+            _ => match star {
+                Some((after, at)) => {
+                    star = Some((after, at + 1));
+                    p = after;
+                    n = at + 1;
+                }
+                None => return false,
+            },
         }
-        pattern[p..].iter().all(|&byte| byte == b'*')
     }
-    fits(pattern.as_bytes(), name.as_bytes())
+    pattern[p..].iter().all(|&byte| byte == b'*')
 }

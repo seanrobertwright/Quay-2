@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
-use super::{commit_stamp, opencode_permission};
+use super::{commit_stamp, jsonc, opencode_permission};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::plugin_watch::LaunchRef;
 use super::screen::{self, ScreenKeeper};
@@ -142,15 +142,19 @@ const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
 
 /// The value an OpenCode terminal's `OPENCODE_CONFIG_CONTENT` receives: the Quay MCP server
 /// as `mcp.quay`, added to `workspace`, the value the terminal would otherwise get, when that
-/// is a JSON object. The server is `remote`, and its header names `{env:QUAY_A2A_TOKEN}`,
+/// is a JSON object (comments and trailing commas aside). The server is `remote`, and its header names `{env:QUAY_A2A_TOKEN}`,
 /// which OpenCode expands from its environment, so the token stays out of the config.
 /// `oauth: false` keeps OpenCode from trying to sign in to it, and `timeout` is how long OpenCode
 /// waits on a call to it, in milliseconds. Of that server's tools, `allowed` run without a prompt.
 pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
-    let mut config = workspace
-        .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
-        .filter(serde_json::Value::is_object)
-        .unwrap_or_else(|| serde_json::json!({}));
+    let mut config = match workspace.filter(|content| !content.is_empty()).map(jsonc::object) {
+        Some(Ok(object)) => serde_json::Value::Object(object),
+        Some(Err(e)) => {
+            tracing::warn!("The workspace's {} is left out: {}", OPENCODE_CONFIG_VAR, e);
+            serde_json::json!({})
+        }
+        None => serde_json::json!({}),
+    };
     if !config["mcp"].is_object() {
         config["mcp"] = serde_json::json!({});
     }
@@ -1635,6 +1639,11 @@ mod tests {
                 "mcp": { "docs": { "type": "local" }, "quay": quay }
             })
         );
+        assert_eq!(
+            merged("{\n  // mine\n  \"model\": \"x\",\n}"),
+            serde_json::json!({ "model": "x", "mcp": { "quay": quay } })
+        );
+        assert_eq!(merged(""), serde_json::json!({ "mcp": { "quay": quay } }));
         assert_eq!(merged(r#"{"mcp":"nonsense"}"#), serde_json::json!({ "mcp": { "quay": quay } }));
         assert_eq!(merged("not json"), serde_json::json!({ "mcp": { "quay": quay } }));
         assert_eq!(merged("[1, 2]"), serde_json::json!({ "mcp": { "quay": quay } }));

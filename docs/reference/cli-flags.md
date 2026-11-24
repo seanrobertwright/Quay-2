@@ -109,7 +109,7 @@ Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of 
 }
 ```
 
-`timeout` is how long OpenCode waits on a call to this server, in milliseconds. OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, Quay keeps it and adds `mcp.quay` to it.
+`timeout` is how long OpenCode waits on a call to this server, in milliseconds. OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, which may have comments and trailing commas, Quay keeps it and adds `mcp.quay` to it.
 
 ---
 
