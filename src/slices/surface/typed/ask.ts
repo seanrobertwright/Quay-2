@@ -1,6 +1,7 @@
 // quay_ask's two pure functions: the surface its checked arguments make, and the result its action
 // makes. The names of its parts are here too, for the layout that places them.
 import type { CreateSurface, SurfaceAction, SurfaceComponent } from "../surfaceTypes.ts";
+import { plainText, textOfPlain } from "./plainText.ts";
 
 /** A checked `quay_ask` call. Mirrors `Ask`. */
 export interface AskArguments {
@@ -59,7 +60,7 @@ export function questionsIn(components: readonly SurfaceComponent[]): AskedQuest
   for (let parts = questionParts(0); byId.has(parts.question); parts = questionParts(questions.length)) {
     const choice = byId.get(parts.choice);
     const ofOptions = choice?.variant === "multipleSelection" ? "several" : "one";
-    questions.push({ parts, question: String(byId.get(parts.question)?.text), kind: choice ? ofOptions : "words" });
+    questions.push({ parts, question: textOfPlain(String(byId.get(parts.question)?.text)), kind: choice ? ofOptions : "words" });
   }
   return questions;
 }
@@ -83,7 +84,7 @@ export function expand(ask: AskArguments, surfaceId: string): CreateSurface {
   const questions = ask.questions.flatMap(({ question, options, multiple }, i): SurfaceComponent[] => {
     const names = questionParts(i);
     return [
-      { id: names.question, component: "Text", text: question },
+      { id: names.question, component: "Text", text: plainText(question) },
       ...(options.length > 0
         ? [
             {
