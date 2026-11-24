@@ -787,7 +787,7 @@ export function App() {
   }, [pendingView, activeTerminalId]);
 
   // The Projects panel's ticket pipeline (#651). A ticket picked with no terminal, or a lane's
-  // blocker, opens in the companion; picking a terminal or opening Activity leaves it.
+  // blocker, opens in the companion; picking a terminal leaves it, and so does asking for a view.
   const [companionTicket, setCompanionTicket] = useState<CompanionTicket | null>(null);
   const selectFromPanel = (id: string) => {
     setCompanionTicket(null);
@@ -835,11 +835,7 @@ export function App() {
     if (terminalId !== activeTerminalId) showTerminal(terminalId);
     setPendingView({ terminalId, view, entryId });
   };
-  // A ticket the pipeline opened over the companion's views gives way, so that Activity is seen.
-  const openActivity = (terminalId: string, entryId?: string) => {
-    setCompanionTicket(null);
-    showCompanionView(terminalId, "activity", entryId);
-  };
+  const openActivity = (terminalId: string, entryId?: string) => showCompanionView(terminalId, "activity", entryId);
   // A Waiting on you row selects its terminal; a permission request opens in Activity to answer.
   const openWaiting = (item: AttentionItem) => {
     if (!item.terminalId) return;
