@@ -10,20 +10,23 @@ import type { RunKind } from "../terminal/types.ts";
 import type { AntigravityConnection, ConnectState } from "./connectTypes.ts";
 
 const { CannotShowMark } = await import("./CannotShowMark.tsx");
-const { forgetAntigravity, onConnectRowAsked } = await import("./antigravity.ts");
+const { forgetAntigravity, onConnectRowAsked, readAntigravity } = await import("./antigravity.ts");
 
 const NAME = "Why this terminal can't show surfaces";
 
-/** When each terminal's launch began, on the faked clock, whether it has shaken hands, and who was asked about. */
+/** When each terminal's launch began, on the faked clock, whether it has shaken hands, when it was first prompted if it connects then, and who was asked about. */
 let clock = 0;
-let launches: Record<string, { began: number; seen: boolean } | undefined> = {};
+let launches: Record<string, { began: number; seen: boolean; prompted?: number | null } | undefined> = {};
 let asked: string[] = [];
 
 const GRACE = 60_000;
 
 function handshakeOf(terminalId: string) {
   const launch = launches[terminalId];
-  return launch ? { seen: launch.seen, grace_left_ms: Math.max(0, launch.began + GRACE - clock) } : null;
+  if (!launch) return null;
+  const left = (from: number) => Math.max(0, from + GRACE - clock);
+  const { began, seen, prompted = began } = launch;
+  return { seen, grace_left_ms: left(began), prompted_grace_left_ms: prompted === null ? null : left(prompted) };
 }
 
 let mounted: { root: Root; container: HTMLElement }[] = [];
@@ -281,6 +284,26 @@ test("what is wrong with Antigravity's entry is read as the mark is opened", asy
     assert.equal(panel()?.querySelector("button") !== null, linked, state);
     await unmount();
   }
+});
+
+test("a connected Antigravity terminal has the grace from its first prompt, when it starts its servers, and none before", async () => {
+  antigravityIs("connected");
+  launches.a = { began: 0, seen: false, prompted: null };
+  const { container } = await render(mark("antigravity"));
+  await act(async () => void (await readAntigravity()));
+  await pass(GRACE * 10);
+  assert.equal(shown(container), false, "nobody has prompted it");
+
+  launches.a = { began: 0, seen: false, prompted: clock };
+  await tellOf("a");
+  await pass(GRACE - 1);
+  assert.equal(shown(container), false);
+  await pass(1);
+  assert.equal(shown(container), true);
+
+  launches.a = { began: 0, seen: true, prompted: 0 };
+  await tellOf("a");
+  assert.equal(shown(container), false);
 });
 
 const press = (key: string) =>

@@ -30,7 +30,7 @@ pub fn connect_surfaces(surfaces: &SurfaceTools, pty_manager: &PtyManager, a2a_r
                 followed.launch_over(&launch.terminal_id, launch.launch);
             }
         }
-        LaunchEvent::ShookHands(_) => {}
+        LaunchEvent::ShookHands(_) | LaunchEvent::Prompted(_) => {}
         LaunchEvent::Over(launch) => {
             followed.launch_over(&launch.terminal_id, launch.launch);
             router.launch_over(&launch);

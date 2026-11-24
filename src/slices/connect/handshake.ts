@@ -9,10 +9,15 @@ interface Handshake {
   seen: boolean;
   /** How much of the launch's grace is left, in milliseconds. */
   grace_left_ms: number;
+  /** What is left to a CLI that connects at its first prompt, from that prompt, or null before it. */
+  prompted_grace_left_ms: number | null;
 }
 
-/** Whether the terminal's launch has had its grace and its CLI has not shaken hands. */
-export function useHandshakeOverdue(terminalId: string): boolean {
+/**
+ * Whether the terminal's launch has had its grace and its CLI has not shaken hands. `fromPrompt` is
+ * whether a CLI that connects at its first prompt is given the grace from that prompt.
+ */
+export function useHandshakeOverdue(terminalId: string, fromPrompt: boolean): boolean {
   // The terminal it was found of, so that nothing found of one is said of another
   const [lateTerminal, setLateTerminal] = useState<string | null>(null);
 
@@ -31,7 +36,8 @@ export function useHandshakeOverdue(terminalId: string): boolean {
         console.warn(`Could not read the handshake of ${terminalId}:`, error);
       }
       if (!drawn || mine !== newest) return;
-      const graceLeft = handshake && !handshake.seen ? handshake.grace_left_ms : null;
+      const left = handshake && (fromPrompt ? handshake.prompted_grace_left_ms : handshake.grace_left_ms);
+      const graceLeft = handshake?.seen ? null : left;
       setLateTerminal(graceLeft === 0 ? terminalId : null);
       // Read again when the grace is over, so it is Rust that says it is
       if (graceLeft) timer = window.setTimeout(() => void read(), graceLeft);
@@ -46,7 +52,7 @@ export function useHandshakeOverdue(terminalId: string): boolean {
       window.clearTimeout(timer);
       void listening.then((unlisten) => unlisten());
     };
-  }, [terminalId]);
+  }, [terminalId, fromPrompt]);
 
   return lateTerminal === terminalId;
 }

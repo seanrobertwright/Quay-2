@@ -57,6 +57,8 @@ pub struct PluginWatch {
     first_output_at: Option<Instant>,
     /// When the launch began.
     began: Instant,
+    /// When its first turn started, for a CLI that connects then (`RunKind::connects_at_first_prompt`).
+    prompted_at: Option<Instant>,
     /// Whether the launch's CLI has shaken hands with Quay's MCP server.
     handshake: bool,
     /// Whether the launch's process has exited.
@@ -72,6 +74,7 @@ impl PluginWatch {
             hint_dismissed: false,
             first_output_at: None,
             began: Instant::now(),
+            prompted_at: None,
             handshake: false,
             exited: false,
         }
@@ -107,6 +110,15 @@ impl PluginWatch {
                 .is_some_and(|at| now.saturating_duration_since(at) >= PLUGIN_SILENCE)
     }
 
+    /// Records the start of a turn. Whether it is the launch's first, of a CLI that connects then.
+    pub fn start_turn(&mut self) -> bool {
+        let first = self.run_kind.connects_at_first_prompt() && self.prompted_at.is_none();
+        if first {
+            self.prompted_at = Some(Instant::now());
+        }
+        first
+    }
+
     /// Records the CLI's handshake with Quay's MCP server, unless the launch's process has exited.
     /// Returns whether it is the launch's first.
     pub fn shake_hands(&mut self) -> bool {
@@ -123,7 +135,9 @@ impl PluginWatch {
 
     /// How the launch stands with Quay's MCP server at `now`, or `None` when its process has exited.
     pub fn handshake(&self, now: Instant) -> Option<Handshake> {
-        (!self.exited).then(|| Handshake::at(now, self.began, self.handshake))
+        let connects_from =
+            if self.run_kind.connects_at_first_prompt() { self.prompted_at } else { Some(self.began) };
+        (!self.exited).then(|| Handshake::at(now, self.began, connects_from, self.handshake))
     }
 
     /// Marks the launch's process exited and clears its CLI's handshake.

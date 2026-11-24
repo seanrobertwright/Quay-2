@@ -69,7 +69,11 @@ const MarkButton = ({ terminalId, kind }: CannotShowMarkProps) => {
   );
 };
 
-const AgentMark = (props: CannotShowMarkProps) => useHandshakeOverdue(props.terminalId) && <MarkButton {...props} />;
+const AgentMark = (props: CannotShowMarkProps) => {
+  // Once it is connected, Antigravity starts its servers at its first prompt
+  const fromPrompt = useAntigravity()?.state === "connected" && props.kind === "antigravity";
+  return useHandshakeOverdue(props.terminalId, fromPrompt) && <MarkButton {...props} />;
+};
 
 /**
  * The mark on the title bar of a terminal that can't show surfaces: an info button that says why, and

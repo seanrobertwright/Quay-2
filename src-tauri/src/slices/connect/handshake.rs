@@ -21,12 +21,16 @@ pub async fn terminal_handshake(
     Ok(if OFFERED { pty_manager.handshake(&terminal_id, Instant::now()) } else { None })
 }
 
-/// Sends the window `terminal-handshake` with a terminal's id when a launch of it is listed, its CLI
-/// shakes hands for the first time or it is over, and when the terminal closes.
+/// Sends the window `terminal-handshake` with a terminal's id when a launch of it is listed, its CLI is
+/// first prompted if it connects then, its CLI shakes hands for the first time or it is over, and when the
+/// terminal closes.
 pub fn report_handshakes(pty_manager: &PtyManager, webview: WebviewEvents) {
     pty_manager.add_launch_watcher(move |event| {
         let terminal_id = match event {
-            LaunchEvent::Listed(launch) | LaunchEvent::ShookHands(launch) | LaunchEvent::Over(launch) => launch.terminal_id,
+            LaunchEvent::Listed(launch)
+            | LaunchEvent::Prompted(launch)
+            | LaunchEvent::ShookHands(launch)
+            | LaunchEvent::Over(launch) => launch.terminal_id,
             LaunchEvent::Closed(terminal_id) => terminal_id,
         };
         webview.emit("terminal-handshake", json!({ "terminal_id": terminal_id }));

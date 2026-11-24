@@ -42,6 +42,8 @@ pub enum LaunchEvent {
     Listed(LaunchRef),
     /// The launch's CLI has shaken hands with Quay's MCP server, for the first time.
     ShookHands(LaunchRef),
+    /// The launch's first turn has started, of a CLI that connects to Quay's MCP server then.
+    Prompted(LaunchRef),
     /// The launch is over: its process exited, or a later launch has begun.
     Over(LaunchRef),
     /// The terminal with this id closed.
@@ -1079,9 +1081,13 @@ impl PtyManager {
         launch: &LaunchRef,
         report: &TurnReport,
     ) -> Option<TerminalStatusPayload> {
+        let mut prompted = false;
         let moved = {
             let mut watches = self.plugin_watches.lock();
-            launch.current_in(&mut watches)?;
+            let watch = launch.current_in(&mut watches)?;
+            if report.starts_turn {
+                prompted = watch.start_turn();
+            }
             let mut info_map = self.terminals_info.lock();
             let info = info_map.get_mut(&launch.terminal_id)?;
             match &report.status {
@@ -1092,6 +1098,9 @@ impl PtyManager {
                 _ => None,
             }
         };
+        if prompted {
+            self.notify_launch_watchers(LaunchEvent::Prompted(launch.clone()));
+        }
         let watchers = self.turn_watchers.lock().clone();
         for watcher in watchers {
             if report.starts_turn {

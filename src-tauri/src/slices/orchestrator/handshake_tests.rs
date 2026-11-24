@@ -11,6 +11,7 @@ use super::mcp_tests::TestBridge;
 use crate::slices::connect::handshake::report_handshakes;
 use crate::slices::pty::handshake::Handshake;
 use crate::slices::pty::models::RunKind;
+use crate::slices::pty::osc7501::TurnReport;
 use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::slices::pty::PtyManager;
 use crate::webview::WebviewEvents;
@@ -29,7 +30,7 @@ fn told(terminals: &PtyManager, later: Duration) -> Option<Handshake> {
 }
 
 fn not_seen(grace_left_ms: u64) -> Option<Handshake> {
-    Some(Handshake { seen: false, grace_left_ms })
+    Some(Handshake { seen: false, grace_left_ms, prompted_grace_left_ms: Some(grace_left_ms) })
 }
 
 #[tokio::test]
@@ -121,4 +122,26 @@ async fn the_window_hears_of_a_relaunch_and_of_an_exit() {
 
     terminals.exit_launch(&launch, Some(0));
     assert_eq!(sent.lock().pop().unwrap().1, json!({ "terminal_id": "term-mcp" }));
+}
+
+#[tokio::test]
+async fn a_cli_that_connects_at_its_first_prompt_has_the_grace_from_then_too() {
+    let bridge = TestBridge::start_with(RunKind::Antigravity, true).await;
+    let terminals = &bridge.pty_manager;
+    let launch = terminals.begin_launch("term-mcp", RunKind::Antigravity);
+    assert_eq!(told(terminals, GRACE), Some(Handshake { seen: false, grace_left_ms: 0, prompted_grace_left_ms: None }));
+
+    let sent = listen(terminals);
+    let turn = || TurnReport { status: None, starts_turn: true, answer: None, ends_turn: false };
+    terminals.apply_turn_report(&launch, &turn());
+    let left = told(terminals, GRACE / 2).unwrap().prompted_grace_left_ms.unwrap();
+    assert!((29_000..=30_000).contains(&left), "{left}");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    terminals.apply_turn_report(&launch, &turn());
+    let again = told(terminals, GRACE / 2).unwrap().prompted_grace_left_ms.unwrap();
+    assert!(again < left, "a later turn starts no new grace");
+    assert_eq!(*sent.lock(), [("terminal-handshake".to_string(), json!({ "terminal_id": "term-mcp" }))]);
+
+    terminals.begin_launch("term-mcp", RunKind::Antigravity);
+    assert_eq!(told(terminals, GRACE).unwrap().prompted_grace_left_ms, None, "a relaunch awaits its own first prompt");
 }
