@@ -16,9 +16,12 @@ interface ButtonProps extends Pointed {
   ref?: Ref<HTMLButtonElement>;
 }
 
+/** A long label wraps, in a button as high as it takes. */
+const FITS = "h-auto! min-h-7 max-w-full wrap-anywhere";
+
 /** A plain button. It submits no form. A destructive choice has no variant here; it is a card's alone. */
 export const Button = ({ variant = "secondary", disabled = false, onClick, children, ref, ...pointed }: ButtonProps) => (
-  <button ref={ref} type="button" disabled={disabled} onClick={onClick} className={VARIANT[variant]} {...pointed}>
+  <button ref={ref} type="button" disabled={disabled} onClick={onClick} className={`${VARIANT[variant]} ${FITS}`} {...pointed}>
     {children}
   </button>
 );

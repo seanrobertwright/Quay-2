@@ -223,3 +223,12 @@ test("a DateTimeInput shows and writes the digits of its zone, and says which zo
     await startPage();
   }
 });
+
+test("a DateTimeInput keeps its zone while it is empty, as a native input is for a moment when its year is typed", async () => {
+  const content = await drawAll([{ id: "when", component: "DateTimeInput", label: "When", enableDate: true, enableTime: true, value: at("/when") }, shows("/when")], { when: "2026-10-21T14:06+02:00" });
+  const [input] = inputs(content);
+  await put(input, "");
+  assert.deepEqual([shown(content), labelOf(input)], ["", "When (UTC+02:00)"]);
+  await put(input, "2027-01-02T03:04");
+  assert.deepEqual([shown(content), labelOf(input)], ["2027-01-02T03:04+02:00", "When (UTC+02:00)"]);
+});
