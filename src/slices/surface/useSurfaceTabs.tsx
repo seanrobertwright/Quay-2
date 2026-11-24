@@ -62,8 +62,8 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
   );
   // The latest request to open a tab. Each has a `seq` of its own.
   const [asked, setAsked] = useState<{ id: string; seq: number } | null>(null);
-  /** By tab, why closing it did not dismiss its surface. */
-  const [refusals, setRefusals] = useState<ReadonlyMap<string, string>>(new Map());
+  /** Why closing a tab did not dismiss its surface, by the surface as it was then. */
+  const [refusals, setRefusals] = useState<ReadonlyMap<SurfaceRecord, string>>(new Map());
 
   // A tab that has gone, or whose project is no longer active, has been left
   const frontIsGone = frontId !== null && frontId.startsWith(PREFIX) && !tabbed.some(({ id }) => id === frontId);
@@ -94,8 +94,8 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
     const refuse = (why: string | null) =>
       setRefusals((before) => {
         const after = new Map(before);
-        if (why === null) after.delete(id);
-        else after.set(id, why);
+        if (why === null) after.delete(record);
+        else after.set(record, why);
         return after;
       });
     refuse(null);
@@ -123,7 +123,7 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
             terminal={terminal}
             inFront={id === frontId}
             asked={asked?.id === id ? asked.seq : 0}
-            notDismissed={refusals.get(id) ?? null}
+            notDismissed={refusals.get(record) ?? null}
           />
         ),
       };

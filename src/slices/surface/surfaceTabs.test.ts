@@ -214,6 +214,17 @@ test("a review whose tab could not be closed says why, and stays", async () => {
   assert.equal(tabs(container).length, 1);
 });
 
+test("why a tab could not be closed is no longer said once its review is decided", async () => {
+  onDismiss = () => Promise.reject("Not dismissed: its answer is being sent.");
+  const record = await acceptedReview("review_1");
+  const container = await load([record]);
+  await openTab(container);
+  await click(closer(tabs(container)[0]));
+  await change(decided(record, { verdict: "approved" }));
+  assert.equal(band(container), "Approved and sent to the agent.");
+  assert.ok(frame(container)!.querySelector('[role="alert"]') === null);
+});
+
 test("what was put in a review is saved when its tab is left, is there when it is back, and after a reload", async () => {
   const record = await acceptedReview("review_1", REVIEW, "t1", 7);
   const container = await load([record]);
