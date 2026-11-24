@@ -8,8 +8,7 @@ use tauri::State;
 
 use super::disk::ThisComputer;
 use super::image_file::{read_file, reading, NotRead, MOST_BYTES};
-use super::local_path::{resolve, Refused};
-use super::show_file::STYLE;
+use super::local_path::{resolve, Refused, STYLE};
 use super::store::{ImageRefused, SurfaceKey, MOST_IMAGES};
 use super::tools::SurfaceTools;
 use crate::slices::pty::manager::PtyManager;
