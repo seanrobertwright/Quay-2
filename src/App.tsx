@@ -31,6 +31,7 @@ import { canMerge, DEFAULT_MERGE_METHOD } from "./slices/companion/readiness";
 import type { PullRequestAsk } from "./slices/companion/PullRequestView";
 import type { MergeMethod } from "./slices/github/types";
 import { SlotLayer } from "./slices/stage/SlotLayer";
+import { warnOfRedirectionGuard } from "./slices/stage/redirectionGuard";
 import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
 import { messageEntryId } from "./slices/companion/activity";
@@ -209,6 +210,11 @@ export function App() {
   // The module whose panel shows beside the module bar; null while the panel is folded.
   const [openModule, setOpenModule] = useState<ModuleId | null>("projects");
   const modulePanelId = useId();
+
+  // Once at startup: whether Quay inherited RedirectionGuard, shown as a shell-wide warning (#629)
+  useEffect(() => {
+    void warnOfRedirectionGuard();
+  }, []);
 
   const handleOpenInVsCode = useCallback(
     async (projectPath: string) => {
