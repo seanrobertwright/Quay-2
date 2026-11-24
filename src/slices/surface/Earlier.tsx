@@ -4,6 +4,7 @@ import { FoldButton } from "./FoldButton.tsx";
 import { LockedSurface } from "./LockedSurface.tsx";
 import { lockedState } from "./lockedState.ts";
 import { lookOf } from "./looks/index.ts";
+import type { SurfaceFocus } from "./SurfaceView.tsx";
 import { surfaceKey } from "./surfaceAttention.ts";
 import { dismissLocked } from "./surfaceHost.ts";
 import { isUnanswered, type SurfaceRecord } from "./surfaceTypes.ts";
@@ -54,6 +55,11 @@ interface EarlierProps {
   locked: readonly SurfaceRecord[];
 }
 
+interface FocusedEarlierProps extends EarlierProps {
+  /** The request to show one of them, which opens it. */
+  focus: SurfaceFocus | null;
+}
+
 /** The button that dismisses every surface of `locked`. `onRefusal` gets why they stay, and null while it is tried. */
 const DismissAll = ({ terminal, locked, onRefusal }: EarlierProps & { onRefusal: (why: string | null) => void }) => {
   // A second click can come before the first is answered.
@@ -86,11 +92,18 @@ const DismissAll = ({ terminal, locked, onRefusal }: EarlierProps & { onRefusal:
 };
 
 /** The fold a terminal's locked surfaces are under. One of them may be open in its place. */
-export const Earlier = ({ terminal, locked }: EarlierProps) => {
+export const Earlier = ({ terminal, locked, focus }: FocusedEarlierProps) => {
   const listId = useId();
   const [shown, setShown] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [followed, setFollowed] = useState<number | null>(null);
+  const focused = focus && focus.seq !== followed ? locked.find(({ id }) => id === focus.surfaceId) : undefined;
+  if (focus && focused) {
+    setFollowed(focus.seq);
+    setShown(true);
+    setOpen(surfaceKey(focused));
+  }
   return (
     <div data-earlier className="border-t border-[#30363d] pt-1">
       <div className="flex items-center">

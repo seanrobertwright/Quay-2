@@ -140,6 +140,8 @@ export interface SurfaceRecord extends SurfaceKey {
   /** The order it was committed with. Opened again or replaced, it keeps that. */
   began: number;
   change: number;
+  /** Where it stands among the locked ones: the last change to it that was not the operator's move of it. */
+  locked_order: number;
   asks: boolean;
   /** When it was shown, in milliseconds since the epoch. */
   shown_at: number;
@@ -159,6 +161,9 @@ export interface SurfaceRecord extends SurfaceKey {
   /** The run a board shows, or null for another surface. */
   board: BoardRun | null;
 }
+
+/** Orders locked surfaces, the newest first. */
+export const newestLockedFirst = (a: SurfaceRecord, b: SurfaceRecord): number => b.locked_order - a.locked_order;
 
 /** Where a surface is drawn: in the place its agent chose, unless the operator moved it. */
 export const drawnIn = ({ place, as_tab }: SurfaceRecord): SurfacePlace => (as_tab ? "tab" : place);

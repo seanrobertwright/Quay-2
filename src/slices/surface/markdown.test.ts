@@ -57,6 +57,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     revision: 1,
     order: 1,
     change: 1,
+    locked_order: 1,
     asks: false,
     shown_at: 0,
     answer: null,

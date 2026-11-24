@@ -74,7 +74,7 @@ interface Committed extends Pick<SurfaceRecord, "tool" | "place" | "id" | "order
 export async function acceptedSurface({ tool, place, id, terminal, order }: Committed, args: unknown): Promise<SurfaceRecord> {
   const verdict = await verdictOn({ call: verdicts().length + 1, tool, surface_id: id, arguments: args });
   assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: terminal, id, tool, title: id, place, as_tab: false, state: verdict.state, revision: 1, order, began: order, change: order, asks: true, shown_at: Date.now(), updated_at: Date.now(), carried: { from: 1, set: {} }, reopened: null, answer: null, answered_at: null, ended_at: null, withdrawn_at: null, board: null };
+  return { terminal_id: terminal, id, tool, title: id, place, as_tab: false, state: verdict.state, revision: 1, order, began: order, change: order, locked_order: order, asks: true, shown_at: Date.now(), updated_at: Date.now(), carried: { from: 1, set: {} }, reopened: null, answer: null, answered_at: null, ended_at: null, withdrawn_at: null, board: null };
 }
 
 /** The question `id` of `terminal`, as Rust holds it once the webview has accepted `ask`. */

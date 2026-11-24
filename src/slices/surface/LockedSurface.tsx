@@ -10,6 +10,7 @@ import { useSurfacesRead } from "./surfaceHost.ts";
 import { isUnanswered, type SurfaceRecord } from "./surfaceTypes.ts";
 import { unsentIn } from "./unsent.ts";
 import { useDismiss } from "./useDismiss.ts";
+import { useMove } from "./useMove.ts";
 
 /** What was asked, folded behind `label`. */
 const Folded = ({ label, children }: { label: string; children: ReactNode }) => {
@@ -45,11 +46,12 @@ export const LockedSurface = ({ record, terminal, fills = false, notDismissed = 
   const unanswered = isUnanswered(record);
   const [refusal, setRefusal] = useState<string | null>(null);
   const dismiss = useDismiss(record, setRefusal);
+  const move = useMove(record, setRefusal);
   // What is unsent in it comes with the list
   const read = useSurfacesRead();
   const texts = unanswered && read ? typedIn(components, unsentIn(record)) : [];
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
           {(unanswered || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}

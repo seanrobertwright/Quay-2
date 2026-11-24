@@ -11,11 +11,17 @@ export function surface(id: string, over: Partial<SurfaceRecord> = {}): SurfaceR
   change += 1;
   const text = { id: "root", component: "Text", text: `What ${id} says` };
   const state: SurfaceRecord["state"] = { version: "1.0", createSurface: { surfaceId: id, catalogId: "urn:quay:a2ui:catalog:v1", components: [text], dataModel: {} } };
-  return { terminal_id: "t1", id, tool: "quay_ask", title: "", place: "companion", as_tab: false, state, revision: 1, order: change, began: over.order ?? change, change, asks: true, shown_at: Date.now(), updated_at: over.shown_at ?? Date.now(), carried: { from: 1, set: {} }, reopened: null, answer: null, answered_at: null, ended_at: null, withdrawn_at: null, board: null, ...over };
+  return { terminal_id: "t1", id, tool: "quay_ask", title: "", place: "companion", as_tab: false, state, revision: 1, order: change, began: over.order ?? change, change, locked_order: over.change ?? change, asks: true, shown_at: Date.now(), updated_at: over.shown_at ?? Date.now(), carried: { from: 1, set: {} }, reopened: null, answer: null, answered_at: null, ended_at: null, withdrawn_at: null, board: null, ...over };
 }
 
 /** `record` changed by `over`, as Rust holds it after. */
-export const changed = (record: SurfaceRecord, over: Partial<SurfaceRecord>): SurfaceRecord => ({ ...record, change: (change += 1), ...over });
+export function changed(record: SurfaceRecord, over: Partial<SurfaceRecord>): SurfaceRecord {
+  change += 1;
+  return { ...record, change, locked_order: change, ...over };
+}
+
+/** `record` as Rust holds it once the operator has moved it. */
+export const moved = (record: SurfaceRecord, asTab: boolean): SurfaceRecord => changed(record, { as_tab: asTab, locked_order: record.locked_order });
 
 /** Lets what is under way finish: promises and what they draw. */
 export const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));

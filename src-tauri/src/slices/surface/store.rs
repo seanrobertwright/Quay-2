@@ -28,7 +28,8 @@ pub use moved::MoveRefused;
 pub use raw::{RawChange, RawRefused};
 
 /// The most locked surfaces a terminal keeps. Past it the one whose last change is the oldest leaves at
-/// once, which counts as deleted. That change is its lock, or the last its agent sent of a board after it.
+/// once, which counts as deleted. That change is its lock, or the last its agent sent of a board after it:
+/// the operator's move of it is none.
 const MOST_LOCKED: usize = 10;
 
 /// How many of a terminal's surfaces that have left can still be read. Past it the one that left first
@@ -69,6 +70,8 @@ pub struct SurfaceRecord {
     pub began: u64,
     /// Rises with every change to any surface, so an older record of a surface can be told.
     pub change: u64,
+    /// Where it stands among the locked ones: the last change to it that was not the operator's move of it.
+    pub locked_order: u64,
     /// Whether the surface has an action to its agent.
     pub asks: bool,
     /// When it was shown, in milliseconds since the epoch.
@@ -287,7 +290,10 @@ struct Surface {
     revision: u64,
     order: u64,
     began: u64,
+    /// The last change to it that was not the operator's move of it.
     change: u64,
+    /// The change of the last such move, or 0 when there was none.
+    moved: u64,
     shown_at: i64,
     updated_at: i64,
     carried: Carried,
@@ -327,6 +333,7 @@ impl Surface {
             order: change,
             began: change,
             change,
+            moved: 0,
             shown_at: now,
             updated_at: now,
             carried: Carried::new(1),
@@ -392,7 +399,8 @@ impl Surface {
             revision: self.revision,
             order: self.order,
             began: self.began,
-            change: self.change,
+            change: self.change.max(self.moved),
+            locked_order: self.change,
             asks: !matches!(self.phase, Phase::NotAsking | Phase::Ended { asked: false, .. }),
             shown_at: self.shown_at,
             updated_at: self.updated_at,

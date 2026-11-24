@@ -6,8 +6,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::place::Place;
-use super::raw_seam::{action, create, created, delete, makes, makes_one, messages, plan, told, told_by_rust, update};
-use super::store::MoveRefused;
+use super::raw_seam::{action, create, created, delete, makes, makes_one, messages, plan, sent, told, told_by_rust, update};
+use super::store::{MoveRefused, SurfaceRecord};
 use super::test_seam::{accepted, key, start};
 use super::timing::Timing;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
@@ -26,7 +26,7 @@ async fn a_move_keeps_the_surface_and_its_waiting_call_and_is_not_told_to_the_ag
         let moved = seam.surfaces.move_surface(&key("term-a", "plan"), as_tab).unwrap();
         assert_eq!(webview.next_shown().await, moved);
         assert!(moved.change > before.change);
-        let expected = super::store::SurfaceRecord { as_tab, change: moved.change, ..before.clone() };
+        let expected = SurfaceRecord { as_tab, change: moved.change, ..before.clone() };
         assert_eq!(moved, expected, "nothing else of it changes");
         before = moved;
     }
@@ -83,8 +83,6 @@ async fn a_move_lasts_through_an_answer_and_an_opening_again_and_not_through_a_r
     let surfaces = seam.surfaces.clone();
     tokio::task::spawn_blocking(move || surfaces.answer(&key("term-a", "plan"), 1, action())).await.unwrap().unwrap();
     assert!(webview.next_shown().await.as_tab);
-    let refused = seam.surfaces.move_surface(&key("term-a", "plan"), false).unwrap_err();
-    assert_eq!(refused, MoveRefused::Locked);
 
     let _again = cli.call("quay_surface", messages(&[update("plan")]));
     seam.surfaces.verdict(webview.next_check().await.call, makes_one("plan", true));
@@ -98,7 +96,7 @@ async fn a_move_lasts_through_an_answer_and_an_opening_again_and_not_through_a_r
 }
 
 #[tokio::test]
-async fn only_a_live_raw_companion_surface_is_moved() {
+async fn only_a_raw_companion_surface_is_moved() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
     created(&seam, &mut webview, &cli, "tab", "tab", false).await;
@@ -107,11 +105,7 @@ async fn only_a_live_raw_companion_surface_is_moved() {
     let review = cli.call("quay_review", json!({ "title": "Plan", "body": "x" }));
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     webview.next_shown().await;
-    let (_open, _) = created(&seam, &mut webview, &cli, "gone", "companion", true).await;
-    let deletes = cli.call("quay_surface", messages(&[delete("gone")]));
-    seam.surfaces.verdict(webview.next_check().await.call, makes(vec![]));
-    deletes.answer().await;
-    webview.next_shown().await;
+    created(&seam, &mut webview, &cli, "plan", "companion", false).await;
     let before: Vec<Value> = seam.surfaces.surfaces().into_iter().map(|record| json!(record)).collect();
 
     for (id, why) in [
@@ -119,13 +113,70 @@ async fn only_a_live_raw_companion_surface_is_moved() {
         ("strip", MoveRefused::NotMovable),
         ("ask_1", MoveRefused::NotMovable),
         ("review_1", MoveRefused::NotMovable),
-        ("gone", MoveRefused::Locked),
         ("never", MoveRefused::NoSuchSurface),
     ] {
         assert_eq!(seam.surfaces.move_surface(&key("term-a", id), true), Err(why), "{id}");
     }
-    assert_eq!(seam.surfaces.move_surface(&key("term-b", "gone"), true), Err(MoveRefused::NoSuchSurface));
+    assert_eq!(seam.surfaces.move_surface(&key("term-b", "plan"), true), Err(MoveRefused::NoSuchSurface));
     assert!(webview.nothing_shown().await && review.is_open());
     let after: Vec<Value> = seam.surfaces.surfaces().into_iter().map(|record| json!(record)).collect();
     assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn a_locked_surface_is_moved_and_back_and_stays_as_it_locked() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let launch = seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Working);
+    let cli = seam.cli("term-a");
+    let mut locked = Vec::new();
+    for id in ["plan", "withdrawn", "ended"] {
+        let (call, shown) = created(&seam, &mut webview, &cli, id, "companion", true).await;
+        if id == "plan" {
+            seam.surfaces.answer(&key("term-a", id), 1, action()).unwrap();
+            call.answer().await;
+        } else {
+            let save = json!({ "page": 1, "save": 1, "order": shown.order, "revision": 1, "values": { "/note": id } });
+            seam.surfaces.save_unsent(&key("term-a", id), serde_json::from_value(save).unwrap()).unwrap();
+            if id == "withdrawn" {
+                sent(&seam, &mut webview, &cli, &[delete(id)], &[]).await.answer().await;
+            } else {
+                assert!(seam.pty_manager.exit_launch(&launch, Some(0)));
+            }
+        }
+        locked.push(webview.next_shown().await);
+    }
+    let unsent = json!(seam.surfaces.open_page())["unsent"].clone();
+
+    for mut before in locked {
+        for as_tab in [true, false] {
+            let moved = seam.surfaces.move_surface(&key("term-a", &before.id), as_tab).unwrap();
+            assert_eq!(webview.next_shown().await, moved);
+            assert!(moved.change > before.change);
+            assert_eq!(moved, SurfaceRecord { as_tab, change: moved.change, ..before }, "nothing else of it changes");
+            before = moved;
+        }
+    }
+    let mut kept = json!(seam.surfaces.open_page())["unsent"].as_array().unwrap().clone();
+    kept.sort_by_key(|unsent| unsent["order"].as_u64());
+    let mut had = unsent.as_array().unwrap().clone();
+    had.sort_by_key(|unsent| unsent["order"].as_u64());
+    assert_eq!((kept.len(), kept), (2, had), "what was typed and not sent stays");
+    assert_eq!(seam.typed("term-a"), "");
+}
+
+#[tokio::test]
+async fn a_move_does_not_keep_the_surface_that_locked_first_from_leaving_first() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    for n in 0..11 {
+        let id = format!("plan{n}");
+        let (_call, _) = created(&seam, &mut webview, &cli, &id, "companion", true).await;
+        sent(&seam, &mut webview, &cli, &[delete(&id)], &[]).await.answer().await;
+        webview.next_shown().await;
+        if n == 9 {
+            seam.surfaces.move_surface(&key("term-a", "plan0"), true).unwrap();
+            webview.next_shown().await;
+        }
+    }
+    assert_eq!(webview.next_removed().await, key("term-a", "plan0"));
 }

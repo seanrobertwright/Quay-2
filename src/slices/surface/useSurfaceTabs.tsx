@@ -11,7 +11,7 @@ import { everySurfaceIn, keptSurface } from "./surfacePlaces.ts";
 import { surfaceKey } from "./surfaceAttention.ts";
 import { dismissSurface, subscribeToSurfaces } from "./surfaceHost.ts";
 import { SurfaceTab } from "./SurfaceTab.tsx";
-import { drawnIn, isLive, type SurfaceKey, type SurfaceRecord } from "./surfaceTypes.ts";
+import { drawnIn, isLive, newestLockedFirst, type SurfaceKey, type SurfaceRecord } from "./surfaceTypes.ts";
 
 const PREFIX = "surface:";
 
@@ -138,8 +138,7 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
     });
   const folded = tabbed
     .filter(({ id, record }) => !isLive(record) && id !== frontId)
-    // A locked surface changes no more, so its last change is its locking
-    .sort((a, b) => b.record.change - a.record.change)
+    .sort((a, b) => newestLockedFirst(a.record, b.record))
     .map((tab) => ({ id: tab.id, record: tab.record, title: titleOf(tab), terminalName: tab.terminal.name }));
   return { tools, earlier: folded.length > 0 ? <EarlierTabs tabs={folded} onOpen={bring} /> : null, open, select, close };
 }

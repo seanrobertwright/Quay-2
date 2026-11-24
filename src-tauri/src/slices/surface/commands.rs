@@ -130,7 +130,6 @@ pub async fn surface_move(
         let why = match refused {
             MoveRefused::NoSuchSurface => "Not moved: Quay no longer has this surface.",
             MoveRefused::NotMovable => "Not moved: only a raw surface in the companion can be.",
-            MoveRefused::Locked => "Not moved: it is over.",
         };
         why.to_string()
     })

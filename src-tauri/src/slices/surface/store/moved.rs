@@ -11,13 +11,12 @@ pub enum MoveRefused {
     NoSuchSurface,
     /// It is no raw one whose place is the companion.
     NotMovable,
-    /// It is locked.
-    Locked,
 }
 
 impl SurfaceStore {
     /// Has the surface `key` drawn as a stage tab, or back in the companion. Its place is as its agent gave
-    /// it, so nothing the agent is told changes, and what it counts towards does not.
+    /// it, so nothing the agent is told changes, and what it counts towards does not. A locked one is moved too,
+    /// and stands among the locked ones as it did.
     pub fn move_surface(&self, key: &SurfaceKey, as_tab: bool) -> Result<SurfaceRecord, MoveRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
@@ -26,11 +25,8 @@ impl SurfaceStore {
         if surface.tool != TOOL || surface.place != Place::Companion {
             return Err(MoveRefused::NotMovable);
         }
-        if surface.is_locked() {
-            return Err(MoveRefused::Locked);
-        }
         surface.as_tab = as_tab;
-        surface.change = change;
+        surface.moved = change;
         Ok(surface.record(&key.terminal_id))
     }
 }
