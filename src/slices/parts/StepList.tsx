@@ -1,5 +1,8 @@
+import type { Ref } from "react";
 import { Check, CircleDashed, LoaderCircle, X, type LucideIcon } from "lucide-react";
+import { keyed } from "./keyed.ts";
 import type { Step, StepState } from "./steps.ts";
+import { usePaged } from "./usePaged.tsx";
 
 interface StateLook {
   word: string;
@@ -29,23 +32,17 @@ const StepItem = ({ label, state, note }: Step) => {
   );
 };
 
-/** `steps`, each with a key of its own: its label, and how many before it have the same. */
-function keyed(steps: readonly Step[]): { key: string; step: Step }[] {
-  const seen = new Map<string, number>();
-  return steps.map((step) => {
-    const before = seen.get(step.label) ?? 0;
-    seen.set(step.label, before + 1);
-    return { key: JSON.stringify([step.label, before]), step };
-  });
-}
-
-/** A run's steps in order, down one column and then the next where there is room for two. */
-export const StepList = ({ steps }: { steps: readonly Step[] }) => (
-  <div className="@container min-w-0">
-    <ol className="-mb-1 gap-x-5 @lg:columns-2 [&>li]:mb-1 [&>li]:break-inside-avoid">
-      {keyed(steps).map(({ key, step }) => (
-        <StepItem key={key} {...step} />
-      ))}
-    </ol>
-  </div>
-);
+/** A run's steps in order, down one column and then the next where there is room for two. Of many, the first are drawn. */
+export const StepList = ({ steps, ref }: { steps: readonly Step[]; ref?: Ref<HTMLOListElement> }) => {
+  const { shown, more } = usePaged(steps);
+  return (
+    <div className="@container min-w-0">
+      <ol ref={ref} className="-mb-1 gap-x-5 @lg:columns-2 [&>li]:mb-1 [&>li]:break-inside-avoid">
+        {keyed(shown, ({ label }) => label).map(({ key, item }) => (
+          <StepItem key={key} {...item} />
+        ))}
+      </ol>
+      {more}
+    </div>
+  );
+};

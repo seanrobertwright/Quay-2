@@ -1,7 +1,7 @@
 import { createComponentImplementation } from "@a2ui/react";
 import { ImageApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { imageTarget } from "../../imageTarget.ts";
-import { hasOwn, isObject } from "../../json.ts";
+import { accessibilityLabel } from "../accessibilityLabel.ts";
 import { textOf } from "../textOf.ts";
 import { LocalImage } from "./LocalImage.tsx";
 
@@ -26,19 +26,12 @@ const FITS = {
 export const imageLook = (variant: keyof typeof VARIANTS = "mediumFeature", fit: keyof typeof FITS = "fill") =>
   `max-w-full ${VARIANTS[variant]} ${FITS[fit]}`;
 
-/** The label of a component's `@accessibility`, once it is evaluated. */
-function labelOf(props: object): string {
-  const accessibility: unknown = isObject(props) && hasOwn(props, "@accessibility") ? props["@accessibility"] : null;
-  if (!isObject(accessibility) || !hasOwn(accessibility, "label")) return "";
-  return typeof accessibility.label === "string" ? accessibility.label.trim() : "";
-}
-
 /**
  * An image file on this computer. `url` takes its path. It goes by its accessibility label, else its
  * description; with neither it only decorates, as the standard's own Image does.
  */
 export const Image = createComponentImplementation(ImageApi, ({ props, accessibilityRef }) => {
   const url = typeof props.url === "string" ? props.url : "";
-  const name = labelOf(props) || textOf(props.description).trim();
+  const name = accessibilityLabel(props) || textOf(props.description).trim();
   return <LocalImage ref={accessibilityRef} target={imageTarget(url)} address={url} name={name} className={imageLook(props.variant, props.fit)} />;
 });

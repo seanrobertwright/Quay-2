@@ -19,4 +19,4 @@ const StepsApi = {
 };
 
 /** A run's steps, each with its state. What a binding holds that is no step is left out. */
-export const Steps = createComponentImplementation(StepsApi, ({ props }) => <StepList steps={stepsIn(props.steps)} />);
+export const Steps = createComponentImplementation(StepsApi, ({ props, accessibilityRef }) => <StepList ref={accessibilityRef} steps={stepsIn(props.steps)} />);

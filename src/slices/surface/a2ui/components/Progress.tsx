@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { z } from "zod";
 import { createComponentImplementation } from "@a2ui/react";
 import { DynamicNumberSchema, DynamicStringSchema } from "@a2ui/web_core/v1_0";
@@ -21,9 +22,10 @@ interface ProgressViewProps {
   done: unknown;
   total: unknown;
   label: string;
+  barRef: Ref<HTMLSpanElement> | undefined;
 }
 
-const ProgressView = ({ done, total, label }: ProgressViewProps) => {
+const ProgressView = ({ done, total, label, barRef }: ProgressViewProps) => {
   const amount = amountOf(done, total);
   return (
     <div className="flex min-w-0 items-center gap-2 text-[11px] text-[#8b949e]">
@@ -31,6 +33,7 @@ const ProgressView = ({ done, total, label }: ProgressViewProps) => {
       {amount && (
         <>
           <span
+            ref={barRef}
             role="progressbar"
             aria-label={label || "Progress"}
             aria-valuemin={0}
@@ -49,4 +52,6 @@ const ProgressView = ({ done, total, label }: ProgressViewProps) => {
 };
 
 /** A bar with its amount in words. Where a binding gives no amount, the label alone. */
-export const Progress = createComponentImplementation(ProgressApi, ({ props }) => <ProgressView done={props.done} total={props.total} label={textOf(props.label)} />);
+export const Progress = createComponentImplementation(ProgressApi, ({ props, accessibilityRef }) => (
+  <ProgressView done={props.done} total={props.total} label={textOf(props.label)} barRef={accessibilityRef} />
+));

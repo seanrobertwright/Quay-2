@@ -2,9 +2,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { requestFileDiff, type FileDiffRequest } from "../git/fileDiffRequest.ts";
+import { requestTerminalSelection } from "../terminal/terminalSelectionRequest.ts";
 import { spendClick } from "./clickOnly.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
+import { shownText } from "./shownText.ts";
 
 /** How Rust showed a file. Mirrors `Shown`. */
 type Shown = { kind: "revealed" } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
@@ -32,8 +34,35 @@ async function show(terminalId: string, path: string, line: number | null): Prom
   }
 }
 
+function focus(terminalId: string, target: string): string | null {
+  if (target === "") return "Not shown: no terminal is named.";
+  const outcome = requestTerminalSelection({ fromTerminalId: terminalId, target });
+  switch (outcome?.kind) {
+    case undefined:
+      return "Not shown: Quay could not be asked to show a terminal.";
+    case "selected":
+      return null;
+    case "asker_gone":
+      return "Not shown: Quay no longer has this terminal.";
+    case "none":
+      return `Not shown: this project has no terminal "${shownText(target)}".`;
+    case "ambiguous":
+      return `Not shown: ${outcome.count} terminals of this project are named "${shownText(target)}".`;
+  }
+}
+
+async function copy(text: string): Promise<string | null> {
+  if (text === "") return "Not copied: there is no text to copy.";
+  try {
+    await navigator.clipboard.writeText(text);
+    return null;
+  } catch (error) {
+    return `Not copied: the clipboard could not be written (${String(error)}).`;
+  }
+}
+
 /**
- * The effects of `terminalId`'s surfaces. `run` takes each effect, which settles with why it opened
+ * The effects of `terminalId`'s surfaces. `run` takes each effect, which settles with why it did
  * nothing, or null.
  */
 export function surfaceEffects(terminalId: string, run: (effect: Promise<string | null>) => void): SurfaceEffects {
@@ -45,6 +74,14 @@ export function surfaceEffects(terminalId: string, run: (effect: Promise<string 
     showFile: (path, line) => {
       spendClick("showFile");
       run(show(terminalId, path, line ?? null));
+    },
+    focusTerminal: (target) => {
+      spendClick("focusTerminal");
+      run(Promise.resolve(focus(terminalId, target)));
+    },
+    copyText: (text) => {
+      spendClick("copyText");
+      run(copy(text));
     },
   };
 }

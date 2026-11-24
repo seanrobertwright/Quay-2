@@ -13,7 +13,7 @@ interface AskQuestionProps {
 export const AskQuestion = ({ question: { question, kind, parts }, part, titled = false }: AskQuestionProps) => {
   const titleId = useId();
   return (
-    <div role="group" aria-label={titled ? undefined : question} aria-labelledby={titled ? titleId : undefined} className="flex min-w-0 flex-col gap-2.5">
+    <div role="group" aria-label={titled ? undefined : question} aria-labelledby={titled ? titleId : undefined} className="flex min-w-0 flex-col gap-2.5 [&_legend]:sr-only">
       {titled && (
         // Drawn here and not by its Text part, because a question is plain text
         <p id={titleId} className="font-semibold wrap-anywhere whitespace-pre-wrap text-white">

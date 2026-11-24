@@ -1,32 +1,22 @@
-import { useContext, type ReactNode } from "react";
+import { useContext } from "react";
 import { createComponentImplementation } from "@a2ui/react";
 import { ColumnApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { LayoutContext } from "../../layout.ts";
+import { StackView, type StackViewProps } from "./StackView.tsx";
 
-interface ColumnViewProps {
-  children: ReactNode;
-  /** Draws the component of an id. */
-  part: (id: string) => ReactNode;
-}
-
-const ColumnView = ({ children, part }: ColumnViewProps) => {
+const ColumnView = (props: StackViewProps) => {
   const layout = useContext(LayoutContext);
-  if (!layout) return <div className="flex min-w-0 flex-col gap-2">{children}</div>;
+  if (!layout) return <StackView {...props} />;
   const { Layout, components, data } = layout;
   // Only the root is laid out by the frame; a Column inside one of its parts is drawn plainly.
   return (
     <LayoutContext.Provider value={null}>
-      <Layout part={part} components={components} data={data} />
+      <Layout part={(id) => props.buildChild(id)} components={components} data={data} />
     </LayoutContext.Provider>
   );
 };
 
 /** A column, or, at the root of a typed surface, the frame's own layout of its named parts. */
-export const Column = createComponentImplementation(ColumnApi, ({ props, buildChild }) => {
-  const children = Array.isArray(props.children) ? props.children : [];
-  return (
-    <ColumnView part={(id) => buildChild(id)}>
-      {children.map((child) => (typeof child === "string" ? buildChild(child) : buildChild(child.id, child.basePath)))}
-    </ColumnView>
-  );
-});
+export const Column = createComponentImplementation(ColumnApi, ({ props, buildChild }) => (
+  <ColumnView ids={props.children} buildChild={buildChild} look={{ direction: "column", justify: props.justify, align: props.align }} />
+));

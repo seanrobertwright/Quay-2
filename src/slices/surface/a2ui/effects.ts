@@ -1,53 +1,74 @@
-// The catalog's functions that cause something. The engine evaluates a function wherever it is called,
-// as a value or inside a check too, so each one needs the click that its Button allows it.
+// The catalog's functions that cause something. The engine evaluates a function wherever it is called: as
+// a value, inside a check or in another call's argument. So it runs none of these. A Button whose action
+// is a call of one runs it itself, on the click.
 import { z } from "zod";
 import { OpenUrlApi } from "@a2ui/web_core/catalogs/basic/v1";
-import { createFunctionImplementation } from "@a2ui/web_core/v1_0";
+import { createFunctionImplementation, DynamicStringSchema } from "@a2ui/web_core/v1_0";
 import type { Effect } from "../clickOnly.ts";
-import { hasOwn, isObject } from "../json.ts";
+import { hasOwn, isObject, type JsonObject } from "../json.ts";
 import type { SurfaceEffects } from "../links.ts";
-import type { EngineSurface } from "./engine.ts";
 import { FILE_FIELDS, namedFile } from "./namedFile.ts";
+import { textOf } from "./textOf.ts";
 
-const given = new WeakMap<object, SurfaceEffects>();
+/** What every function with an effect is to the engine. */
+const ON_A_CLICK = { returnType: "void", allowedCallers: "rendererOnly", requiresUserActivation: true } as const;
 
-/** Gives the functions called in `surface` what they cause. Without it they throw. */
-export function giveEffects(surface: EngineSurface, effects: SurfaceEffects): void {
-  given.set(surface, effects);
+const APIS = {
+  openUrl: OpenUrlApi,
+  showFile: {
+    ...ON_A_CLICK,
+    name: "showFile",
+    description: "Shows a file in its folder, or its changes when it has uncommitted ones.",
+    schema: z.object(FILE_FIELDS).strict(),
+  },
+  focusTerminal: {
+    ...ON_A_CLICK,
+    name: "focusTerminal",
+    description: "Selects a terminal of the surface's own project.",
+    schema: z.object({ terminal: DynamicStringSchema.describe("REF:#/$defs/DynamicString|The terminal's id, or its exact name.") }).strict(),
+  },
+  copyText: {
+    ...ON_A_CLICK,
+    name: "copyText",
+    description: "Puts a text on the clipboard.",
+    schema: z.object({ text: DynamicStringSchema.describe("REF:#/$defs/DynamicString|The text.") }).strict(),
+  },
+} as const satisfies Record<Effect, unknown>;
+
+/** A function the engine refuses to run. */
+const refused = <Api extends Parameters<typeof createFunctionImplementation>[0]>(api: Api) =>
+  createFunctionImplementation(api, () => {
+    throw new Error(`${api.name} runs only on the operator's click.`);
+  });
+
+export const EFFECTS = Object.values(APIS).map((api) => refused(api));
+
+/** What each causes, of a call's arguments once they are evaluated. */
+const CAUSES: Record<Effect, (args: JsonObject, effects: SurfaceEffects) => void> = {
+  openUrl: ({ url }, effects) => effects.openUrl(textOf(url)),
+  showFile: (args, effects) => {
+    const { path, line } = namedFile(args);
+    effects.showFile(path, line);
+  },
+  focusTerminal: ({ terminal }, effects) => effects.focusTerminal(textOf(terminal)),
+  copyText: ({ text }, effects) => effects.copyText(textOf(text)),
+};
+
+const isEffect = (name: unknown): name is Effect => typeof name === "string" && hasOwn(CAUSES, name);
+
+/** A call of a function with an effect, with its arguments as they are written. */
+export interface EffectCall {
+  effect: Effect;
+  args: unknown;
 }
 
-function effectsIn(surface: object | undefined): SurfaceEffects {
-  const effects = surface && given.get(surface);
-  if (!effects) throw new Error("No function of this surface causes anything.");
-  return effects;
-}
-
-const openUrl = createFunctionImplementation(OpenUrlApi, ({ url }, { surface }) => effectsIn(surface).openUrl(String(url)));
-
-const ShowFileApi = {
-  name: "showFile",
-  returnType: "void",
-  allowedCallers: "rendererOnly",
-  requiresUserActivation: true,
-  description: "Shows a file in its folder, or its changes when it has uncommitted ones.",
-  schema: z.object(FILE_FIELDS).strict(),
-} as const;
-
-const showFile = createFunctionImplementation(ShowFileApi, (args, { surface }) => {
-  const { path, line } = namedFile(args);
-  effectsIn(surface).showFile(path, line);
-});
-
-const BY_NAME = { openUrl, showFile } satisfies Record<Effect, unknown>;
-
-export const EFFECTS = Object.values(BY_NAME);
-
-const isEffect = (name: unknown): name is Effect => EFFECTS.some((effect) => effect.name === name);
-
-/** The effect a Button's `action` is a call of, or null when it is none. */
-export function effectOf(action: unknown): Effect | null {
+/** The call of an effect that a Button's `action` is, or null when it is none. */
+export function effectCallOf(action: unknown): EffectCall | null {
   if (!isObject(action) || !hasOwn(action, "functionCall")) return null;
   const call = action.functionCall;
   const name = isObject(call) && hasOwn(call, "@call") ? call["@call"] : null;
-  return isEffect(name) ? name : null;
+  return isEffect(name) && isObject(call) ? { effect: name, args: call.args } : null;
 }
+
+/** Runs `effect` with `args`, which are evaluated. It throws unless the click that allows it is being handled. */
+export const cause = (effect: Effect, args: JsonObject, effects: SurfaceEffects): void => CAUSES[effect](args, effects);
