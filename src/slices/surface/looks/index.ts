@@ -27,8 +27,10 @@ export interface Look {
   KindIcon: LucideIcon;
   /** Lays out a typed surface's parts, or null to draw the surface as it is. */
   layout: Layout | null;
-  /** What a surface with these components asks, in a line. */
-  asksFor: (components: readonly SurfaceComponent[]) => string;
+  /** Whether the frame draws a surface's title as the first line of its content. A typed one's is its layout's, or it has none. */
+  titled: boolean;
+  /** What a surface asks or shows, in a line. */
+  asksFor: (record: SurfaceRecord) => string;
   /** Draws the answer of an answered surface with these components, or null when it has no look of its own. */
   Settled: ComponentType<{ answer: unknown; components: readonly SurfaceComponent[] }> | null;
   /** How an answered surface says what its answer is, or null when it says only that it was answered. */
@@ -43,13 +45,13 @@ export interface Look {
   typedIn: (components: readonly SurfaceComponent[], unsent: DataValues) => TypedText[];
 }
 
-const PLAIN: Look = { kind: "Surface", KindIcon: Shapes, layout: null, asksFor: () => "Surface", Settled: null, settledWords: () => null, answerInLine: () => null, Asked: null, askedLabel: "What was asked", typedIn: () => [] };
+const PLAIN: Look = { kind: "Surface", KindIcon: Shapes, layout: null, titled: false, asksFor: () => "Surface", Settled: null, settledWords: () => null, answerInLine: () => null, Asked: null, askedLabel: "What was asked", typedIn: () => [] };
 
 const LOOKS: ReadonlyMap<string, Look> = new Map<string, Look>([
-  ["quay_ask", { kind: "Question", KindIcon: MessageCircleQuestionMark, layout: AskLayout, asksFor: (components) => questionsIn(components).map(({ question }) => question)[0] ?? "Question", Settled: AskSettled, settledWords: () => null, answerInLine: askAnswerInLine, Asked: AskAsked, askedLabel: "What was asked", typedIn: askTypedIn }],
-  ["quay_review", { kind: "Review", KindIcon: ClipboardCheck, layout: ReviewLayout, asksFor: titleIn, Settled: ReviewSettled, settledWords: verdictWords, answerInLine: () => null, Asked: ReviewReviewed, askedLabel: "What was reviewed", typedIn: reviewTypedIn }],
+  ["quay_ask", { kind: "Question", KindIcon: MessageCircleQuestionMark, layout: AskLayout, titled: false, asksFor: ({ state }) => questionsIn(state.createSurface.components).map(({ question }) => question)[0] ?? "Question", Settled: AskSettled, settledWords: () => null, answerInLine: askAnswerInLine, Asked: AskAsked, askedLabel: "What was asked", typedIn: askTypedIn }],
+  ["quay_review", { kind: "Review", KindIcon: ClipboardCheck, layout: ReviewLayout, titled: false, asksFor: ({ state }) => titleIn(state.createSurface.components), Settled: ReviewSettled, settledWords: verdictWords, answerInLine: () => null, Asked: ReviewReviewed, askedLabel: "What was reviewed", typedIn: reviewTypedIn }],
   ["quay_board", { ...PLAIN, kind: "Board", KindIcon: LayoutList, layout: BoardLayout, asksFor: () => "Board" }],
-  [RAW_TOOL, { ...PLAIN, Settled: RawSettled, Asked: RawAsked, askedLabel: "What was shown", typedIn: rawTypedIn }],
+  [RAW_TOOL, { ...PLAIN, titled: true, asksFor: ({ title }) => title, Settled: RawSettled, Asked: RawAsked, askedLabel: "What was shown", typedIn: rawTypedIn }],
 ]);
 
 /** How the surfaces of `tool` look. */

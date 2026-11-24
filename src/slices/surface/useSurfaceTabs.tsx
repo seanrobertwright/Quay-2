@@ -12,7 +12,6 @@ import { surfaceKey } from "./surfaceAttention.ts";
 import { dismissSurface, subscribeToSurfaces } from "./surfaceHost.ts";
 import { SurfaceTab } from "./SurfaceTab.tsx";
 import { isLive, type SurfaceKey, type SurfaceRecord } from "./surfaceTypes.ts";
-import { wordsOf } from "./surfaceWords.ts";
 
 const PREFIX = "surface:";
 
@@ -27,7 +26,7 @@ interface Tabbed {
 }
 
 /** A tab's label: its surface's title, which its agent wrote. */
-const titleOf = ({ record }: Tabbed) => wordsOf(record);
+const titleOf = ({ record }: Tabbed) => lookOf(record.tool).asksFor(record);
 
 interface SurfaceTabsOptions {
   terminals: readonly TerminalInfo[];

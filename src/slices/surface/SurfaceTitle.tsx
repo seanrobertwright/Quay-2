@@ -1,6 +1,6 @@
-import { RAW_TOOL } from "./rawTool.ts";
+import { lookOf } from "./looks/index.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 
-/** A raw surface's title, the first line of its content. A typed one's is its layout's or has none. */
+/** The title of a surface whose frame draws it, as `Look.titled` says. */
 export const SurfaceTitle = ({ record }: { record: SurfaceRecord }) =>
-  record.tool === RAW_TOOL && record.title !== "" ? <p className="mb-2 font-semibold wrap-anywhere whitespace-pre-wrap text-white">{record.title}</p> : null;
+  lookOf(record.tool).titled && record.title !== "" ? <p className="mb-2 font-semibold wrap-anywhere whitespace-pre-wrap text-white">{record.title}</p> : null;

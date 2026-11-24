@@ -2,7 +2,6 @@ import { formatTimeWaited } from "../../lib/dates.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
-import { wordsOf } from "./surfaceWords.ts";
 import { useTick } from "./useTick.ts";
 
 /** How long something has waited since `ms`, kept true while it is drawn. */
@@ -24,8 +23,8 @@ interface QueueLineProps {
 
 /** An asking surface that is not the open one: what it asks and how long it has waited, in a line that opens it. */
 export const QueueLine = ({ record, terminal, onOpen }: QueueLineProps) => {
-  const { kind, KindIcon } = lookOf(record.tool);
-  const asked = wordsOf(record);
+  const { kind, KindIcon, asksFor } = lookOf(record.tool);
+  const asked = asksFor(record);
   return (
     <section aria-label={`${kind} from ${terminal.name}`} data-surface={record.id}>
       <button

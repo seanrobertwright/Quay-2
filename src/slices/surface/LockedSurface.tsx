@@ -4,13 +4,11 @@ import { FoldButton } from "./FoldButton.tsx";
 import { LockedBand } from "./LockedBand.tsx";
 import { lookOf } from "./looks/index.ts";
 import { NotSent } from "./NotSent.tsx";
-import { RAW_TOOL } from "./rawTool.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { useSurfacesRead } from "./surfaceHost.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 import { unsentIn } from "./unsent.ts";
-import { wordsOf } from "./surfaceWords.ts";
 import { useDismiss } from "./useDismiss.ts";
 
 /** What was asked, folded behind `label`. */
@@ -42,7 +40,7 @@ interface LockedSurfaceProps {
 
 /** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
 export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null }: LockedSurfaceProps) => {
-  const { kind, KindIcon, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
+  const { kind, KindIcon, titled, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
   const { components } = record.state.createSurface;
   const ended = record.ended_at !== null;
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -54,7 +52,7 @@ export const LockedSurface = ({ record, terminal, fills = false, notDismissed = 
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
-          {(ended || record.tool === RAW_TOOL) && <p className="wrap-anywhere whitespace-pre-wrap">{wordsOf(record)}</p>}
+          {(ended || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}
           {!ended && Settled && <Settled answer={record.answer} components={components} />}
           {texts.length > 0 && <NotSent texts={texts} />}
           {Asked && (
