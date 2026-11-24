@@ -6,6 +6,7 @@ use super::opencode::start_watching;
 use super::port::BRIDGE_PORT_VAR;
 use super::routes::{create_router, AppContext};
 use super::state::BridgeState;
+use super::webview::WebviewEvents;
 use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
@@ -52,7 +53,7 @@ impl BridgeServer {
             pty_manager,
             a2a_router,
             machina_manager,
-            app_handle,
+            webview: WebviewEvents::to_app(app_handle),
         };
 
         // Each OpenCode launch from now on gets a watcher on the server its TUI runs

@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, State};
 use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::A2ARouter;
 use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
+use crate::slices::bridge::webview::WebviewEvents;
 use crate::slices::pty::manager::PtyManager;
 
 /// Mission Control's dispatch. The operator waits on the trail, so the peer's response is a Reply.
@@ -35,8 +36,8 @@ struct BroadcastToast<'a> {
 
 /// Raises the broadcast toast for `sent`, naming its sender. The router already put each
 /// notice in the trail (see `A2ARouter::set_trail_listener`).
-pub fn emit_broadcast(app_handle: &AppHandle, text: &str, sent: &Broadcast) {
-    let _ = app_handle.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
+pub fn emit_broadcast(webview: &WebviewEvents, text: &str, sent: &Broadcast) {
+    let _ = webview.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
 }
 
 /// Mission Control's Broadcast box: reaches the peers in `project`, the active project.
@@ -51,7 +52,7 @@ pub async fn a2a_broadcast_toast(
     let sent = router
         .broadcast_toast_async(&text, &BroadcastSender::User { project }, &pty_manager)
         .await?;
-    emit_broadcast(&app_handle, &text, &sent);
+    emit_broadcast(&WebviewEvents::to_app(app_handle), &text, &sent);
     Ok(sent.notices)
 }
 

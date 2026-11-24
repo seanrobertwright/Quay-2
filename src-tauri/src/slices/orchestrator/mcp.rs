@@ -248,7 +248,7 @@ pub async fn handle_mcp_request(
                             .broadcast_toast_async(text, &sender, &ctx.pty_manager)
                             .await
                             .map(|sent| {
-                                emit_broadcast(&ctx.app_handle, text, &sent);
+                                emit_broadcast(&ctx.webview, text, &sent);
                                 json!({
                                     "content": [
                                         {
