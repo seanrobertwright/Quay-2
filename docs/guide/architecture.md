@@ -66,7 +66,8 @@ graph TB
 - Runs a lightweight, non-blocking `axum` HTTP listener bound strictly to `127.0.0.1:<bridge_port>`.
 - Ingests structured telemetry events from agent mod hooks via `POST /v1/events` (`turn.started`, `turn.completed`, `tool.started`, `tool.finished`). Each `tool.finished` is given the `input` its `tool.started` carried, matched by `toolUseId`, so a finished tool call holds both its command and its result.
 - Provides long-poll command retrieval via `GET /v1/commands` for human-in-the-loop overrides.
-- Verifies Bearer authentication tokens with a constant-time byte comparison to prevent side-channel timing attacks.
+- Answers Claude Code permission requests via `POST /v1/permission`: at once for a Skip terminal or a tool allowed for session, otherwise when the operator decides, and with a denial after ten minutes without an answer.
+- Requires a terminal's Bearer token on these three routes and on MCP calls, verified with a constant-time byte comparison to prevent side-channel timing attacks.
 
 ### 3. `orchestrator` — Agent-to-Agent (A2A) MCP Bus
 - Implements an embedded Model Context Protocol (MCP) server over HTTP and SSE.
