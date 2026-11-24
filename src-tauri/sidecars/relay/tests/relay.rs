@@ -3,8 +3,6 @@
 
 mod support;
 
-use std::time::Duration;
-
 use serde_json::json;
 use support::{Listener, Relay, TOKEN};
 
@@ -298,22 +296,32 @@ fn it_exits_when_its_stdin_closes_and_closes_every_open_call() {
 
 #[test]
 fn what_it_has_answered_is_written_before_it_exits() {
-    let mut relay = Relay::unread(&[]);
-    // Each reply is more than a pipe holds, so most still wait when stdin closes
-    for id in 1..=12 {
-        relay.send(&initialize_of(id, 100_000));
+    let quay = Listener::start();
+    let mut relay = Relay::unread(&[("QUAY_MCP_URL", &quay.url()), ("QUAY_A2A_TOKEN", TOKEN)]);
+    let mut open = Vec::new();
+    for id in 0..16 {
+        relay.send(&format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"tools/call"}}"#));
+        open.push(quay.next());
+    }
+    // With that many open the relay refuses each of these as it reads it. A refusal is more than
+    // a pipe holds, so most still wait when stdin closes
+    let ids: Vec<String> = (10..22).map(|n| n.to_string().repeat(50_000)).collect();
+    for id in &ids {
+        relay.send(&format!(r#"{{"jsonrpc":"2.0","id":"{id}","method":"tools/call"}}"#));
     }
     relay.close_stdin();
-    std::thread::sleep(Duration::from_millis(200));
+    // The relay closes its calls once it has seen that, and stays for the replies
+    assert!(open[0].closes_soon());
+    assert!(relay.stays_running(), "the relay exited with replies unwritten");
     relay.read_stdout();
 
-    let ids: Vec<u64> = relay.finish().0.iter().map(|line| id_of(line)).collect();
-    assert_eq!(ids, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    let answered: Vec<String> = relay.finish().0.iter().map(|line| id_of(line)).collect();
+    assert!(answered == ids, "{} of {} answered", answered.len(), ids.len());
 }
 
-fn id_of(line: &str) -> u64 {
+fn id_of(line: &str) -> String {
     let reply: serde_json::Value = serde_json::from_str(line).expect("a whole reply");
-    reply["id"].as_u64().unwrap()
+    reply["id"].as_str().unwrap().to_string()
 }
 
 #[test]

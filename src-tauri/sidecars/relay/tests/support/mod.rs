@@ -230,6 +230,11 @@ impl Relay {
         self.exits_within(SOON)
     }
 
+    /// Whether the relay does not exit for a while.
+    pub fn stays_running(&mut self) -> bool {
+        self.exits_within(A_WHILE).is_none()
+    }
+
     pub fn exits_within(&mut self, limit: Duration) -> Option<ExitStatus> {
         let deadline = Instant::now() + limit;
         while Instant::now() < deadline {

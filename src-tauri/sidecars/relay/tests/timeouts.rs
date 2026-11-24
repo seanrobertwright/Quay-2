@@ -1,4 +1,5 @@
-//! The relay's waits, by the real clock, so these tests take as long as the waits do.
+//! The relay's waits, by the real clock. These tests take as long as the waits do, so only
+//! `cargo test --test timeouts -- --ignored` runs them.
 
 mod support;
 
@@ -8,6 +9,7 @@ use serde_json::json;
 use support::{Listener, Relay, TOKEN};
 
 #[test]
+#[ignore = "takes as long as the wait it is about"]
 fn an_answer_after_the_100_s_wait_still_comes_back() {
     let quay = Listener::start();
     let mut relay = Relay::start(&quay.url(), TOKEN);
@@ -21,6 +23,7 @@ fn an_answer_after_the_100_s_wait_still_comes_back() {
 }
 
 #[test]
+#[ignore = "takes as long as the wait it is about"]
 fn a_call_with_no_answer_is_closed_and_is_an_error_before_the_clis_150_s_limit() {
     let quay = Listener::start();
     let mut relay = Relay::start(&quay.url(), TOKEN);
@@ -36,6 +39,7 @@ fn a_call_with_no_answer_is_closed_and_is_an_error_before_the_clis_150_s_limit()
 }
 
 #[test]
+#[ignore = "takes as long as the wait it is about"]
 fn it_gives_up_on_a_cli_that_sends_requests_and_never_reads_the_replies() {
     let mut relay = Relay::unread(&[]);
     let mut stdin = relay.take_stdin();
