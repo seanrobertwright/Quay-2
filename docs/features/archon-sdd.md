@@ -2,7 +2,7 @@
 
 **Archon** is an autonomous software development framework that compiles functional specifications into executable Directed Acyclic Graphs (DAGs) and Architectural Decision Records (ADRs).
 
-Quay 2 features a first-class, embedded **Archon & SDD Graph Inspector** (**Archon & SDD Spec Graph Inspector...** in the command palette, or **All tasks and ADRs** in the Workflows panel), providing visual execution tracking, live streaming logs, and spec task monitoring right inside your desktop environment. Archon runs also show in the **Workflows panel** (`Ctrl+Shift+B R`): a run waiting for approval or a failed one under **Needs you**, with **Approve or Reject** and **Resume or Abandon** in the companion's Run view, and its graph and log in the run lens.
+Quay 2 features a first-class, embedded **Archon & SDD Graph Inspector** (**Archon & SDD Spec Graph Inspector...** in the command palette, or **All tasks and ADRs** in the Workflows panel), providing visual execution tracking, live streaming logs, and spec task monitoring right inside your desktop environment. Archon runs also show in the **Workflows panel** (`Ctrl+Shift+B R`): a run waiting for approval or a failed one under **Needs you**, with **Approve or Reject** and **Resume or Abandon** in the companion's Run view, and its graph and log in the run lens. A run at a gate shows what the workflow asks above **Approve** and **Reject**; when Quay cannot read that, the card says so and offers **Graph and log** in their place.
 
 ---
 

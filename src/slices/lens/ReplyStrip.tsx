@@ -1,6 +1,7 @@
 import type { PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
 import { splitPermissionInput, toolInputSummary } from "../attention/permissionInput.ts";
+import { QuayBadge } from "../cards/QuayBadge.tsx";
 
 interface ReplyStripProps {
   /** The selected terminal's name. */
@@ -20,7 +21,7 @@ const BUTTON = "h-7 shrink-0 px-3 rounded-md border text-xs font-medium";
  * waiting permission request; its replies are the attention queue's Allow once, Allow for session
  * and Deny. While the permission card in the Activity view draws input beside its summary
  * (`splitPermissionInput`), Whole input shows that view, even where the strip's one line is already
- * that input's JSON, cut to the strip's width.
+ * that input's JSON, cut to the strip's width. A strip that asks carries the QUAY badge, and no glow.
  */
 export const ReplyStrip = ({ terminalName, permission, onAnswer, onShowActivity }: ReplyStripProps) => (
   <footer
@@ -30,6 +31,7 @@ export const ReplyStrip = ({ terminalName, permission, onAnswer, onShowActivity 
     <b className="shrink-0 text-white">{terminalName}</b>
     {permission ? (
       <>
+        <QuayBadge />
         <span className="min-w-0 flex-1 truncate text-[#c9d1d9]" title={toolInputSummary(permission.input)}>
           <span className="text-[#e3b341]">{permission.tool}</span>{" "}
           <code>{toolInputSummary(permission.input)}</code>

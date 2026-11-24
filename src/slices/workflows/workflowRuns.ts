@@ -2,6 +2,7 @@
 // run as one row shape, with the section it lands in, its action chip and its segment bar.
 import type { ArchonRun } from "../archon/types.ts";
 import { shortWorkflowName } from "../archon/workflowName.ts";
+import type { RunDecision } from "../cards/runDecision.ts";
 import { STATUS_LABEL } from "../machina/format.ts";
 import type { MachinaWorkOrder, StageStatus } from "../machina/types.ts";
 import type { RunRow } from "../praxis-builder/runsList.ts";
@@ -26,21 +27,6 @@ export type RunSection = "needs-you" | "running" | "recent";
 
 /** The action chip on a Needs you row. */
 export type ActionChip = "Approve" | "Resume" | "Hold" | "Merge" | "Browser";
-
-/** The decision the Run view offers for a run. */
-export type RunDecision =
-  /** Archon approval gate: Approve or Reject. */
-  | { kind: "archon-approval" }
-  /** Failed Archon run: Resume or Abandon. */
-  | { kind: "archon-failed" }
-  /** Factory hold: the hold's own options. */
-  | { kind: "factory-hold" }
-  /** Factory work order whose gate passed: Accept: squash-merge. */
-  | { kind: "factory-accept" }
-  /** Interrupted or failed work order: Resume. */
-  | { kind: "factory-resume" }
-  /** Praxis decisions are made on the host's page in the browser. */
-  | { kind: "praxis-browser" };
 
 /** One run or work order, as the panel and the Run view show it. */
 export interface WorkflowRunRow {
@@ -101,12 +87,12 @@ export function archonRunRow(run: ArchonRun, now: number): WorkflowRunRow {
   if (run.status === "paused") {
     section = "needs-you";
     chip = "Approve";
-    decision = { kind: "archon-approval" };
+    decision = { kind: "archon-approval", runId: run.id };
   } else if (run.status === "failed") {
     // A failed run waits on Resume or Abandon however long ago it failed.
     section = "needs-you";
     chip = "Resume";
-    decision = { kind: "archon-failed" };
+    decision = { kind: "archon-failed", runId: run.id };
   } else if (finished) {
     section = fresh ? "recent" : null;
   } else {
@@ -145,18 +131,18 @@ export function workOrderRow(wo: MachinaWorkOrder, now: number): WorkflowRunRow 
     case "ON_HOLD":
       section = "needs-you";
       chip = "Hold";
-      decision = { kind: "factory-hold" };
+      decision = wo.hold ? { kind: "factory-hold", workOrderId: wo.id, hold: wo.hold } : { kind: "factory-resume", workOrderId: wo.id, failed: false };
       break;
     case "AWAITING_ACCEPTANCE":
       section = "needs-you";
       chip = "Merge";
-      decision = { kind: "factory-accept" };
+      decision = { kind: "factory-accept", workOrderId: wo.id, baseBranch: wo.baseBranch, repoPath: wo.repoPath };
       break;
     case "INTERRUPTED":
     case "FAILED":
       section = "needs-you";
       chip = "Resume";
-      decision = { kind: "factory-resume" };
+      decision = { kind: "factory-resume", workOrderId: wo.id, failed: wo.status === "FAILED" };
       break;
     case "COMPLETED":
     case "ABORTED":

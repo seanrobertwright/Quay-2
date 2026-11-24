@@ -3,6 +3,7 @@
 // waiting permission request and answers it through the attention queue's `answerPermission`, and
 // offers the way to the Activity view where that view draws more than its summary (#704).
 import "../../test-support/dom.ts";
+import { quayBadges } from "../../test-support/quayBadge.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -99,4 +100,15 @@ test("a request whose input the Activity view draws under its summary offers Who
 test("a request whose input is all in the Activity view's summary offers no Whole input", () => {
   const { container } = render({ permission });
   assert.ok(!button(container, "Whole input"));
+});
+
+test("the reply strip carries the QUAY badge, without the glow, while it asks for an answer", () => {
+  const { container } = render({ permission });
+  assert.equal(quayBadges(container).length, 1);
+  assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow");
+});
+
+test("a reply strip with nothing to answer carries no QUAY badge", () => {
+  const { container } = render({ permission: null });
+  assert.equal(quayBadges(container).length, 0);
 });

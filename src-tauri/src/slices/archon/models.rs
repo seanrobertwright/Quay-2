@@ -143,6 +143,7 @@ pub struct ArchonChatMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchonPendingApproval {
+    /// The gate's own words, or empty when its request carried none.
     pub prompt: String,
     pub node_id: Option<String>,
     pub requested_ms: Option<i64>,
