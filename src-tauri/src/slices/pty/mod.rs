@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod commit_stamp;
+pub mod handshake;
 mod jsonc;
 pub mod manager;
 pub mod models;

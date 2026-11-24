@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { focusTerminal } from "../terminal/terminalRequests.ts";
-import { askForConnectRow, dismissNote, sayNotConnected, useNoteTerminal } from "./antigravity.ts";
+import { dismissNote, sayNotConnected, useNoteTerminal } from "./antigravity.ts";
+import { ConnectRowLink } from "./ConnectRowLink.tsx";
 
 interface ConnectNoteProps {
   /** An Antigravity terminal. */
@@ -35,16 +36,7 @@ export const ConnectNote = ({ terminalId, shown }: ConnectNoteProps) => {
     >
       <p className="flex-1 min-w-0 leading-5">
         Antigravity is not connected to Quay, so it can't show you questions, reviews or boards.{" "}
-        <button
-          type="button"
-          onClick={() => {
-            dismissNote();
-            askForConnectRow();
-          }}
-          className="text-[#58a6ff] hover:text-[#79c0ff] hover:underline cursor-pointer"
-        >
-          Connect Antigravity in Settings
-        </button>
+        <ConnectRowLink onPress={dismissNote} />
       </p>
       <button
         type="button"

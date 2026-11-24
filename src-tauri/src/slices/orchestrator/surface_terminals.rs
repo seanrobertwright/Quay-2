@@ -20,7 +20,7 @@ pub fn connect_surfaces(surfaces: &SurfaceTools, pty_manager: &PtyManager, a2a_r
         }
     });
     let (followed, terminals, router) = (surfaces.clone(), pty_manager.clone(), a2a_router.clone());
-    pty_manager.set_launch_watcher(move |event| match event {
+    pty_manager.add_launch_watcher(move |event| match event {
         LaunchEvent::Listed(launch) => {
             followed.launched(&launch.terminal_id, launch.launch);
             // It may have been over, or its terminal closed, before this was heard
@@ -30,6 +30,7 @@ pub fn connect_surfaces(surfaces: &SurfaceTools, pty_manager: &PtyManager, a2a_r
                 followed.launch_over(&launch.terminal_id, launch.launch);
             }
         }
+        LaunchEvent::ShookHands(_) | LaunchEvent::Prompted(_) => {}
         LaunchEvent::Over(launch) => {
             followed.launch_over(&launch.terminal_id, launch.launch);
             router.launch_over(&launch);

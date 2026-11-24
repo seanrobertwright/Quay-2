@@ -18,6 +18,7 @@ use slices::bridge::{
     get_bridge_port, get_pending_permissions, resolve_permission, set_terminal_live_mode,
     BridgeServer, BridgeState,
 };
+use slices::connect::handshake::{report_handshakes, terminal_handshake};
 use slices::connect::{antigravity_connect, antigravity_connection, antigravity_remove, Connect};
 use slices::git::{
     check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_graph_refresh, git_graph_watch, git_refs, git_repo_fingerprint,
@@ -148,6 +149,9 @@ pub fn run() {
             a2a_router_updates
                 .set_trail_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
+            // Tell the window of each terminal's handshake with the MCP server (#733)
+            report_handshakes(&pty_manager_clone, webview::WebviewEvents::to_app(app_handle.clone()));
+
             // Forward Machina changes as events and connect it to the terminals; this
             // also starts queued work orders that are ready.
             let machina_events = app_handle.clone();
@@ -212,6 +216,7 @@ pub fn run() {
             save_terminal_screens,
             dismiss_plugin_hint,
             get_pig_tested_version,
+            terminal_handshake,
             list_projects,
             add_project,
             remove_project,

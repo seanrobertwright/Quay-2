@@ -36,6 +36,7 @@ import { SlotLayer } from "./slices/stage/SlotLayer";
 import { warnOfRedirectionGuard } from "./slices/stage/redirectionGuard";
 import { offerConnectAgain, onConnectRowAsked } from "./slices/connect/antigravity";
 import { AntigravityRow } from "./slices/connect/AntigravityRow";
+import { CannotShowMark } from "./slices/connect/CannotShowMark";
 import { ConnectNote } from "./slices/connect/ConnectNote";
 import { CanvasHandlesIcon } from "./slices/praxis-builder/CanvasHandlesIcon";
 import type { CompanionActivity } from "./slices/companion/ActivityView";
@@ -1315,6 +1316,9 @@ export function App() {
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
         onOpenSurface={openSurface}
+        terminalMark={(terminal, isVisible) =>
+          isVisible && terminal.claude_status !== "exited" && <CannotShowMark terminalId={terminal.id} kind={terminal.run_kind} />
+        }
         terminalNote={(terminal, isVisible) =>
           terminal.run_kind === "antigravity" && (
             <ConnectNote terminalId={terminal.id} shown={isVisible && terminal.claude_status !== "exited"} />

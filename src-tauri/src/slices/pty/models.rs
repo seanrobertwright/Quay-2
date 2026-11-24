@@ -85,6 +85,12 @@ impl RunKind {
         matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode | RunKind::Pig)
     }
 
+    /// Whether the CLI starts its MCP servers, Quay's among them, at a launch's first prompt and not as it
+    /// starts. Measured with Antigravity 1.5.16.
+    pub fn connects_at_first_prompt(&self) -> bool {
+        matches!(self, RunKind::Antigravity)
+    }
+
     /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
     /// output (see `osc7501`). The spawn and the PTY reader both read this.
     pub fn prints_osc7501(&self) -> bool {
