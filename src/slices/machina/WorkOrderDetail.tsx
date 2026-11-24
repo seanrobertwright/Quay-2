@@ -81,6 +81,13 @@ const Fact: FC<{ label: string; children: React.ReactNode; title?: string }> = (
   </div>
 );
 
+/** The QUAY badge on a line of its own above an action that decides, so the button keeps its width. */
+const DecisionBadge: FC = () => (
+  <div className="flex">
+    <QuayBadge />
+  </div>
+);
+
 const FileList: FC<{ files: string[] }> = ({ files }) => (
   <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-[#c9d1d9]">
     {files.slice(0, MAX_LISTED_FILES).map((f) => (
@@ -620,9 +627,7 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
 
         {wo.status === "AWAITING_ACCEPTANCE" && (
           <div className="space-y-1.5">
-            <p className="flex">
-              <QuayBadge />
-            </p>
+            <DecisionBadge />
             <button
               type="button"
               className={primary}
@@ -653,9 +658,7 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
 
         {(wo.status === "INTERRUPTED" || wo.status === "FAILED") && (
           <div className="space-y-1.5">
-            <p className="flex">
-              <QuayBadge />
-            </p>
+            <DecisionBadge />
             <button
               type="button"
               className={primary}
