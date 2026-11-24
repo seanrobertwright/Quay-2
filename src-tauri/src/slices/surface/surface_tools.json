@@ -1,7 +1,7 @@
 [
   {
     "name": "quay_ask",
-    "description": "Ask the operator one question as a card beside this terminal, when you need a decision or an answer before you go on. The call stays open for the answer, up to 100 seconds, and returns {\"answers\": [{\"question\", \"chosen\", \"text\"}]}: the label the operator picked in a list, which is empty when they only wrote, and what they wrote, left out when they wrote nothing. Nothing is picked for them, and the card has a text box of its own, so add no option for \"other\".",
+    "description": "Ask the operator one question beside this terminal, when you need a decision or an answer before you go on. The call stays open for the answer, up to 100 seconds, and returns {\"answers\": [{\"question\", \"chosen\", \"text\"}]}: the label the operator picked in a list, which is empty when they only wrote, and what they wrote, left out when they wrote nothing. Nothing is picked for them, and the question has a text box of its own, so add no option for \"other\".",
     "inputSchema": {
       "type": "object",
       "properties": {
