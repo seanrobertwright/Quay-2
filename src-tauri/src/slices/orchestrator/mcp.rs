@@ -12,8 +12,24 @@ use super::commands::emit_broadcast;
 use super::models::{A2ADispatchRequest, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::{A2ARouter, WaitOutcome};
 use super::target::resolve_target;
-use crate::slices::bridge::routes::{AppContext, AuthenticatedTerminal};
+use crate::slices::bridge::routes::AuthenticatedTerminal;
+use crate::slices::bridge::BridgeState;
+use crate::slices::machina::MachinaManager;
+use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::TerminalInfo;
+use crate::slices::surface::SurfaceTools;
+use crate::webview::WebviewEvents;
+
+/// What Quay's MCP server answers from.
+#[derive(Clone)]
+pub struct McpContext {
+    pub bridge_state: BridgeState,
+    pub pty_manager: PtyManager,
+    pub a2a_router: A2ARouter,
+    pub machina_manager: MachinaManager,
+    pub surfaces: SurfaceTools,
+    pub webview: WebviewEvents,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
@@ -61,7 +77,7 @@ pub struct JsonRpcError {
 }
 
 pub async fn handle_mcp_request(
-    State(ctx): State<Arc<AppContext>>,
+    State(ctx): State<Arc<McpContext>>,
     State(a2a_router): State<Arc<A2ARouter>>,
     caller: AuthenticatedTerminal,
     Json(req): Json<JsonRpcRequest>,
@@ -132,7 +148,7 @@ pub async fn handle_mcp_request(
         "tools/list" => Json(JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
-            result: Some(json!({ "tools": tool_list() })),
+            result: Some(json!({ "tools": tools(ctx.surfaces.list()) })),
             error: None,
         })
         .into_response(),
@@ -354,7 +370,11 @@ pub async fn handle_mcp_request(
                     }
                 }
 
-                _ => Err(format!("Unknown tool: {}", tool_name)),
+                _ => ctx
+                    .surfaces
+                    .call(caller_id, tool_name, &arguments)
+                    .await
+                    .ok_or_else(|| format!("Unknown tool: {}", tool_name)),
             };
 
             match result {
@@ -395,14 +415,22 @@ pub async fn handle_mcp_request(
     }
 }
 
-/// The tools `tools/list` answers with. `pnpm docs:build` checks the A2A page's tool
-/// reference against this file (see `scripts/mcp-tools`), so the two can't drift apart.
+/// The tools `tools/list` answers with, before the surface tools. `pnpm docs:build` checks the
+/// A2A page's tool reference against this file (see `scripts/mcp-tools`), so the two can't
+/// drift apart.
 const TOOL_LIST: &str = include_str!("mcp_tools.json");
 
 /// `TOOL_LIST`, parsed once.
 pub(super) fn tool_list() -> &'static Value {
     static TOOLS: OnceLock<Value> = OnceLock::new();
     TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
+}
+
+/// Every tool the server lists: those of `TOOL_LIST`, then the surface tools.
+fn tools(surface_tools: &[Value]) -> Vec<Value> {
+    let mut tools = tool_list().as_array().cloned().unwrap_or_default();
+    tools.extend_from_slice(surface_tools);
+    tools
 }
 
 /// What `quay_broadcast` answers with: the peers its notice reached, those holding it until

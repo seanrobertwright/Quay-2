@@ -11,6 +11,8 @@ use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
+use crate::slices::surface::timing::Timing;
+use crate::slices::surface::SurfaceTools;
 use crate::test_support::loopback::{post_json, read_reply, Reply};
 use crate::test_support::TempDir;
 use crate::webview::WebviewEvents;
@@ -47,6 +49,7 @@ impl TestBridge {
                 machina_dir.join("state.json"),
                 machina_dir.join("vault"),
             ),
+            surfaces: SurfaceTools::with(false, Timing::default()),
             webview: WebviewEvents::to(|_, _| {}),
         });
         let server = tokio::spawn(async move {
