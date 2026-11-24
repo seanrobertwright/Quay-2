@@ -21,6 +21,9 @@ import type { LinkChoice } from "./linkChoices.ts";
 import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
 import { ActivityView, type ActivityFocus, type CompanionActivity } from "./ActivityView.tsx";
+import { SurfaceView } from "../surface/SurfaceView.tsx";
+import { useSurfacesOf } from "../surface/surfaceHost.ts";
+import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
 
 /** What the companion reads and changes about terminal links. */
 export interface CompanionLinking {
@@ -77,6 +80,8 @@ export interface CompanionContext {
   activity: CompanionActivity | null;
   /** The Activity entry the latest show request asked for, or null. */
   focus: ActivityFocus | null;
+  /** The terminal's agent surfaces, oldest first. */
+  surfaces: readonly SurfaceRecord[];
   /** The run picked in the Workflows panel, or null while none is. */
   run: CompanionRun | null;
   /** The Praxis Builder's inspector while its stage tab is in front, or null. */
@@ -211,6 +216,14 @@ export const ACTIVITY_VIEW: CompanionView<CompanionContext> = {
     activity && <ActivityView key={terminal.id} terminal={terminal} activity={activity} focus={focus} />,
 };
 
+/** The Surface view: the selected terminal's agent surfaces, while it has any. */
+export const SURFACE_VIEW: CompanionView<CompanionContext> = {
+  id: "surface",
+  label: "Surface",
+  available: ({ surfaces }) => surfaces.length > 0,
+  render: ({ terminal, surfaces }) => <SurfaceView terminal={terminal} surfaces={surfaces} />,
+};
+
 /**
  * The Run view: the run or work order picked in the Workflows panel and its decision. It is not
  * the selected terminal's own, so it shows while a run is picked whatever terminal is selected,
@@ -246,6 +259,7 @@ export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [
   TICKET_VIEW,
   REPOSITORY_VIEW,
   ACTIVITY_VIEW,
+  SURFACE_VIEW,
   RUN_VIEW,
   TOPOS_VIEW,
   INSPECTOR_VIEW,
@@ -349,6 +363,7 @@ export const Companion = ({
   // What the latest request asked of the pull request view, while its terminal stays selected and
   // until the view takes it, so a view that comes back later does not act on it again.
   const [prAsk, setPrAsk] = useState<(NumberedPullRequestAsk & { terminalId: string }) | null>(null);
+  const surfaces = useSurfacesOf(selectedTerminal?.id ?? null);
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
@@ -362,6 +377,7 @@ export const Companion = ({
             topos,
             activity,
             focus: focus?.terminalId === selectedTerminal.id ? focus : null,
+            surfaces,
             run,
             inspector,
             pullRequestAsk: prAsk?.terminalId === selectedTerminal.id ? prAsk : null,
@@ -370,7 +386,7 @@ export const Companion = ({
               inspector ? setOverInspector(view) : setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run, inspector, prAsk],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, surfaces, run, inspector, prAsk],
   );
   const selectedId = context?.terminal.id ?? null;
   // A handed-in ticket shows until its Close, until a view is asked for over it, or until another

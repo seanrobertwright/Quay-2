@@ -9,4 +9,5 @@ pub mod orchestrator;
 pub mod praxis;
 pub mod pty;
 pub mod sessions;
+pub mod surface;
 pub mod workspace;

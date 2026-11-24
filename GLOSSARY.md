@@ -64,7 +64,7 @@ The right-hand column that shows what the selected terminal is working on.
 _Avoid_: drawer, GitHub drawer, side panel
 
 **Companion view**:
-One of the companion's views: Pull request, Ticket, Repository, Activity, Run, Topos or Inspector.
+One of the companion's views: Pull request, Ticket, Repository, Activity, Surface, Run, Topos or Inspector.
 _Avoid_: tab, mode
 
 **Terminal link**:

@@ -106,6 +106,16 @@ test("option rows that share a group are native radios named by their label and 
   assert.deepEqual(picked, [["Rebase", true]]);
 });
 
+test("an option row's mark is beside its label and described with it", () => {
+  const container = render(
+    createElement(OptionRow, { kind: "radio", group: "base", label: "Rebase", description: "onto master", mark: "agent's pick", checked: false, onChange: () => {} }),
+  );
+  const input = container.querySelector("input")!;
+  assert.equal(container.querySelector("label")?.textContent, "Rebase", "the mark is no part of the option's name");
+  const described = (input.getAttribute("aria-describedby") ?? "").split(" ").map((id) => document.getElementById(id)?.textContent);
+  assert.deepEqual(described, ["agent's pick", "onto master"]);
+});
+
 test("an option row of several is a native checkbox that can be ticked and unticked", () => {
   const changes: boolean[] = [];
   const row = (checked: boolean) =>

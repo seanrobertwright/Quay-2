@@ -8,7 +8,6 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter};
 
 use super::models::{
     CommandsResponse, Envelope, EventsBatchRequest, PermissionRequestPayload,
@@ -17,10 +16,13 @@ use super::models::{
 use super::pending::{PendingAnswer, PermissionResolved, ResolvedSink, PERMISSION_TIMEOUT};
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
+use crate::slices::orchestrator::mcp::McpContext;
 use crate::slices::orchestrator::router::strip_peer_prefix;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
+use crate::slices::surface::SurfaceTools;
+use crate::webview::WebviewEvents;
 
 #[derive(Clone)]
 pub struct AppContext {
@@ -28,7 +30,8 @@ pub struct AppContext {
     pub pty_manager: PtyManager,
     pub a2a_router: A2ARouter,
     pub machina_manager: MachinaManager,
-    pub app_handle: AppHandle,
+    pub surfaces: SurfaceTools,
+    pub webview: WebviewEvents,
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,7 +264,7 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
     }
 
     // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
-    let _ = ctx.app_handle.emit("bridge-event", envelope);
+    ctx.webview.emit("bridge-event", envelope);
     if let Some(status) = status {
         // A turn that ended lets the terminal's next held message in, and a session that
         // ended fails the rest. Typing blocks for the submit delay, so it runs off the
@@ -272,7 +275,7 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
             let terminal_id = status.terminal_id.clone();
             tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
         }
-        let _ = ctx.app_handle.emit("terminal-status", status);
+        ctx.webview.emit("terminal-status", status);
     }
 }
 
@@ -348,9 +351,9 @@ async fn decide_permission(
 
     // If Normal mode and not already allowed for session, wait for human approval
     if is_normal && !ctx.bridge_state.is_tool_allowed_for_session(tag, &payload.tool) {
-        let app_handle = ctx.app_handle.clone();
+        let webview = ctx.webview.clone();
         let on_resolved: ResolvedSink = Arc::new(move |resolved| {
-            let _ = app_handle.emit("permission-resolved", resolved);
+            webview.emit("permission-resolved", resolved);
         });
         let pending = PendingAnswer::register(&ctx.bridge_state, payload.clone(), on_resolved)
             .map_err(|_| (StatusCode::CONFLICT, "A permission request with this id is already pending"))?;
@@ -359,7 +362,7 @@ async fn decide_permission(
             .update_current_tool(tag, Some(payload.tool.clone()));
 
         // Broadcast to frontend modal
-        let _ = ctx.app_handle.emit("permission-requested", payload.clone());
+        ctx.webview.emit("permission-requested", payload.clone());
 
         let result = pending.wait(PERMISSION_TIMEOUT).await;
 
@@ -375,8 +378,8 @@ async fn decide_permission(
 
     // Auto-approve for Skip mode or if tool was previously allowed for session
     ctx.pty_manager.increment_auto_approved(tag);
-    let _ = ctx.app_handle.emit("permission-requested", payload.clone());
-    let _ = ctx.app_handle.emit(
+    ctx.webview.emit("permission-requested", payload.clone());
+    ctx.webview.emit(
         "permission-resolved",
         PermissionResolved::new(&payload, "allow"),
     );
@@ -390,7 +393,7 @@ async fn decide_permission(
 }
 
 pub async fn handle_mcp(
-    State(ctx): State<Arc<AppContext>>,
+    State(ctx): State<Arc<McpContext>>,
     headers: HeaderMap,
     Json(req): Json<crate::slices::orchestrator::mcp::JsonRpcRequest>,
 ) -> Response {
@@ -418,15 +421,30 @@ pub async fn handle_machina_agent_card(State(ctx): State<Arc<AppContext>>) -> Re
     Json(card).into_response()
 }
 
+/// The routes of Quay's MCP server, which needs none of the app's window.
+pub fn mcp_router(ctx: McpContext) -> Router {
+    Router::new()
+        .route("/mcp", post(handle_mcp).get(handle_mcp_get))
+        .with_state(Arc::new(ctx))
+}
+
 pub fn create_router(ctx: AppContext) -> Router {
+    let mcp = mcp_router(McpContext {
+        bridge_state: ctx.bridge_state.clone(),
+        pty_manager: ctx.pty_manager.clone(),
+        a2a_router: ctx.a2a_router.clone(),
+        machina_manager: ctx.machina_manager.clone(),
+        surfaces: ctx.surfaces.clone(),
+        webview: ctx.webview.clone(),
+    });
     Router::new()
         .route("/v1/events", post(handle_events))
         .route("/v1/commands", get(handle_commands))
         .route("/v1/permission", post(handle_permission))
-        .route("/mcp", post(handle_mcp).get(handle_mcp_get))
         .route("/.well-known/agent.json", get(handle_machina_agent_card))
         .route("/a2a/machina-praxis", get(handle_machina_agent_card))
         .with_state(Arc::new(ctx))
+        .merge(mcp)
 }
 
 #[cfg(test)]

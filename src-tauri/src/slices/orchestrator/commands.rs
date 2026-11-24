@@ -5,6 +5,7 @@ use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast,
 use super::router::A2ARouter;
 use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
 use crate::slices::pty::manager::PtyManager;
+use crate::webview::WebviewEvents;
 
 /// Mission Control's dispatch. The operator waits on the trail, so the peer's response is a Reply.
 #[tauri::command]
@@ -19,10 +20,10 @@ pub async fn a2a_send_prompt(
 /// Shows `msg` in the trail and, when it has just been typed into its target, raises its
 /// toast. A queued message raises its toast later, when it is typed in. The router runs
 /// it for every trail change (see `A2ARouter::set_trail_listener`).
-pub fn emit_message(app_handle: &AppHandle, msg: &A2AMessage) {
-    let _ = app_handle.emit("a2a-message-updated", msg.clone());
+pub fn emit_message(webview: &WebviewEvents, msg: &A2AMessage) {
+    webview.emit("a2a-message-updated", msg);
     if msg.status == A2AMessageStatus::Dispatched {
-        let _ = app_handle.emit("a2a-message-dispatched", msg.clone());
+        webview.emit("a2a-message-dispatched", msg);
     }
 }
 
@@ -35,8 +36,8 @@ struct BroadcastToast<'a> {
 
 /// Raises the broadcast toast for `sent`, naming its sender. The router already put each
 /// notice in the trail (see `A2ARouter::set_trail_listener`).
-pub fn emit_broadcast(app_handle: &AppHandle, text: &str, sent: &Broadcast) {
-    let _ = app_handle.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
+pub fn emit_broadcast(webview: &WebviewEvents, text: &str, sent: &Broadcast) {
+    webview.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
 }
 
 /// Mission Control's Broadcast box: reaches the peers in `project`, the active project.
@@ -51,7 +52,7 @@ pub async fn a2a_broadcast_toast(
     let sent = router
         .broadcast_toast_async(&text, &BroadcastSender::User { project }, &pty_manager)
         .await?;
-    emit_broadcast(&app_handle, &text, &sent);
+    emit_broadcast(&WebviewEvents::to_app(app_handle), &text, &sent);
     Ok(sent.notices)
 }
 

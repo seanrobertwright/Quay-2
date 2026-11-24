@@ -115,9 +115,9 @@ impl Drop for PendingAnswer {
 mod tests {
     use super::*;
     use axum::{extract::State, routing::post, Json, Router};
+    use crate::test_support::loopback::{post_json, read_reply};
     use parking_lot::Mutex;
     use std::time::Instant;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
 
     /// A bridge whose `/v1/permission` route waits on `PendingAnswer::wait` over a real
@@ -171,38 +171,8 @@ mod tests {
             "tag": "term-1",
             "tool": "Bash",
             "input": { "command": "ls" },
-        })
-        .to_string();
-        let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-        let request = format!(
-            "POST /v1/permission HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-            body.len()
-        );
-        stream.write_all(request.as_bytes()).await.unwrap();
-        stream
-    }
-
-    /// Reads the bridge's reply on `stream` and returns the answer in its body.
-    async fn read_answer(stream: &mut TcpStream) -> serde_json::Value {
-        let mut reply = Vec::new();
-        let mut buf = [0u8; 1024];
-        loop {
-            let n = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut buf))
-                .await
-                .expect("the bridge never replied")
-                .unwrap();
-            if n == 0 {
-                break;
-            }
-            reply.extend_from_slice(&buf[..n]);
-            let text = String::from_utf8_lossy(&reply);
-            if let Some((_, body)) = text.split_once("\r\n\r\n") {
-                if let Ok(answer) = serde_json::from_str(body) {
-                    return answer;
-                }
-            }
-        }
-        panic!("no answer in {:?}", String::from_utf8_lossy(&reply));
+        });
+        post_json(port, "/v1/permission", &[], &body).await
     }
 
     /// Waits up to five seconds for `condition` to hold.
@@ -248,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn a_connected_request_stays_pending_and_gets_the_users_answer() {
         let bridge = start_bridge(PERMISSION_TIMEOUT).await;
-        let mut stream = send_request(bridge.port, "req-open").await;
+        let stream = send_request(bridge.port, "req-open").await;
         assert!(eventually(|| bridge.state.list_pending_permissions().len() == 1).await);
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert_eq!(bridge.state.list_pending_permissions().len(), 1);
@@ -259,7 +229,7 @@ mod tests {
             .resolve_permission("req-open", "allow", None, false)
             .unwrap();
 
-        assert_eq!(read_answer(&mut stream).await["decision"], "allow");
+        assert_eq!(read_reply(stream).await.json()["decision"], "allow");
         assert!(bridge.state.list_pending_permissions().is_empty());
         assert_eq!(bridge.decisions(), vec!["allow".to_string()]);
     }
@@ -267,9 +237,9 @@ mod tests {
     #[tokio::test]
     async fn a_connected_request_is_denied_when_its_wait_runs_out() {
         let bridge = start_bridge(Duration::from_millis(300)).await;
-        let mut stream = send_request(bridge.port, "req-slow").await;
+        let stream = send_request(bridge.port, "req-slow").await;
 
-        let answer = read_answer(&mut stream).await;
+        let answer = read_reply(stream).await.json();
 
         assert_eq!(answer["decision"], "deny");
         assert_eq!(answer["reason"], "Timed out waiting for human approval");

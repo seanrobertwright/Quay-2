@@ -1,2 +1,8 @@
 allowBuilds:
   esbuild: true
+# Trusted first-party A2UI packages are exempt from the 24h minimumReleaseAge
+# supply-chain gate so freshly published releases don't block CI.
+minimumReleaseAgeExclude:
+  - '@a2ui/react'
+  - '@a2ui/web_core'
+  - '@a2ui/markdown-it'
