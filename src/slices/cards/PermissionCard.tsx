@@ -8,6 +8,7 @@ import { CodeBlock } from "./CodeBlock.tsx";
 import { DangerButton } from "./DangerButton.tsx";
 import { PermissionInputBox } from "./PermissionInputBox.tsx";
 import { QuayCard } from "./QuayCard.tsx";
+import { ScrollBox } from "./ScrollBox.tsx";
 
 interface PermissionCardProps {
   permission: PermissionItem;
@@ -25,11 +26,13 @@ export const PermissionCard = ({ permission, terminalName, onAnswer }: Permissio
   return (
     <QuayCard title="Permission request" icon={ShieldAlert}>
       {/* Neither name is Quay's, so a long one scrolls too. */}
-      <p className="max-h-12 overflow-y-auto wrap-anywhere">
-        {terminalName} asks to use <code className="text-white">{permission.tool}</code>
-      </p>
+      <ScrollBox kind="line" label="Who asks">
+        <p className="wrap-anywhere">
+          {terminalName} asks to use <code className="text-white">{permission.tool}</code>
+        </p>
+      </ScrollBox>
       {summary && <CodeBlock label={`Summary of the ${permission.tool} input`} text={summary} />}
-      {rest.length > 0 && <PermissionInputBox tool={permission.tool} rest={rest} />}
+      {rest.length > 0 && <PermissionInputBox label={summary ? `Rest of the ${permission.tool} input` : `${permission.tool} input`} rest={rest} />}
       {permission.reason && <AttributedText label={`${terminalName} says`} text={permission.reason} />}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={() => void onAnswer(permission.requestId, "allow", undefined, false)}>

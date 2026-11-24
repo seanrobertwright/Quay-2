@@ -172,8 +172,11 @@ const pendingRequest = (tool: string, input: unknown, requestId = "req-1") => ({
 /** The same, with the agent's reason. */
 const reasonedRequest = (reason: string) => ({ ...pendingRequest("Bash", { command: "pnpm test" }), reason });
 const requests = () => [...view().querySelectorAll<HTMLElement>('[aria-label="Permission request"]')];
+/** The label on screen that names a box. */
+const labelOf = (box: HTMLElement) => document.getElementById(box.getAttribute("aria-labelledby") ?? "");
 /** Each pending request's scroll box for the rest of its input. */
-const inputBoxes = () => [...view().querySelectorAll<HTMLElement>('[role="group"][aria-label^="Rest of the "]')];
+const inputBoxes = () =>
+  [...view().querySelectorAll<HTMLElement>('[role="group"][tabindex="0"]')].filter((box) => / input$/.test(labelOf(box)?.textContent ?? ""));
 /** The request's code block: what it works on, such as its command. */
 const codeBlock = () => requests()[0].querySelector<HTMLElement>('[role="group"][aria-label^="Summary of the "]');
 /** The request's inset for the agent's reason, named by the label Quay writes. */
@@ -308,9 +311,28 @@ test("the box is about ten lines high, then scrolls", async () => {
   for (const name of ["max-h-44", "leading-4", "p-2", "overflow-auto"]) assert.ok(inputBoxes()[0].classList.contains(name), name);
 });
 
-test("the scroll box's accessible name includes the tool", async () => {
+test("the scroll box is under a label on screen that names the tool, which is its accessible name", async () => {
   await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one" })] });
-  assert.equal(inputBoxes()[0].getAttribute("aria-label"), "Rest of the Write input");
+  const box = inputBoxes()[0];
+  const label = labelOf(box);
+  assert.equal(label?.textContent, "Rest of the Write input");
+  assert.ok(!box.contains(label), "Quay's own words are outside the box");
+  assert.ok((box.compareDocumentPosition(label!) & Node.DOCUMENT_POSITION_PRECEDING) !== 0, "above it");
+});
+
+test("the label of an input nothing summarises does not call it the rest", async () => {
+  await render({ pending: [pendingRequest("mcp__list__add", { item: 1 })] });
+  assert.equal(labelOf(inputBoxes()[0])?.textContent, "mcp__list__add input");
+});
+
+test("a long tool name scrolls in a bounded line reached by keyboard, and its label keeps to two lines", async () => {
+  const tool = `mcp__${"x".repeat(5_000)}`;
+  await render({ pending: [pendingRequest(tool, { item: 1 })] });
+  const line = requests()[0].querySelector<HTMLElement>('[role="group"][aria-label="Who asks"]');
+  assert.ok(line?.textContent === `term-a asks to use ${tool}`);
+  assert.ok(line?.classList.contains("max-h-12") && line.classList.contains("overflow-auto"));
+  assert.equal(line?.tabIndex, 0);
+  assert.ok(labelOf(inputBoxes()[0])?.classList.contains("line-clamp-2"));
 });
 
 test("an input that is not a plain object is one JSON value with no name, with no code block", async () => {

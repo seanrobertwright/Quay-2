@@ -6,7 +6,7 @@ import { ScrollBox } from "./ScrollBox.tsx";
  * be an adapter over it.
  */
 export const CodeBlock = ({ label, text }: { label: string; text: string }) => (
-  <ScrollBox label={label} height="medium" className="font-mono">
+  <ScrollBox kind="medium" label={label} className="font-mono">
     <pre className="whitespace-pre-wrap wrap-anywhere">
       <code>{text}</code>
     </pre>

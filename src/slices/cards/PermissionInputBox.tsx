@@ -15,24 +15,24 @@ function firstPart(text: string): string {
 }
 
 interface PermissionInputBoxProps {
-  /** The tool the request is for, in the box's accessible name. */
-  tool: string;
+  /** Quay's words for what the box holds, naming the tool the request is for: drawn above it, and its accessible name. */
+  label: string;
   /** What the request's summary does not show; not empty. */
   rest: readonly InputField[];
 }
 
 /**
- * The rest of a permission request's input, in a scroll box of its own about ten lines high
+ * The rest of a permission request's input, under a label, in a scroll box of its own about ten lines high
  * (four in a short window), so that a long input does not push the request's answers away. The input
  * is the agent's text: it is drawn as plain text, never as Markdown, links or HTML, with a string's
  * line breaks and spaces kept.
  */
-export const PermissionInputBox = ({ tool, rest }: PermissionInputBoxProps) => {
+export const PermissionInputBox = ({ label, rest }: PermissionInputBoxProps) => {
   const box = useRef<HTMLDivElement>(null);
   // The pressed "Show all" goes away, so keyboard focus moves to the box it was in.
   const onShowAll = () => box.current?.focus({ preventScroll: true });
   return (
-    <ScrollBox ref={box} label={`Rest of the ${tool} input`} height="tall" className="font-mono space-y-2">
+    <ScrollBox ref={box} kind="tall" label={label} labelShown className="font-mono space-y-2">
       {rest.map((field) => (
         <Field key={field.name ?? ""} field={field} onShowAll={onShowAll} />
       ))}
