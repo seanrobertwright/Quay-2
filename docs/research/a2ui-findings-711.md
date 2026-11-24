@@ -6,7 +6,7 @@
 2. **A terminal's first output after a load takes the focus out of a surface.** The rest of what the operator types then goes to the agent's terminal. This is today's `useTerminal.ts` on master, not the engine. A guard fixed it.
 3. **The engine only reports a failed `@checks`; it does not hold the action.** Quay's Button must.
 
-Run on 2026-11-24, 2:29 to 3:25 AM Eastern. Code and scripts: `src/slices/stage/prototype-a2ui-live` on this branch, with the prototype's log.
+Run on 2026-11-24, 2:29 to 3:25 AM Eastern. Code and scripts: `src/slices/stage/prototype-a2ui-live` on this branch, with the prototype's log. Review changed the code after the runs, and none of the timings were taken again: arguments of the wrong shape now get a verdict (they threw, and the call failed after 5 s), a bad `A2UI711_WAIT_S` is refused, failed `invoke` calls are noted, and an ask's part names have one home in `ask.ts`. `bundle.mjs` run on the changed code gives 567.0 kB (151.4 kB gzip) of growth, against the 566.8 kB (151.3 kB gzip) below.
 
 ## How it was run
 
@@ -96,7 +96,20 @@ The path is the spec's: Rust emits a check, the webview checks on a scratch engi
 | Raw surface: text, checkbox and choice | Rebuilt; fields the operator had not touched are the agent's |
 | Raw surface updated by its agent, then reloaded | The agent's values and what was typed outside them |
 
-- Rebuilding took 15 to 126 ms for up to 9 surfaces, done 235 to 424 ms after the navigation began, and 348 to 404 ms for 24 surfaces, many of them with 500 components, done at about 730 ms.
+- **Time to rebuild**, every page load in the log but those after 07:44:30 in the first run. "Rebuild" is from the page asking for the list to the last surface built. "Done" is counted from the start of the navigation. Minimum / median / maximum in ms. Most of the final build's surfaces from the fourth row on have 500 components.
+
+| Build | Surfaces | Loads | Rebuild | Done |
+| --- | --- | --- | --- | --- |
+| Final | 0 | 3 | 25 / 27 / 32 | 218 / 322 / 340 |
+| Final | 1 to 9 | 9 | 37 / 129 / 220 | 223 / 350 / 464 |
+| Final | 10 to 16 | 11 | 152 / 179 / 248 | 341 / 406 / 447 |
+| Final | 20 and 21 | 3 | 452 / 457 / 547 | 775 / 777 / 888 |
+| Final | 24 to 26 | 11 | 348 / 406 / 449 | 611 / 656 / 733 |
+| First | 0 | 18 | 16 / 36 / 58 | 213 / 273 / 419 |
+| First | 1 to 9 | 37 | 39 / 74 / 145 | 249 / 285 / 395 |
+| First | 12 | 2 | 93 / 103 / 112 | 300 / 313 / 326 |
+| First | 17 to 23 | 20 | 161 / 246 / 506 | 384 / 499 / 918 |
+
 - After a reload the companion opens on Repository, not on the Surface view. The spec says what selecting a terminal opens, not what a reload opens.
 - **Checks during a reload.** A check is an event. One sent before the new page listens is lost.
 
@@ -106,7 +119,7 @@ The path is the spec's: Rust emits a check, the webview checks on a scratch engi
 | 100, 130, 160 ms | 2 of 6 refused | 3 of 3 shown, 44 to 60 ms |
 | 200, 250, 300, 400 ms | 8 of 8 shown | 4 of 4 shown, 39 to 136 ms |
 
-A check answered by both the old event and the hand-over gives a second verdict, which Rust drops (`LATE VERDICT dropped`). While a lost check runs out its 5 s, that terminal's other calls wait behind it.
+A check answered by both the old event and the hand-over gives a second verdict, which Rust drops (`LATE VERDICT dropped`). While a lost check runs out its 5 s, every terminal's calls wait behind it: this prototype checks and commits one call at a time for the whole of Quay (`checking` in `a2ui_live.rs`). #706 asks for one at a time per terminal, under which only that terminal's calls would wait; that was not built or measured.
 
 ### 5. Update while typing
 
@@ -209,7 +222,7 @@ A parallel session launched its own Quay with the same CDP port at 07:44:30 UTC 
 
 ## Spec changes
 
-Each block gives the text in #706 and its replacement. The ticket's result also removes one item from "Still unproven".
+Each block gives the text in #706 that a finding contradicts, and its replacement. What #706 only leaves out is under "Gaps" below, without a replacement.
 
 **1. Modules.** Replace
 
@@ -233,17 +246,9 @@ with
 
 with
 
-> The frame writes its own state under `/frame` in the data model. Buttons read it: `@checks` on `/frame/ready` holds Send, and a label bound to `/frame/approveLabel` reads "Approve without 2 items". The engine only reports a failed check and still dispatches the action, so Quay's Button is disabled while `isValid` is false and its handler refuses as well. A double-click dispatches twice before anything is redrawn, so the Button also ignores a second click until its first is answered; Rust refuses the second in any case.
+> The frame writes its own state under `/frame` in the data model. Buttons read it: `@checks` on `/frame/ready` holds Send, and a label bound to `/frame/approveLabel` reads "Approve without 2 items". The engine only reports a failed check and still dispatches the action, so Quay's Button is disabled while `isValid` is false and its handler refuses as well.
 
-**4. Validation, whole after every call.** Replace
-
-> - **Whole after every call:** root present, every child resolved, no cycle, no orphan. A data path with no value yet is fine.
-
-with
-
-> - **Whole after every call:** root present, every child resolved, no cycle, no orphan. A data path with no value yet is fine. So an update cannot take a component away: one left out of its parent becomes an orphan and is refused. The agent deletes the surface and creates it again in one call, and the guide says so. An update carries each component whole.
-
-**5. Validation, the engine's errors.** Replace
+**4. Validation, the engine's errors.** Replace
 
 > - The engine's `code` and `message` pass through. Quay's own errors use `VALIDATION_FAILED`, and `INTEGRITY_ERROR` for ids.
 
@@ -251,33 +256,15 @@ with
 
 > - The engine's errors go through its `mapErrorToRendererMessage`, whose `code`, `path` and `message` pass through; the thrown error has another code (`VALIDATION_ERROR`) and no path. Quay's own errors use `VALIDATION_FAILED`, and `INTEGRITY_ERROR` for ids.
 
-**6. Where surfaces appear, arrival.** Replace
+**5. Where surfaces appear, arrival.** Replace
 
 > A tab appears pulsing and never takes the stage. A strip arrives folded. No toast.
 
 with
 
-> A tab appears pulsing and never takes the stage. A strip arrives folded. No toast. A terminal never takes the focus from a field in a surface: today's focus on a terminal's first output (`src/slices/terminal/useTerminal.ts`, `firstPtyOutputFocused`) and after selecting it (`scheduleFocus`) skip when the active element is an input outside the pane.
+> A tab appears pulsing and never takes the stage. A strip arrives folded. No toast. A terminal never takes the focus from a field in a surface: today's focus on a terminal's first output (`src/slices/terminal/useTerminal.ts`, `firstPtyOutputFocused`) skips when the active element is an input outside the pane.
 
-**7. Where surfaces appear, precedence.** Replace
-
-> Selecting one with only a surface waiting opens the Surface view.
-
-with
-
-> Selecting one with only a surface waiting opens the Surface view, and so does the selection a webview reload restores.
-
-**8. Engine.** Replace
-
-> - `@a2ui/react` and `@a2ui/web_core` at **0.16.1**, exact versions, with `zod` 3. Quay's own Tailwind components replace the stock ones. A2UI 1.0 only.
-
-with
-
-> - `@a2ui/react` and `@a2ui/web_core` at **0.16.1**, exact versions, with `zod` 3. Quay's own Tailwind components replace the stock ones. A2UI 1.0 only. No `minimumReleaseAgeExclude` line is committed for them. The module is loaded with `import()` after the shell has drawn, so its 560 kB are not parsed at start.
-
-The last sentence is this ticket's proposal, not a decision; drop it if the main chunk's size does not matter. A check that arrives before the module has loaded is then covered by change 1.
-
-**9. Further Notes, the heading of the engine table.** Replace
+**6. Further Notes, the heading of the engine table.** Replace
 
 > **Run on `@a2ui/react` and `@a2ui/web_core` 0.16.1, 2026-11-23** (Node and happy-dom, strict mode; not in the Tauri webview). These are the contract tests' first cases.
 
@@ -285,24 +272,13 @@ with
 
 > **Run on `@a2ui/react` and `@a2ui/web_core` 0.16.1, 2026-11-23** (Node and happy-dom, strict mode), and in the built Tauri webview on 2026-11-24 for #711. These are the contract tests' first cases.
 
-**10. Further Notes, rows of that table.** Replace
+**7. Further Notes, rows of that table.** Replace
 
 > | Unknown component, unknown function, bad property | `VALIDATION_FAILED` with a path inside the message body |
 
 with
 
 > | Unknown component, unknown function, bad property | Thrown as `VALIDATION_ERROR`; mapped to `VALIDATION_FAILED` with a path inside the message body |
-> | A Button's action called while its `@checks` fail | Dispatched: Quay's Button holds it |
-> | An update that drops a child | `INTEGRITY_ERROR` for the orphan |
-> | `updateDataModel` with no path, or `/` | Replaces the whole model, `/frame` included |
-
-and
-
-> | 499 children validated and applied | About 14 ms |
-
-with
-
-> | 499 children validated and applied | About 14 ms; in the webview, 500 components checked in about 10 ms, verdict in about 20 ms, 533 ms at worst with the CPU slowed 6 times |
 
 and
 
@@ -312,12 +288,24 @@ with
 
 > | Bundle, React external | 396 kB (104 kB gzip) for surface and core; 509 kB (134 kB) once the basic catalog is there to derive from. Lit stays in both. In Quay's own build, with the prototype's components: 567 kB (151 kB). `markdown-it` adds 136 kB (55 kB). |
 
-**11. Further Notes, unproven.** Replace
+**8. Further Notes, unproven.** Replace
 
 > Still unproven: the looks and the engine in the Tauri webview; telling a network path from a local disk on macOS and Linux;
 
 with
 
-> Still unproven: telling a network path from a local disk on macOS and Linux;
+> Still unproven: the looks in the Tauri webview, apart from a live ask's and a live raw surface's in the companion; `Icon`, `List` and Markdown through `markdown-it` there; telling a network path from a local disk on macOS and Linux;
+
+## Gaps in #706 that this run met
+
+Nothing here contradicts #706, so there is no replacement text.
+
+- **Validation.** Under "Whole after every call" no update can take a component away: one left out of its parent is an orphan (`INTEGRITY_ERROR`). Delete and create in one call works. An update must carry each component whole.
+- **Focus.** `scheduleFocus` in `useTerminal.ts` would take the focus as the first output does. It was read, not measured, and is unchanged here.
+- **Companion.** #706 does not say which view a reload opens.
+- **Send.** A double-click dispatches twice before anything is redrawn. Rust's one answer per surface holds.
+- **Engine module.** #706 does not say whether it is in the main chunk. It was measured both ways (criterion 7).
+- **Packages.** #706 does not mention pnpm's `minimumReleaseAgeExclude`. No such line is needed or committed.
+- **Rows the engine table could gain:** a Button's action called while its `@checks` fail is dispatched; an update that drops a child is `INTEGRITY_ERROR` for the orphan; `updateDataModel` with no path, or `/`, replaces the whole model, `/frame` included; in the webview 500 components are checked in about 10 ms with a verdict in about 20 ms, 533 ms at worst with the CPU slowed 6 times.
 
 No change to the 5 s verdict, the 500 components or the 256 kB.
