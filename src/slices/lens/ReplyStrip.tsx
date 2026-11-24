@@ -1,6 +1,6 @@
 import type { PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
-import { splitPermissionInput } from "../attention/permissionInput.ts";
+import { splitPermissionInput, toolInputSummary } from "../attention/permissionInput.ts";
 
 interface ReplyStripProps {
   /** The selected terminal's name. */
@@ -12,27 +12,13 @@ interface ReplyStripProps {
   onShowActivity: () => void;
 }
 
-/** What a permission request asks to do, on one line: a command, a file, or the tool's arguments. */
-function requestSummary(permission: PermissionItem): string {
-  const input = permission.input;
-  if (typeof input === "string") return input;
-  if (input && typeof input === "object") {
-    const fields = input as Record<string, unknown>;
-    for (const key of ["command", "file_path", "path", "url"]) {
-      if (typeof fields[key] === "string") return fields[key];
-    }
-    return JSON.stringify(input);
-  }
-  return "";
-}
-
 const BUTTON = "h-7 shrink-0 px-3 rounded-md border text-xs font-medium";
 
 /**
  * The strip at a lens's foot: the selected terminal's last question and its reply buttons, so the
  * operator answers the agent without leaving the lens. The question is the terminal's newest
  * waiting permission request; its replies are the attention queue's Allow once, Allow for session
- * and Deny. While the Activity view's request draws input under its summary
+ * and Deny. While the permission card in the Activity view draws input beside its summary
  * (`splitPermissionInput`), Whole input shows that view, even where the strip's one line is already
  * that input's JSON, cut to the strip's width.
  */
@@ -44,9 +30,9 @@ export const ReplyStrip = ({ terminalName, permission, onAnswer, onShowActivity 
     <b className="shrink-0 text-white">{terminalName}</b>
     {permission ? (
       <>
-        <span className="min-w-0 flex-1 truncate text-[#c9d1d9]" title={requestSummary(permission)}>
+        <span className="min-w-0 flex-1 truncate text-[#c9d1d9]" title={toolInputSummary(permission.input)}>
           <span className="text-[#e3b341]">{permission.tool}</span>{" "}
-          <code>{requestSummary(permission)}</code>
+          <code>{toolInputSummary(permission.input)}</code>
           {permission.reason && <span className="text-[#8b949e]"> · {permission.reason}</span>}
         </span>
         {splitPermissionInput(permission.input).rest.length > 0 && (

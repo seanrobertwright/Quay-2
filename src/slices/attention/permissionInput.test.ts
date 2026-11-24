@@ -1,5 +1,5 @@
-// Unit tests for the rule that splits a permission request's input into its one-line summary and
-// the rest, which the summary does not show (#704).
+// Unit tests for the rule that splits a permission request's input into its summary and the rest,
+// which the summary does not show (#704).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { splitPermissionInput } from "./permissionInput.ts";

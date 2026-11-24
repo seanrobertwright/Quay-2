@@ -51,6 +51,12 @@
   box-shadow: 0 0 12px rgba(63, 185, 80, 0.3);
 }
 
+/* A Quay card: the edge and glow of the Quay mark, in the accent. */
+[data-neon="quay-card"] {
+  border-color: var(--quay-accent);
+  box-shadow: 0 0 3px var(--quay-accent), 0 0 12px var(--quay-accent-haze);
+}
+
 /* The focus ring, for every control that does not draw its own. In the base layer, so a control's
    own focus utility (such as `focus-visible:outline-none`) still wins. */
 :focus-visible {

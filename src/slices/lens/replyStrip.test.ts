@@ -63,6 +63,11 @@ test("the reply strip shows the terminal's newest permission request and its rep
   for (const reply of ["Allow once", "Allow for session", "Deny"]) assert.ok(button(container, reply), reply);
 });
 
+test("the reply strip summarises a search by its pattern, as the Activity view does", () => {
+  const { container } = render({ permission: { ...permission, tool: "Grep", input: { pattern: "TODO\\b" } } });
+  assert.equal(container.querySelector("code")?.textContent, "TODO\\b");
+});
+
 test("each reply button answers the permission request", () => {
   const { container, answers } = render({ permission });
   act(() => button(container, "Allow once")?.click());

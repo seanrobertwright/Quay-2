@@ -12,7 +12,10 @@ function summaryField(input: unknown): { name: string; text: string } | null {
   return null;
 }
 
-/** What a tool call's arguments name, on one line: a command, a file, a URL, else the arguments. */
+/**
+ * What a tool call's or a permission request's input names: a command, a file, a URL or a pattern,
+ * as it came, else the whole input as JSON. Empty for an input that is neither text nor an object.
+ */
 export function toolInputSummary(input: unknown): string {
   if (typeof input === "string") return input;
   if (input && typeof input === "object") return summaryField(input)?.text ?? JSON.stringify(input);
@@ -26,7 +29,7 @@ export interface InputField {
   value: unknown;
 }
 
-/** A permission request's input as its Activity view request shows it: one line, and the rest. */
+/** A permission request's input as its card in the Activity view shows it: its summary, and the rest. */
 export interface PermissionInput {
   /** `toolInputSummary`'s result, or empty where that is the JSON of an input `rest` shows instead. */
   summary: string;
@@ -45,11 +48,11 @@ function beyondSummary(input: unknown, summarised: string | null): InputField[] 
 }
 
 /**
- * Splits a permission request's input into the Activity view's one-line summary and the rest.
- * `rest` is the rule for whether there is more to show than that summary: the Activity view's
- * request draws it, and a lens's reply strip offers the way there while it is not empty. The
- * strip's own line is not this summary: for an input with no summarised field it is the JSON, cut
- * to the strip's width, and the strip still offers the way to the fields drawn in full.
+ * Splits a permission request's input into its card's summary and the rest.
+ * `rest` is the rule for whether there is more to show than that summary: the card draws it, and a
+ * lens's reply strip offers the way there while it is not empty. The strip's own line is
+ * `toolInputSummary`: for an input with no summarised field that is the JSON, cut to the
+ * strip's width, and the strip still offers the way to the fields drawn in full.
  */
 export function splitPermissionInput(input: unknown): PermissionInput {
   const summarised = summaryField(input)?.name ?? null;

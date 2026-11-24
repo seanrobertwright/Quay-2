@@ -5,10 +5,9 @@ import type { Envelope } from "../bridge/useBridgeEvents.ts";
 import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { AttentionItem, PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
-import { splitPermissionInput } from "../attention/permissionInput.ts";
 import { formatClock } from "../../lib/dates.ts";
+import { PermissionCard } from "../cards/PermissionCard.tsx";
 import { activityEntries, type ActivityEntry, type MessageEntry, type ToolCallEntry } from "./activity.ts";
-import { PermissionInputBox } from "./PermissionInputBox.tsx";
 
 /** What the Activity view reads: the bridge's events, the A2A trail and what waits on the operator. */
 export interface CompanionActivity {
@@ -59,9 +58,14 @@ export const ActivityView = ({ terminal, activity, focus }: ActivityViewProps) =
   return (
     <div className="min-h-full flex flex-col">
       {permissions.length > 0 && (
-        <div className="shrink-0 border-b border-[#30363d]">
+        <div className="shrink-0 p-2 space-y-3 border-b border-[#30363d]">
           {permissions.map((permission) => (
-            <PermissionRequest key={permission.requestId} permission={permission} onAnswer={activity.answer} />
+            <PermissionCard
+              key={permission.requestId}
+              permission={permission}
+              terminalName={terminal.name}
+              onAnswer={activity.answer}
+            />
           ))}
         </div>
       )}
@@ -149,49 +153,6 @@ const Message = ({ message }: { message: MessageEntry }) => (
     )}
   </>
 );
-
-/** A pending permission request: what it asks to do, the input its summary leaves out, and its three answers. */
-const PermissionRequest = ({ permission, onAnswer }: { permission: PermissionItem; onAnswer: AnswerPermission }) => {
-  const { summary, rest } = splitPermissionInput(permission.input);
-  return (
-    <section aria-label="Permission request" className="p-3 bg-[#d2992214] border-l-2 border-[#d29922] text-xs space-y-2">
-      <p className="text-[#c9d1d9] break-words">
-        <span className="text-[#e3b341] font-semibold">{permission.tool}</span>
-        {summary && (
-          <>
-            {" "}
-            <code>{summary}</code>
-          </>
-        )}
-        {permission.reason && <span className="text-[#8b949e]"> · {permission.reason}</span>}
-      </p>
-      {rest.length > 0 && <PermissionInputBox tool={permission.tool} rest={rest} />}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void onAnswer(permission.requestId, "allow", undefined, false)}
-          className={`${BUTTON} border-[#2ea043] bg-[#238636] text-white hover:bg-[#2ea043]`}
-        >
-          Allow once
-        </button>
-        <button
-          type="button"
-          onClick={() => void onAnswer(permission.requestId, "allow", undefined, true)}
-          className={`${BUTTON} border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]`}
-        >
-          Allow for session
-        </button>
-        <button
-          type="button"
-          onClick={() => void onAnswer(permission.requestId, "deny")}
-          className={`${BUTTON} border-[#da3633] bg-[#da3633] text-white hover:bg-[#f85149]`}
-        >
-          Deny
-        </button>
-      </div>
-    </section>
-  );
-};
 
 /**
  * The strip at the view's foot that sends the terminal's agent a task over the A2A bus, as the

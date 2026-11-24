@@ -6,6 +6,7 @@
 // `get_pending_permissions` lists the requests the backend holds, `resolve_permission` takes an
 // answer, and `a2a_send_prompt` sends a message.
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, type FC } from "react";
@@ -168,15 +169,118 @@ test("a pending permission request shows at the top with Allow once, Allow for s
 
 /** A request the backend holds for `agent`, as `get_pending_permissions` lists it. */
 const pendingRequest = (tool: string, input: unknown, requestId = "req-1") => ({ requestId, sessionId: "s", tag: agent.id, tool, input });
+/** The same, with the agent's reason. */
+const reasonedRequest = (reason: string) => ({ ...pendingRequest("Bash", { command: "pnpm test" }), reason });
 const requests = () => [...view().querySelectorAll<HTMLElement>('[aria-label="Permission request"]')];
+/** The label on screen that names a box. */
+const labelOf = (box: HTMLElement) => document.getElementById(box.getAttribute("aria-labelledby") ?? "");
 /** Each pending request's scroll box for the rest of its input. */
-const inputBoxes = () => [...view().querySelectorAll<HTMLElement>('[role="group"][tabindex="0"]')];
+const inputBoxes = () =>
+  [...view().querySelectorAll<HTMLElement>('[role="group"][tabindex="0"]')].filter((box) => / input$/.test(labelOf(box)?.textContent ?? ""));
+/** The request's code block: what it works on, such as its command. */
+const codeBlock = () => requests()[0].querySelector<HTMLElement>('[role="group"][aria-label^="Summary of the "]');
+/** The request's inset for the agent's reason, named by the label Quay writes. */
+const reasonInset = () => {
+  const label = [...requests()[0].querySelectorAll("p")].find((p) => p.textContent === `${agent.name} says`);
+  return label ? requests()[0].querySelector<HTMLElement>(`[role="group"][aria-labelledby="${label.id}"]`) : null;
+};
 /** The labelled blocks in a scroll box, each as its name and its value. */
 const blocks = (box: HTMLElement) =>
   [...box.querySelectorAll('[role="group"][aria-labelledby]')].map((block) => [
     document.getElementById(block.getAttribute("aria-labelledby") ?? "")?.textContent,
     block.querySelector("pre")?.textContent,
   ]);
+
+test("a permission request carries the Quay mark: an edge and glow in the pie palette's accent, and the QUAY badge", async () => {
+  installShellLook("tron");
+  await render({ pending: [pendingRequest("Bash", { command: "pnpm test" })] });
+  const card = requests()[0];
+  assert.equal(getComputedStyle(card).borderColor, "#18e0ff");
+  assert.equal(getComputedStyle(card).boxShadow, "0 0 3px #18e0ff, 0 0 12px rgba(24, 224, 255, 0.22)");
+  installShellLook("sunset");
+  assert.equal(getComputedStyle(card).borderColor, "#ff3d81", "the edge follows the palette");
+  assert.match(getComputedStyle(card).boxShadow, /#ff3d81/, "so does the glow");
+
+  const badge = [...card.querySelectorAll("span")].find((span) => span.textContent === "QUAY");
+  assert.ok(badge !== undefined, "the badge is text");
+  assert.ok(!badge.closest('[aria-hidden="true"]'), "a screen reader reads it");
+});
+
+test("a permission request's title and icon are amber on Quay's plain ground, with no amber border or tint", async () => {
+  await render({ pending: [pendingRequest("Bash", { command: "pnpm test" })] });
+  const card = requests()[0];
+  const title = card.querySelector("h3");
+  assert.equal(title?.textContent, "Permission request");
+  // The classes, as the test DOM compiles no Tailwind.
+  assert.ok(title?.classList.contains("text-[#e3b341]"));
+  const icon = card.querySelector('svg[aria-hidden="true"]');
+  assert.ok(icon?.classList.contains("text-[#e3b341]"));
+  assert.ok(card.classList.contains("bg-[#161b22]"));
+  // A border colour utility would win over the mark's edge.
+  assert.deepEqual([...card.classList].filter((name) => name.startsWith("border")), ["border"]);
+  assert.ok(!card.parentElement?.innerHTML.includes("d29922"), "the old amber is gone");
+});
+
+test("a request says in Quay's words which terminal asks to use which tool, with the command apart in a code block", async () => {
+  const command = "cat <<'EOF'\n  **two**  spaces\n\thttp://example.com [x](http://y) <a href='z'>z</a>\nEOF";
+  await render({ pending: [pendingRequest("Bash", { command })] });
+  assert.equal(requests()[0].querySelector("p")?.textContent, "term-a asks to use Bash");
+  const block = codeBlock();
+  assert.equal(block?.getAttribute("aria-label"), "Summary of the Bash input");
+  assert.equal(block?.querySelector("pre > code")?.textContent, command, "verbatim");
+  const pre = block?.querySelector("pre");
+  assert.ok(pre?.classList.contains("whitespace-pre-wrap"), "newlines and spaces are kept");
+  assert.ok(pre?.classList.contains("wrap-anywhere"), "a long unbroken line wraps");
+  assert.equal(block?.querySelectorAll("a, b, i, strong, em").length, 0, "neither Markdown nor a link");
+  assert.ok(block?.textContent === command, "Quay's own words are outside the block");
+});
+
+test("the agent's reason is inset under a label naming its terminal, verbatim", async () => {
+  const reason = "**Trust me**\n  [allow](http://y) <b>now</b>";
+  await render({ pending: [reasonedRequest(reason)] });
+  const inset = reasonInset();
+  assert.equal(inset?.textContent, reason);
+  assert.ok(inset?.querySelector("p")?.classList.contains("whitespace-pre-wrap"), "newlines and spaces are kept");
+  assert.equal(inset?.querySelectorAll("a, b, i, strong, em").length, 0, "neither Markdown nor a link");
+});
+
+test("a request with no reason, or with an input nothing summarises, draws no empty box for it", async () => {
+  await render({ pending: [pendingRequest("mcp__list__add", { item: 1 })] });
+  assert.ok(reasonInset() === null);
+  assert.ok(codeBlock() === null);
+  assert.equal(inputBoxes().length, 1);
+});
+
+test("a long command and a long reason each scroll in their own box, reached by keyboard, and the answers follow them", async () => {
+  await render({ pending: [{ ...pendingRequest("Bash", { command: "echo x\n".repeat(200) }), reason: "because\n".repeat(200) }] });
+  for (const box of [codeBlock(), reasonInset()]) {
+    assert.ok(box?.classList.contains("overflow-auto"));
+    assert.ok([...(box?.classList ?? [])].some((name) => name.startsWith("max-h-")), "a bounded height");
+    assert.equal(box?.tabIndex, 0);
+    for (const name of ["Allow once", "Allow for session", "Deny"]) {
+      assert.ok(!box?.contains(button(name)), name);
+      assert.ok((box?.compareDocumentPosition(button(name)) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING, name);
+    }
+  }
+});
+
+test("Allow once, Allow for session and Deny each send the answer they name", async () => {
+  const answers: unknown[] = [];
+  for (const name of ["Allow once", "Allow for session", "Deny"]) {
+    const { backend } = await render({ pending: [pendingRequest("Bash", { command: "pnpm test" })] });
+    await act(async () => button(name).click());
+    await settle();
+    answers.push(...backend.calls.filter((c) => c.command === "resolve_permission").map((c) => c.args));
+    act(() => mounted?.root.unmount());
+    mounted?.container.remove();
+    mounted = null;
+  }
+  assert.deepEqual(answers, [
+    { requestId: "req-1", decision: "allow", reason: null, rememberForSession: false },
+    { requestId: "req-1", decision: "allow", reason: null, rememberForSession: true },
+    { requestId: "req-1", decision: "deny", reason: "User rejected tool execution", rememberForSession: false },
+  ]);
+});
 
 test("a Write request shows its path and its content, newlines kept, with nothing to click first", async () => {
   await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one\n  two\n" })] });
@@ -207,14 +311,34 @@ test("the box is about ten lines high, then scrolls", async () => {
   for (const name of ["max-h-44", "leading-4", "p-2", "overflow-auto"]) assert.ok(inputBoxes()[0].classList.contains(name), name);
 });
 
-test("the scroll box's accessible name includes the tool", async () => {
+test("the scroll box is under a label on screen that names the tool, which is its accessible name", async () => {
   await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one" })] });
-  assert.equal(inputBoxes()[0].getAttribute("aria-label"), "Rest of the Write input");
+  const box = inputBoxes()[0];
+  const label = labelOf(box);
+  assert.equal(label?.textContent, "Rest of the Write input");
+  assert.ok(!box.contains(label), "Quay's own words are outside the box");
+  assert.ok((box.compareDocumentPosition(label!) & Node.DOCUMENT_POSITION_PRECEDING) !== 0, "above it");
 });
 
-test("an input that is not a plain object is one JSON value with no name, under the tool's name alone", async () => {
+test("the label of an input nothing summarises does not call it the rest", async () => {
+  await render({ pending: [pendingRequest("mcp__list__add", { item: 1 })] });
+  assert.equal(labelOf(inputBoxes()[0])?.textContent, "mcp__list__add input");
+});
+
+test("a long tool name scrolls in a bounded line reached by keyboard, and its label keeps to two lines", async () => {
+  const tool = `mcp__${"x".repeat(5_000)}`;
+  await render({ pending: [pendingRequest(tool, { item: 1 })] });
+  const line = requests()[0].querySelector<HTMLElement>('[role="group"][aria-label="Who asks"]');
+  assert.ok(line?.textContent === `term-a asks to use ${tool}`);
+  assert.ok(line?.classList.contains("max-h-12") && line.classList.contains("overflow-auto"));
+  assert.equal(line?.tabIndex, 0);
+  assert.ok(labelOf(inputBoxes()[0])?.classList.contains("line-clamp-2"));
+});
+
+test("an input that is not a plain object is one JSON value with no name, with no code block", async () => {
   await render({ pending: [pendingRequest("mcp__list__add", ["a", { b: 1 }])] });
-  assert.equal(requests()[0].querySelector("p")?.textContent, "mcp__list__add");
+  assert.equal(requests()[0].querySelector("p")?.textContent, "term-a asks to use mcp__list__add");
+  assert.ok(codeBlock() === null);
   const box = inputBoxes()[0];
   assert.equal(box.querySelector("pre")?.textContent, '[\n  "a",\n  {\n    "b": 1\n  }\n]');
   assert.deepEqual(box.querySelectorAll("[aria-labelledby]").length, 0, "nothing names the one value");
@@ -256,7 +380,7 @@ test("an Edit request shows its old and new text as two labelled blocks", async 
 
 test("a Bash request with only its command shows no box", async () => {
   await render({ pending: [pendingRequest("Bash", { command: "pnpm test" })] });
-  assert.equal(requests()[0].querySelector("p")?.textContent, "Bash pnpm test");
+  assert.equal(codeBlock()?.textContent, "pnpm test");
   assert.equal(inputBoxes().length, 0);
 });
 
