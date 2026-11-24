@@ -1,5 +1,6 @@
 import type { PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
+import { splitPermissionInput } from "../companion/permissionInput.ts";
 
 interface ReplyStripProps {
   /** The selected terminal's name. */
@@ -7,6 +8,8 @@ interface ReplyStripProps {
   /** The terminal's newest waiting permission request, or null when it asks nothing. */
   permission: PermissionItem | null;
   onAnswer: AnswerPermission;
+  /** Shows the selected terminal's Activity view in the companion, for the request's whole input. */
+  onShowActivity: () => void;
 }
 
 /** What a permission request asks to do, on one line: a command, a file, or the tool's arguments. */
@@ -29,9 +32,10 @@ const BUTTON = "h-7 shrink-0 px-3 rounded-md border text-xs font-medium";
  * The strip at a lens's foot: the selected terminal's last question and its reply buttons, so the
  * operator answers the agent without leaving the lens. The question is the terminal's newest
  * waiting permission request; its replies are the attention queue's Allow once, Allow for session
- * and Deny.
+ * and Deny. While the request's input holds more than its summary shows, Whole input shows the
+ * Activity view, where the request shows the rest.
  */
-export const ReplyStrip = ({ terminalName, permission, onAnswer }: ReplyStripProps) => (
+export const ReplyStrip = ({ terminalName, permission, onAnswer, onShowActivity }: ReplyStripProps) => (
   <footer
     aria-label="Reply strip"
     className="shrink-0 flex items-center gap-2 min-h-11 px-3 py-1.5 border-t border-[#30363d] bg-[#161b22] text-xs"
@@ -44,6 +48,15 @@ export const ReplyStrip = ({ terminalName, permission, onAnswer }: ReplyStripPro
           <code>{requestSummary(permission)}</code>
           {permission.reason && <span className="text-[#8b949e]"> · {permission.reason}</span>}
         </span>
+        {splitPermissionInput(permission.input).rest.length > 0 && (
+          <button
+            type="button"
+            onClick={onShowActivity}
+            className={`${BUTTON} border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]`}
+          >
+            Whole input
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void onAnswer(permission.requestId, "allow", undefined, false)}
