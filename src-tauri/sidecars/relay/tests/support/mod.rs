@@ -143,8 +143,14 @@ impl Relay {
     /// Starts the relay with only the `QUAY_*` variables in `vars`.
     pub fn with_env(vars: &[(&str, &str)]) -> Relay {
         let mut relay = Relay::unread(vars);
+        relay.read_stdout();
+        relay
+    }
+
+    /// Starts to read what `unread` leaves unread.
+    pub fn read_stdout(&mut self) {
         let (sender, stdout) = channel();
-        let out = BufReader::new(relay.child.stdout.take().unwrap());
+        let out = BufReader::new(self.child.stdout.take().unwrap());
         std::thread::spawn(move || {
             for line in out.lines() {
                 let Ok(line) = line else { break };
@@ -153,8 +159,7 @@ impl Relay {
                 }
             }
         });
-        relay.stdout = stdout;
-        relay
+        self.stdout = stdout;
     }
 
     /// As `with_env`, but nothing reads the relay's stdout.

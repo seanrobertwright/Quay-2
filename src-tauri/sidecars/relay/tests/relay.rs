@@ -3,6 +3,8 @@
 
 mod support;
 
+use std::time::Duration;
+
 use serde_json::json;
 use support::{Listener, Relay, TOKEN};
 
@@ -269,16 +271,22 @@ fn it_exits_when_its_stdin_closes_and_closes_every_open_call() {
 
 #[test]
 fn what_it_has_answered_is_written_before_it_exits() {
-    let mut relay = Relay::with_env(&[]);
-    for id in 1..=4 {
-        relay.send(&initialize_of_a_megabyte(id));
+    let mut relay = Relay::unread(&[]);
+    // Each reply is more than a pipe holds, so most still wait when stdin closes
+    for id in 1..=12 {
+        relay.send(&initialize_of(id, 100_000));
     }
-    let (stdout, _) = relay.finish();
-    let ids: Vec<serde_json::Value> = stdout
-        .iter()
-        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("a whole reply")["id"].clone())
-        .collect();
-    assert_eq!(ids, [1, 2, 3, 4]);
+    relay.close_stdin();
+    std::thread::sleep(Duration::from_millis(200));
+    relay.read_stdout();
+
+    let ids: Vec<u64> = relay.finish().0.iter().map(|line| id_of(line)).collect();
+    assert_eq!(ids, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+}
+
+fn id_of(line: &str) -> u64 {
+    let reply: serde_json::Value = serde_json::from_str(line).expect("a whole reply");
+    reply["id"].as_u64().unwrap()
 }
 
 #[test]
@@ -286,7 +294,7 @@ fn it_exits_when_its_stdin_closes_though_nobody_reads_its_stdout() {
     let mut relay = Relay::unread(&[]);
     // Each reply is more than a pipe holds
     for id in [1, 2] {
-        relay.send(&initialize_of_a_megabyte(id));
+        relay.send(&initialize_of(id, 1_000_000));
     }
     relay.close_stdin();
     assert!(relay.exits_soon().is_some(), "the relay did not exit");
@@ -300,8 +308,9 @@ fn it_exits_when_its_stdout_closes() {
     assert!(relay.exits_soon().is_some(), "the relay did not exit");
 }
 
-fn initialize_of_a_megabyte(id: u32) -> String {
-    let version = "v".repeat(1_000_000);
+/// A handshake whose reply holds `size` bytes of it.
+fn initialize_of(id: u32, size: usize) -> String {
+    let version = "v".repeat(size);
     format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"initialize","params":{{"protocolVersion":"{version}"}}}}"#)
 }
 

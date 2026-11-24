@@ -24,7 +24,7 @@ const QUEUED: usize = 16;
 const READ_LIMIT: Duration = Duration::from_secs(30);
 
 /// How long what is already queued for stdout gets to go out once stdin has closed.
-const FLUSH_LIMIT: Duration = Duration::from_secs(1);
+const FLUSH_LIMIT: Duration = Duration::from_secs(2);
 
 /// One line of stdin, without its line end.
 pub enum Line {
