@@ -442,7 +442,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
                     </p>
                     <QuayBadge />
                   </div>
-                  <p className="text-[#c9d1d9] whitespace-pre-wrap">{detail.pending_approval.prompt}</p>
+                  <p className="text-[#c9d1d9] whitespace-pre-wrap">{detail.pending_approval.prompt || "Approval requested"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">

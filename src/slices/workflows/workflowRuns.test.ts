@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ArchonRun } from "../archon/types.ts";
-import type { MachinaWorkOrder, StageRecord } from "../machina/types.ts";
+import type { HoldCard, MachinaWorkOrder, StageRecord } from "../machina/types.ts";
 import type { RunRow } from "../praxis-builder/runsList.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { epochMsFromLocalParts } from "../../lib/dates.ts";
@@ -29,7 +29,7 @@ test("an Archon run waiting for approval needs you, with Approve, and its nodes 
   assert.equal(row.status, "Awaiting approval");
   assert.equal(row.spendUsd, 1.5);
   assert.deepEqual(row.segments.map((s) => s.state), ["done", "done", "waiting", "pending"]);
-  assert.deepEqual(row.decision, { kind: "archon-approval" });
+  assert.deepEqual(row.decision, { kind: "archon-approval", runId: "run-1" });
 });
 
 test("a failed Archon run needs you with Resume however long ago it failed", () => {
@@ -37,7 +37,7 @@ test("a failed Archon run needs you with Resume however long ago it failed", () 
   assert.equal(failed.section, "needs-you");
   assert.equal(failed.chip, "Resume");
   assert.deepEqual(failed.segments.map((s) => s.state), ["done", "failed", "pending"]);
-  assert.deepEqual(failed.decision, { kind: "archon-failed" });
+  assert.deepEqual(failed.decision, { kind: "archon-failed", runId: "run-1" });
   const old = archonRunRow(archon({ status: "failed", completed_ms: NOW - 25 * HOUR }), NOW);
   assert.equal(old.section, "needs-you");
   assert.equal(old.chip, "Resume");
@@ -89,10 +89,13 @@ const workOrder = (over: Partial<MachinaWorkOrder>): MachinaWorkOrder => ({
   ...over,
 });
 
+const hold: HoldCard = { reason: "SCOPE_DRIFT", summary: "Touched files outside the allowed paths", createdAtMs: NOW - HOUR, options: [] };
+
 test("a work order on hold needs you with Hold, its stages coloured as segments", () => {
   const row = workOrderRow(
     workOrder({
       status: "ON_HOLD",
+      hold,
       stages: [stage("admission", "PASSED"), stage("scaffold", "PASSED"), stage("implementation", "RUNNING"), stage("gate", "ON_HOLD"), stage("correction", "FAILED"), stage("acceptance", "PENDING")],
     }),
     NOW,
@@ -104,14 +107,18 @@ test("a work order on hold needs you with Hold, its stages coloured as segments"
   assert.equal(row.spendUsd, 0.42);
   assert.equal(row.section, "needs-you");
   assert.equal(row.chip, "Hold");
-  assert.deepEqual(row.decision, { kind: "factory-hold" });
+  assert.deepEqual(row.decision, { kind: "factory-hold", workOrderId: "WO-7", hold });
   assert.deepEqual(row.segments.map((s) => s.state), ["done", "done", "running", "waiting", "failed", "pending"]);
+});
+
+test("a work order on hold whose hold was not reported offers Resume", () => {
+  assert.deepEqual(workOrderRow(workOrder({ status: "ON_HOLD" }), NOW).decision, { kind: "factory-resume", workOrderId: "WO-7", failed: false });
 });
 
 test("a work order awaiting merge needs you with Merge; running stages are Running; merged ones are Recent", () => {
   const awaiting = workOrderRow(workOrder({ status: "AWAITING_ACCEPTANCE" }), NOW);
   assert.equal(awaiting.chip, "Merge");
-  assert.deepEqual(awaiting.decision, { kind: "factory-accept" });
+  assert.deepEqual(awaiting.decision, { kind: "factory-accept", workOrderId: "WO-7", baseBranch: "main", repoPath: "C:/repo" });
   for (const status of ["QUEUED", "SCAFFOLDING", "IN_PROGRESS", "GATING"] as const) {
     assert.equal(workOrderRow(workOrder({ status }), NOW).section, "running", status);
   }
@@ -126,7 +133,7 @@ test("an interrupted or failed work order needs you with Resume", () => {
     const row = workOrderRow(workOrder({ status }), NOW);
     assert.equal(row.section, "needs-you", status);
     assert.equal(row.chip, "Resume");
-    assert.deepEqual(row.decision, { kind: "factory-resume" });
+    assert.deepEqual(row.decision, { kind: "factory-resume", workOrderId: "WO-7", failed: status === "FAILED" });
   }
 });
 
