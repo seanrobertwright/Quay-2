@@ -6,13 +6,9 @@ import { A2uiSurface } from "@a2ui/react";
 import { SECONDARY } from "../../companion/buttonStyles.ts";
 import { Frame } from "../prototype-a2ui-look/frame.tsx";
 import { LayoutContext, drew, type Layout } from "./catalog.tsx";
+import { questionsIn } from "./ask.ts";
 import { getArrival, getVersion, livesOf, sendDraft, subscribe, type Live } from "./live.ts";
 
-interface Question {
-  id: string;
-  multiple: boolean;
-  options: boolean;
-}
 interface Answer {
   chosen?: string[];
   text?: string;
@@ -22,14 +18,7 @@ interface Answer {
 const AskCard = ({ live }: { live: Live }) => {
   drew("AskCard");
   const { surface } = live;
-  const questions = useMemo<Question[]>(() => {
-    const found: Question[] = [];
-    for (let i = 0; surface.componentsModel.has(`q${i}_question`); i++) {
-      const choice = surface.componentsModel.get(`q${i}_choice`);
-      found.push({ id: `q${i}`, options: !!choice, multiple: choice?.properties.variant === "multipleSelection" });
-    }
-    return found;
-  }, [surface]);
+  const questions = useMemo(() => questionsIn(surface), [surface]);
   const read = useCallback(() => {
     const model = surface.dataModel;
     const opened: number[] = model.get("/frame/opened") ?? [0];
@@ -71,7 +60,7 @@ const AskCard = ({ live }: { live: Live }) => {
           const isOpen = i === view.at || questions.length === 1;
           const done = view.answered[i] && !isOpen;
           return (
-            <div key={q.id} data-question={i} className={`rounded-md border ${isOpen ? "border-[#484f58]" : "border-[#30363d]"}`}>
+            <div key={q.parts.question} data-question={i} className={`rounded-md border ${isOpen ? "border-[#484f58]" : "border-[#30363d]"}`}>
               <button
                 type="button"
                 aria-expanded={isOpen}
@@ -84,14 +73,14 @@ const AskCard = ({ live }: { live: Live }) => {
                   {done ? <Check className="w-2.5 h-2.5" aria-label="answered" /> : i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  {part(`${q.id}_question`)}
+                  {part(q.parts.question)}
                   {done && <span className="block text-[11px] text-[#58a6ff] truncate">{view.said[i] || "None of these"}</span>}
                 </span>
               </button>
               {isOpen && (
                 <div className="px-2.5 pb-2.5 flex flex-col gap-2 [&_legend]:sr-only">
-                  {q.options && part(`${q.id}_choice`)}
-                  {part(`${q.id}_text`)}
+                  {q.options && part(q.parts.choice)}
+                  {part(q.parts.text)}
                   {i < questions.length - 1 && (
                     <button type="button" disabled={!view.answered[i]} onClick={() => open(i + 1)} className={`${SECONDARY} self-start`}>
                       Next

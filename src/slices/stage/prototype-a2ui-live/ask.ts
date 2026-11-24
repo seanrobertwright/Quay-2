@@ -9,6 +9,21 @@ export interface AskArgs {
   }[];
 }
 
+/** The names of one question's parts. */
+const partNames = (i: number) => ({ question: `q${i}_question`, choice: `q${i}_choice`, text: `q${i}_text` });
+
+/** The questions of a surface that `expand` made, in order. */
+export function questionsIn(surface: any) {
+  const components = surface.componentsModel;
+  const found: { parts: ReturnType<typeof partNames>; text: string; options: boolean; multiple: boolean }[] = [];
+  for (let parts = partNames(0); components.has(parts.question); parts = partNames(found.length)) {
+    const choice = components.get(parts.choice);
+    const multiple = choice?.properties.variant === "multipleSelection";
+    found.push({ parts, text: components.get(parts.question).properties.text, options: !!choice, multiple });
+  }
+  return found;
+}
+
 /** One `createSurface`: a root Column whose children are the ask's named parts. */
 export function expand(ask: AskArgs, surfaceId: string, catalogId: string): object {
   const parts: object[] = [];
@@ -19,10 +34,11 @@ export function expand(ask: AskArgs, surfaceId: string, catalogId: string): obje
   };
   if (ask.context) add({ id: "context", component: "Text", text: ask.context });
   ask.questions.forEach((q, i) => {
-    add({ id: `q${i}_question`, component: "Text", text: q.question });
+    const names = partNames(i);
+    add({ id: names.question, component: "Text", text: q.question });
     if (q.options)
       add({
-        id: `q${i}_choice`,
+        id: names.choice,
         component: "ChoicePicker",
         label: q.question,
         variant: q.multiple ? "multipleSelection" : "mutuallyExclusive",
@@ -30,7 +46,7 @@ export function expand(ask: AskArgs, surfaceId: string, catalogId: string): obje
         value: { "@path": `/answers/${i}/chosen` },
       });
     add({
-      id: `q${i}_text`,
+      id: names.text,
       component: "TextField",
       variant: "longText",
       label: q.options ? "Other, or a note" : "Your answer",

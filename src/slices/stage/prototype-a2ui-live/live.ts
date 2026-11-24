@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { CATALOG_ID, MAX_COMPONENTS, draws, engine, errorBody } from "./catalog.tsx";
-import { collapse, expand, type AskArgs } from "./ask.ts";
+import { collapse, expand, questionsIn, type AskArgs } from "./ask.ts";
 
 export const PAUSE_MS = 400;
 
@@ -122,10 +122,8 @@ function build(record: SurfaceRecord): Live {
 async function act(live: Live, action: any): Promise<void> {
   const { terminal_id, id, revision, tool } = live.record;
   note("action", action);
-  const questions = [...live.surface.componentsModel.values]
-    .filter((c: any) => /^q\d+_question$/.test(c.id))
-    .map((c: any) => c.properties.text);
-  const result = tool === "quay_ask" ? collapse(questions, action.context) : { version: "1.0", action };
+  const questions = () => questionsIn(live.surface).map((q) => q.text);
+  const result = tool === "quay_ask" ? collapse(questions(), action.context) : { version: "1.0", action };
   await invoke("a2ui711_answer", { terminalId: terminal_id, id, revision, result }).then(
     (how) => note("answered", how),
     (e) => note("answer-refused", String(e)),
@@ -198,18 +196,20 @@ interface CheckRequest {
   states: Record<string, any>;
 }
 export function check(request: CheckRequest): any {
-  const messages: any[] =
-    request.tool === "quay_ask"
-      ? [expand(request.arguments as AskArgs, request.id ?? "ask", CATALOG_ID)]
-      : (request.arguments.messages ?? []).map((m: any) =>
-          m?.createSurface ? { ...m, createSurface: { catalogId: CATALOG_ID, ...m.createSurface } } : m,
-        );
-  const refused = prePass(messages);
-  if (refused) return { errors: [refused] };
   const scratch = engine(() => {});
-  const bodies: any[] = messages.map((m) => Object.values(m).find((v: any) => v?.surfaceId));
-  const id: string = bodies[0]?.surfaceId ?? "";
+  let id = "";
+  // All of it, so that arguments of the wrong shape are refused and not left without a verdict
   try {
+    const messages: any[] =
+      request.tool === "quay_ask"
+        ? [expand(request.arguments as AskArgs, request.id ?? "ask", CATALOG_ID)]
+        : (request.arguments.messages ?? []).map((m: any) =>
+            m?.createSurface ? { ...m, createSurface: { catalogId: CATALOG_ID, ...m.createSurface } } : m,
+          );
+    const refused = prePass(messages);
+    if (refused) return { errors: [refused] };
+    const bodies: any[] = messages.map((m) => Object.values(m).find((v: any) => v?.surfaceId));
+    id = bodies[0]?.surfaceId ?? "";
     const stored = new Map(Object.entries(request.states)).get(id);
     if (stored && !messages[0].createSurface) scratch.processMessages([structuredClone(stored)]);
     scratch.processMessages(structuredClone(messages));
@@ -243,7 +243,7 @@ async function start(): Promise<void> {
     const verdict = check(payload);
     verdict.webview_ms = Math.round((performance.now() - started) * 10) / 10;
     note("check", { call: payload.call, ms: verdict.webview_ms, components: verdict.components });
-    void invoke("a2ui711_verdict", { call: payload.call, verdict });
+    invoke("a2ui711_verdict", { call: payload.call, verdict }).catch((e) => note("verdict-refused", String(e)));
   };
   await listen<any>("a2ui711-check", ({ payload }) => onCheck(payload));
   await listen<SurfaceRecord>("a2ui711-show", ({ payload }) => show(payload));
@@ -252,7 +252,8 @@ async function start(): Promise<void> {
   for (const record of list) if (!lives.has(keyOf(record))) lives.set(keyOf(record), build(record));
   const at = performance.now();
   note("rebuilt", { count: list.length, ms: at - asked, sinceNavigation: at });
-  void invoke("a2ui711_log", { line: `rebuilt ${list.length} in ${(at - asked).toFixed(1)}ms, ${at.toFixed(0)}ms after navigation` });
+  const line = `rebuilt ${list.length} in ${(at - asked).toFixed(1)}ms, ${at.toFixed(0)}ms after navigation`;
+  invoke("a2ui711_log", { line }).catch((e) => note("log-refused", String(e)));
   changed();
   // A check sent while this page was loading reached no listener
   for (const missed of await invoke<any[]>("a2ui711_checks")) onCheck(missed);
@@ -267,4 +268,4 @@ document.addEventListener("visibilitychange", () => {
 });
 
 Object.assign(window, { __a2ui711: { probe, lives, check, engine, draws } });
-void start();
+start().catch((e) => console.error("[a2ui711] the surfaces could not be rebuilt", e));

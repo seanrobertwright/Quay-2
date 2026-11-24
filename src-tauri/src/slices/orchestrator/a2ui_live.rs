@@ -85,6 +85,20 @@ fn checking() -> &'static tokio::sync::Mutex<()> {
     C.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
+/// How long a call waits for its answer. A value that is not whole seconds above zero is refused.
+fn wait_limit() -> Result<Duration, String> {
+    let seconds = match std::env::var("A2UI711_WAIT_S") {
+        Err(std::env::VarError::NotPresent) => WAIT_SECONDS,
+        Err(e) => return Err(format!("A2UI711_WAIT_S: {e}")),
+        Ok(s) => s
+            .parse()
+            .ok()
+            .filter(|n| *n > 0)
+            .ok_or_else(|| format!("A2UI711_WAIT_S must be whole seconds above zero, not {s:?}"))?,
+    };
+    Ok(Duration::from_secs(seconds))
+}
+
 fn text(body: Value, is_error: bool) -> Value {
     let mut out = json!({ "content": [{ "type": "text", "text": body.to_string() }] });
     if is_error {
@@ -100,6 +114,7 @@ pub async fn call(
     tool: &str,
     arguments: &Value,
 ) -> Result<Value, String> {
+    let wait = wait_limit()?;
     let name = ctx.pty_manager.get_info(caller_id).map(|t| t.name).unwrap_or_default();
     let typed = tool == "quay_ask";
     let key;
@@ -203,8 +218,7 @@ pub async fn call(
         rx
     };
 
-    let wait = std::env::var("A2UI711_WAIT_S").ok().and_then(|s| s.parse().ok()).unwrap_or(WAIT_SECONDS);
-    match tokio::time::timeout(Duration::from_secs(wait), rx).await {
+    match tokio::time::timeout(wait, rx).await {
         Ok(Ok(result)) => {
             log(&format!("{} RETURNED {result}", key.1));
             Ok(json!({ "content": [{ "type": "text", "text": result }] }))
