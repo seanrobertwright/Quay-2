@@ -54,10 +54,13 @@ export interface SurfaceKey {
 /** Where a surface is drawn. Mirrors `Place`. */
 export type SurfacePlace = "companion" | "tab" | "strip";
 
+/** How a board's run stands, as its agent says it. Mirrors `Status`. */
+export type BoardStatus = "running" | "done" | "failed";
+
 /** The run a board shows, with its clock, in milliseconds since the epoch. Mirrors `BoardRun`. */
 export interface BoardRun {
   title: string;
-  status: "running" | "done" | "failed";
+  status: BoardStatus;
   started_at: number;
   /** When its agent last sent it. */
   updated_at: number;

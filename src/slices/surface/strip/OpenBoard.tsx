@@ -15,9 +15,6 @@ import { boardState } from "./boardState.ts";
 
 const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
 
-/** A board has no action, so there is none to answer. */
-const noAction = async () => {};
-
 /** A board's title, how far it is and its clock, which are Quay's and not a part of it. */
 const BoardHead = ({ record }: { record: BoardRecord }) => {
   const reading = readBoard(record);
@@ -41,7 +38,7 @@ interface OpenBoardProps {
   terminal: TerminalInfo;
 }
 
-/** A board in its frame. One that is finished keeps all it showed, under a band that says how it ended. */
+/** A board in its frame. One that is locked keeps all it showed, under a band that says how it ended. */
 export const OpenBoard = ({ record, terminal }: OpenBoardProps) => {
   const { kind, KindIcon, layout } = lookOf(record.tool);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -53,7 +50,7 @@ export const OpenBoard = ({ record, terminal }: OpenBoardProps) => {
         <BoardHead record={record} />
         <SurfaceBoundary key={record.change}>
           <Suspense fallback={<p className="text-[#8b949e]">Loading…</p>}>
-            <SurfaceContent record={record} layout={layout} onAction={noAction} />
+            <SurfaceContent record={record} layout={layout} />
           </Suspense>
         </SurfaceBoundary>
       </div>

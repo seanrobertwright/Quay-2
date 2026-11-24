@@ -12,7 +12,7 @@ import { OpenBoard } from "./OpenBoard.tsx";
 import { setOpenBoard, useOpenBoard } from "./openBoards.ts";
 
 /**
- * A terminal's boards, a line each: the live ones and the newest that finished, with the other finished
+ * A terminal's boards, a line each: the live ones and the newest that locked, with the other locked
  * ones folded beneath, and the one that is open under them all. It is drawn over the terminal, in a column
  * as high as what it covers, and takes none of its room.
  */
@@ -30,9 +30,9 @@ export const BoardStrip = ({ terminal }: { terminal: TerminalInfo }) => {
   });
   if (boards.length === 0) return null;
   const open = boards.find((record) => surfaceKey(record) === openKey) ?? null;
-  // A finished board's last change is its finish, or the last its agent sent after that
-  const finished = boards.filter((record) => !isLive(record)).sort((a, b) => b.change - a.change);
-  const [newest, ...rest] = finished;
+  // A locked board's last change is its lock, or the last its agent sent after that
+  const locked = boards.filter((record) => !isLive(record)).sort((a, b) => b.change - a.change);
+  const [newest, ...rest] = locked;
   const openInRest = open !== null && rest.includes(open);
   const showsRest = unfolded || openInRest;
   const toggleRest = () => {

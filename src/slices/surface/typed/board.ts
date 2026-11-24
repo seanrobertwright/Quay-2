@@ -1,7 +1,7 @@
-// quay_board's two pure functions, and the names of its parts. A board's title, its status and its clock
-// are the frame's, and no part of it.
+// quay_board's one pure function, as a board has no action to make a result of, and the names of its
+// parts. A board's title, its status and its clock are the frame's, and no part of it.
 import type { Step } from "../../parts/steps.ts";
-import type { CreateSurface, SurfaceComponent } from "../surfaceTypes.ts";
+import type { BoardStatus, CreateSurface, SurfaceComponent } from "../surfaceTypes.ts";
 
 /** A checked `quay_board` call. Mirrors `Board`. */
 export interface BoardArguments {
@@ -9,7 +9,7 @@ export interface BoardArguments {
   steps: Step[];
   progress?: { done: number; total: number };
   stats: { label: string; value: string }[];
-  status: "running" | "done" | "failed";
+  status: BoardStatus;
 }
 
 /** The part that holds the steps, when there are any. */
@@ -31,9 +31,4 @@ export function expand({ steps, progress, stats }: BoardArguments, surfaceId: st
   ];
   const root = { id: "root", component: "Column", children: parts.map(({ id }) => id) };
   return { version: "1.0", createSurface: { surfaceId, components: [root, ...parts], dataModel: {} } };
-}
-
-/** A board has no action, so there is none to make a result of. */
-export function collapse(): never {
-  throw new Error("Not sent: a board sends nothing back.");
 }

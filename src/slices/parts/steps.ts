@@ -1,8 +1,9 @@
 // A run's steps, as the parts that draw them take them.
 
-const STATES = ["pending", "active", "done", "failed"] as const;
+/** The states a step can be in. */
+export const STEP_STATES = ["pending", "active", "done", "failed"] as const;
 
-export type StepState = (typeof STATES)[number];
+export type StepState = (typeof STEP_STATES)[number];
 
 export interface Step {
   label: string;
@@ -10,7 +11,7 @@ export interface Step {
   note?: string;
 }
 
-const isState = (state: unknown): state is StepState => STATES.some((known) => known === state);
+const isState = (state: unknown): state is StepState => STEP_STATES.some((known) => known === state);
 
 /** The steps in `value`. What in it is no step is left out, and so is a note that is no text. */
 export function stepsIn(value: unknown): Step[] {

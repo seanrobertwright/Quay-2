@@ -2,12 +2,12 @@ import { z } from "zod";
 import { createComponentImplementation } from "@a2ui/react";
 import { DataBindingSchema } from "@a2ui/web_core/v1_0";
 import { StepList } from "../../../parts/StepList.tsx";
-import { stepsIn } from "../../../parts/steps.ts";
+import { STEP_STATES, stepsIn } from "../../../parts/steps.ts";
 
 const StepSchema = z
   .object({
     label: z.string(),
-    state: z.enum(["pending", "active", "done", "failed"]),
+    state: z.enum(STEP_STATES),
     note: z.string().describe("A second line under the label.").optional(),
   })
   .strict();

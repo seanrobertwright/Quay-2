@@ -9,6 +9,8 @@ import { engineFor, type EngineSurface } from "./engine.ts";
 
 type OnAction = (action: SurfaceAction) => Promise<void>;
 
+const noAction: OnAction = async () => {};
+
 /** The engine that draws a record, with what the operator has put in it so far. */
 interface Live {
   surface: EngineSurface;
@@ -35,7 +37,7 @@ function liveOf(record: SurfaceRecord): Live {
         return () => subscription.unsubscribe();
       },
     },
-    onAction: async () => {},
+    onAction: noAction,
   };
   lives.set(record, live);
   return live;
@@ -46,12 +48,12 @@ interface SurfaceContentProps {
   record: SurfaceRecord;
   /** The frame's layout of a typed surface's parts, or null to draw the surface as it is. */
   layout: Layout | null;
-  /** The operator's action. Until it settles, the button that sent it takes no second click. */
-  onAction: OnAction;
+  /** The operator's action. Until it settles, the button that sent it takes no second click. Left out for a surface that has none. */
+  onAction?: OnAction;
 }
 
 /** What an agent's surface holds, drawn by Quay's components. */
-export const SurfaceContent = ({ record, layout, onAction }: SurfaceContentProps) => {
+export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceContentProps) => {
   const [live] = useState(() => liveOf(record));
   useEffect(() => {
     live.onAction = onAction;

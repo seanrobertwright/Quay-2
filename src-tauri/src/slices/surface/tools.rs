@@ -15,7 +15,7 @@ use super::place::MOST_LIVE;
 use super::read;
 use super::rejection::{CallError, QuayFailed, Rejection};
 use super::store::{
-    AnswerRefused, Answered, BeingSent, CommitRefused, Creation, Dismissed, Locked, Standing, SurfaceKey,
+    AnswerRefused, Answered, BeingSent, Changed, CommitRefused, Creation, Dismissed, Standing, SurfaceKey,
     SurfaceRecord, SurfaceStore, ToType,
 };
 use super::timing::Timing;
@@ -210,7 +210,7 @@ impl SurfaceTools {
         match self.0.store.commit_board(&key, creation, board, accepted) {
             Err(refused) => self.commit_refused(&key, creation, refused),
             Ok(shown) => {
-                self.show_locked(&shown);
+                self.show_changed(&shown);
                 text_result(json!({ "shown": true }))
             }
         }
@@ -330,8 +330,8 @@ impl SurfaceTools {
         }
     }
 
-    /// Draws a surface that has locked, and takes what left for it off the screen.
-    fn show_locked(&self, Locked { record, left }: &Locked) {
+    /// Draws a surface that has changed, and takes what left for it off the screen.
+    fn show_changed(&self, Changed { record, left }: &Changed) {
         self.show(record);
         self.remove_all(left);
     }
@@ -365,8 +365,8 @@ impl SurfaceTools {
     /// its terminal. One to an older revision has the surface drawn again. Blocks while it types.
     pub fn answer(&self, key: &SurfaceKey, revision: u64, answer: Value) -> Result<(), AnswerRefused> {
         let store = &self.0.store;
-        let locked = match store.answer(key, revision, answer) {
-            Ok(Answered::Returned(locked)) => Some(locked),
+        let settled = match store.answer(key, revision, answer) {
+            Ok(Answered::Returned(settled)) => Some(settled),
             Ok(Answered::ToType(to_type)) => match self.type_in(&key.terminal_id, &to_type) {
                 Ok(()) => store.typed(key),
                 Err(why) => {
@@ -381,8 +381,8 @@ impl SurfaceTools {
                 return Err(refused);
             }
         };
-        if let Some(locked) = locked {
-            self.show_locked(&locked);
+        if let Some(settled) = settled {
+            self.show_changed(&settled);
         }
         Ok(())
     }
