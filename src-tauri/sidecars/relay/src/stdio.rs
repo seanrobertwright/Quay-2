@@ -28,7 +28,7 @@ const FLUSH_LIMIT: Duration = Duration::from_secs(2);
 
 /// One line of stdin, without its line end.
 pub enum Line {
-    Message(Vec<u8>),
+    Whole(Vec<u8>),
     /// A line over `MAX_REQUEST`, of which only its `id` and `method` are kept.
     TooLong(Result<Message, Unreadable>),
 }
@@ -48,8 +48,8 @@ pub fn read_lines() -> Receiver<Line> {
     lines
 }
 
-/// The next line of `input` that is not empty, or `None` at its end. It never holds more of
-/// the line than `MAX_REQUEST` and a line end.
+/// The next line of `input` that is not empty, or `None` at its end. It holds no
+/// more of the line than `MAX_REQUEST`, a line end and what `Message::scan` holds.
 fn read_line(input: &mut impl BufRead) -> std::io::Result<Option<Line>> {
     loop {
         let mut line = Vec::new();
@@ -66,7 +66,7 @@ fn read_line(input: &mut impl BufRead) -> std::io::Result<Option<Line>> {
             return Ok(Some(Line::TooLong(message)));
         }
         if !line.is_empty() {
-            return Ok(Some(Line::Message(line)));
+            return Ok(Some(Line::Whole(line)));
         }
     }
 }

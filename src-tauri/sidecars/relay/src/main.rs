@@ -75,8 +75,8 @@ async fn serve(route: Route) -> ExitCode {
 
 /// Takes one line from the CLI: answers it here, or sets it on its way to Quay.
 async fn take(line: Line, route: &Route, calls: &OpenCalls, out: &Out) {
-    let (message, line) = match line {
-        Line::Message(line) => (Message::parse(&line), Some(line)),
+    let (message, whole) = match line {
+        Line::Whole(line) => (Message::parse(&line), Some(line)),
         Line::TooLong(message) => (message, None),
     };
     let Message { id, method } = match message {
@@ -90,7 +90,7 @@ async fn take(line: Line, route: &Route, calls: &OpenCalls, out: &Out) {
             out.send(rpc::error(Some(id), code, why)).await;
         }
     };
-    let Some(line) = line else {
+    let Some(line) = whole else {
         return refuse(rpc::INVALID_REQUEST, REQUEST_TOO_LONG).await;
     };
     match route {

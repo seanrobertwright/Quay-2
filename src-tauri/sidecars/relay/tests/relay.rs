@@ -408,6 +408,28 @@ fn a_request_over_2_mb_is_refused_by_its_id_and_the_next_one_still_goes_through(
 }
 
 #[test]
+fn a_line_over_2_mb_whose_id_it_would_have_to_hold_is_refused_without_it() {
+    let mut relay = Relay::start("http://127.0.0.1:9/mcp", TOKEN);
+    let long = "x".repeat(4 * TWO_MB);
+    for line in [
+        format!(r#"{{"jsonrpc":"2.0","id":"{long}","method":"ping"}}"#),
+        format!(r#"{{"jsonrpc":"2.0","id":5,"method":"{long}"}}"#),
+        format!(r#"{{"jsonrpc":"2.0","id":5,"{long}":1,"method":"ping"}}"#),
+        format!(r#"{{"jsonrpc":"2.0","id":[{}1],"method":"ping"}}"#, "1,".repeat(2 * TWO_MB)),
+        format!(r#"{{"jsonrpc":"2.0","params":{}{},"id":5,"method":"ping"}}"#, "[".repeat(TWO_MB), "]".repeat(TWO_MB)),
+    ] {
+        relay.send(&line);
+        let reply = relay.next();
+        assert!(reply["id"].is_null(), "{}", &line[..60]);
+        assert_eq!(reply["error"]["code"], -32600, "{}", &line[..60]);
+    }
+    // A bracket or a quote within a string is text
+    let text = r#"[{\"\\"#.repeat(TWO_MB / 4);
+    relay.send(&format!(r#"{{"jsonrpc":"2.0","params":{{"a":"{text}"}},"id":5,"method":"ping"}}"#));
+    assert_eq!(relay.next()["id"], 5);
+}
+
+#[test]
 fn a_reply_over_4_mb_is_an_error() {
     let body = format!(r#"{{"jsonrpc":"2.0","id":"x1","result":"{}"}}"#, "x".repeat(4 * 1024 * 1024));
     assert_eq!(error_for("200 OK", "", &body), "Quay's reply is over 4 MB, so the relay dropped it.");
