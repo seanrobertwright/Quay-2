@@ -19,7 +19,7 @@ interface LockedLineProps {
 const LockedLine = ({ record, open, onToggle }: LockedLineProps) => {
   const { asksFor, answerInLine } = lookOf(record.tool);
   const { word, Icon, tone, at } = lockedState(record);
-  const asked = asksFor(record.state.createSurface.components);
+  const asked = asksFor(record);
   const answer = record.ended_at === null ? answerInLine(record.answer) : null;
   return (
     <button

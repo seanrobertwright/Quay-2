@@ -26,7 +26,7 @@ interface Tabbed {
 }
 
 /** A tab's label: its surface's title, which its agent wrote. */
-const titleOf = ({ record }: Tabbed) => lookOf(record.tool).asksFor(record.state.createSurface.components);
+const titleOf = ({ record }: Tabbed) => lookOf(record.tool).asksFor(record);
 
 interface SurfaceTabsOptions {
   terminals: readonly TerminalInfo[];

@@ -1,8 +1,11 @@
 // The engine, with Quay's catalog, in strict mode.
 import type { ReactCatalogComponent } from "@a2ui/react";
 import { mapErrorToRendererMessage, MessageProcessor, STRICT_VALIDATION, type ActionListener, type SurfaceModel } from "@a2ui/web_core/v1_0";
-import type { CreateSurface, EngineError } from "../surfaceTypes.ts";
+import type { CreateSurface, CheckError } from "../surfaceTypes.ts";
 import { catalog } from "./catalog.ts";
+
+/** What an action listener is given. */
+export type A2uiClientAction = Parameters<ActionListener>[0];
 
 export type EngineSurface = SurfaceModel<ReactCatalogComponent>;
 
@@ -15,8 +18,22 @@ export function engineFor(state: CreateSurface, onAction?: ActionListener) {
   return { surface, dispose: () => processor.dispose() };
 }
 
+/** The engine's strict checks of each message, without those that need all of a call's messages: a root, every child, no orphan. */
+const PART_OF_A_CALL = { ...STRICT_VALIDATION, allowMissingRoot: true, allowDanglingReferences: true, allowOrphanComponents: true };
+
+/** An engine that a call's messages are tried on, one at a time. */
+export function scratchEngine() {
+  const processor = new MessageProcessor<ReactCatalogComponent>([catalog], undefined, { validationConfig: PART_OF_A_CALL, version: "1.0" });
+  return {
+    /** Runs a message. It throws the first thing the engine finds wrong with it. */
+    run: (message: object) => processor.processMessages([structuredClone(message)]),
+    surface: (id: string): EngineSurface | undefined => processor.model.getSurface(id),
+    dispose: () => processor.dispose(),
+  };
+}
+
 /** What the engine threw, as it would tell the agent. */
-export function engineError(error: unknown, surfaceId: string): EngineError {
+export function engineError(error: unknown, surfaceId: string): CheckError {
   const { code, message, path } = mapErrorToRendererMessage(error, { surfaceId, version: "1.0" }).error;
   return { code, message, ...(typeof path === "string" ? { path } : {}) };
 }

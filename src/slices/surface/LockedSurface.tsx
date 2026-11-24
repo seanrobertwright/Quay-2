@@ -40,7 +40,7 @@ interface LockedSurfaceProps {
 
 /** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
 export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null }: LockedSurfaceProps) => {
-  const { kind, KindIcon, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
+  const { kind, KindIcon, titled, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
   const { components } = record.state.createSurface;
   const ended = record.ended_at !== null;
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -52,12 +52,12 @@ export const LockedSurface = ({ record, terminal, fills = false, notDismissed = 
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
-          {ended && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(components)}</p>}
+          {(ended || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}
           {!ended && Settled && <Settled answer={record.answer} components={components} />}
           {texts.length > 0 && <NotSent texts={texts} />}
           {Asked && (
             <Folded label={askedLabel}>
-              <Asked components={components} />
+              <Asked components={components} record={record} />
             </Folded>
           )}
         </div>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { OpenUrlApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { createFunctionImplementation } from "@a2ui/web_core/v1_0";
 import type { Effect } from "../clickOnly.ts";
+import { hasOwn, isObject } from "../json.ts";
 import type { SurfaceEffects } from "../links.ts";
 import type { EngineSurface } from "./engine.ts";
 import { FILE_FIELDS, namedFile } from "./namedFile.ts";
@@ -45,8 +46,8 @@ const isEffect = (name: unknown): name is Effect => EFFECTS.some((effect) => eff
 
 /** The effect a Button's `action` is a call of, or null when it is none. */
 export function effectOf(action: unknown): Effect | null {
-  if (typeof action !== "object" || action === null || !("functionCall" in action)) return null;
+  if (!isObject(action) || !hasOwn(action, "functionCall")) return null;
   const call = action.functionCall;
-  const name = typeof call === "object" && call !== null && "@call" in call ? call["@call"] : null;
+  const name = isObject(call) && hasOwn(call, "@call") ? call["@call"] : null;
   return isEffect(name) ? name : null;
 }

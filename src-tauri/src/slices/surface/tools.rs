@@ -6,23 +6,25 @@ use std::sync::{Arc, OnceLock, Weak};
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 
-use super::arguments::spelled;
 use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, Verdict};
 use super::names;
-use super::place::{Place, MOST_LIVE};
+use super::place::Place;
+use super::raw::{self, RawCall};
 use super::read;
 use super::rejection::{CallError, QuayFailed, Rejection};
 use super::review::{self, Review};
 use super::store::{
     AnswerRefused, Answered, BeingSent, Changed, CommitRefused, Creation, Dismissed, Standing, SurfaceKey,
-    SurfaceRecord, SurfaceStore, ToType, MOST_IMAGES,
+    SurfaceRecord, SurfaceStore, ToType,
 };
 use super::timing::Timing;
 use super::typing::{NotTyped, Terminals};
 use super::unsent::{Page, UnsentRefused, UnsentSave};
 use super::wait::Wait;
+
+mod show_raw;
 
 /// The window that checks and draws surfaces.
 pub trait Webview: Send + Sync {
@@ -168,6 +170,10 @@ impl SurfaceTools {
                 Err(rejection) => self.reject(terminal_id, board::TOOL, &rejection),
                 Ok(board) => self.show_board(terminal_id, request, arguments, &board).await,
             }),
+            raw::TOOL => Some(match RawCall::parse(arguments) {
+                Err(rejection) => self.reject(terminal_id, raw::TOOL, &rejection),
+                Ok((call, found)) => self.show_raw(terminal_id, request, arguments, &call, found).await,
+            }),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Err(rejection) => self.reject(terminal_id, read::TOOL, &rejection),
                 Ok(body) => {
@@ -208,9 +214,14 @@ impl SurfaceTools {
                 }
             }
         };
+        self.answered(wait, &key).await
+    }
+
+    /// The result of a call that waits for the answer to the surface `key`.
+    async fn answered(&self, wait: Wait, key: &SurfaceKey) -> Value {
         match wait.answer(self.0.timing.wait).await {
             Some(answer) => text_result(answer),
-            None if self.0.store.standing(&key).is_none_or(|standing| standing == Standing::Ended) => {
+            None if self.0.store.standing(key).is_none_or(|standing| standing == Standing::Ended) => {
                 text_result(json!({ "surface_id": key.id, "state": Standing::Ended.state() }))
             }
             None => text_result(json!({ "surface_id": key.id, "state": "no_answer_yet", "next": NO_ANSWER_NEXT })),
@@ -267,28 +278,33 @@ impl SurfaceTools {
     /// What the webview made of a call it found nothing wrong with. One for a dismissed id is not checked.
     /// The error is the result its agent gets.
     async fn check(&self, key: &SurfaceKey, creation: Creation<'_>, arguments: Value) -> Result<Accepted, Value> {
-        let SurfaceKey { terminal_id, id } = key;
+        let terminal_id = &key.terminal_id;
         let tool = creation.tool;
         if self.0.store.is_dismissed(key, creation) {
             return Err(dismissed_result());
         }
+        match self.verdict_on(key, tool, arguments).await {
+            None => {
+                tracing::error!("{terminal_id}: no verdict on a {tool} call in {:?}", self.0.timing.verdict);
+                Err(QuayFailed::NoVerdict.result())
+            }
+            Some(Verdict::Failed { errors, .. }) => {
+                tracing::error!("{terminal_id}: Quay's expansion of a {tool} call failed the engine: {errors:?}");
+                Err(QuayFailed::Expansion.result())
+            }
+            Some(Verdict::Accepted(accepted)) => Ok(accepted),
+        }
+    }
+
+    /// What the webview makes of `tool`'s call for the surface `key`. `None` when it gave no verdict in time.
+    async fn verdict_on(&self, key: &SurfaceKey, tool: &str, arguments: Value) -> Option<Verdict> {
         let send = |request: &CheckRequest| {
             // One sent before the window is named is handed over when it has loaded
             if let Some(webview) = self.0.webview.get() {
                 webview.check(request);
             }
         };
-        match self.0.checks.check(tool, id, arguments, self.0.timing.verdict, send).await {
-            None => {
-                tracing::error!("{terminal_id}: no verdict on a {tool} call in {:?}", self.0.timing.verdict);
-                Err(QuayFailed::NoVerdict.result())
-            }
-            Some(Verdict::Failed { errors }) => {
-                tracing::error!("{terminal_id}: Quay's expansion of a {tool} call failed the engine: {errors:?}");
-                Err(QuayFailed::Expansion.result())
-            }
-            Some(Verdict::Accepted(accepted)) => Ok(accepted),
-        }
+        self.0.checks.check(tool, &key.id, arguments, self.0.timing.verdict, send).await
     }
 
     /// The result of a call whose surface was not committed.
@@ -314,18 +330,7 @@ impl SurfaceTools {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
             }
-            CommitRefused::Full(place) => {
-                let message = format!(
-                    "This terminal has {} live surfaces in {}, the most allowed. Wait for an answer, delete one, or put several questions in one quay_ask.",
-                    spelled(MOST_LIVE),
-                    place.name()
-                );
-                self.reject(terminal_id, tool, &Rejection::invalid("", message))
-            }
-            CommitRefused::TooManyImages(images) => {
-                let message = format!("A surface has at most {MOST_IMAGES} images; this one would have {images}.");
-                self.reject(terminal_id, tool, &Rejection::invalid("", message))
-            }
+            CommitRefused::PastLimit(past) => self.reject(terminal_id, tool, &Rejection::invalid("", past.words())),
         }
     }
 

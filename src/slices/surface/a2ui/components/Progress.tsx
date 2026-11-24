@@ -3,6 +3,7 @@ import { createComponentImplementation } from "@a2ui/react";
 import { DynamicNumberSchema, DynamicStringSchema } from "@a2ui/web_core/v1_0";
 import { amountOf } from "../../../parts/amount.ts";
 import { Bar } from "../../../parts/Bar.tsx";
+import { textOf } from "../textOf.ts";
 
 /** Quay's own component: how much of something counted is done. */
 const ProgressApi = {
@@ -19,7 +20,7 @@ const ProgressApi = {
 interface ProgressViewProps {
   done: unknown;
   total: unknown;
-  label: string | undefined;
+  label: string;
 }
 
 const ProgressView = ({ done, total, label }: ProgressViewProps) => {
@@ -48,4 +49,4 @@ const ProgressView = ({ done, total, label }: ProgressViewProps) => {
 };
 
 /** A bar with its amount in words. Where a binding gives no amount, the label alone. */
-export const Progress = createComponentImplementation(ProgressApi, ({ props }) => <ProgressView done={props.done} total={props.total} label={props.label} />);
+export const Progress = createComponentImplementation(ProgressApi, ({ props }) => <ProgressView done={props.done} total={props.total} label={textOf(props.label)} />);

@@ -13,18 +13,18 @@ use super::board::Board;
 use super::board_run::BoardRun;
 use super::calls::{Handed, OpenCalls};
 use super::check::Accepted;
+use super::past_limit::{within_limits, PastLimit};
 use super::place::{Place, MOST_LIVE};
 use super::typed_line::typed_line;
 use super::typing::NotTyped;
 use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
+mod raw;
+
 /// The most locked surfaces a terminal keeps. Past it the one whose last change is the oldest leaves at
 /// once, which counts as deleted. That change is its lock, or the last its agent sent of a board after it.
 const MOST_LOCKED: usize = 10;
-
-/// The most images a surface may have, each time one is shown counted.
-pub const MOST_IMAGES: usize = 12;
 
 /// How many of a terminal's surfaces that have left can still be read. Past it the one that left first
 /// is forgotten, with its answer.
@@ -49,6 +49,8 @@ pub struct SurfaceRecord {
     pub terminal_id: String,
     pub id: String,
     pub tool: String,
+    /// What its agent calls it: its title, or an ask's first question.
+    pub title: String,
     pub place: Place,
     /// The accepted state as one compact `createSurface`.
     pub state: Value,
@@ -172,12 +174,15 @@ pub enum CommitRefused {
     TerminalOver,
     /// The operator dismissed the terminal's surface of that id.
     Dismissed,
-    /// The terminal has a surface of that id.
+    /// The terminal has a surface of that id, which does not make way.
     IdInUse,
-    /// The terminal has `MOST_LIVE` live surfaces in this place.
-    Full(Place),
-    /// It has this many images, which is more than `MOST_IMAGES`.
-    TooManyImages(usize),
+    PastLimit(PastLimit),
+}
+
+impl From<PastLimit> for CommitRefused {
+    fn from(past: PastLimit) -> Self {
+        Self::PastLimit(past)
+    }
 }
 
 /// A surface that has just changed: it was settled, or it is a board that was shown.
@@ -238,13 +243,6 @@ struct Surface {
     board: Option<BoardRun>,
     /// What the operator has put in it and not sent, until it is settled.
     unsent: Option<UnsentSave>,
-}
-
-/// Whether what the webview accepted has at most `MOST_IMAGES`. Each file it names is an image of it,
-/// whatever its count says.
-fn has_few_images(accepted: &Accepted) -> Result<(), CommitRefused> {
-    let images = (accepted.images as usize).max(accepted.image_paths.len());
-    if images <= MOST_IMAGES { Ok(()) } else { Err(CommitRefused::TooManyImages(images)) }
 }
 
 impl Surface {
@@ -314,6 +312,7 @@ impl Surface {
             terminal_id: terminal_id.to_string(),
             id: self.id.clone(),
             tool: self.tool.clone(),
+            title: self.title.clone(),
             place: self.place,
             state: self.state.clone(),
             revision: self.revision,
@@ -383,9 +382,9 @@ impl Terminal {
     }
 
     /// Whether `place` takes another live surface.
-    fn has_room(&self, place: Place) -> Result<(), CommitRefused> {
+    fn has_room(&self, place: Place) -> Result<(), PastLimit> {
         let live = self.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
-        if live.count() < MOST_LIVE { Ok(()) } else { Err(CommitRefused::Full(place)) }
+        if live.count() < MOST_LIVE { Ok(()) } else { Err(PastLimit::Live(place)) }
     }
 
     /// Takes the locked surfaces past `MOST_LOCKED` out, the one whose last change is the oldest first.
@@ -609,8 +608,8 @@ impl SurfaceStore {
         terminal.is_some_and(|terminal| terminal.is_dismissed(&key.id, creation.tool))
     }
 
-    /// Adds the surface `key` as the webview accepted it, if its place has room for it and it has no more
-    /// than `MOST_IMAGES` images. Returns it.
+    /// Adds the surface `key` as the webview accepted it, if its place has room for it and it is within the
+    /// limits. One that makes way for it leaves. Returns it.
     pub fn commit(
         &self,
         key: &SurfaceKey,
@@ -620,10 +619,10 @@ impl SurfaceStore {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminal_to_commit(key, creation)?;
-        if terminal.find(&key.id).is_some() {
+        if terminal.find(&key.id).is_some_and(|there| !there.makes_way(creation)) {
             return Err(CommitRefused::IdInUse);
         }
-        has_few_images(&accepted)?;
+        within_limits(&accepted)?;
         terminal.has_room(creation.place)?;
         let phase = match accepted.asks {
             true => Phase::Asking { waiters: vec![creation.call] },
@@ -631,6 +630,7 @@ impl SurfaceStore {
         };
         let surface = Surface { phase, ..Surface::new(&key.id, creation, accepted, change) };
         let record = surface.record(&key.terminal_id);
+        terminal.surfaces.retain(|there| there.id != key.id);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
         Ok(record)
@@ -653,7 +653,7 @@ impl SurfaceStore {
         if there.is_some_and(|surface| surface.board.is_none()) {
             return Err(CommitRefused::IdInUse);
         }
-        has_few_images(&accepted)?;
+        within_limits(&accepted)?;
         // An earlier launch's board makes way for a new one
         let same = there.filter(|surface| !surface.launch_over);
         let now = now_ms();

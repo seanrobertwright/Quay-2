@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createComponentImplementation } from "@a2ui/react";
 import { ChoicePickerApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { OptionRow } from "../../../parts/OptionRow.tsx";
+import { textOf } from "../textOf.ts";
 
 /** The standard's ChoicePicker, whose options gain a description and a recommended mark. */
 const QuayChoicePickerApi = {
@@ -41,7 +42,7 @@ const Choices = ({ label, many, options, chosen, choose }: ChoicesProps) => {
           key={option.value}
           kind={many ? "checkbox" : "radio"}
           group={group}
-          label={option.label ?? ""}
+          label={textOf(option.label)}
           description={option.description}
           mark={option.recommended ? "agent's pick" : undefined}
           checked={chosen.includes(option.value)}
@@ -55,10 +56,10 @@ const Choices = ({ label, many, options, chosen, choose }: ChoicesProps) => {
 /** One choice, or several, as native radios or checkboxes. */
 export const ChoicePicker = createComponentImplementation(QuayChoicePickerApi, ({ props }) => (
   <Choices
-    label={props.label ?? ""}
+    label={textOf(props.label)}
     many={props.variant === "multipleSelection"}
     options={props.options}
-    chosen={props.value ?? []}
+    chosen={Array.isArray(props.value) ? props.value : []}
     choose={(chosen) => props.setValue(chosen)}
   />
 ));

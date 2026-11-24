@@ -3,6 +3,7 @@ import { createComponentImplementation } from "@a2ui/react";
 import { TextApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { InsideButton } from "../insideButton.ts";
 import { Markdown } from "../markdown/Markdown.tsx";
+import { textOf } from "../textOf.ts";
 
 const TextView = ({ text, caption }: { text: string; caption: boolean }) => {
   const inline = useContext(InsideButton);
@@ -19,4 +20,4 @@ const TextView = ({ text, caption }: { text: string; caption: boolean }) => {
 };
 
 /** Text, as Markdown. Inside a button only its inline formatting is drawn. */
-export const Text = createComponentImplementation(TextApi, ({ props }) => <TextView text={props.text ?? ""} caption={props.variant === "caption"} />);
+export const Text = createComponentImplementation(TextApi, ({ props }) => <TextView text={textOf(props.text)} caption={props.variant === "caption"} />);

@@ -17,6 +17,11 @@ pub enum Place {
 }
 
 impl Place {
+    /// The place an agent calls `name`.
+    pub fn named(name: &str) -> Option<Self> {
+        [Self::Companion, Self::Tab, Self::Strip].into_iter().find(|place| place.name() == name)
+    }
+
     /// What an agent calls it.
     pub const fn name(self) -> &'static str {
         match self {

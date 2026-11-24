@@ -15,9 +15,9 @@ pub struct CheckRequest {
     /// Names the call, so a verdict reaches only the check it is for.
     pub call: u64,
     pub tool: String,
-    /// The id the surface has if it is accepted.
+    /// The id the surface has if it is accepted. Empty for a raw call that creates none.
     pub surface_id: String,
-    /// The call's arguments, as Rust checked them.
+    /// The call's arguments: a typed call's as Rust checked them, a raw one's as its agent wrote them.
     pub arguments: Value,
 }
 
@@ -25,14 +25,24 @@ pub struct CheckRequest {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum Verdict {
-    Failed { errors: Vec<EngineError> },
+    Failed {
+        errors: Vec<CheckError>,
+        /// How many more there are. Only a raw call's are counted.
+        #[serde(default)]
+        more: usize,
+    },
     Accepted(Accepted),
 }
 
-/// An engine error, as its `mapErrorToRendererMessage` gives it.
+/// One thing the webview found wrong with a call. A typed tool's is the engine's, as its
+/// `mapErrorToRendererMessage` gives it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct EngineError {
+pub struct CheckError {
     pub code: String,
+    /// The surface it is about, when that is known.
+    #[serde(rename = "surfaceId", default)]
+    pub surface_id: Option<String>,
+    /// For a raw call, a JSON Pointer into the call as its agent wrote it.
     #[serde(default)]
     pub path: Option<String>,
     pub message: String,

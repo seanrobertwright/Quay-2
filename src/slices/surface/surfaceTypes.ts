@@ -26,25 +26,39 @@ export interface SurfaceAction {
   context: Record<string, unknown>;
 }
 
+/** An action as its click sent it. */
+export interface SentAction extends SurfaceAction {
+  /** The A2UI 1.0 `action` message it makes. */
+  message: Record<string, unknown>;
+}
+
 /** A call for the webview to check. Mirrors `CheckRequest`. */
 export interface CheckRequest {
   call: number;
   tool: string;
+  /** The id the surface has if it is accepted. Empty for a raw call that creates none. */
   surface_id: string;
-  /** The call's arguments, as Rust checked them. */
+  /** The call's arguments: a typed call's as Rust checked them, a raw one's as its agent wrote them. */
   arguments: unknown;
 }
 
-/** An engine error, as its `mapErrorToRendererMessage` gives it. */
-export interface EngineError {
+/** One thing the webview found wrong with a call. A typed tool's is the engine's, as its `mapErrorToRendererMessage` gives it. Mirrors `CheckError`. */
+export interface CheckError {
   code: string;
+  /** The surface it is about, when that is known. */
+  surfaceId?: string;
+  /** For a raw call, a JSON Pointer into the call as its agent wrote it. */
   path?: string;
   message: string;
 }
 
 /** What the webview made of a check. Mirrors `Verdict`. */
 export type Verdict =
-  | { errors: EngineError[] }
+  | {
+      errors: CheckError[];
+      /** How many more there are, which is none when it is left out. Only a raw call's are counted. */
+      more?: number;
+    }
   | {
       state: CreateSurface;
       asks: boolean;
@@ -80,6 +94,8 @@ export interface BoardRun {
 /** A surface as Rust holds it. Mirrors `SurfaceRecord`. */
 export interface SurfaceRecord extends SurfaceKey {
   tool: string;
+  /** What its agent calls it: its title, or an ask's first question. */
+  title: string;
   place: SurfacePlace;
   state: CreateSurface;
   revision: number;

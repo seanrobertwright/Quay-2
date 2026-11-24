@@ -4,20 +4,27 @@ import { focusTerminal } from "../../terminal/terminalRequests.ts";
 import { FoldButton } from "../FoldButton.tsx";
 import { surfaceKey } from "../surfaceAttention.ts";
 import { useSurfacesIn } from "../surfacePlaces.ts";
-import { isLive } from "../surfaceTypes.ts";
+import { LiveSurface } from "../LiveSurface.tsx";
+import { LockedSurface } from "../LockedSurface.tsx";
+import { isLive, type SurfaceRecord } from "../surfaceTypes.ts";
 import { useKeptFocus } from "../useKeptFocus.ts";
 import { BoardLine } from "./BoardLine.tsx";
-import { isBoard, type BoardRecord } from "./boardReading.ts";
+import { isBoard } from "./boardReading.ts";
 import { OpenBoard } from "./OpenBoard.tsx";
 import { setOpenBoard, useOpenBoard } from "./openBoards.ts";
+import { RawLine } from "./RawLine.tsx";
+
+/** A raw surface that is open over its terminal. */
+const OpenRaw = ({ record, terminal }: { record: SurfaceRecord; terminal: TerminalInfo }) =>
+  isLive(record) ? <LiveSurface record={record} terminal={terminal} /> : <LockedSurface record={record} terminal={terminal} />;
 
 /**
- * A terminal's boards, a line each: the live ones and the newest that locked, with the other locked
- * ones folded beneath, and the one that is open under them all. It is drawn over the terminal, in a column
- * as high as what it covers, and takes none of its room.
+ * A terminal's boards and its raw strip surfaces, a line each: the live ones and the newest that locked,
+ * with the other locked ones folded beneath, and the one that is open under them all. It is drawn over the
+ * terminal, in a column as high as what it covers, and takes none of its room.
  */
 export const BoardStrip = ({ terminal }: { terminal: TerminalInfo }) => {
-  const boards = useSurfacesIn(terminal.id, "strip").filter(isBoard);
+  const surfaces = useSurfacesIn(terminal.id, "strip");
   const openKey = useOpenBoard(terminal.id);
   const [unfolded, setUnfolded] = useState(false);
   const openId = useId();
@@ -28,10 +35,10 @@ export const BoardStrip = ({ terminal }: { terminal: TerminalInfo }) => {
     if (next) next.focus();
     else focusTerminal(terminal.id);
   });
-  if (boards.length === 0) return null;
-  const open = boards.find((record) => surfaceKey(record) === openKey) ?? null;
+  if (surfaces.length === 0) return null;
+  const open = surfaces.find((record) => surfaceKey(record) === openKey) ?? null;
   // A locked board's last change is its lock, or the last its agent sent after that
-  const locked = boards.filter((record) => !isLive(record)).sort((a, b) => b.change - a.change);
+  const locked = surfaces.filter((record) => !isLive(record)).sort((a, b) => b.change - a.change);
   const [newest, ...rest] = locked;
   const openInRest = open !== null && rest.includes(open);
   const showsRest = unfolded || openInRest;
@@ -39,16 +46,21 @@ export const BoardStrip = ({ terminal }: { terminal: TerminalInfo }) => {
     setUnfolded(!showsRest);
     if (openInRest) setOpenBoard(terminal.id, null);
   };
-  const line = (record: BoardRecord) => (
+  const toggle = (record: SurfaceRecord) => setOpenBoard(terminal.id, record === open ? null : record);
+  const line = (record: SurfaceRecord) => (
     <li key={surfaceKey(record)} data-board-line={record.id} className="min-w-0 @2xl:last:odd:col-span-2">
-      <BoardLine record={record} open={record === open} opens={openId} onToggle={() => setOpenBoard(terminal.id, record === open ? null : record)} />
+      {isBoard(record) ? (
+        <BoardLine record={record} open={record === open} opens={openId} onToggle={() => toggle(record)} />
+      ) : (
+        <RawLine record={record} open={record === open} opens={openId} onToggle={() => toggle(record)} />
+      )}
     </li>
   );
   return (
     <div ref={root} data-board-strip data-no-terminal-focus className="contents" {...keptFocus}>
       <div className="pointer-events-auto @container max-h-full shrink-0 overflow-y-auto bg-[#161b22]">
         <ul data-board-lines className="grid @2xl:grid-cols-2">
-          {boards.filter(isLive).map(line)}
+          {surfaces.filter(isLive).map(line)}
           {newest && line(newest)}
         </ul>
         {rest.length > 0 && (
@@ -64,7 +76,7 @@ export const BoardStrip = ({ terminal }: { terminal: TerminalInfo }) => {
       </div>
       {open && (
         <div id={openId} data-open-board className="pointer-events-auto max-h-[60%] min-h-0 overflow-y-auto border-b border-[#30363d] bg-[#0d1117]/95 p-2">
-          <OpenBoard key={surfaceKey(open)} record={open} terminal={terminal} />
+          {isBoard(open) ? <OpenBoard key={surfaceKey(open)} record={open} terminal={terminal} /> : <OpenRaw key={surfaceKey(open)} record={open} terminal={terminal} />}
         </div>
       )}
     </div>

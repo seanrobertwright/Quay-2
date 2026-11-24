@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useState } from "react";
 import type { TerminalInfo } from "../terminal/types.ts";
+import { answerOf } from "./answerOf.ts";
 import { lookOf } from "./looks/index.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
 import { answerSurface, loadA2ui, useSurfacesRead } from "./surfaceHost.ts";
-import type { SurfaceAction, SurfaceRecord } from "./surfaceTypes.ts";
-import { typedTool } from "./typed/index.ts";
+import { SurfaceTitle } from "./SurfaceTitle.tsx";
+import type { SentAction, SurfaceRecord } from "./surfaceTypes.ts";
 import { useDismiss } from "./useDismiss.ts";
 
 const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
@@ -29,15 +30,15 @@ export const LiveSurface = ({ record, terminal, fills = false, notDismissed = nu
   const read = useSurfacesRead();
   const dismiss = useDismiss(record, setRefusal);
   const onAction = useCallback(
-    async (action: SurfaceAction) => {
-      const collapse = typedTool(record.tool)?.collapse;
-      if (!collapse) {
+    async (action: SentAction) => {
+      const answer = answerOf(record.tool, action);
+      if (answer === null) {
         setRefusal("Not sent: Quay cannot send an answer to this kind of surface.");
         return;
       }
       setRefusal(null);
       try {
-        await answerSurface(record, collapse(action));
+        await answerSurface(record, answer);
       } catch (error) {
         setRefusal(String(error));
       }
@@ -46,6 +47,7 @@ export const LiveSurface = ({ record, terminal, fills = false, notDismissed = nu
   );
   return (
     <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} dismiss={dismiss} refusal={refusal ?? notDismissed} fills={fills}>
+      <SurfaceTitle record={record} />
       <SurfaceBoundary key={record.revision}>
         <Suspense fallback={<Loading />}>
           {read ? <SurfaceContent record={record} layout={layout} onAction={onAction} /> : <Loading />}
