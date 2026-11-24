@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
 
-use super::local_path::{named, resolve, Disk, Named, Place, Refused, Style};
+use super::local_path::{named, resolve, Disk, Location, Named, Refused, Style};
 
 /// The terminal's working directory in every Windows case.
 const CWD: &str = r"E:\alpha";
@@ -47,19 +47,19 @@ impl FakeDisk {
 }
 
 impl Disk for FakeDisk {
-    fn place(&self, path: &str) -> Place {
+    fn location(&self, path: &str) -> Location {
         match self.style {
             Style::Windows => match path {
-                r"C:\" | r"E:\" => Place::Local,
-                r"Z:\" => Place::Network,
-                r"S:\" => Place::NamedFor(r"E:\alpha\sub".into()),
-                r"T:\" => Place::NamedFor(r"Z:\share".into()),
-                r"U:\" => Place::NamedFor(r"\\host\share".into()),
-                r"V:\" => Place::NamedFor(r"E:\to-host".into()),
-                _ => Place::Missing,
+                r"C:\" | r"E:\" => Location::Local,
+                r"Z:\" => Location::NotLocal,
+                r"S:\" => Location::NamedFor(r"E:\alpha\sub".into()),
+                r"T:\" => Location::NamedFor(r"Z:\share".into()),
+                r"U:\" => Location::NamedFor(r"\\host\share".into()),
+                r"V:\" => Location::NamedFor(r"E:\to-host".into()),
+                _ => Location::Missing,
             },
-            Style::Unix if path == "/mnt/nas" || path.starts_with("/mnt/nas/") => Place::Network,
-            Style::Unix => Place::Local,
+            Style::Unix if path == "/mnt/nas" || path.starts_with("/mnt/nas/") => Location::NotLocal,
+            Style::Unix => Location::Local,
         }
     }
 
@@ -152,7 +152,7 @@ fn a_network_or_device_path_is_refused_with_nothing_touched() {
         "prn .txt",
     ] {
         let disk = FakeDisk::windows();
-        assert_eq!(disk.resolve(written), Err(Refused::Network), "{written:?}");
+        assert_eq!(disk.resolve(written), Err(Refused::NotLocal), "{written:?}");
         assert_eq!(*disk.touched.borrow(), Vec::<String>::new(), "{written:?}");
     }
 }
@@ -201,8 +201,8 @@ fn what_is_not_written_as_a_path_is_refused_with_nothing_touched() {
 fn a_working_directory_on_the_network_makes_every_relative_path_one() {
     for cwd in [r"\\host\share\alpha", r"Z:\alpha", r"\\?\UNC\host\share", "//wsl$/Ubuntu/home", ""] {
         let disk = FakeDisk::windows();
-        assert_eq!(disk.resolve_in("x", cwd), Err(Refused::Network), "{cwd:?}");
-        assert_eq!(disk.resolve_in("/x", cwd), Err(Refused::Network), "{cwd:?}");
+        assert_eq!(disk.resolve_in("x", cwd), Err(Refused::NotLocal), "{cwd:?}");
+        assert_eq!(disk.resolve_in("/x", cwd), Err(Refused::NotLocal), "{cwd:?}");
         assert_eq!(*disk.touched.borrow(), Vec::<String>::new(), "{cwd:?}");
         assert_eq!(disk.resolve_in(r"C:\x", cwd), Ok(r"C:\x".to_string()), "{cwd:?}");
     }
@@ -230,7 +230,7 @@ fn a_link_that_leads_to_the_network_is_refused_before_its_target_is_touched() {
             .link(r"E:\to-z", r"Z:\share")
             .link(r"E:\to-host", r"\\host\share");
         for written in ["link/deep/x", "link", r"E:\alpha\link\deep", "dir/../link/x"] {
-            assert_eq!(disk.resolve(written), Err(Refused::Network), "{target:?} {written:?}");
+            assert_eq!(disk.resolve(written), Err(Refused::NotLocal), "{target:?} {written:?}");
         }
         for touched in disk.touched.borrow().iter() {
             assert!(touched.starts_with(r"E:\") && !touched.contains("deep"), "{target:?} touched {touched:?}");
@@ -292,7 +292,7 @@ fn unix_paths_are_judged_by_the_mount_each_part_of_them_is_on() {
     }
     for written in ["//host/share", r"\\host\share", "file://host/x", "file:////host/x", "/mnt/nas", "/mnt/nas/x", "nas/x", "rel/x"] {
         let disk = FakeDisk { touched: RefCell::default(), links: disk.links.clone(), missing: Vec::new(), style: Style::Unix };
-        assert_eq!(disk.resolve(written), Err(Refused::Network), "{written:?}");
+        assert_eq!(disk.resolve(written), Err(Refused::NotLocal), "{written:?}");
         assert!(!disk.touched.borrow().iter().any(|path| path.starts_with("/mnt/nas")), "{written:?}");
     }
     assert_eq!(disk.resolve("a\0b"), Err(Refused::NotAPath));

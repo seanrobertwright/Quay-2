@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// Markdown's worst cases (#721): the largest text a typed tool takes, spelled to nest as deep and to
-// make as many elements as it can. Not a `*.test.ts` file, so it runs by itself (`test:budget`) and
+// Markdown's worst cases (#721): the longest text read as Markdown, spelled to nest as deep and to make
+// as many elements as it can. Not a `*.test.ts` file, so it runs by itself (`test:budget`) and
 // the budget measures Markdown and not the other test files.
 import "../../test-support/dom.ts";
 import { test } from "node:test";
@@ -12,7 +12,7 @@ const { Markdown } = await import("./a2ui/markdown/Markdown.tsx");
 const { InsideButton } = await import("./a2ui/insideButton.ts");
 const { SurfaceLinksProvider } = await import("./SurfaceLinksProvider.tsx");
 
-/** A review's `body` at its limit. */
+/** The size of the worst case #721 has timed. */
 const CHARACTERS = 20_000;
 
 /** The budget to parse and draw one text, on the test machine. It leaves out the webview's layout. */

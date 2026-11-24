@@ -2,7 +2,7 @@
 import MarkdownIt, { type Token } from "markdown-it";
 import { linkTarget } from "../../linkTarget.ts";
 
-/** The most characters read as Markdown: a review's `body` at its limit. */
+/** The most characters read as Markdown. */
 const MOST_CHARACTERS = 20_000;
 
 /** The deepest block read as Markdown. The parser drops what is nested past a hundred. */

@@ -4,18 +4,20 @@
 //! - **Windows:** the device a drive letter names (`QueryDosDeviceW`) and its type (`GetDriveTypeW`).
 //!   A letter that `subst` made is followed to the path it names.
 //! - **Linux:** `/proc/self/mountinfo`. A path is local when the mount it is on has one of the file
-//!   systems in `LINUX_LOCAL`; a `fuse` mount is not one of them, since any of them may be remote.
+//!   systems in `LINUX_LOCAL`. Of the FUSE ones only `fuseblk`, which is on a block device, is there:
+//!   `fuse` and `fuse.*` may be remote.
 //! - **macOS:** what `/sbin/mount` prints. A path is local when the mount it is on carries the
 //!   system's own `local` flag.
 //!
 //! Where Windows cannot tell a drive's type, where the table of mounts cannot be read or names a file
-//! system Quay does not know, and on any other system, nothing is local and the path is refused. A drive a program on this
-//! computer keeps up, and a folder a sync client fills, are local to the system and so to Quay.
+//! system Quay does not know, and on any other system, nothing is local and the path is refused. A
+//! drive a program on this computer keeps up, and a folder a sync client fills, are local to the system
+//! and so to Quay.
 
 use std::io;
 use std::path::Path;
 
-use super::local_path::{Disk, Place};
+use super::local_path::{Disk, Location};
 
 /// The disks of the computer Quay runs on, as they are now.
 pub struct ThisComputer {
@@ -34,16 +36,16 @@ impl ThisComputer {
 
 impl Disk for ThisComputer {
     #[cfg(windows)]
-    fn place(&self, path: &str) -> Place {
+    fn location(&self, path: &str) -> Location {
         match path.as_bytes() {
-            [letter, b':', ..] => windows::drive_place(char::from(*letter), windows::device_of, windows::drive_type_of),
-            _ => Place::Network,
+            [letter, b':', ..] => windows::drive_location(char::from(*letter), windows::device_of, windows::drive_type_of),
+            _ => Location::NotLocal,
         }
     }
 
     #[cfg(not(windows))]
-    fn place(&self, path: &str) -> Place {
-        if is_on_local_mount(path, &self.mounts) { Place::Local } else { Place::Network }
+    fn location(&self, path: &str) -> Location {
+        if is_on_local_mount(path, &self.mounts) { Location::Local } else { Location::NotLocal }
     }
 
     fn link(&self, path: &str) -> io::Result<Option<String>> {
@@ -62,7 +64,7 @@ impl Disk for ThisComputer {
 /// Where a drive letter leads, by the device it names and the type of that.
 #[cfg(any(windows, test))]
 pub(super) mod drives {
-    use super::Place;
+    use super::Location;
 
     /// `GetDriveTypeW`'s answers for a drive that is there and not on the network.
     const REMOVABLE: u32 = 2;
@@ -87,29 +89,29 @@ pub(super) mod drives {
 
     /// Where the drive `letter` is. Its type is asked for only once its device is no door to another
     /// computer.
-    pub fn drive_place(letter: char, device_of: impl Fn(char) -> Option<String>, type_of: impl Fn(char) -> u32) -> Place {
+    pub fn drive_location(letter: char, device_of: impl Fn(char) -> Option<String>, type_of: impl Fn(char) -> u32) -> Location {
         let Some(device) = device_of(letter) else {
-            return Place::Missing;
+            return Location::Missing;
         };
         // What `subst` made names a path, in the system's own spelling
         if let Some(path) = device.strip_prefix(r"\??\") {
-            return Place::NamedFor(format!(r"\\?\{path}"));
+            return Location::NamedFor(format!(r"\\?\{path}"));
         }
         let device = device.to_lowercase();
         if device.contains(r"\;") || REDIRECTORS.iter().any(|door| device.starts_with(door)) {
-            return Place::Network;
+            return Location::NotLocal;
         }
         match type_of(letter) {
-            REMOVABLE | FIXED | CD_ROM | RAM_DISK => Place::Local,
-            NO_ROOT => Place::Missing,
-            _ => Place::Network,
+            REMOVABLE | FIXED | CD_ROM | RAM_DISK => Location::Local,
+            NO_ROOT => Location::Missing,
+            _ => Location::NotLocal,
         }
     }
 }
 
 #[cfg(windows)]
 mod windows {
-    pub use super::drives::drive_place;
+    pub use super::drives::drive_location;
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -139,7 +141,7 @@ mod windows {
     }
 }
 
-/// A place something is mounted, and whether that is a disk of this computer.
+/// A folder something is mounted on, and whether that is a disk of this computer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Mount {
     pub point: String,

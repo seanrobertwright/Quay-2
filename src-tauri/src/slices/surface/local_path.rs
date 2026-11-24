@@ -21,13 +21,13 @@ pub enum Style {
     Unix,
 }
 
-/// What a disk says of a place on it.
+/// Where a disk says a path on it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Place {
+pub enum Location {
     /// On a disk of this computer.
     Local,
     /// On the network, or Quay cannot tell.
-    Network,
+    NotLocal,
     /// There is no such drive.
     Missing,
     /// A name for this other path, as a drive that `subst` made is.
@@ -38,7 +38,7 @@ pub enum Place {
 pub trait Disk {
     /// Where a drive's root, or on Unix any path, is. It asks the operating system's own tables and
     /// touches nothing at `path`.
-    fn place(&self, path: &str) -> Place;
+    fn location(&self, path: &str) -> Location;
 
     /// What a link at `path` leads to, without following it; `None` when it is no link. Nothing on
     /// the way to `path` is a link.
@@ -48,8 +48,9 @@ pub trait Disk {
 /// Why a path is not opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refused {
-    /// It is on the network or is a device, leads to one, or Quay cannot tell.
-    Network,
+    /// It is on the network or is a device, leads to one, or Quay cannot tell. Also for a relative path
+    /// when the folder it is read in is no path on this computer.
+    NotLocal,
     /// It is not written as a path.
     NotAPath,
     /// Nothing is there.
@@ -110,15 +111,15 @@ enum Parsed {
 /// is refused is touched. It is judged as the disk is now: a folder replaced by a link after that is
 /// not seen.
 pub fn resolve(written: &str, cwd: &str, style: Style, disk: &impl Disk) -> Result<String, Refused> {
-    let (root, names) = place_in(parse(written, style)?, cwd, style)?;
+    let (root, names) = read_in(parse(written, style)?, cwd, style)?;
     walk(root, names, style, disk)
 }
 
 /// The root and names of `parsed`, read in the folder `cwd`.
-fn place_in(parsed: Parsed, cwd: &str, style: Style) -> Result<(String, Vec<String>), Refused> {
+fn read_in(parsed: Parsed, cwd: &str, style: Style) -> Result<(String, Vec<String>), Refused> {
     let folder = || match parse_absolute(cwd, style) {
         Some(Ok(Parsed::Absolute { root, names })) => Ok((root, names)),
-        _ => Err(Refused::Network),
+        _ => Err(Refused::NotLocal),
     };
     let (root, names) = match parsed {
         Parsed::Absolute { root, names } => (root, names),
@@ -161,7 +162,7 @@ fn walk(root: String, names: Vec<String>, style: Style, disk: &impl Disk) -> Res
                 return Err(Refused::Unreadable);
             }
             let folder = join(&root, &done, style);
-            let (to, names) = place_in(parse_target(&target, style)?, &folder, style)?;
+            let (to, names) = read_in(parse_target(&target, style)?, &folder, style)?;
             pending = names.into_iter().chain(pending).collect();
             done.clear();
             root = to;
@@ -191,13 +192,13 @@ fn walk(root: String, names: Vec<String>, style: Style, disk: &impl Disk) -> Res
     }
 }
 
-/// Judges the place `path` is, before it is touched. What it is only a name for is given back.
+/// Judges where `path` is, before it is touched. What it is only a name for is given back.
 fn settle(path: &str, disk: &impl Disk) -> Result<Option<String>, Refused> {
-    match disk.place(path) {
-        Place::Local => Ok(None),
-        Place::Network => Err(Refused::Network),
-        Place::Missing => Err(Refused::Missing),
-        Place::NamedFor(target) => Ok(Some(target)),
+    match disk.location(path) {
+        Location::Local => Ok(None),
+        Location::NotLocal => Err(Refused::NotLocal),
+        Location::Missing => Err(Refused::Missing),
+        Location::NamedFor(target) => Ok(Some(target)),
     }
 }
 
@@ -220,11 +221,11 @@ fn parse(written: &str, style: Style) -> Result<Parsed, Refused> {
 /// What follows `file://`: a host, which makes it a network path, or a slash and a path.
 fn parse_file_address(rest: &str, style: Style) -> Result<Parsed, Refused> {
     if !rest.starts_with('/') {
-        return Err(Refused::Network);
+        return Err(Refused::NotLocal);
     }
     let path = percent_decoded(rest).ok_or(Refused::NotAPath)?;
     if is_doubled(&path) {
-        return Err(Refused::Network);
+        return Err(Refused::NotLocal);
     }
     let path = if style == Style::Windows { &path[1..] } else { path.as_str() };
     match parse_absolute(path, style) {
@@ -273,7 +274,7 @@ fn parse_absolute(path: &str, style: Style) -> Option<Result<Parsed, Refused>> {
 
 fn parse_path(path: &str, style: Style) -> Result<Parsed, Refused> {
     if is_doubled(path) {
-        return Err(Refused::Network);
+        return Err(Refused::NotLocal);
     }
     if path.contains('\0') {
         return Err(Refused::NotAPath);
@@ -316,7 +317,7 @@ fn check_windows_name(name: &str) -> Result<(), Refused> {
         stem.strip_prefix(device).is_some_and(|n| matches!(n, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "0" | "¹" | "²" | "³"))
     };
     if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT") {
-        return Err(Refused::Network);
+        return Err(Refused::NotLocal);
     }
     let odd = name.contains(['<', '>', '"', '|', '?', '*', ':']) || name.chars().any(|c| c.is_control());
     if odd || (name != ".." && name.ends_with(['.', ' '])) {

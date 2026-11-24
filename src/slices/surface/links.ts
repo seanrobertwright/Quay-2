@@ -6,7 +6,7 @@ import { createContext } from "react";
 export interface SurfaceEffects {
   /** Opens a web address in the browser. */
   openUrl: (url: string) => void;
-  /** Shows a file: in Explorer, or in the diff view when it has uncommitted changes. */
+  /** Shows a file: in the file manager, or in the diff view when it has uncommitted changes. */
   showFile: (path: string, line?: number) => void;
 }
 

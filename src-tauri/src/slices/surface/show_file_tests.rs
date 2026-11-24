@@ -1,4 +1,4 @@
-//! What a click on a file link does: which file Explorer shows, when the diff view opens instead, and
+//! What a click on a file link does: which file the file manager shows, when the diff view opens instead, and
 //! what the operator is told when neither does.
 
 use std::path::{Path, PathBuf};
@@ -162,8 +162,8 @@ fn a_conflicted_file_and_one_under_a_terminal_that_is_not_at_its_worktrees_root_
 fn a_path_that_is_not_opened_says_so_and_nothing_is_revealed() {
     let quay = Quay::new();
     for (path, said) in [
-        ("//host/share/x", "Not opened: //host/share/x is on the network or is a device. Quay opens only files on this computer."),
-        ("file://host/x", "Not opened: file://host/x is on the network or is a device. Quay opens only files on this computer."),
+        ("//host/share/x", "Not opened: //host/share/x is not a file on this computer, or Quay cannot tell that it is."),
+        ("file://host/x", "Not opened: file://host/x is not a file on this computer, or Quay cannot tell that it is."),
         ("", "Not opened: the link names no file."),
         ("a\0b", "Not opened: a b is not a path Quay can open."),
     ] {
@@ -176,7 +176,7 @@ fn a_path_that_is_not_opened_says_so_and_nothing_is_revealed() {
 }
 
 #[test]
-fn what_explorer_would_not_show_is_said() {
+fn what_the_file_manager_would_not_show_is_said() {
     let quay = Quay::new();
     quay.write("one/a", "a");
     let said = show_file(&quay.terminals, "one", "a", None, |_| Err("no window".to_string()));

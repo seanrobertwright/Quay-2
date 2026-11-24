@@ -60,7 +60,7 @@ fn refusal(refused: Refused, written: &str) -> String {
     match refused {
         Refused::NotAPath if path.is_empty() => "Not opened: the link names no file.".to_string(),
         Refused::NotAPath => format!("Not opened: {path} is not a path Quay can open."),
-        Refused::Network => format!("Not opened: {path} is on the network or is a device. Quay opens only files on this computer."),
+        Refused::NotLocal => format!("Not opened: {path} is not a file on this computer, or Quay cannot tell that it is."),
         Refused::Missing => format!("Not opened: there is no {path}."),
         Refused::Unreadable => format!("Not opened: Quay could not read where {path} leads."),
     }

@@ -1,34 +1,34 @@
-//! How a network place is told from a local one: the answer for Windows, Linux and macOS, and
+//! How a network disk is told from a local one: the answer for Windows, Linux and macOS, and
 //! Windows's own tables and links.
 
 use std::cell::Cell;
 
-use super::disk::drives::drive_place;
+use super::disk::drives::drive_location;
 use super::disk::{is_on_local_mount, linux_mounts, macos_mounts};
-use super::local_path::Place;
+use super::local_path::Location;
 
 #[test]
 fn a_windows_drive_is_judged_by_the_device_it_names() {
     const FIXED: u32 = 3;
     const REMOTE: u32 = 4;
-    for (device, drive_type, place) in [
-        (Some(r"\Device\HarddiskVolume3"), FIXED, Place::Local),
-        (Some(r"\Device\HarddiskVolume9"), 2, Place::Local),
-        (Some(r"\Device\CdRom0"), 5, Place::Local),
-        (Some(r"\Device\HarddiskVolume3"), REMOTE, Place::Network),
-        (Some(r"\Device\HarddiskVolume3"), 0, Place::Network),
-        (Some(r"\Device\HarddiskVolume3"), 1, Place::Missing),
-        (Some(r"\Device\LanmanRedirector\;Z:0000000000012345\host\share"), FIXED, Place::Network),
-        (Some(r"\Device\Mup\;WebDavRedirector\;Z:0000000000012345\host\DavWWWRoot"), FIXED, Place::Network),
-        (Some(r"\Device\RdpDr\;Z:1\tsclient\c"), FIXED, Place::Network),
-        (Some(r"\DEVICE\MUP\host\share"), FIXED, Place::Network),
-        (Some(r"\Device\SomeVendor\;Z:\host"), FIXED, Place::Network),
-        (Some(r"\??\C:\work"), FIXED, Place::NamedFor(r"\\?\C:\work".into())),
-        (Some(r"\??\UNC\host\share"), FIXED, Place::NamedFor(r"\\?\UNC\host\share".into())),
-        (None, FIXED, Place::Missing),
+    for (device, drive_type, location) in [
+        (Some(r"\Device\HarddiskVolume3"), FIXED, Location::Local),
+        (Some(r"\Device\HarddiskVolume9"), 2, Location::Local),
+        (Some(r"\Device\CdRom0"), 5, Location::Local),
+        (Some(r"\Device\HarddiskVolume3"), REMOTE, Location::NotLocal),
+        (Some(r"\Device\HarddiskVolume3"), 0, Location::NotLocal),
+        (Some(r"\Device\HarddiskVolume3"), 1, Location::Missing),
+        (Some(r"\Device\LanmanRedirector\;Z:0000000000012345\host\share"), FIXED, Location::NotLocal),
+        (Some(r"\Device\Mup\;WebDavRedirector\;Z:0000000000012345\host\DavWWWRoot"), FIXED, Location::NotLocal),
+        (Some(r"\Device\RdpDr\;Z:1\tsclient\c"), FIXED, Location::NotLocal),
+        (Some(r"\DEVICE\MUP\host\share"), FIXED, Location::NotLocal),
+        (Some(r"\Device\SomeVendor\;Z:\host"), FIXED, Location::NotLocal),
+        (Some(r"\??\C:\work"), FIXED, Location::NamedFor(r"\\?\C:\work".into())),
+        (Some(r"\??\UNC\host\share"), FIXED, Location::NamedFor(r"\\?\UNC\host\share".into())),
+        (None, FIXED, Location::Missing),
     ] {
         let asked = Cell::new(false);
-        let judged = drive_place(
+        let judged = drive_location(
             'Z',
             |_| device.map(str::to_string),
             |_| {
@@ -36,7 +36,7 @@ fn a_windows_drive_is_judged_by_the_device_it_names() {
                 drive_type
             },
         );
-        assert_eq!(judged, place, "{device:?}");
+        assert_eq!(judged, location, "{device:?}");
         let own = device.is_some_and(|device| device.contains("HarddiskVolume") || device.contains("CdRom"));
         assert_eq!(asked.get(), own, "{device:?}: the type of a door to another computer is not asked for");
     }
@@ -151,7 +151,7 @@ mod on_windows {
         }
         let started = std::time::Instant::now();
         for written in ["dir", "dir/x", "file", "dir/../dir/x"] {
-            assert_eq!(read(written, &cwd), Err(Refused::Network), "{written}");
+            assert_eq!(read(written, &cwd), Err(Refused::NotLocal), "{written}");
         }
         assert!(started.elapsed().as_millis() < 500, "{:?}", started.elapsed());
     }
