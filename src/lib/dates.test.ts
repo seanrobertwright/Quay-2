@@ -6,6 +6,7 @@ import {
   formatUtcDateTime,
   formatUtcTimestamp,
   formatRunClock,
+  formatTimeAgo,
   formatTimeWaited,
   startOfLocalDay,
   localPartsOf,
@@ -85,6 +86,17 @@ test("a time waited reads in whole minutes, then hours and minutes, then days", 
     [NaN, "just now"],
   ];
   for (const [waited, said] of cases) assert.equal(formatTimeWaited(1_000_000, 1_000_000 + waited), said);
+});
+
+test("formatTimeAgo reads the time waited as ago, except one that is just now", () => {
+  const cases: [number, string][] = [
+    [0, "just now"],
+    [59_999, "just now"],
+    [60_000, "1 min ago"],
+    [99 * 60_000, "1 h 39 min ago"],
+    [-60_000, "just now"],
+  ];
+  for (const [ago, said] of cases) assert.equal(formatTimeAgo(1_000_000, 1_000_000 + ago), said);
 });
 
 test("formatRunClock reads minutes and seconds, with hours from the first, and never less than none", () => {
