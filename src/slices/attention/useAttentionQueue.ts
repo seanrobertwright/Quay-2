@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -59,6 +59,8 @@ export interface AttentionQueueView {
   items: AttentionItem[];
   /** The ids of every permission request still waiting, oldest first. */
   pendingPermissionIds: string[];
+  /** Whether the requests that were pending when the page loaded are in the queue, or could not be read. */
+  permissionsRead: boolean;
   /**
    * Sends the user's answer to the backend and clears the request once the backend takes it. When
    * the backend refuses it because no agent is waiting for that answer any more, the request
@@ -92,7 +94,8 @@ export interface AttentionQueueView {
  * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
  * terminal list (closed), or the user relaunches it.
  *
- * Returns the waiting items, the ids of every pending request, the latest answer that reached no agent, each terminal's count of requests its cap
+ * Returns the waiting items, the ids of every pending request, whether those that were pending when the
+ * page loaded are among them, the latest answer that reached no agent, each terminal's count of requests its cap
  * dropped, and the user's actions on them, including dismissing a terminal's finished turn.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
@@ -134,6 +137,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     });
   }, [asking]);
 
+  const [permissionsRead, setPermissionsRead] = useState(false);
   useEffect(() => {
     invoke<PermissionRequestPayload[]>("get_pending_permissions")
       .then((requests) =>
@@ -143,7 +147,8 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
           at: Date.now(),
         })
       )
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setPermissionsRead(true));
   }, []);
 
   useEffect(() => {
@@ -228,6 +233,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
   return {
     items,
     pendingPermissionIds: pending,
+    permissionsRead,
     answerPermission,
     undeliveredAnswer: undeliveredAnswer(queue),
     dismissUndeliveredAnswer,

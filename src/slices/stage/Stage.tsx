@@ -1,6 +1,7 @@
 import { FC, useState, useRef, CSSProperties, type ReactNode } from "react";
 import { TerminalInfo, StageLayout } from "../terminal/types";
 import { TerminalView } from "../terminal/TerminalView";
+import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
@@ -42,6 +43,8 @@ interface StageProps {
   onRelaunchTerminal?: (terminalId: string) => void;
   onRenameTerminal?: (terminalId: string, name: string) => void;
   onCloseTerminal?: (terminalId: string) => void;
+  /** Opens a terminal's agent surface, from its pane header's questions button. */
+  onOpenSurface?: (key: SurfaceKey) => void;
   /** The open stage tab tools. Each stays mounted while the terminals are in front. */
   tools?: readonly StageTool[];
   /** The tool in front of the panes, or null while the terminals are. */
@@ -76,6 +79,7 @@ export const Stage: FC<StageProps> = ({
   onRelaunchTerminal,
   onRenameTerminal,
   onCloseTerminal,
+  onOpenSurface,
   tools = [],
   frontToolId = null,
   onSelectTool,
@@ -249,6 +253,7 @@ export const Stage: FC<StageProps> = ({
         onRename={onRenameTerminal ? (name) => onRenameTerminal(term.id, name) : undefined}
         onToggleAsk={onToggleLiveMode ? () => onToggleLiveMode(term.id, term.live_mode) : undefined}
         onCloseTerminal={onCloseTerminal ? () => onCloseTerminal(term.id) : undefined}
+        onOpenSurface={onOpenSurface}
         paneCount={paneCount}
         style={paneStyle}
       />

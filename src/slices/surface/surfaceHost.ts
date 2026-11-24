@@ -9,6 +9,8 @@ export const loadA2ui = () => import("./a2ui/index.ts");
 
 const NONE: readonly SurfaceRecord[] = [];
 let byTerminal: ReadonlyMap<string, readonly SurfaceRecord[]> = new Map();
+/** Whether the surfaces Rust held when the page loaded are kept, or could not be read. */
+let read = false;
 const subscribers = new Set<() => void>();
 
 function set(next: typeof byTerminal): void {
@@ -77,13 +79,22 @@ export function startSurfaces(): () => void {
     listen<SurfaceRecord>("surface-changed", (event) => onRecord(event.payload)),
     listen<SurfaceKey>("surface-removed", (event) => onRemoved(event.payload)),
   ]);
-  const start = async () => {
+  const listRead = () => {
+    if (stopped) return;
+    read = true;
+    set(byTerminal);
+  };
+  const readList = async () => {
     await listening;
     if (stopped) return;
     for (const record of await invoke<SurfaceRecord[]>("surface_list")) onRecord(record);
     if (stopped) return;
     leftMeanwhile?.forEach(drop);
     leftMeanwhile = null;
+  };
+  const start = async () => {
+    await readList().finally(listRead);
+    if (stopped) return;
     for (const request of await invoke<CheckRequest[]>("surface_checks")) onCheck(request);
   };
   start().catch(failed("The surfaces could not be read"));
@@ -91,6 +102,7 @@ export function startSurfaces(): () => void {
   return () => {
     stopped = true;
     cancelAnimationFrame(frame);
+    read = false;
     set(new Map());
     listening.then((unlisten) => unlisten.forEach((stop) => stop()), failed("The surfaces could not be listened for"));
   };
@@ -100,6 +112,12 @@ export function startSurfaces(): () => void {
 export function useSurfacesOf(terminalId: string | null): readonly SurfaceRecord[] {
   return useSyncExternalStore(subscribeToSurfaces, () => (terminalId === null ? NONE : (byTerminal.get(terminalId) ?? NONE)));
 }
+
+/**
+ * Whether the surfaces Rust held when the page loaded are known. Until then a surface that comes may
+ * be one the operator has seen already. Also true once they could not be read.
+ */
+export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSurfaces, () => read);
 
 /** Sends the operator's answer. It rejects with Quay's words for why it was not taken. */
 export function answerSurface(record: SurfaceRecord, answer: unknown): Promise<void> {
