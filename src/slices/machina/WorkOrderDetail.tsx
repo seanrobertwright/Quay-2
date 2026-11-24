@@ -16,6 +16,7 @@ import {
 import type { TerminalInfo } from "../terminal/types.ts";
 import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import { formatDateTime, formatDuration, formatRelative } from "../../lib/dates.ts";
+import { QuayBadge } from "../cards/QuayBadge.tsx";
 import {
   agentName,
   formatUsd,
@@ -310,6 +311,7 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
             <div className="flex items-center gap-2 text-sm font-bold text-[#d29922]">
               <ShieldAlert className="w-4 h-4" aria-hidden="true" />
               {HOLD_TITLE[wo.hold.reason]}
+              <QuayBadge />
               <span className="ml-auto text-[11px] font-normal text-[#8b949e]" title={formatDateTime(wo.hold.createdAtMs)}>
                 {formatRelative(wo.hold.createdAtMs, now)}
               </span>
@@ -618,6 +620,9 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
 
         {wo.status === "AWAITING_ACCEPTANCE" && (
           <div className="space-y-1.5">
+            <p className="flex">
+              <QuayBadge />
+            </p>
             <button
               type="button"
               className={primary}
@@ -647,15 +652,20 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
         )}
 
         {(wo.status === "INTERRUPTED" || wo.status === "FAILED") && (
-          <button
-            type="button"
-            className={primary}
-            disabled={isBusy}
-            onClick={() => run("Resume", () => invoke("machina_resume", { workOrderId: wo.id }), `${wo.id} resumed.`)}
-          >
-            <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-            {scaffoldDone ? "Resume" : "Retry the scaffold"}
-          </button>
+          <div className="space-y-1.5">
+            <p className="flex">
+              <QuayBadge />
+            </p>
+            <button
+              type="button"
+              className={primary}
+              disabled={isBusy}
+              onClick={() => run("Resume", () => invoke("machina_resume", { workOrderId: wo.id }), `${wo.id} resumed.`)}
+            >
+              <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+              {scaffoldDone ? "Resume" : "Retry the scaffold"}
+            </button>
+          </div>
         )}
 
         {canRemove && (
