@@ -82,6 +82,22 @@ async fn a_question_whose_call_is_over_still_counts_and_makes_no_room() {
 }
 
 #[tokio::test]
+async fn with_four_live_the_same_call_again_rejoins_its_question_and_a_dismissal_makes_room() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let mut calls = four_asked(&seam, &mut webview).await;
+
+    let again = seam.cli("term-a").call("quay_ask", question("Waiting 1?"));
+    assert!(webview.no_check().await && again.is_open(), "it asks for no fifth");
+
+    seam.surfaces.dismiss(&SurfaceKey::new("term-a", "ask_1")).unwrap();
+    for call in [calls.remove(0), again] {
+        assert_eq!(call.answer().await, json!({ "dismissed": true }));
+    }
+    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
+    assert_eq!(ids(&seam, "term-a"), ["ask_2", "ask_3", "ask_4", "ask_5"]);
+}
+
+#[tokio::test]
 async fn a_surface_that_asks_for_nothing_counts_too() {
     let (seam, mut webview) = start(Timing::default()).await;
     for _ in 0..4 {

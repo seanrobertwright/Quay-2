@@ -1,11 +1,15 @@
 //! What the operator has put in a surface and not sent, at the seam the webview uses.
 
+use std::time::Duration;
+
 use serde_json::{json, Value};
 
-use super::store::SurfaceKey;
+use super::store::{AnswerRefused, SurfaceKey};
 use super::test_seam::{answer_to, start, CapturedLog, FakeWebview, Seam};
 use super::timing::Timing;
+use super::typing::NotTyped;
 use super::unsent::UnsentRefused;
+use crate::slices::pty::models::ClaudeStatus;
 
 fn ask_1() -> SurfaceKey {
     SurfaceKey::new("term-a", "ask_1")
@@ -142,6 +146,36 @@ async fn it_goes_when_the_question_is_answered_and_a_save_after_that_is_not_kept
     assert!(held(&seam).is_empty());
     assert_eq!(send(&seam, &ask_1(), late), Err(UnsentRefused::NoSuchSurface));
     assert!(held(&seam).is_empty());
+}
+
+#[tokio::test]
+async fn it_stays_when_the_answer_could_not_be_typed_in_and_goes_when_it_is() {
+    let (seam, mut webview) = start(Timing { wait: Duration::from_millis(1), ..Timing::default() }).await;
+    seam.asked(&mut webview, "term-a", "One?").await.answer().await;
+    save(&seam, &ask_1(), (1, 1), "half a thought").unwrap();
+    let late = unsent(&seam, &ask_1(), (1, 2), "a whole one");
+    let send_answer = || seam.surfaces.answer(&ask_1(), 1, answer_to("One?"));
+
+    seam.pty_manager.update_status("term-a", ClaudeStatus::Exited);
+    assert_eq!(send_answer(), Err(AnswerRefused::NotTyped(NotTyped::TerminalOver)));
+    assert_eq!(held(&seam), [one("term-a", "ask_1", "half a thought")]);
+    seam.pty_manager.update_status("term-a", ClaudeStatus::Idle);
+    send_answer().unwrap();
+
+    assert!(held(&seam).is_empty());
+    assert_eq!(send(&seam, &ask_1(), late), Err(UnsentRefused::NoSuchSurface));
+}
+
+#[tokio::test]
+async fn it_goes_when_the_question_is_dismissed() {
+    let (seam, _webview) = with_question().await;
+    save(&seam, &ask_1(), (1, 1), "half a thought").unwrap();
+    let late = unsent(&seam, &ask_1(), (1, 2), "a whole one");
+
+    seam.surfaces.dismiss(&ask_1()).unwrap();
+
+    assert!(held(&seam).is_empty());
+    assert_eq!(send(&seam, &ask_1(), late), Err(UnsentRefused::NoSuchSurface));
 }
 
 #[tokio::test]
