@@ -2,13 +2,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Each sidecar's package, and the name `bundle.externalBin` in `tauri.conf.json` gives it:
-/// the Codex turn-end helper and Quay's PiG extension.
-const SIDECARS: [(&str, &str); 2] = [
+/// the Codex turn-end helper, Quay's PiG extension and the relay.
+const SIDECARS: [(&str, &str); 3] = [
     ("sidecars/codex-notify", "quay-codex-notify"),
     ("sidecars/pig-bridge", "quay-pig-bridge"),
+    ("sidecars/relay", "quay-relay"),
 ];
 
-/// The package both sidecars post their events with.
+/// The package every sidecar reads its `QUAY_*` URL with. All but the relay post their events
+/// with it too.
 const SHARED_PACKAGE: &str = "sidecars/bridge-post";
 
 fn main() {
