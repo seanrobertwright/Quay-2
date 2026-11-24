@@ -9,29 +9,35 @@ const MOST_CHARACTERS = 20_000;
 const DEEPEST_BLOCK = 20;
 
 const parser = new MarkdownIt({ html: false, linkify: false, typographer: false });
-// An address is judged as it was written, and a link to one that leads nowhere Quay opens is no link.
+// An address stays as it was written, and an image is one whatever its address: what leads nowhere is drawn
+// as a box that says so. A link is judged once it is read.
 parser.normalizeLink = (href) => href;
-parser.validateLink = (href) => linkTarget(href) !== null;
+parser.validateLink = () => true;
 
-/** `parser`'s rule for an image. */
-function imageRule() {
-  const { ruler } = parser.inline;
-  const rules = ruler.getRules("");
-  ruler.disable("image");
-  const others = new Set(ruler.getRules(""));
-  ruler.enable("image");
-  return rules.find((rule) => !others.has(rule))!;
+/** What a refused link's opening and closing tokens are drawn as: how it would be written, with its address in it. */
+function linkText(open: Token): [before: string, after: string] {
+  if (open.markup === "autolink") return ["<", ">"];
+  const title = open.attrGet("title");
+  return ["[", `](${open.attrGet("href")}${title === null ? "" : ` "${title}"`})`];
 }
 
-// An image is one whatever its address: what leads nowhere is drawn as a box that says so.
-const readImage = imageRule();
-parser.inline.ruler.at("image", (state, silent) => {
-  const { validateLink } = parser;
-  parser.validateLink = () => true;
-  try {
-    return readImage(state, silent);
-  } finally {
-    parser.validateLink = validateLink;
+// A link to what Quay does not open is no link but text.
+parser.core.ruler.push("refused_links", ({ tokens, Token: TokenOf }) => {
+  for (const token of tokens) {
+    // What each link that is open ends in, or null for one that stays a link
+    const open: (string | null)[] = [];
+    const shownOf = (child: Token): string | null => {
+      if (child.type === "link_close") return open.pop() ?? null;
+      if (child.type !== "link_open") return null;
+      const href = String(child.attrGet("href"));
+      const [before, after] = href === "" || linkTarget(href) ? [null, null] : linkText(child);
+      open.push(after);
+      return before;
+    };
+    token.children &&= token.children.map((child) => {
+      const content = shownOf(child);
+      return content === null ? child : Object.assign(new TokenOf("text", "", 0), { content });
+    });
   }
 });
 

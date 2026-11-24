@@ -291,6 +291,43 @@ test("an image in Markdown that is no local path draws the box, and nothing is a
   assert.equal(content.querySelectorAll("img, [src], [href]").length, 0);
 });
 
+test("an image in Markdown whose address is written elsewhere in the text draws the box too", async () => {
+  const content = await draw(
+    surfaceOf([
+      text("a", "![a chart][web] ![inline][data] ![script] and ![host][]\n\n[web]: https://a.example/x.png\n[data]: data:image/png;base64,iVBORw0KGgo=\n[script]: javascript:alert(1) 'a title'\n[host]: <blob:x>"),
+    ]),
+  );
+  assert.deepEqual(boxes(content), [
+    ["a chart", "Quay loads no image from the web.", "https://a.example/x.png"],
+    ["inline", "Quay shows an image only from a file.", "data:image/png;base64,iVBORw0KGgo="],
+    ["script", "It is not a path Quay can open.", "javascript:alert(1)"],
+    ["host", "It is not a path Quay can open.", "blob:x"],
+  ]);
+  assert.equal(content.querySelectorAll("p").length, 1, "where the addresses are written is not drawn");
+  assert.deepEqual(calls, []);
+  assert.equal(content.querySelectorAll("img, [src], [href], [role]").length, 0);
+});
+
+test("a link to what is no path or web address shows its address, however it is written", async () => {
+  const content = await draw(
+    surfaceOf([text("a", "[*in*line](javascript:a) [titled](tel:1 'a title') [ref][r] [r] <mailto:a@a.example> <a@a.example> [empty]() [![z](blob:b)](blob:c)\n\n[r]: data:x")]),
+  );
+  assert.deepEqual(boxes(content), [["z", "It is not a path Quay can open.", "blob:b"]]);
+  content.querySelector("[data-image-refused]")!.remove();
+  assert.equal(
+    content.textContent,
+    '[inline](javascript:a) [titled](tel:1 "a title") [ref](data:x) [r](data:x) <mailto:a@a.example> <a@a.example> empty [](blob:c)',
+  );
+  assert.equal(content.querySelectorAll("em").length, 1);
+  assert.equal(content.querySelectorAll("[role], [href]").length, 0);
+});
+
+test("a link in angle brackets inside a link's label is judged by its own address", async () => {
+  const content = await draw(surfaceOf([text("a", "[a <tel:1> b](javascript:c) [d <tel:2> e](f.md) [g <https://h.example> i](javascript:j)")]));
+  assert.deepEqual([...content.querySelectorAll('[role="link"]')].map((link) => link.textContent), ["d <tel:2> e", "https://h.example h.example"]);
+  assert.equal(content.textContent, "[a <tel:1> b](javascript:c) d <tel:2> e [g https://h.example h.example i](javascript:j)");
+});
+
 test("a link to what is no path or web address is still text, also beside an image of the same address", async () => {
   const content = await draw(surfaceOf([text("a", "![x](javascript:a) [y](javascript:a) [![z](javascript:a)](javascript:a)")]));
   assert.equal(content.querySelectorAll('[role="link"]').length, 0);
