@@ -1,21 +1,19 @@
 // PROTOTYPE (#696), throwaway. The question card, three layouts: A every question in one scroll,
 // B one at a time, C every question listed with one open.
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Check } from "lucide-react";
 import { PRIMARY, SECONDARY } from "../../companion/buttonStyles.ts";
 import type { Ask, Question } from "./content.ts";
 import { Frame, Settled, type Key } from "./frame.tsx";
 import { Md } from "./md.tsx";
 
-interface Answer {
+export interface Answer {
   chosen: string[];
   text: string;
   /** Shown to the operator. A multiple choice may be sent with nothing ticked, but not unseen. */
   seen: boolean;
 }
 const answered = (q: Question, a: Answer) => (q.multiple ? a.seen : a.chosen.length > 0 || a.text.trim() !== "");
-const said = (a: Answer) => [...a.chosen, a.text.trim()].filter(Boolean).join(" · ") || "None of these";
-
 const Body = ({ q, a, set, showQuestion = true }: { q: Question; a: Answer; set: (a: Answer) => void; showQuestion?: boolean }) => {
   const id = useId();
   return (
@@ -60,9 +58,16 @@ const Body = ({ q, a, set, showQuestion = true }: { q: Question; a: Answer; set:
   );
 };
 
-export const AskCard = ({ ask, layout, onSend, onDismiss }: { ask: Ask; layout: Key; onSend: (text: string) => void; onDismiss: () => void }) => {
-  const [answers, setAnswers] = useState<Answer[]>(ask.questions.map((_, i) => ({ chosen: [], text: "", seen: layout === "A" || i === 0 })));
-  const [at, setAt] = useState(0);
+export interface Draft {
+  answers: Answer[];
+  at: number;
+}
+export const said = (a: Answer) => [...a.chosen, a.text.trim()].filter(Boolean).join(" · ") || "None of these";
+
+export const AskCard = ({ ask, layout, onSend, onDismiss, draft, onDraft }: { ask: Ask; layout: Key; onSend: (text: string) => void; onDismiss: () => void; draft?: Draft; onDraft?: (d: Draft) => void }) => {
+  const [answers, setAnswers] = useState<Answer[]>(draft?.answers ?? ask.questions.map((_, i) => ({ chosen: [], text: "", seen: layout === "A" || i === 0 })));
+  const [at, setAt] = useState(draft?.at ?? 0);
+  useEffect(() => void onDraft?.({ answers, at }), [answers, at]);
   const [sent, setSent] = useState(false);
   const [more, setMore] = useState(false);
   const set = (i: number) => (a: Answer) => setAnswers((all) => all.map((x, j) => (j === i ? a : x)));

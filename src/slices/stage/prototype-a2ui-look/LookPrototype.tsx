@@ -364,13 +364,13 @@ const load = (): Saved => {
 // ---------------------------------------------------------------------------------------------
 // The mock shell
 
-interface Term {
+export interface Term {
   id: string;
   name: string;
   kind: RunKind;
   lines: string[];
 }
-const TERMS: Term[] = [
+export const TERMS: Term[] = [
   {
     id: "t1",
     name: "fix-75",
@@ -482,7 +482,7 @@ const TabBar = ({ tab, front }: { tab?: { kind: Kind; title: string }; front: "t
   </div>
 );
 
-const Pane = ({ term, log, strip, over, titleExtra }: { term: Term; log: string[]; strip?: ReactNode; over?: ReactNode; titleExtra?: ReactNode }) => (
+export const Pane = ({ term, log, strip, over, titleExtra }: { term: Term; log: string[]; strip?: ReactNode; over?: ReactNode; titleExtra?: ReactNode }) => (
   <div className="absolute inset-1.5 flex flex-col rounded-md border border-[#30363d] overflow-hidden bg-[#0d1117]">
     <div className="relative h-7 px-2.5 border-b border-[#30363d]/60 flex items-center gap-2 text-xs shrink-0 bg-[#161b22]">
       <AgentIcon kind={term.kind} className="w-3.5 h-3.5" />
@@ -506,7 +506,7 @@ const Pane = ({ term, log, strip, over, titleExtra }: { term: Term; log: string[
   </div>
 );
 
-const CompanionMock = ({ width, view = "Surface", children }: { width: number; view?: string; children: ReactNode }) => (
+export const CompanionMock = ({ width, view = "Surface", children }: { width: number; view?: string; children: ReactNode }) => (
   <aside style={{ width }} className="shrink-0 min-h-0 flex flex-col bg-[#0d1117] border-l border-[#30363d]" aria-label="Companion">
     <div className="shrink-0 h-12 px-3 flex items-stretch gap-1 border-b border-[#30363d] bg-[#161b22] overflow-hidden">
       {["Surface", "Pull request", "Activity", "Repository"].map((v) => (

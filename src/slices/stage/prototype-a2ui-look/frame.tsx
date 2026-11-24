@@ -131,11 +131,13 @@ export interface FrameProps {
   move?: { at: "companion" | "tab"; go: () => void };
   children: ReactNode;
   footer?: ReactNode;
+  /** Quay's own line under the header bar (frame A only). */
+  band?: ReactNode;
 }
 
 const ICON_BUTTON = "p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#30363d] shrink-0";
 
-export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, footer }: FrameProps) => {
+export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, footer, band }: FrameProps) => {
   const { frame, move: moveLook, notice } = useContext(LooksContext);
   const [refused, setRefused] = useState<string | null>(null);
   const [href, setHref] = useState<string | null>(null);
@@ -222,6 +224,7 @@ export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, f
             {moveControl}
             {dismiss}
           </header>
+          {band}
           {notice === "B" && refusedLine}
           <div className="p-3 flex flex-col gap-2.5">
             {heading}

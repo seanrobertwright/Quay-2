@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "proto:a2ui-look": "vite --config src/slices/stage/prototype-a2ui-look/vite.config.ts --open",
+    "proto:a2ui-states": "vite --config src/slices/stage/prototype-a2ui-states/vite.config.ts --open",
     "proto:a2ui-placement": "vite --port 1427 --strictPort --open \"/?prototype=a2ui-placement&variant=A\"",
     "build": "tsc && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",

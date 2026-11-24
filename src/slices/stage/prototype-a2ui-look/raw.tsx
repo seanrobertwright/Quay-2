@@ -187,14 +187,23 @@ const QUAY: ReactCatalogComponent[] = [
   make(C.SliderApi, ({ props }) => <Slider props={props} />),
 ];
 
-export const RawSurface = ({ messages, onAction }: { messages: readonly object[]; onAction: (text: string) => void }) => {
+/** Surfaces kept by key, so a card that goes away and comes back keeps what was typed into it. */
+export const KEPT = new Map<string, any>();
+
+export const RawSurface = ({ messages, onAction, keep }: { messages: readonly object[]; onAction: (text: string) => void; keep?: string }) => {
   const [state, setState] = useState<{ surface: any; error: string | null }>({ surface: null, error: null });
   useEffect(() => {
+    const kept = keep && KEPT.get(keep);
+    if (kept) {
+      setState({ surface: kept, error: null });
+      return;
+    }
     try {
       const catalog = new C.Catalog(CATALOG_ID, "1.0", QUAY, [...C.basicCatalog.functions.values()]);
       const processor = new C.MessageProcessor([catalog], (a: any) => onAction(`${a.name} ${JSON.stringify(a.context ?? {})}`), { validationConfig: C.STRICT_VALIDATION });
-      processor.processMessages(messages.map((m: any) => ({ ...m, createSurface: { catalogId: CATALOG_ID, ...m.createSurface } })));
+      processor.processMessages(structuredClone(messages).map((m: any) => ({ ...m, createSurface: { catalogId: CATALOG_ID, ...m.createSurface } })));
       const surface = [...processor.model.surfacesMap.values()][0];
+      if (keep) KEPT.set(keep, surface);
       setState({ surface, error: surface ? null : "The engine made no surface." });
     } catch (e) {
       setState({ surface: null, error: String((e as Error).message) });
