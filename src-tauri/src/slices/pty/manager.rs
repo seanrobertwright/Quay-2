@@ -363,7 +363,7 @@ impl PtyManager {
         let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request.clone(),
-            terminal_id.clone(),
+            launch_ref.clone(),
             start_seq,
             bridge_port,
             bridge_token,
@@ -449,7 +449,7 @@ impl PtyManager {
         let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request,
-            terminal_id.to_string(),
+            launch_ref.clone(),
             start_seq,
             bridge_port,
             bridge_token,
@@ -1001,10 +1001,10 @@ impl PtyManager {
         self.plugin_watches.lock().get(terminal_id).is_some_and(PluginWatch::handshake_seen)
     }
 
-    /// Records that `terminal_id`'s CLI has shaken hands with Quay's MCP server, in the terminal's
-    /// current launch. A terminal with none, or whose process has exited, records nothing.
-    pub fn record_handshake(&self, terminal_id: &str) {
-        if let Some(watch) = self.plugin_watches.lock().get_mut(terminal_id) {
+    /// Records that `launch`'s CLI has shaken hands with Quay's MCP server, while `launch` is still
+    /// current and its process has not exited.
+    pub fn record_handshake(&self, launch: &LaunchRef) {
+        if let Some(watch) = launch.current_in(&mut self.plugin_watches.lock()) {
             watch.shake_hands();
         }
     }
@@ -1355,7 +1355,8 @@ mod tests {
 
         assert_eq!(request.initial_prompt, None);
         assert_eq!(request.custom_flags.as_deref(), Some("--model gpt-5"));
-        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok", None);
+        let launch = LaunchRef { terminal_id: info.id.clone(), launch: 7 };
+        let cmd = crate::slices::pty::session::build_command(&request, &launch, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(
             args[..4],
@@ -1423,7 +1424,8 @@ mod tests {
             request.custom_flags.as_deref(),
             Some(format!("--model opus --resume {}", SESSION_A).as_str())
         );
-        let cmd = crate::slices::pty::session::build_command(&request, &restored.id, 1234, "tok", None);
+        let launch = LaunchRef { terminal_id: restored.id.clone(), launch: 7 };
+        let cmd = crate::slices::pty::session::build_command(&request, &launch, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(args[2..6], ["--model", "opus", "--resume", SESSION_A], "{:?}", args);
     }

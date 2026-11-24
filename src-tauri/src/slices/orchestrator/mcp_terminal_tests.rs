@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 
 use super::mcp_tests::TestBridge;
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, ALL_RUN_KINDS};
+use crate::slices::pty::plugin_watch::LaunchRef;
 
 /// The tools every full peer has had since before surfaces.
 const BUS_TOOLS: [&str; 7] = [
@@ -137,21 +138,32 @@ async fn a_terminal_without_a_tool_gets_no_instructions() {
     assert_eq!(instructions(RunKind::Antigravity, false).await, (None, Vec::new()));
 }
 
-async fn shake_hands(bridge: &TestBridge) {
-    result(bridge, "initialize", json!({ "protocolVersion": "2025-11-25", "capabilities": {} })).await;
+fn handshake() -> Value {
+    let params = json!({ "protocolVersion": "2025-11-25", "capabilities": {} });
+    json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": params })
+}
+
+/// The handshake of the CLI that `launch` started, at the URL Quay starts it with.
+async fn shake_hands(bridge: &TestBridge, launch: &LaunchRef) {
+    let reply = bridge.post_to(&format!("/mcp/{}", launch.launch), &handshake()).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    assert_eq!(reply.json()["result"]["serverInfo"]["name"], "quay-a2a", "{}", reply.body);
 }
 
 #[tokio::test]
 async fn a_terminals_handshake_is_recorded_for_it_alone_and_no_other_request_is_one() {
     let bridge = TestBridge::start_with(RunKind::Antigravity, true).await;
     let terminals = &bridge.pty_manager;
-    terminals.begin_launch("term-mcp", RunKind::Antigravity);
-    terminals.begin_launch("term-other", RunKind::Claude);
+    let launch = terminals.begin_launch("term-mcp", RunKind::Antigravity);
+    let other = terminals.begin_launch("term-other", RunKind::Claude);
     result(&bridge, "ping", json!({})).await;
     listed(&bridge).await;
     assert!(!terminals.handshake_seen("term-mcp"));
 
-    shake_hands(&bridge).await;
+    shake_hands(&bridge, &other).await;
+    assert!(!terminals.handshake_seen("term-other"), "the token is not its own");
+
+    shake_hands(&bridge, &launch).await;
 
     assert!(terminals.handshake_seen("term-mcp"));
     assert!(!terminals.handshake_seen("term-other"));
@@ -162,14 +174,14 @@ async fn a_handshake_is_cleared_when_its_terminal_exits() {
     let bridge = TestBridge::start_with(RunKind::Claude, true).await;
     let terminals = &bridge.pty_manager;
     let launch = terminals.begin_launch("term-mcp", RunKind::Claude);
-    shake_hands(&bridge).await;
+    shake_hands(&bridge, &launch).await;
     assert!(terminals.handshake_seen("term-mcp"));
 
     terminals.exit_launch(&launch, Some(0));
 
     assert!(!terminals.handshake_seen("term-mcp"));
-    shake_hands(&bridge).await;
-    assert!(!terminals.handshake_seen("term-mcp"), "a process that outlived the terminal's connects nothing");
+    shake_hands(&bridge, &launch).await;
+    assert!(!terminals.handshake_seen("term-mcp"), "it is from a process that outlived the terminal's");
 }
 
 #[tokio::test]
@@ -177,24 +189,59 @@ async fn a_handshake_is_cleared_at_relaunch_and_an_old_launchs_exit_leaves_the_n
     let bridge = TestBridge::start_with(RunKind::Claude, true).await;
     let terminals = &bridge.pty_manager;
     let old = terminals.begin_launch("term-mcp", RunKind::Claude);
-    shake_hands(&bridge).await;
+    shake_hands(&bridge, &old).await;
     assert!(terminals.handshake_seen("term-mcp"));
 
-    terminals.begin_launch("term-mcp", RunKind::Claude);
+    let new = terminals.begin_launch("term-mcp", RunKind::Claude);
     assert!(!terminals.handshake_seen("term-mcp"));
 
     // The terminal is listed as it was until the relaunch has finished
     terminals.update_status("term-mcp", ClaudeStatus::Exited);
-    shake_hands(&bridge).await;
+    shake_hands(&bridge, &new).await;
     terminals.exit_launch(&old, Some(0));
     assert!(terminals.handshake_seen("term-mcp"));
 }
 
 #[tokio::test]
-async fn a_closed_terminal_has_no_handshake() {
+async fn an_old_launchs_handshake_after_a_relaunch_is_not_the_new_ones() {
+    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let terminals = &bridge.pty_manager;
+    let old = terminals.begin_launch("term-mcp", RunKind::Claude);
+    let new = terminals.begin_launch("term-mcp", RunKind::Claude);
+
+    shake_hands(&bridge, &old).await;
+    assert!(!terminals.handshake_seen("term-mcp"));
+
+    shake_hands(&bridge, &new).await;
+    assert!(terminals.handshake_seen("term-mcp"));
+}
+
+#[tokio::test]
+async fn a_handshake_that_names_no_launch_is_answered_and_not_recorded() {
     let bridge = TestBridge::start_with(RunKind::Claude, true).await;
     bridge.pty_manager.begin_launch("term-mcp", RunKind::Claude);
-    shake_hands(&bridge).await;
+
+    let reply = bridge.post_to("/mcp", &handshake()).await;
+
+    assert_eq!(reply.json()["result"]["serverInfo"]["name"], "quay-a2a", "{}", reply.body);
+    assert!(!bridge.pty_manager.handshake_seen("term-mcp"));
+}
+
+#[tokio::test]
+async fn a_launch_that_is_no_number_is_refused() {
+    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+
+    for launch in ["-1", "1.5", "x", "99999999999999999999"] {
+        let reply = bridge.post_to(&format!("/mcp/{launch}"), &handshake()).await;
+        assert_eq!(reply.status, 400, "{launch}: {}", reply.body);
+    }
+}
+
+#[tokio::test]
+async fn a_closed_terminal_has_no_handshake() {
+    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let launch = bridge.pty_manager.begin_launch("term-mcp", RunKind::Claude);
+    shake_hands(&bridge, &launch).await;
     assert!(bridge.pty_manager.handshake_seen("term-mcp"));
 
     bridge.pty_manager.kill("term-mcp").unwrap();

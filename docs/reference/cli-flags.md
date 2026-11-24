@@ -43,7 +43,7 @@ The JSON passed to `--mcp-config`:
   "mcpServers": {
     "quay": {
       "type": "http",
-      "url": "http://127.0.0.1:<bridge_port>/mcp",
+      "url": "http://127.0.0.1:<bridge_port>/mcp/<launch>",
       "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" },
       "timeout": 150000
     }
@@ -51,7 +51,7 @@ The JSON passed to `--mcp-config`:
 }
 ```
 
-`timeout` is how long Claude Code waits on a call to this server, in milliseconds.
+`<launch>` is the number at the end of the terminal's [`QUAY_MCP_URL`](#every-a2a-peer), here and in the settings of the other CLIs below. `timeout` is how long Claude Code waits on a call to this server, in milliseconds.
 
 > [!IMPORTANT]
 > **Argument Ordering**: `--mcp-config` takes several values and would read a bare argument after it as another config file, so `--dangerously-skip-permissions`, the custom flags and a swarm agent's launch prompt always come *before* `--mcp-config`.
@@ -68,7 +68,7 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 | Override | Purpose |
 | :--- | :--- |
-| `-c mcp_servers.quay.url="http://127.0.0.1:<port>/mcp"` | Adds Quay's MCP server for this run only |
+| `-c mcp_servers.quay.url="http://127.0.0.1:<port>/mcp/<launch>"` | Adds Quay's MCP server for this run only |
 | `-c mcp_servers.quay.bearer_token_env_var="QUAY_A2A_TOKEN"` | Codex reads the bearer token from the terminal's environment, so the token is neither written to a file nor visible on the command line |
 | `-c mcp_servers.quay.default_tools_approval_mode="approve"` | Approves every tool on Quay's server without a prompt: `quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status` and the `machina_*` work-order tools. Without it, Codex refuses the call when its approval policy is `never`, which `--dangerously-bypass-approvals-and-sandbox` sets |
 | `-c mcp_servers.quay.tool_timeout_sec=150` | How long Codex waits on a call to Quay's server, in seconds |
@@ -100,7 +100,7 @@ Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of 
   "mcp": {
     "quay": {
       "type": "remote",
-      "url": "http://127.0.0.1:<bridge_port>/mcp",
+      "url": "http://127.0.0.1:<bridge_port>/mcp/<launch>",
       "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
       "oauth": false,
       "timeout": 150000
@@ -193,7 +193,7 @@ Every agent terminal on the A2A bus (full peer, responder or listener) gets thes
 ```powershell
 QUAY_TERMINAL_ID="term-a1b2c3d4"
 QUAY_A2A_TOKEN="<per_terminal_token>"
-QUAY_MCP_URL="http://127.0.0.1:50362/mcp"
+QUAY_MCP_URL="http://127.0.0.1:50362/mcp/7"
 QUAY_EVENTS_URL="http://127.0.0.1:50362/v1/events"
 ```
 
@@ -201,7 +201,7 @@ QUAY_EVENTS_URL="http://127.0.0.1:50362/v1/events"
 | :--- | :--- |
 | `QUAY_TERMINAL_ID` | The terminal id |
 | `QUAY_A2A_TOKEN` | The terminal's bearer token for the bridge, the same token as `CLAUDE_EVENTS_TOKEN` |
-| `QUAY_MCP_URL` | Quay's MCP server |
+| `QUAY_MCP_URL` | Quay's MCP server. The number at its end tells this launch of the terminal from its others |
 | `QUAY_EVENTS_URL` | The bridge's event endpoint |
 
 The two URLs carry the bridge's port, so no agent needs a separate port variable.

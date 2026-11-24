@@ -12,8 +12,12 @@ use super::models::{
 };
 use super::{commit_stamp, opencode_permission};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
+use super::plugin_watch::LaunchRef;
 use super::screen::{self, ScreenKeeper};
 use crate::slices::surface::{names, timing::CLI_LIMIT};
+
+/// `CLI_LIMIT` in the unit Claude Code and OpenCode take it in.
+const CLI_LIMIT_MS: u64 = CLI_LIMIT.as_millis() as u64;
 
 /// How often a running terminal checks whether its output has paused long enough to save
 /// its screen (see `screen::SAVE_AFTER_IDLE`).
@@ -53,21 +57,27 @@ pub struct PtySession {
     screen: Arc<ScreenKeeper>,
 }
 
+/// Quay's MCP server as `launch`'s CLI is pointed at it. The launch in it is how a handshake is
+/// known to be from this launch's CLI and not from an earlier one's; the token is the terminal's.
+fn mcp_url(bridge_port: u16, launch: &LaunchRef) -> String {
+    format!("http://127.0.0.1:{}/mcp/{}", bridge_port, launch.launch)
+}
+
 /// The value Claude Code's `--mcp-config` receives: the Quay MCP server as one line
 /// of JSON. It is passed inline rather than as a file path so the terminal's bearer
 /// token never touches disk, and the header names `${CLAUDE_EVENTS_TOKEN}`, which
 /// Claude Code expands from its environment, so the token stays out of the command line.
 /// `timeout` is how long Claude Code waits on a call to this server, in milliseconds.
-pub fn mcp_config_arg(bridge_port: u16) -> String {
+pub fn mcp_config_arg(mcp_url: &str) -> String {
     serde_json::json!({
         "mcpServers": {
             "quay": {
                 "type": "http",
-                "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
+                "url": mcp_url,
                 "headers": {
                     "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}"
                 },
-                "timeout": CLI_LIMIT.as_secs() * 1000
+                "timeout": CLI_LIMIT_MS
             }
         }
     })
@@ -113,11 +123,10 @@ fn toml_string(text: &str) -> String {
 /// off disk and off the command line; approval for every tool on that server, without which
 /// Codex refuses the call when its approval policy is `never`; how long Codex waits on a call to
 /// it, in seconds; and `notify`, which runs `notify_program` at each turn end.
-fn codex_bus_args(bridge_port: u16, notify_program: &Path) -> Vec<String> {
-    let url = format!("http://127.0.0.1:{}/mcp", bridge_port);
+fn codex_bus_args(mcp_url: &str, notify_program: &Path) -> Vec<String> {
     let notify = toml_string(&notify_program.to_string_lossy());
     [
-        format!("mcp_servers.quay.url={}", toml_string(&url)),
+        format!("mcp_servers.quay.url={}", toml_string(mcp_url)),
         format!("mcp_servers.quay.bearer_token_env_var={}", toml_string("QUAY_A2A_TOKEN")),
         format!("mcp_servers.quay.default_tools_approval_mode={}", toml_string("approve")),
         format!("mcp_servers.quay.tool_timeout_sec={}", CLI_LIMIT.as_secs()),
@@ -137,7 +146,7 @@ const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
 /// which OpenCode expands from its environment, so the token stays out of the config.
 /// `oauth: false` keeps OpenCode from trying to sign in to it, and `timeout` is how long OpenCode
 /// waits on a call to it, in milliseconds. Of that server's tools, `allowed` run without a prompt.
-pub fn opencode_config_content(bridge_port: u16, workspace: Option<&str>, allowed: &[&str]) -> String {
+pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
     let mut config = workspace
         .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
         .filter(serde_json::Value::is_object)
@@ -147,12 +156,12 @@ pub fn opencode_config_content(bridge_port: u16, workspace: Option<&str>, allowe
     }
     config["mcp"]["quay"] = serde_json::json!({
         "type": "remote",
-        "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
+        "url": mcp_url,
         "headers": {
             "Authorization": "Bearer {env:QUAY_A2A_TOKEN}"
         },
         "oauth": false,
-        "timeout": CLI_LIMIT.as_secs() * 1000
+        "timeout": CLI_LIMIT_MS
     });
     opencode_permission::add_allow_rules(&mut config, allowed);
     config.to_string()
@@ -188,10 +197,10 @@ pub(crate) const QUAY_ENV_KEYS: [&str; 4] =
 
 /// Sets the variables every peer terminal gets, whatever its level, so a CLI's own wiring
 /// onto the bus can read the terminal's id, token and bridge URLs from its environment.
-fn set_quay_env(cmd: &mut CommandBuilder, terminal_id: &str, bridge_port: u16, bridge_token: &str) {
-    cmd.env("QUAY_TERMINAL_ID", terminal_id);
+fn set_quay_env(cmd: &mut CommandBuilder, launch: &LaunchRef, bridge_port: u16, bridge_token: &str) {
+    cmd.env("QUAY_TERMINAL_ID", &launch.terminal_id);
     cmd.env("QUAY_A2A_TOKEN", bridge_token);
-    cmd.env("QUAY_MCP_URL", format!("http://127.0.0.1:{}/mcp", bridge_port));
+    cmd.env("QUAY_MCP_URL", mcp_url(bridge_port, launch));
     cmd.env("QUAY_EVENTS_URL", format!("http://127.0.0.1:{}/v1/events", bridge_port));
 }
 
@@ -502,11 +511,12 @@ fn shell_command(command_text: Option<&str>) -> CommandBuilder {
 /// OpenCode terminal serves its events on; other CLIs ignore it.
 pub(crate) fn build_command(
     request: &SpawnTerminalRequest,
-    terminal_id: &str,
+    launch: &LaunchRef,
     bridge_port: u16,
     bridge_token: &str,
     server_port: Option<u16>,
 ) -> CommandBuilder {
+    let mcp_url = mcp_url(bridge_port, launch);
     let perm = request.run_kind.permission_mode(request.permission_mode);
 
     let mut cmd = match request.run_kind {
@@ -650,12 +660,12 @@ pub(crate) fn build_command(
 
     // After the workspace's variables, so none of them can stand in for the terminal's own
     if request.run_kind == RunKind::Claude {
-        set_event_bridge_env(&mut cmd, terminal_id, bridge_port, bridge_token, perm);
+        set_event_bridge_env(&mut cmd, &launch.terminal_id, bridge_port, bridge_token, perm);
     } else {
         clear_event_bridge_env(&mut cmd);
     }
     if request.run_kind.is_peer() {
-        set_quay_env(&mut cmd, terminal_id, bridge_port, bridge_token);
+        set_quay_env(&mut cmd, launch, bridge_port, bridge_token);
     } else {
         clear_quay_env(&mut cmd);
     }
@@ -670,7 +680,7 @@ pub(crate) fn build_command(
                 content: workspace.as_deref(),
             },
         );
-        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(bridge_port, workspace.as_deref(), &allowed));
+        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(&mcp_url, workspace.as_deref(), &allowed));
     }
     // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
     // answer, is unset whether the workspace or Quay's own environment set it
@@ -693,7 +703,7 @@ pub(crate) fn build_command(
     // After the custom flags, so a custom `-c` can't replace them, and before the launch
     // prompt, Codex's positional argument
     if request.run_kind == RunKind::Codex {
-        for arg in codex_bus_args(bridge_port, &codex_notify_program()) {
+        for arg in codex_bus_args(&mcp_url, &codex_notify_program()) {
             cmd.arg(arg);
         }
     }
@@ -727,7 +737,7 @@ pub(crate) fn build_command(
             cmd.arg(allowed.join(","));
         }
         cmd.arg("--mcp-config");
-        cmd.arg(mcp_config_arg(bridge_port));
+        cmd.arg(mcp_config_arg(&mcp_url));
     }
 
     cmd.cwd(&request.project_path);
@@ -747,7 +757,7 @@ impl PtySession {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         request: SpawnTerminalRequest,
-        terminal_id: String,
+        launch: LaunchRef,
         start_seq: u64,
         bridge_port: u16,
         bridge_token: String,
@@ -772,7 +782,8 @@ impl PtySession {
 
         let perm = request.run_kind.permission_mode(request.permission_mode);
 
-        let cmd = build_command(&request, &terminal_id, bridge_port, &bridge_token, server_port);
+        let cmd = build_command(&request, &launch, bridge_port, &bridge_token, server_port);
+        let terminal_id = launch.terminal_id;
 
         let mut child = pair
             .slave
@@ -1057,6 +1068,18 @@ mod tests {
     use crate::test_support::TempDir;
     use std::io::Read;
 
+    /// `super::build_command` for launch 7 of terminal `terminal_id`.
+    fn build_command(
+        request: &SpawnTerminalRequest,
+        terminal_id: &str,
+        bridge_port: u16,
+        bridge_token: &str,
+        server_port: Option<u16>,
+    ) -> CommandBuilder {
+        let launch = LaunchRef { terminal_id: terminal_id.to_string(), launch: 7 };
+        super::build_command(request, &launch, bridge_port, bridge_token, server_port)
+    }
+
     #[test]
     fn claude_program_matches_the_platform_binary_name() {
         #[cfg(windows)]
@@ -1162,7 +1185,7 @@ mod tests {
                 MULTI_LINE_PROMPT,
             ]
         );
-        assert_eq!(args[7..], ["--mcp-config".to_string(), mcp_config_arg(1234)]);
+        assert_eq!(args[7..], ["--mcp-config".to_string(), mcp_config_arg("http://127.0.0.1:1234/mcp/7")]);
     }
 
     fn args_with_prompt(run_kind: RunKind, prompt: Option<&str>) -> Vec<String> {
@@ -1180,7 +1203,7 @@ mod tests {
     }
 
     fn bus_args() -> Vec<String> {
-        codex_bus_args(1234, &codex_notify_program())
+        codex_bus_args("http://127.0.0.1:1234/mcp/7", &codex_notify_program())
     }
 
     #[test]
@@ -1246,10 +1269,10 @@ mod tests {
     fn codex_joins_the_bus_through_its_overrides_in_both_permission_modes() {
         let notify = Path::new(r"C:\Program Files\Quay\quay-codex-notify.exe");
         assert_eq!(
-            codex_bus_args(4321, notify),
+            codex_bus_args("http://127.0.0.1:4321/mcp/7", notify),
             [
                 "-c",
-                r#"mcp_servers.quay.url="http://127.0.0.1:4321/mcp""#,
+                r#"mcp_servers.quay.url="http://127.0.0.1:4321/mcp/7""#,
                 "-c",
                 r#"mcp_servers.quay.bearer_token_env_var="QUAY_A2A_TOKEN""#,
                 "-c",
@@ -1261,7 +1284,7 @@ mod tests {
             ]
         );
 
-        let expected = codex_bus_args(4321, &codex_notify_program());
+        let expected = codex_bus_args("http://127.0.0.1:4321/mcp/7", &codex_notify_program());
         for mode in [PermissionMode::Normal, PermissionMode::Skip] {
             let mut request = spawn_request(RunKind::Codex);
             request.permission_mode = Some(mode);
@@ -1476,7 +1499,7 @@ mod tests {
             assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"), "{:?}", run_kind);
             assert_eq!(
                 env_of(&cmd, "QUAY_MCP_URL").as_deref(),
-                Some("http://127.0.0.1:4321/mcp"),
+                Some("http://127.0.0.1:4321/mcp/7"),
                 "{:?}",
                 run_kind
             );
@@ -1576,7 +1599,7 @@ mod tests {
             serde_json::json!({
                 "quay": {
                     "type": "remote",
-                    "url": "http://127.0.0.1:4321/mcp",
+                    "url": "http://127.0.0.1:4321/mcp/7",
                     "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
                     "oauth": false,
                     "timeout": 150000
@@ -1596,13 +1619,13 @@ mod tests {
     fn a_workspace_opencode_config_keeps_its_settings_and_gains_the_quay_server() {
         let quay = serde_json::json!({
             "type": "remote",
-            "url": "http://127.0.0.1:4321/mcp",
+            "url": "http://127.0.0.1:4321/mcp/7",
             "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
             "oauth": false,
             "timeout": 150000
         });
         let merged = |workspace: &str| -> serde_json::Value {
-            serde_json::from_str(&opencode_config_content(4321, Some(workspace), &[])).unwrap()
+            serde_json::from_str(&opencode_config_content("http://127.0.0.1:4321/mcp/7", Some(workspace), &[])).unwrap()
         };
 
         assert_eq!(
@@ -1860,7 +1883,7 @@ mod tests {
     /// The text the stand-in bridge's `quay_ping` tool returns.
     const PING_REPLY: &str = "PONG-7731";
 
-    /// What the stand-in bridge answers an `/mcp` request with, as its HTTP status line and body,
+    /// What the stand-in bridge answers an `/mcp/7` request with, as its HTTP status line and body,
     /// the way Quay's MCP server does: `GET` with 405, a notification with 202 and no body, and a
     /// JSON-RPC request with one tool, `quay_ping`.
     fn stand_in_mcp(method: &str, body: &str) -> (&'static str, String) {
@@ -1890,7 +1913,7 @@ mod tests {
 
     /// A stand-in for Quay's bridge on a free loopback port. It keeps each `POST /v1/events`
     /// body and each request's method, path and `Authorization` header, in order, and
-    /// answers `/mcp` as `stand_in_mcp` does and anything else `200` with no body.
+    /// answers `/mcp/7` as `stand_in_mcp` does and anything else `200` with no body.
     #[allow(clippy::type_complexity)]
     fn recording_bridge() -> (
         u16,
@@ -1947,7 +1970,7 @@ mod tests {
                         }
                     }
                     let (status, reply) =
-                        if path == "/mcp" { stand_in_mcp(method, body) } else { ("200 OK", String::new()) };
+                        if path == "/mcp/7" { stand_in_mcp(method, body) } else { ("200 OK", String::new()) };
                     let _ = stream.write_all(
                         format!(
                             "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -2052,7 +2075,7 @@ mod tests {
         }
         // The text came from the tool, so PiG reached it through Quay's MCP server
         assert!(events[2].1["data"]["answer"].as_str().unwrap().contains(PING_REPLY), "{}", events[2].1);
-        let mcp: Vec<&String> = requests.iter().filter(|r| r.contains(" /mcp ")).collect();
+        let mcp: Vec<&String> = requests.iter().filter(|r| r.contains(" /mcp/7 ")).collect();
         assert!(!mcp.is_empty());
         for request in mcp {
             assert!(request.ends_with(" Bearer tok-live"), "{}", request);
@@ -2219,7 +2242,7 @@ mod tests {
 
     #[test]
     fn mcp_config_arg_is_inline_json_that_reads_the_token_from_the_environment() {
-        let arg = mcp_config_arg(4123);
+        let arg = mcp_config_arg("http://127.0.0.1:4123/mcp/7");
 
         assert!(!arg.contains('\n'), "inline config must be one line: {:?}", arg);
         let parsed: serde_json::Value = serde_json::from_str(&arg).expect("inline config is JSON");
@@ -2229,7 +2252,7 @@ mod tests {
                 "mcpServers": {
                     "quay": {
                         "type": "http",
-                        "url": "http://127.0.0.1:4123/mcp",
+                        "url": "http://127.0.0.1:4123/mcp/7",
                         "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" },
                         "timeout": 150000
                     }

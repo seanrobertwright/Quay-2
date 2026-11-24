@@ -1,7 +1,8 @@
 //! What Quay knows, in one launch of a terminal, about whether the plugin or extension
 //! that reports its turns is loaded (Claude Code's event-bridge plugin, or Quay's PiG
-//! extension; see `RunKind::reports_through_plugin`), and the status rules that follow. Also
-//! whether the launch's CLI has shaken hands with Quay's MCP server.
+//! extension; see `RunKind::reports_through_plugin`), and the status rules that follow. The
+//! launch's first output, its process's exit and its CLI's handshake with Quay's MCP server are
+//! kept here too, since all of them begin anew with each launch.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -102,17 +103,18 @@ impl PluginWatch {
                 .is_some_and(|at| now.saturating_duration_since(at) >= PLUGIN_SILENCE)
     }
 
-    /// Marks the launch's CLI connected, unless its process has exited.
+    /// Records the CLI's handshake with Quay's MCP server, unless the launch's process has exited.
     pub fn shake_hands(&mut self) {
         self.handshake = !self.exited;
     }
 
-    /// Whether the launch's CLI has shaken hands and its process has not exited.
+    /// Whether the CLI has shaken hands with Quay's MCP server and the launch's process has not
+    /// exited.
     pub fn handshake_seen(&self) -> bool {
         self.handshake
     }
 
-    /// Marks the launch's process exited, and so its CLI no longer connected.
+    /// Marks the launch's process exited, which ends what its CLI's handshake began.
     pub fn exit(&mut self) {
         self.exited = true;
         self.handshake = false;

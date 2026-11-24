@@ -18,6 +18,7 @@ use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::TerminalInfo;
+use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::slices::surface::SurfaceTools;
 use crate::webview::WebviewEvents;
 
@@ -81,6 +82,7 @@ pub async fn handle_mcp_request(
     State(ctx): State<Arc<McpContext>>,
     State(a2a_router): State<Arc<A2ARouter>>,
     caller: AuthenticatedTerminal,
+    launch: Option<u64>,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
     if let Some(accepted) = reply_to_notification(&req) {
@@ -97,7 +99,10 @@ pub async fn handle_mcp_request(
                 .and_then(|p| p.get("protocolVersion"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("2024-11-05");
-            ctx.pty_manager.record_handshake(caller_id);
+            if let Some(launch) = launch {
+                let launch = LaunchRef { terminal_id: caller_id.to_string(), launch };
+                ctx.pty_manager.record_handshake(&launch);
+            }
 
             let mut result = json!({
                 "protocolVersion": requested_version,

@@ -67,12 +67,16 @@ impl TestBridge {
 
     /// Posts `message` to `/mcp` with the open terminal's token.
     pub(super) async fn post(&self, message: &Value) -> Reply {
+        self.post_to("/mcp", message).await
+    }
+
+    pub(super) async fn post_to(&self, path: &str, message: &Value) -> Reply {
         let bearer = format!("Bearer {}", self.token);
         let headers = [
             ("Authorization", bearer.as_str()),
             ("Accept", "application/json, text/event-stream"),
         ];
-        read_reply(post_json(self.port, "/mcp", &headers, message).await).await
+        read_reply(post_json(self.port, path, &headers, message).await).await
     }
 }
 

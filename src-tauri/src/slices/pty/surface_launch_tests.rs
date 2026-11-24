@@ -7,6 +7,7 @@ use portable_pty::CommandBuilder;
 use serde_json::{json, Value};
 
 use super::models::{PermissionMode, RunKind, SpawnTerminalRequest, ALL_RUN_KINDS};
+use super::plugin_watch::LaunchRef;
 use super::session::{build_command, mcp_config_arg};
 use crate::test_support::TempDir;
 
@@ -21,6 +22,9 @@ const SIX: [&str; 6] = [
     "quay_surface_guide",
     "quay_surface_read",
 ];
+
+/// Where `launch` points a CLI.
+const MCP_URL: &str = "http://127.0.0.1:1234/mcp/7";
 
 fn request(run_kind: RunKind) -> SpawnTerminalRequest {
     SpawnTerminalRequest {
@@ -39,7 +43,8 @@ fn request(run_kind: RunKind) -> SpawnTerminalRequest {
 }
 
 fn launch(request: &SpawnTerminalRequest) -> CommandBuilder {
-    build_command(request, "term-surfaces", 1234, "tok", Some(4567))
+    let launch = LaunchRef { terminal_id: "term-surfaces".to_string(), launch: 7 };
+    build_command(request, &launch, 1234, "tok", Some(4567))
 }
 
 fn args(cmd: &CommandBuilder) -> Vec<String> {
@@ -63,7 +68,7 @@ fn claude_code_is_launched_with_the_six_and_no_other_tool_allowed_in_both_modes(
                 "--allowedTools".to_string(),
                 SIX.map(|tool| format!("mcp__quay__{tool}")).join(","),
                 "--mcp-config".to_string(),
-                mcp_config_arg(1234),
+                mcp_config_arg(MCP_URL),
             ],
             "{mode:?}"
         );
@@ -334,7 +339,7 @@ fn quay_sets_nothing_of_the_operators_other_servers() {
         assert_eq!(cmd.get_env(name), std::env::var_os(name).as_deref(), "{run_kind:?}");
     }
 
-    let claude: Value = serde_json::from_str(&mcp_config_arg(1234)).unwrap();
+    let claude: Value = serde_json::from_str(&mcp_config_arg(MCP_URL)).unwrap();
     assert_eq!(keys(&claude), ["mcpServers"]);
     assert_eq!(keys(&claude["mcpServers"]), ["quay"]);
 
