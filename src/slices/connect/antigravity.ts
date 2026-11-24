@@ -10,7 +10,7 @@ import type { AntigravityConnection } from "./connectTypes.ts";
 const WARNING_ID = "connect-antigravity";
 
 // Both in the WebView's `localStorage`, so per machine.
-/** Set while Antigravity was last known to have an entry. */
+/** Set once an entry was read or written, until Remove takes it out or the offer for a missing one is dismissed. */
 const HAD_ENTRY_KEY = "quay_antigravity_had_entry";
 /** Set once a terminal has said that Antigravity is not connected. */
 const NOTE_SAID_KEY = "quay_antigravity_note_said";
@@ -71,11 +71,10 @@ export async function readAntigravity(): Promise<AntigravityConnection | null> {
   }
 }
 
-async function write(command: string, seen: string | null): Promise<void> {
+async function write(writing: () => Promise<AntigravityConnection>): Promise<void> {
   const mine = (newest += 1);
   try {
-    const written = await invoke<AntigravityConnection>(command, { seen });
-    if (command === "antigravity_remove") window.localStorage.removeItem(HAD_ENTRY_KEY);
+    const written = await writing();
     if (mine === newest) take(written);
     // A read that started since may have read the file before it was written
     else await readAntigravity();
@@ -87,10 +86,15 @@ async function write(command: string, seen: string | null): Promise<void> {
 }
 
 /** Writes the entry in place of `seen`, the one that was shown. Rejects with why it was not written. */
-export const connectAntigravity = (seen: string | null): Promise<void> => write("antigravity_connect", seen);
+export const connectAntigravity = (seen: string | null): Promise<void> => write(() => invoke("antigravity_connect", { seen }));
 
 /** Takes out the entry `seen`, the one that was shown. Rejects with why it was not taken out. */
-export const removeAntigravity = (seen: string): Promise<void> => write("antigravity_remove", seen);
+export const removeAntigravity = (seen: string): Promise<void> =>
+  write(async () => {
+    const left = await invoke<AntigravityConnection>("antigravity_remove", { seen });
+    window.localStorage.removeItem(HAD_ENTRY_KEY);
+    return left;
+  });
 
 const ROW_ASKED = "quay:connect-row";
 
