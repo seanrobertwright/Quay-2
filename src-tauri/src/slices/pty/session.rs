@@ -10,9 +10,10 @@ use tauri::{AppHandle, Emitter};
 use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
-use super::commit_stamp;
+use super::{commit_stamp, opencode_permission};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::screen::{self, ScreenKeeper};
+use crate::slices::surface::{names, timing::CLI_LIMIT};
 
 /// How often a running terminal checks whether its output has paused long enough to save
 /// its screen (see `screen::SAVE_AFTER_IDLE`).
@@ -56,6 +57,7 @@ pub struct PtySession {
 /// of JSON. It is passed inline rather than as a file path so the terminal's bearer
 /// token never touches disk, and the header names `${CLAUDE_EVENTS_TOKEN}`, which
 /// Claude Code expands from its environment, so the token stays out of the command line.
+/// `timeout` is how long Claude Code waits on a call to this server, in milliseconds.
 pub fn mcp_config_arg(bridge_port: u16) -> String {
     serde_json::json!({
         "mcpServers": {
@@ -64,7 +66,8 @@ pub fn mcp_config_arg(bridge_port: u16) -> String {
                 "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
                 "headers": {
                     "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}"
-                }
+                },
+                "timeout": CLI_LIMIT.as_secs() * 1000
             }
         }
     })
@@ -108,8 +111,8 @@ fn toml_string(text: &str) -> String {
 /// The `-c` overrides that put a Codex terminal on the bus for this run only: Quay's MCP
 /// server, whose `Authorization` header Codex fills from `QUAY_A2A_TOKEN` so the token stays
 /// off disk and off the command line; approval for every tool on that server, without which
-/// Codex refuses the call when its approval policy is `never`; and `notify`, which runs
-/// `notify_program` at each turn end.
+/// Codex refuses the call when its approval policy is `never`; how long Codex waits on a call to
+/// it, in seconds; and `notify`, which runs `notify_program` at each turn end.
 fn codex_bus_args(bridge_port: u16, notify_program: &Path) -> Vec<String> {
     let url = format!("http://127.0.0.1:{}/mcp", bridge_port);
     let notify = toml_string(&notify_program.to_string_lossy());
@@ -117,6 +120,7 @@ fn codex_bus_args(bridge_port: u16, notify_program: &Path) -> Vec<String> {
         format!("mcp_servers.quay.url={}", toml_string(&url)),
         format!("mcp_servers.quay.bearer_token_env_var={}", toml_string("QUAY_A2A_TOKEN")),
         format!("mcp_servers.quay.default_tools_approval_mode={}", toml_string("approve")),
+        format!("mcp_servers.quay.tool_timeout_sec={}", CLI_LIMIT.as_secs()),
         format!("notify=[{}]", notify),
     ]
     .into_iter()
@@ -131,8 +135,9 @@ const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
 /// as `mcp.quay`, added to `workspace`, the value the terminal would otherwise get, when that
 /// is a JSON object. The server is `remote`, and its header names `{env:QUAY_A2A_TOKEN}`,
 /// which OpenCode expands from its environment, so the token stays out of the config.
-/// `oauth: false` keeps OpenCode from trying to sign in to it.
-pub fn opencode_config_content(bridge_port: u16, workspace: Option<&str>) -> String {
+/// `oauth: false` keeps OpenCode from trying to sign in to it, and `timeout` is how long OpenCode
+/// waits on a call to it, in milliseconds. Of that server's tools, `allowed` run without a prompt.
+pub fn opencode_config_content(bridge_port: u16, workspace: Option<&str>, allowed: &[&str]) -> String {
     let mut config = workspace
         .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
         .filter(serde_json::Value::is_object)
@@ -146,8 +151,10 @@ pub fn opencode_config_content(bridge_port: u16, workspace: Option<&str>) -> Str
         "headers": {
             "Authorization": "Bearer {env:QUAY_A2A_TOKEN}"
         },
-        "oauth": false
+        "oauth": false,
+        "timeout": CLI_LIMIT.as_secs() * 1000
     });
+    opencode_permission::add_allow_rules(&mut config, allowed);
     config.to_string()
 }
 
@@ -654,7 +661,16 @@ pub(crate) fn build_command(
     }
     if request.run_kind == RunKind::OpenCode {
         let workspace = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
-        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(bridge_port, workspace.as_deref()));
+        let allowed = opencode_permission::not_denied(
+            names::pre_approved(),
+            &opencode_permission::Surroundings {
+                project: Path::new(&request.project_path),
+                home: terminal_home(request).as_deref(),
+                var: &|name| terminal_var(request, name),
+                content: workspace.as_deref(),
+            },
+        );
+        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(bridge_port, workspace.as_deref(), &allowed));
     }
     // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
     // answer, is unset whether the workspace or Quay's own environment set it
@@ -701,9 +717,15 @@ pub(crate) fn build_command(
 
     // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration. OpenCode
     // gets it through `OPENCODE_CONFIG_CONTENT` and Codex through its `-c` overrides, above.
-    // Claude's `--mcp-config` takes several values and would read a bare argument after it as
-    // another config file, so it goes after the custom flags and the launch prompt.
+    // Claude's `--allowedTools` and `--mcp-config` take several values and would read a bare
+    // argument after them as one more, so they go after the custom flags and the launch prompt.
     if request.run_kind == RunKind::Claude {
+        let allowed: Vec<String> =
+            names::pre_approved().iter().map(|tool| format!("mcp__quay__{tool}")).collect();
+        if !allowed.is_empty() {
+            cmd.arg("--allowedTools");
+            cmd.arg(allowed.join(","));
+        }
         cmd.arg("--mcp-config");
         cmd.arg(mcp_config_arg(bridge_port));
     }
@@ -1128,19 +1150,19 @@ mod tests {
 
         let args = argv(&build_command(&request, "term-claude-prompt", 1234, "tok", Some(4567)));
 
-        assert_eq!(args.len(), 7, "{:?}", args);
+        // `surface_launch_tests` covers the surface tools' approval, between these two
+        assert_eq!(args.len(), 9, "{:?}", args);
         assert_eq!(
-            args[..6],
+            args[..5],
             [
                 claude_program(),
                 "--dangerously-skip-permissions",
                 "--model",
                 "claude-sonnet-5-5",
                 MULTI_LINE_PROMPT,
-                "--mcp-config",
             ]
         );
-        assert_eq!(args[6], mcp_config_arg(1234));
+        assert_eq!(args[7..], ["--mcp-config".to_string(), mcp_config_arg(1234)]);
     }
 
     fn args_with_prompt(run_kind: RunKind, prompt: Option<&str>) -> Vec<String> {
@@ -1201,7 +1223,7 @@ mod tests {
     #[test]
     fn a_spawn_without_a_launch_prompt_gets_todays_arguments() {
         // Expected values are the arguments each CLI was started with before launch prompts,
-        // with Codex's bus overrides after its permission flag
+        // with Codex's bus overrides after its permission flag and Claude's surface tools allowed
         assert_eq!(args_with_prompt(RunKind::Codex, None), codex_args(&bus_args()));
         assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi"]);
         assert_eq!(args_with_prompt(RunKind::Gemini, None), ["/c", "gemini"]);
@@ -1213,14 +1235,15 @@ mod tests {
         );
         assert_eq!(args_with_prompt(RunKind::Aider, None), ["--yes-always"]);
         let claude = args_with_prompt(RunKind::Claude, None);
-        assert_eq!(claude[..2], ["--dangerously-skip-permissions", "--mcp-config"]);
-        assert_eq!(claude.len(), 3);
+        assert_eq!(claude[..2], ["--dangerously-skip-permissions", "--allowedTools"]);
+        assert_eq!(claude[3], "--mcp-config");
+        assert_eq!(claude.len(), 5);
         // A blank prompt counts as none
         assert_eq!(args_with_prompt(RunKind::Codex, Some("  \n")), codex_args(&bus_args()));
     }
 
     #[test]
-    fn codex_joins_the_bus_through_four_overrides_in_both_permission_modes() {
+    fn codex_joins_the_bus_through_its_overrides_in_both_permission_modes() {
         let notify = Path::new(r"C:\Program Files\Quay\quay-codex-notify.exe");
         assert_eq!(
             codex_bus_args(4321, notify),
@@ -1231,6 +1254,8 @@ mod tests {
                 r#"mcp_servers.quay.bearer_token_env_var="QUAY_A2A_TOKEN""#,
                 "-c",
                 r#"mcp_servers.quay.default_tools_approval_mode="approve""#,
+                "-c",
+                "mcp_servers.quay.tool_timeout_sec=150",
                 "-c",
                 r#"notify=["C:\\Program Files\\Quay\\quay-codex-notify.exe"]"#,
             ]
@@ -1281,7 +1306,7 @@ mod tests {
     }
 
     #[test]
-    fn every_cli_that_gets_the_quay_mcp_server_is_wired_to_it_its_own_way() {
+    fn every_connected_cli_is_wired_to_the_quay_mcp_server_its_own_way() {
         // PiG's line holds its extension only when PiG is installed
         let installs = PigInstalls::new("wired");
         installs.on_path_pig();
@@ -1300,7 +1325,7 @@ mod tests {
             assert_eq!(pig_extension, run_kind == RunKind::Pig, "{:?}: {:?}", run_kind, args);
             assert_eq!(
                 mcp_config || codex_override || opencode_config || pig_extension,
-                run_kind.gets_quay_mcp(),
+                run_kind.is_connected(),
                 "{:?}: {:?}",
                 run_kind,
                 args
@@ -1547,15 +1572,14 @@ mod tests {
         let config = env_of(&cmd, "OPENCODE_CONFIG_CONTENT").expect("OpenCode gets its config variable");
         assert!(!config.contains("tok-1"), "the token stays out of the config: {}", config);
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&config).unwrap(),
+            serde_json::from_str::<serde_json::Value>(&config).unwrap()["mcp"],
             serde_json::json!({
-                "mcp": {
-                    "quay": {
-                        "type": "remote",
-                        "url": "http://127.0.0.1:4321/mcp",
-                        "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
-                        "oauth": false
-                    }
+                "quay": {
+                    "type": "remote",
+                    "url": "http://127.0.0.1:4321/mcp",
+                    "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
+                    "oauth": false,
+                    "timeout": 150000
                 }
             })
         );
@@ -1574,10 +1598,11 @@ mod tests {
             "type": "remote",
             "url": "http://127.0.0.1:4321/mcp",
             "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
-            "oauth": false
+            "oauth": false,
+            "timeout": 150000
         });
         let merged = |workspace: &str| -> serde_json::Value {
-            serde_json::from_str(&opencode_config_content(4321, Some(workspace))).unwrap()
+            serde_json::from_str(&opencode_config_content(4321, Some(workspace), &[])).unwrap()
         };
 
         assert_eq!(
@@ -2205,7 +2230,8 @@ mod tests {
                     "quay": {
                         "type": "http",
                         "url": "http://127.0.0.1:4123/mcp",
-                        "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" }
+                        "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" },
+                        "timeout": 150000
                     }
                 }
             })

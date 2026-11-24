@@ -129,11 +129,19 @@ impl RunKind {
         }
     }
 
-    /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI. The
-    /// team briefing reads this. `build_command` wires each such CLI its own way, and its
-    /// tests check the two agree.
-    pub fn gets_quay_mcp(&self) -> bool {
+    /// Whether Quay connects this CLI to its MCP server at launch. `build_command` wires each
+    /// such CLI its own way, and its tests check the two agree. Which tools a terminal has there
+    /// is another matter (see `gets_bus_tools`).
+    pub fn is_connected(&self) -> bool {
         matches!(self, RunKind::Claude | RunKind::Codex | RunKind::OpenCode | RunKind::Pig)
+    }
+
+    /// Whether a terminal of this CLI has the tools of Quay's MCP server besides the surface
+    /// tools, as every full peer does. A silent plugin lowers a terminal's level
+    /// (`TerminalInfo::bus_level`) and leaves it its tools. The server and the team briefing
+    /// read this.
+    pub fn gets_bus_tools(&self) -> bool {
+        self.bus_level() == Some(BusLevel::FullPeer)
     }
 
     /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
@@ -198,8 +206,8 @@ impl RunKind {
 pub enum BusLevel {
     /// Sends messages, answers a waiting sender and shows whether it is working.
     FullPeer,
-    /// Answers a waiting sender and shows whether it is working, but has no `quay_*`
-    /// tools, so it can't start a conversation.
+    /// Answers a waiting sender and shows whether it is working, but has no bus tools
+    /// (`RunKind::gets_bus_tools`), so it can't start a conversation.
     Responder,
     /// Gets messages but can't answer them.
     Listener,
@@ -633,10 +641,12 @@ mod tests {
     }
 
     #[test]
-    fn listeners_get_no_quay_mcp_server() {
-        for kind in kinds_at(Some(BusLevel::Listener)) {
-            assert!(!kind.gets_quay_mcp(), "{:?} is a listener", kind);
-        }
+    fn only_full_peers_get_the_bus_tools() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.gets_bus_tools())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]);
     }
 
     #[test]
@@ -720,10 +730,10 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_codex_opencode_and_pig_get_the_quay_mcp_server() {
+    fn only_claude_codex_opencode_and_pig_are_connected_at_launch() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
-            .filter(|kind| kind.gets_quay_mcp())
+            .filter(|kind| kind.is_connected())
             .collect();
         assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]);
     }

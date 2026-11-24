@@ -6,6 +6,7 @@
 mod ask;
 mod check;
 pub mod commands;
+pub mod names;
 mod rejection;
 mod store;
 pub mod timing;

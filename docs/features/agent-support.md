@@ -53,7 +53,8 @@ When spawning Claude Code, Quay 2 generates an MCP configuration pointing to its
     "quay": {
       "type": "http",
       "url": "http://127.0.0.1:<bridge_port>/mcp",
-      "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" }
+      "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" },
+      "timeout": 150000
     }
   }
 }

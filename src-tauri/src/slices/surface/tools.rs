@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use super::ask::{self, Ask};
 use super::check::{CheckRequest, Checks, Verdict};
+use super::names;
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{AnswerRefused, CommitRefused, Committed, SurfaceKey, SurfaceRecord, SurfaceStore, MOST_KEPT};
 use super::timing::Timing;
@@ -42,9 +43,9 @@ impl Default for SurfaceTools {
 }
 
 impl SurfaceTools {
-    /// Offered in debug builds only, until surfaces are turned on for release builds.
+    /// Offered where `names::OFFERED` says this build offers them.
     pub fn new() -> Self {
-        Self::with(cfg!(debug_assertions), Timing::default())
+        Self::with(names::OFFERED, Timing::default())
     }
 
     pub(crate) fn with(offered: bool, timing: Timing) -> Self {

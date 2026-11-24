@@ -1,12 +1,16 @@
 pub mod commands;
 pub mod commit_stamp;
+mod jsonc;
 pub mod manager;
 pub mod models;
+mod opencode_permission;
 pub mod opencode_watch;
 pub mod osc7501;
 pub mod plugin_watch;
 pub mod screen;
 pub mod session;
+#[cfg(test)]
+mod surface_launch_tests;
 
 pub use commands::*;
 pub use manager::PtyManager;
