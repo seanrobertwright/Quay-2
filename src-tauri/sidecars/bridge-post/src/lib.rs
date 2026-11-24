@@ -1,7 +1,8 @@
 //! Posts agent events to Quay's bridge, for the sidecars Quay points a CLI at: the Codex
-//! turn-end helper and the PiG extension. A sidecar runs inside the CLI's process tree, so
-//! the bridge URL, terminal id and bearer token come from the `QUAY_*` variables Quay sets
-//! on the terminal, and the token never touches disk or a command line.
+//! turn-end helper and the PiG extension. The relay uses its URL parser alone. A sidecar
+//! runs inside the CLI's process tree, so the bridge URL, terminal id and bearer token come
+//! from the `QUAY_*` variables Quay sets on the terminal, and the token never touches disk
+//! or a command line.
 
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
