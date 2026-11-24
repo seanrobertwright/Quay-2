@@ -1,6 +1,7 @@
 //! Locked surfaces, at the `/mcp` seam: how many a terminal keeps, and what is told of those that leave.
-//! What a later message for a dismissed id is told is at the store's own seam, for no tool that is here
-//! yet takes an id of its agent's.
+//! What a later message for a dismissed id is told is at the store's own seam and at `check_and_commit`,
+//! which every tool that creates a surface goes through, for no tool that is here yet takes an id of its
+//! agent's.
 
 use std::time::Duration;
 
@@ -8,8 +9,8 @@ use serde_json::{json, Value};
 
 use super::check::Verdict;
 use super::place::Place;
-use super::store::{CommitRefused, Creation, SurfaceKey, SurfaceRecord, SurfaceStore};
-use super::test_seam::{accepted, answer_to, key, start, FakeCli, FakeWebview, Seam};
+use super::store::{CommitRefused, Creation, OpenedCall, SurfaceKey, SurfaceRecord, SurfaceStore};
+use super::test_seam::{accepted, answer_to, key, question, start, FakeCli, FakeWebview, Seam};
 use super::timing::Timing;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
 use crate::slices::pty::plugin_watch::LaunchRef;
@@ -219,6 +220,30 @@ fn a_later_message_for_a_dismissed_id_finds_it_dismissed_until_the_terminal_exit
     store.launch_over("term", 1);
     store.launched("term", 2);
     assert!(create(&store, "plan").is_ok(), "the later launch's own");
+}
+
+#[tokio::test]
+async fn a_later_message_for_a_dismissed_id_is_told_so_and_is_not_checked() {
+    let (seam, mut webview, _) = idle(Timing::default()).await;
+    seam.asked(&mut webview, "term-a", "One?").await;
+    seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
+    let store = seam.surfaces.store();
+    store.rejected("term-a", "quay_ask");
+    store.rejected("term-a", "quay_ask");
+
+    // `_rx` keeps its wait open
+    let OpenedCall { number: call, rx: _rx, .. } = store.open_call("term-a", &json!(2)).unwrap();
+    let arguments = question("Again?");
+    let creation = Creation { tool: "quay_ask", arguments: &arguments, title: "Again?", place: Place::Companion, call };
+    let refused = key("term-a", "ask_1");
+    let reply = seam.surfaces.check_and_commit(&refused, creation, arguments.clone());
+    // The webview gives no verdict: a message that it would reject is told the same
+    let reply = tokio::time::timeout(Duration::from_secs(1), reply).await.expect("it waited for a verdict");
+
+    let told = json!({ "content": [{ "type": "text", "text": r#"{"dismissed":true}"# }] });
+    assert_eq!(reply, Err(told));
+    assert!(webview.no_check().await);
+    assert_eq!(store.rejected("term-a", "quay_ask"), 1, "it was accepted, which ends the row");
 }
 
 #[test]

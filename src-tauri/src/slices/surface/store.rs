@@ -309,6 +309,15 @@ impl Terminal {
         self.surfaces.iter_mut().find(|surface| surface.id == id)
     }
 
+    /// `SurfaceStore::is_dismissed`, of its surface `id` and a message through `tool`.
+    fn is_dismissed(&mut self, id: &str, tool: &str) -> bool {
+        let dismissed = self.dismissed.contains(id);
+        if dismissed {
+            self.rejected.remove(tool);
+        }
+        dismissed
+    }
+
     /// Takes the locked surfaces past `MOST_LOCKED` out, the one that locked first first. `terminal_id`
     /// is its own id.
     fn drop_past_most_locked(&mut self, terminal_id: &str) -> Vec<SurfaceKey> {
@@ -510,6 +519,14 @@ impl SurfaceStore {
         }
     }
 
+    /// Whether the operator dismissed the surface `key`, which a later message for it is told. The message
+    /// is then accepted, which ends the row of rejected calls of the creation's tool.
+    pub fn is_dismissed(&self, key: &SurfaceKey, creation: Creation) -> bool {
+        let mut inner = self.0.lock();
+        let terminal = inner.terminals.get_mut(&key.terminal_id).filter(|terminal| terminal.calls.has(creation.call));
+        terminal.is_some_and(|terminal| terminal.is_dismissed(&key.id, creation.tool))
+    }
+
     /// Adds the surface `key` as the webview accepted it, if its place has room for it. Returns it.
     pub fn commit(
         &self,
@@ -521,8 +538,7 @@ impl SurfaceStore {
         let change = inner.next_change();
         let terminal = inner.terminals.get_mut(&key.terminal_id).filter(|terminal| terminal.calls.has(creation.call));
         let terminal = terminal.ok_or(CommitRefused::TerminalOver)?;
-        if terminal.dismissed.contains(&key.id) {
-            terminal.rejected.remove(creation.tool);
+        if terminal.is_dismissed(&key.id, creation.tool) {
             return Err(CommitRefused::Dismissed);
         }
         if terminal.find(&key.id).is_some() {

@@ -197,9 +197,10 @@ impl SurfaceTools {
         queue
     }
 
-    /// Commits a call once the webview has found nothing wrong with it. Nothing is committed for a
-    /// verdict that came too late. The error is the result its agent gets.
-    async fn check_and_commit(
+    /// Commits a call once the webview has found nothing wrong with it. One for a dismissed id is not
+    /// checked. Nothing is committed for a verdict that came too late. The error is the result its agent
+    /// gets.
+    pub(super) async fn check_and_commit(
         &self,
         key: &SurfaceKey,
         creation: Creation<'_>,
@@ -207,6 +208,9 @@ impl SurfaceTools {
     ) -> Result<SurfaceRecord, Value> {
         let SurfaceKey { terminal_id, id } = key;
         let tool = creation.tool;
+        if self.0.store.is_dismissed(key, creation) {
+            return Err(dismissed_result());
+        }
         let send = |request: &CheckRequest| {
             // One sent before the window is named is handed over when it has loaded
             if let Some(webview) = self.0.webview.get() {
@@ -226,7 +230,7 @@ impl SurfaceTools {
         };
         self.0.store.commit(key, creation, accepted).map_err(|refused| match refused {
             CommitRefused::TerminalOver => QuayFailed::TerminalOver.result(),
-            CommitRefused::Dismissed => text_result(json!({ "dismissed": true })),
+            CommitRefused::Dismissed => dismissed_result(),
             CommitRefused::IdInUse => {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
@@ -378,6 +382,11 @@ const NO_ANSWER_NEXT: &str = "End your turn now. The answer will be typed into t
 
 fn text_result(body: Value) -> Value {
     json!({ "content": [{ "type": "text", "text": body.to_string() }] })
+}
+
+/// What a message for a dismissed id is told.
+fn dismissed_result() -> Value {
+    text_result(json!({ "dismissed": true }))
 }
 
 /// The surface tools, listed after those of `mcp_tools.json`.
