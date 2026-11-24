@@ -58,7 +58,8 @@ export const SurfaceContent = ({ record, layout, onAction }: SurfaceContentProps
   useEffect(() => {
     if (links) giveEffects(live.surface, links.effects);
   }, [live, links]);
-  const value = useMemo(() => (layout ? { Layout: layout, data: live.data } : null), [layout, live]);
+  const { components } = record.state.createSurface;
+  const value = useMemo(() => (layout ? { Layout: layout, components, data: live.data } : null), [layout, components, live]);
   return (
     <LayoutContext.Provider value={value}>
       <A2uiSurface surface={live.surface} />

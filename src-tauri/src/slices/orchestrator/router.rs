@@ -718,11 +718,12 @@ impl A2ARouter {
     /// waiting on it.
     pub fn follow_turns(&self, pty_manager: &PtyManager) {
         let router = self.clone();
-        pty_manager.set_turn_watcher(move |terminal_id, event| match event {
+        pty_manager.add_turn_watcher(move |terminal_id, event| match event {
             TurnEvent::Started => router.turn_started(terminal_id),
             TurnEvent::Answered(answer) => {
                 router.resolve_pending_reply(terminal_id, answer);
             }
+            TurnEvent::Ended => {}
         });
     }
 

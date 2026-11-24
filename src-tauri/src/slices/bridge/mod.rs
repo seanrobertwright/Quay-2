@@ -3,6 +3,8 @@ pub mod models;
 pub mod opencode;
 pub mod pending;
 pub mod port;
+#[cfg(test)]
+mod relay_tests;
 pub mod routes;
 pub mod server;
 pub mod state;

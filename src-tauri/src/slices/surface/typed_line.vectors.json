@@ -1,0 +1,10 @@
+{
+  "comment": "Prompts that title no terminal's task, since each is a line Quay typed for a surface's answer, and prompts that are titles. The first of the former is that of return_tests. Read by the tests of both sides that title tasks.",
+  "title_nothing": [
+    "[Quay surface \"Which base should this branch take?\" (ask_1)]: {\"answers\":[{\"question\":\"Which base should this branch take?\",\"chosen\":[\"Yes\"],\"text\":\"skip the suite\"}]}",
+    "\n[Quay surface \"One?\" (ask_1)]: {\"dismissed\":true}\n",
+    "<pasted_content id=\"62ae\">\n[Quay surface \"One?\" (ask_1)]: {\"dismissed\":true}\n</pasted_content>",
+    "[Quay surface \"a)]: {\" (ask_2)]: {\"dismissed\":true}"
+  ],
+  "titles": ["[Quay surface] looks odd", "Why [Quay surface \"x\" (a)]: {}?"]
+}

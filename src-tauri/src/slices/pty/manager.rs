@@ -27,6 +27,9 @@ const END_KEY: &str = "\x1b[F";
 /// What the status watcher runs, with the id of the terminal whose status moved.
 type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// What the input watcher runs, with a terminal's id and what the operator typed into it.
+type InputWatcher = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 /// What the server watcher runs, with a launch whose CLI serves its own events and the
 /// loopback port it serves them on.
 type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
@@ -43,16 +46,18 @@ fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
         .map_err(|e| format!("Failed to find a free port for OpenCode's server: {}", e))
 }
 
-/// What a terminal's own output says about its turn, as the turn watcher hears it.
+/// What a terminal's own output says about its turn, as the turn watchers hear it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TurnEvent {
     /// A turn started.
     Started,
     /// What a sender waiting on the running turn is told.
     Answered(String),
+    /// The running turn ended. It comes after that turn's answer.
+    Ended,
 }
 
-/// What the turn watcher runs, with the id of the terminal whose output reported the turn.
+/// What a turn watcher runs, with the id of the terminal whose output reported the turn.
 type TurnWatcher = Arc<dyn Fn(&str, TurnEvent) + Send + Sync>;
 
 static LAST_CREATED_AT: Mutex<u64> = Mutex::new(0);
@@ -274,7 +279,8 @@ pub struct PtyManager {
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     server_watcher: Arc<Mutex<Option<ServerWatcher>>>,
-    turn_watcher: Arc<Mutex<Option<TurnWatcher>>>,
+    turn_watchers: Arc<Mutex<Vec<TurnWatcher>>>,
+    input_watcher: Arc<Mutex<Option<InputWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
     #[cfg(test)]
     test_input: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -290,7 +296,8 @@ impl PtyManager {
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
             server_watcher: Arc::new(Mutex::new(None)),
-            turn_watcher: Arc::new(Mutex::new(None)),
+            turn_watchers: Arc::new(Mutex::new(Vec::new())),
+            input_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             test_input: Arc::new(Mutex::new(HashMap::new())),
         };
@@ -498,6 +505,16 @@ impl PtyManager {
         Ok(updated_info)
     }
 
+    /// Writes `data`, which the operator typed into the terminal's pane. The input watcher hears it
+    /// first.
+    pub fn write_from_operator(&self, terminal_id: &str, data: &str) -> Result<(), String> {
+        let watcher = self.input_watcher.lock().clone();
+        if let Some(watcher) = watcher {
+            watcher(terminal_id, data);
+        }
+        self.write(terminal_id, data)
+    }
+
     pub fn write(&self, terminal_id: &str, data: &str) -> Result<(), String> {
         #[cfg(test)]
         if let Some(input) = self.test_input.lock().get_mut(terminal_id) {
@@ -696,9 +713,15 @@ impl PtyManager {
 
     /// Runs `watcher` with a terminal's id and what its own output says about its turn, from
     /// Antigravity's OSC 7501 sequences (see `apply_turn_report`). It runs on the PTY reader
-    /// thread, with no lock of this manager held.
-    pub fn set_turn_watcher(&self, watcher: impl Fn(&str, TurnEvent) + Send + Sync + 'static) {
-        *self.turn_watcher.lock() = Some(Arc::new(watcher));
+    /// thread, with no lock of this manager held, after the watchers added before it.
+    pub fn add_turn_watcher(&self, watcher: impl Fn(&str, TurnEvent) + Send + Sync + 'static) {
+        self.turn_watchers.lock().push(Arc::new(watcher));
+    }
+
+    /// Runs `watcher` with a terminal's id and what the operator typed into it, before that is
+    /// written to it (see `write_from_operator`) and with no lock of this manager held.
+    pub fn set_input_watcher(&self, watcher: impl Fn(&str, &str) + Send + Sync + 'static) {
+        *self.input_watcher.lock() = Some(Arc::new(watcher));
     }
 
     pub fn list(&self) -> Vec<TerminalInfo> {
@@ -715,8 +738,14 @@ impl PtyManager {
     /// for `test_input` until `close_test_input`.
     #[cfg(test)]
     pub fn insert_test_terminal(&self, info: TerminalInfo) {
-        self.test_input.lock().insert(info.id.clone(), Vec::new());
+        self.open_test_input(&info.id);
         self.terminals_info.lock().insert(info.id.clone(), info);
+    }
+
+    /// Has test terminal `terminal_id` take writes, none so far.
+    #[cfg(test)]
+    pub fn open_test_input(&self, terminal_id: &str) {
+        self.test_input.lock().insert(terminal_id.to_string(), Vec::new());
     }
 
     /// Everything typed into test terminal `terminal_id`, one entry per write.
@@ -959,8 +988,8 @@ impl PtyManager {
 
     /// Applies what one of `launch`'s OSC 7501 sequences said (see `AntigravityTurn::read`),
     /// while `launch` is still current. It sets the terminal's status, unless its process has
-    /// exited, then tells the turn watcher of a turn start and of an answer, and last the
-    /// status watcher, when the status moved: a terminal that went Idle lets its next held
+    /// exited, then tells the turn watchers of a turn start, an answer and a turn end, and last
+    /// the status watcher, when the status moved: a terminal that went Idle lets its next held
     /// message in. Returns the new status when it moved.
     pub fn apply_turn_report(
         &self,
@@ -980,13 +1009,16 @@ impl PtyManager {
                 _ => None,
             }
         };
-        let watcher = self.turn_watcher.lock().clone();
-        if let Some(watcher) = watcher {
+        let watchers = self.turn_watchers.lock().clone();
+        for watcher in watchers {
             if report.starts_turn {
                 watcher(&launch.terminal_id, TurnEvent::Started);
             }
             if let Some(answer) = &report.answer {
                 watcher(&launch.terminal_id, TurnEvent::Answered(answer.clone()));
+            }
+            if report.ends_turn {
+                watcher(&launch.terminal_id, TurnEvent::Ended);
             }
         }
         if moved.is_some() {
@@ -2212,7 +2244,7 @@ mod tests {
     fn turn_log(manager: &PtyManager) -> Arc<Mutex<Vec<TurnEvent>>> {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let log = heard.clone();
-        manager.set_turn_watcher(move |_, event| log.lock().push(event));
+        manager.add_turn_watcher(move |_, event| log.lock().push(event));
         heard
     }
 
@@ -2246,6 +2278,7 @@ mod tests {
                 TurnEvent::Started,
                 TurnEvent::Answered("blocked (permission): Trust this folder?".to_string()),
                 TurnEvent::Answered("pong".to_string()),
+                TurnEvent::Ended,
             ]
         );
         // Each move is reported, so the Idle at the end lets a held message in
@@ -2280,7 +2313,10 @@ mod tests {
         assert!(agy_says(&manager, &launch, &mut turn, "state=done:msg=cG9uZw==").is_none());
 
         assert_eq!(status_of(&manager, "term-agy-exit"), ClaudeStatus::Exited);
-        assert_eq!(*heard.lock(), [TurnEvent::Started, TurnEvent::Answered("pong".to_string())]);
+        assert_eq!(
+            *heard.lock(),
+            [TurnEvent::Started, TurnEvent::Answered("pong".to_string()), TurnEvent::Ended]
+        );
     }
 
     #[test]

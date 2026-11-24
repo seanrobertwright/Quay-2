@@ -1,12 +1,15 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
+import { formatClock, formatDateTime, formatUtcTimestamp } from "../../lib/dates.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
+import { isLive } from "./surfaceAttention.ts";
 import { answerSurface, loadA2ui } from "./surfaceHost.ts";
 import type { SurfaceAction, SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
+import { useDismiss } from "./useDismiss.ts";
 
 const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
 
@@ -19,6 +22,7 @@ interface SurfaceProps {
 const LiveSurface = ({ record, terminal }: SurfaceProps) => {
   const { kind, KindIcon, layout } = lookOf(record.tool);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const dismiss = useDismiss(record, setRefusal);
   const onAction = useCallback(
     async (action: SurfaceAction) => {
       const typed = typedTool(record.tool);
@@ -36,8 +40,8 @@ const LiveSurface = ({ record, terminal }: SurfaceProps) => {
     [record],
   );
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} refusal={refusal}>
-      <SurfaceBoundary>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} dismiss={dismiss} refusal={refusal}>
+      <SurfaceBoundary key={record.revision}>
         <Suspense fallback={<p className="text-[#8b949e]">Loading…</p>}>
           <SurfaceContent record={record} layout={layout} onAction={onAction} />
         </Suspense>
@@ -49,29 +53,59 @@ const LiveSurface = ({ record, terminal }: SurfaceProps) => {
 /** A surface whose one answer has been given. */
 const SettledSurface = ({ record, terminal }: SurfaceProps) => {
   const { kind, KindIcon, Settled } = lookOf(record.tool);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const dismiss = useDismiss(record, setRefusal);
   const band = (
-    <p role="status" className="flex items-center gap-1.5 border-b border-[#30363d] px-3 py-1.5 text-[11px] text-[#3fb950]">
-      <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-      Answered and sent to the agent.
-    </p>
+    <div className="flex flex-wrap items-center gap-x-1.5 border-b border-[#30363d] px-3 py-1.5 text-[11px] text-[#8b949e]">
+      <p role="status" className="flex items-center gap-1.5 text-[#3fb950]">
+        <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        Answered and sent to the agent.
+      </p>
+      {record.answered_at !== null && (
+        <time dateTime={formatUtcTimestamp(record.answered_at)} title={formatDateTime(record.answered_at)}>
+          {formatClock(record.answered_at)}
+        </time>
+      )}
+    </div>
   );
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal}>
       <SurfaceBoundary>{Settled && <Settled answer={record.answer} />}</SurfaceBoundary>
     </SurfaceFrame>
   );
 };
 
-/** The Surface view: a terminal's companion surfaces, oldest first. */
-export const SurfaceView = ({ terminal, surfaces }: { terminal: TerminalInfo; surfaces: readonly SurfaceRecord[] }) => (
-  <div className="flex flex-col gap-2 p-2">
-    {surfaces.map((record) => {
-      const key = `${record.terminal_id} ${record.id} ${record.revision}`;
-      return record.answer === null || record.answer === undefined ? (
-        <LiveSurface key={key} record={record} terminal={terminal} />
-      ) : (
-        <SettledSurface key={key} record={record} terminal={terminal} />
-      );
-    })}
-  </div>
-);
+/** The surface a request asked to show. Each request has a `seq` of its own. */
+export interface SurfaceFocus {
+  surfaceId: string;
+  seq: number;
+}
+
+interface SurfaceViewProps {
+  terminal: TerminalInfo;
+  surfaces: readonly SurfaceRecord[];
+  focus?: SurfaceFocus | null;
+}
+
+/** The Surface view: a terminal's companion surfaces, oldest first. The one `focus` names is brought into view. */
+export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewProps) => {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!focus) return;
+    const regions = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-surface]") ?? [])];
+    regions.find((region) => region.dataset.surface === focus.surfaceId)?.scrollIntoView?.({ block: "start" });
+  }, [focus]);
+  return (
+    <div ref={listRef} className="flex flex-col gap-2 p-2">
+      {surfaces.map((record) => {
+        // Not by revision: why an answer to an older one was not taken is said over the newer one
+        const key = `${record.terminal_id} ${record.id}`;
+        return isLive(record) ? (
+          <LiveSurface key={key} record={record} terminal={terminal} />
+        ) : (
+          <SettledSurface key={key} record={record} terminal={terminal} />
+        );
+      })}
+    </div>
+  );
+};
