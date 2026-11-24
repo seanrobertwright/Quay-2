@@ -21,6 +21,7 @@ import { StagingInspector } from "./StagingInspector";
 import { wipLabel } from "./stagingKeys";
 import { otherSide, splitStatus, type ListMode } from "./stagingLists";
 import { useFileDiff, type OpenFile } from "./useFileDiff";
+import { useFileRequest, type FileRequest } from "./useFileRequest";
 import { useCommit } from "./useCommit";
 import { useOperation } from "./useOperation";
 import { OperationBanner } from "./OperationBanner";
@@ -59,7 +60,7 @@ import {
 const NO_SELECTION: CommitSelection = { kind: "none" };
 const NO_REF_BADGES: RefBadge[] = [];
 
-/** The repository or worktree Topos works on: the selected terminal's when Topos is shown. */
+/** The repository or worktree Topos works on: the selected terminal's, or the one of a file a link in its surface opened (#721). */
 export interface ToposTarget {
   path: string;
   /** The project's name, or `Project · branch` for a worktree. */
@@ -75,7 +76,7 @@ export interface ToposProps {
   wide: boolean;
   /** Each new value moves keyboard focus into Topos while it shows, as when a chord opens it. */
   focusKey: number;
-  /** The selected terminal's repository or worktree, or null when no terminal is selected. */
+  /** The repository or worktree to work on, or null when no terminal is selected. */
   project: ToposTarget | null;
   /** Quay's terminals, whose live agents show on their worktree's HEAD marker (#381). */
   terminals: TerminalInfo[];
@@ -95,6 +96,8 @@ export interface ToposProps {
   onRunInTerminal?: (cwd: string, argv: string[]) => Promise<boolean>;
   /** A palette entry's request (#393, #395), with a count so the same request twice runs twice. */
   request?: { kind: ToposRequestKind; seq: number } | null;
+  /** A file with uncommitted changes to open in `project` (#721). */
+  fileRequest?: FileRequest | null;
 }
 
 type VersionCheck =
@@ -120,6 +123,7 @@ export const Topos: React.FC<ToposProps> = ({
   onShowWorktree,
   onRunInTerminal,
   request = null,
+  fileRequest = null,
 }) => {
   const titleId = useId();
   // One modal layer for every confirm in Topos (#421): while one is open everything else in the panel
@@ -435,12 +439,14 @@ export const Topos: React.FC<ToposProps> = ({
     },
     [pushTag, deleteRemoteBranch, deleteTag, deleteTagNow, runRefAction, filterState, setFilterState]
   );
+  // Whether `project` is shown, and no longer the target before it, so a request acts on no other worktree.
+  const showsProject = isOpen && graphRepo !== null && project !== null && selectedPath === project.path;
   // A palette request runs once Topos shows a repo whose refs are read.
   const handledRequest = useRef(0);
   const { newBranch, pickCheckout } = refActions;
   const { fetch: fetchRemote, pull: pullRemote, push: pushRemote } = remote;
   useEffect(() => {
-    if (!isOpen || request === null || request.seq === handledRequest.current || refContext === null) return;
+    if (!showsProject || request === null || request.seq === handledRequest.current || refContext === null) return;
     handledRequest.current = request.seq;
     switch (request.kind) {
       case "newBranch":
@@ -454,7 +460,16 @@ export const Topos: React.FC<ToposProps> = ({
       case "push":
         return pushRemote();
     }
-  }, [isOpen, request, refContext, newBranch, pickCheckout, fetchRemote, pullRemote, pushRemote]);
+  }, [showsProject, request, refContext, newBranch, pickCheckout, fetchRemote, pullRemote, pushRemote]);
+  const conflictPaths = useMemo(() => operation.op?.conflicts.map((conflict) => conflict.path) ?? [], [operation.op]);
+  useFileRequest({
+    ready: showsProject,
+    request: fileRequest,
+    conflicts: conflictPaths,
+    resolving,
+    openDiff: setOpenFile,
+    openResolver: setResolving,
+  });
   const newBranchAtHead = useCallback(() => newBranch("HEAD"), [newBranch]);
   const watch = graph.feed?.watch ?? null;
   // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.
