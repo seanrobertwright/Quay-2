@@ -1,7 +1,7 @@
 //! The surface store: every surface, its owner, state and waits, in memory, as one state machine
 //! under its own lock. Nothing waits while holding it.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -17,9 +17,9 @@ use super::typing::NotTyped;
 use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
-/// The most settled surfaces a terminal keeps when another surface is added. What settles after that
-/// stays until the next is.
-const MOST_SETTLED: usize = 10;
+/// The most locked surfaces a terminal keeps. Past it the one that locked first leaves at once, which
+/// counts as deleted.
+const MOST_LOCKED: usize = 10;
 
 /// How many of a terminal's surfaces that have left can still be read. Past it the one that left first
 /// is forgotten, with its answer.
@@ -80,7 +80,7 @@ pub enum AnswerRefused {
 /// How an answer reaches its agent.
 pub enum Answered {
     /// An open call returns it, which settles the surface.
-    Returned(SurfaceRecord),
+    Returned(Locked),
     /// It is to be typed in. Until `typed` or `not_typed` says how that went, the surface takes no
     /// other answer.
     ToType(ToType),
@@ -153,16 +153,18 @@ pub struct Creation<'a> {
 pub enum CommitRefused {
     /// The call's launch of its terminal is over, or the terminal has closed.
     TerminalOver,
+    /// The operator dismissed the terminal's surface of that id.
+    Dismissed,
     /// The terminal has a surface of that id.
     IdInUse,
     /// The terminal has `MOST_LIVE` live surfaces in this place.
     Full(Place),
 }
 
-/// A surface that was added.
-pub struct Committed {
+/// A surface that has just locked: it was settled, or it ended.
+pub struct Locked {
     pub record: SurfaceRecord,
-    /// The settled surfaces that left as it was added, oldest first.
+    /// The locked surface that left for it, past `MOST_LOCKED`.
     pub left: Vec<SurfaceKey>,
 }
 
@@ -204,14 +206,16 @@ struct Surface {
     change: u64,
     shown_at: i64,
     phase: Phase,
+    /// Whether the launch that created it is over.
+    launch_over: bool,
     /// What the operator has put in it and not sent, until it is settled.
     unsent: Option<UnsentSave>,
 }
 
 impl Surface {
-    /// Whether it is neither settled nor ended, so it counts among the live ones of its place.
-    fn is_live(&self) -> bool {
-        !matches!(self.phase, Phase::Settled { .. } | Phase::Ended { .. })
+    /// Whether it is settled or ended. It takes nothing more, and its `change` stays as it is.
+    fn is_locked(&self) -> bool {
+        matches!(self.phase, Phase::Settled { .. } | Phase::Ended { .. })
     }
 
     /// Settles it, which what is unsent in it does not outlive.
@@ -295,6 +299,8 @@ struct Terminal {
     rejected: HashMap<String, u32>,
     surfaces: Vec<Surface>,
     left: Left,
+    /// The ids of the surfaces of its launch that the operator dismissed. Each took a click of theirs.
+    dismissed: HashSet<String>,
     calls: OpenCalls,
 }
 
@@ -303,16 +309,55 @@ impl Terminal {
         self.surfaces.iter_mut().find(|surface| surface.id == id)
     }
 
-    /// Ends its launch, and what its agent had: each surface that is live, its calls, and what was
-    /// counted of it. Returns the ids of the surfaces that ended.
-    fn end_launch(&mut self, mut next_change: impl FnMut() -> u64) -> Vec<String> {
+    /// Takes the locked surfaces past `MOST_LOCKED` out, the one that locked first first. `terminal_id`
+    /// is its own id.
+    fn drop_past_most_locked(&mut self, terminal_id: &str) -> Vec<SurfaceKey> {
+        let mut left = Vec::new();
+        loop {
+            let locked = || self.surfaces.iter().enumerate().filter(|(_, surface)| surface.is_locked());
+            if locked().count() <= MOST_LOCKED {
+                return left;
+            }
+            let Some((first, _)) = locked().min_by_key(|(_, surface)| surface.change) else {
+                return left;
+            };
+            let surface = self.surfaces.remove(first);
+            left.push(SurfaceKey::new(terminal_id, &surface.id));
+            self.left.add(surface.id, surface.phase.standing());
+        }
+    }
+
+    /// Takes out the surface at `at`, which the operator dismissed. Its agent cannot use the id again,
+    /// unless it was an earlier launch's.
+    fn remove_dismissed(&mut self, at: usize) {
+        let surface = self.surfaces.remove(at);
+        if !surface.launch_over {
+            self.dismissed.insert(surface.id.clone());
+        }
+        // What an agent was answered stays readable, and so does that a surface ended
+        let standing = match surface.is_locked() {
+            true => surface.phase.standing(),
+            false => Standing::Dismissed,
+        };
+        self.left.add(surface.id, standing);
+    }
+
+    /// Ends its launch, and what its agent had: each surface that is not locked, its calls, where the
+    /// surfaces that have left stand, the dismissed ids, and what was counted of it. Returns the
+    /// surfaces that ended.
+    fn end_launch(&mut self, terminal_id: &str, mut next_change: impl FnMut() -> u64) -> Vec<SurfaceRecord> {
         self.running = false;
         self.calls.forget_all();
         self.rejected.clear();
+        self.dismissed.clear();
+        self.left = Left::default();
         let mut ended = Vec::new();
-        for surface in self.surfaces.iter_mut().filter(|surface| surface.is_live()) {
-            surface.end(next_change());
-            ended.push(surface.id.clone());
+        for surface in &mut self.surfaces {
+            surface.launch_over = true;
+            if !surface.is_locked() {
+                surface.end(next_change());
+                ended.push(surface.record(terminal_id));
+            }
         }
         ended
     }
@@ -349,19 +394,18 @@ impl SurfaceStore {
     }
 
     /// Ends `terminal_id`'s launch `launch`, if it is running: its live surfaces, its open waits, and
-    /// what was counted of it. Returns the surfaces that ended.
-    pub fn launch_over(&self, terminal_id: &str, launch: u64) -> Vec<SurfaceRecord> {
+    /// what was counted of it. Returns the surfaces that ended, and the locked ones that left for them.
+    pub fn launch_over(&self, terminal_id: &str, launch: u64) -> (Vec<SurfaceRecord>, Vec<SurfaceKey>) {
         let mut inner = self.0.lock();
         let Inner { last_change, terminals, .. } = &mut *inner;
         let Some(terminal) = terminals.get_mut(terminal_id).filter(|t| t.running && t.launch == launch) else {
-            return Vec::new();
+            return Default::default();
         };
-        let ended = terminal.end_launch(|| {
+        let ended = terminal.end_launch(terminal_id, || {
             *last_change += 1;
             *last_change
         });
-        let surfaces = terminal.surfaces.iter().filter(|surface| ended.contains(&surface.id));
-        surfaces.map(|surface| surface.record(terminal_id)).collect()
+        (ended, terminal.drop_past_most_locked(terminal_id))
     }
 
     /// Forgets `terminal_id`, which has closed, with all it had. Returns its surfaces.
@@ -370,15 +414,15 @@ impl SurfaceStore {
         closed.surfaces.into_iter().map(|surface| SurfaceKey::new(terminal_id, surface.id)).collect()
     }
 
-    /// A name for `terminal_id`'s next ask: `ask_1` and on, counted per terminal, never one in use.
-    /// `None` when the terminal has closed.
+    /// A name for `terminal_id`'s next ask: `ask_1` and on, counted per terminal, never one in use or
+    /// one the operator dismissed. `None` when the terminal has closed.
     pub fn name_ask(&self, terminal_id: &str) -> Option<SurfaceKey> {
         let mut inner = self.0.lock();
         let terminal = inner.terminals.get_mut(terminal_id)?;
         loop {
             terminal.asks += 1;
             let id = format!("ask_{}", terminal.asks);
-            if terminal.find(&id).is_none() {
+            if terminal.find(&id).is_none() && !terminal.dismissed.contains(&id) {
                 return Some(SurfaceKey::new(terminal_id, id));
             }
         }
@@ -466,34 +510,29 @@ impl SurfaceStore {
         }
     }
 
-    /// Adds the surface `key` as the webview accepted it, if its place has room for it. The terminal's
-    /// settled surfaces past `MOST_SETTLED` leave, oldest first.
-    pub fn commit(&self, key: &SurfaceKey, creation: Creation, accepted: Accepted) -> Result<Committed, CommitRefused> {
+    /// Adds the surface `key` as the webview accepted it, if its place has room for it. Returns it.
+    pub fn commit(
+        &self,
+        key: &SurfaceKey,
+        creation: Creation,
+        accepted: Accepted,
+    ) -> Result<SurfaceRecord, CommitRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.get_mut(&key.terminal_id).filter(|terminal| terminal.calls.has(creation.call));
         let terminal = terminal.ok_or(CommitRefused::TerminalOver)?;
+        if terminal.dismissed.contains(&key.id) {
+            terminal.rejected.remove(creation.tool);
+            return Err(CommitRefused::Dismissed);
+        }
         if terminal.find(&key.id).is_some() {
             return Err(CommitRefused::IdInUse);
         }
         let place = creation.place;
-        let live = terminal.surfaces.iter().filter(|surface| surface.is_live() && surface.place == place);
+        let live = terminal.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
         if live.count() >= MOST_LIVE {
             return Err(CommitRefused::Full(place));
         }
-        let settled = terminal.surfaces.iter().filter(|surface| !surface.is_live()).count();
-        let mut past = settled.saturating_sub(MOST_SETTLED);
-        let mut left = Vec::new();
-        let Terminal { surfaces, left: readable, .. } = terminal;
-        surfaces.retain(|surface| {
-            let leaves = past > 0 && !surface.is_live();
-            if leaves {
-                past -= 1;
-                left.push(SurfaceKey::new(&key.terminal_id, &surface.id));
-                readable.add(surface.id.clone(), surface.phase.standing());
-            }
-            !leaves
-        });
         let phase = match accepted.asks {
             true => Phase::Asking { waiters: vec![creation.call] },
             false => Phase::NotAsking,
@@ -510,12 +549,13 @@ impl SurfaceStore {
             change,
             shown_at: now_ms(),
             phase,
+            launch_over: false,
             unsent: None,
         };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
-        Ok(Committed { record, left })
+        Ok(record)
     }
 
     /// The operator's answer to `revision` of a surface, which takes one. It goes back through the open
@@ -538,7 +578,9 @@ impl SurfaceStore {
         let line = typed_line(&surface.title, &surface.id, &answer);
         if calls.hand(waiters, &answer, &line) {
             surface.settle(answer, change);
-            return Ok(Answered::Returned(surface.record(&key.terminal_id)));
+            let record = surface.record(&key.terminal_id);
+            let left = terminal.drop_past_most_locked(&key.terminal_id);
+            return Ok(Answered::Returned(Locked { record, left }));
         }
         surface.phase = Phase::Typing { answer };
         Ok(Answered::ToType(ToType { launch: *launch, line }))
@@ -551,7 +593,7 @@ impl SurfaceStore {
         let Some(terminal) = inner.terminals.get_mut(&key.terminal_id) else {
             return Ok(None);
         };
-        let Terminal { surfaces, calls, left, launch, .. } = terminal;
+        let Terminal { surfaces, calls, launch, .. } = terminal;
         let Some(at) = surfaces.iter().position(|surface| surface.id == key.id) else {
             return Ok(None);
         };
@@ -564,18 +606,28 @@ impl SurfaceStore {
                 (!calls.hand(waiters, &result, &line)).then_some(ToType { launch: *launch, line })
             }
         };
-        let surface = surfaces.remove(at);
-        // What an agent was answered stays readable
-        let standing = match surface.phase {
-            Phase::Settled { answer, .. } => Standing::Answered(answer),
-            _ => Standing::Dismissed,
-        };
-        left.add(surface.id, standing);
+        terminal.remove_dismissed(at);
         Ok(Some(Dismissed { line }))
     }
 
+    /// The operator's dismissal of those of `terminal_id`'s surfaces `ids` that are locked, of which no
+    /// agent is told. Returns those that left.
+    pub fn dismiss_locked(&self, terminal_id: &str, ids: &[String]) -> Vec<SurfaceKey> {
+        let mut inner = self.0.lock();
+        let Some(terminal) = inner.terminals.get_mut(terminal_id) else {
+            return Vec::new();
+        };
+        let mut left = Vec::new();
+        let is_to_leave = |surface: &Surface| surface.is_locked() && ids.contains(&surface.id);
+        while let Some(at) = terminal.surfaces.iter().position(is_to_leave) {
+            left.push(SurfaceKey::new(terminal_id, &terminal.surfaces[at].id));
+            terminal.remove_dismissed(at);
+        }
+        left
+    }
+
     /// Settles a surface whose answer has been typed in. `None` when it has left meanwhile.
-    pub fn typed(&self, key: &SurfaceKey) -> Option<SurfaceRecord> {
+    pub fn typed(&self, key: &SurfaceKey) -> Option<Locked> {
         self.end_typing(key, Surface::settle)
     }
 
@@ -587,16 +639,18 @@ impl SurfaceStore {
         });
     }
 
-    fn end_typing(&self, key: &SurfaceKey, end: impl FnOnce(&mut Surface, Value, u64)) -> Option<SurfaceRecord> {
+    fn end_typing(&self, key: &SurfaceKey, end: impl FnOnce(&mut Surface, Value, u64)) -> Option<Locked> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
-        let surface = inner.terminals.get_mut(&key.terminal_id)?.find(&key.id)?;
+        let terminal = inner.terminals.get_mut(&key.terminal_id)?;
+        let surface = terminal.find(&key.id)?;
         let Phase::Typing { answer } = &mut surface.phase else {
             return None;
         };
         let answer = answer.take();
         end(surface, answer, change);
-        Some(surface.record(&key.terminal_id))
+        let record = surface.record(&key.terminal_id);
+        Some(Locked { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
     }
 
     /// The surface `key` as it is now.
@@ -630,7 +684,7 @@ impl SurfaceStore {
         Page { page: inner.last_page, unsent }
     }
 
-    /// Keeps what is unsent in a surface, in place of what was kept. Saves may arrive in any order: one
+    /// Keeps what is unsent in a surface that is not settled, in place of what was kept. Saves may arrive in any order: one
     /// made before the one that is kept is refused.
     pub fn save_unsent(&self, key: &SurfaceKey, save: UnsentSave) -> Result<(), UnsentRefused> {
         if save.is_too_large() {
@@ -641,7 +695,7 @@ impl SurfaceStore {
             .terminals
             .get_mut(&key.terminal_id)
             .and_then(|terminal| terminal.find(&key.id))
-            .filter(|surface| surface.is_live() && surface.order == save.order)
+            .filter(|surface| !matches!(surface.phase, Phase::Settled { .. }) && surface.order == save.order)
             .ok_or(UnsentRefused::NoSuchSurface)?;
         if save.revision != surface.revision {
             return Err(UnsentRefused::OtherRevision);

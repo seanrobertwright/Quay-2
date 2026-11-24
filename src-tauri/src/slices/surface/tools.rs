@@ -13,7 +13,7 @@ use super::place::MOST_LIVE;
 use super::read;
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{
-    AnswerRefused, Answered, BeingSent, CommitRefused, Committed, Creation, Dismissed, Standing, SurfaceKey,
+    AnswerRefused, Answered, BeingSent, CommitRefused, Creation, Dismissed, Locked, Standing, SurfaceKey,
     SurfaceRecord, SurfaceStore, ToType,
 };
 use super::timing::Timing;
@@ -96,16 +96,16 @@ impl SurfaceTools {
     /// Says that `terminal_id`'s launch `launch` is over: its process exited, or a later one has begun.
     /// Each of its surfaces that is not settled ends, and so does each open wait.
     pub fn launch_over(&self, terminal_id: &str, launch: u64) {
-        for record in self.0.store.launch_over(terminal_id, launch) {
-            self.show(&record);
+        let (ended, left) = self.0.store.launch_over(terminal_id, launch);
+        for record in &ended {
+            self.show(record);
         }
+        self.remove_all(&left);
     }
 
     /// Says that `terminal_id` has closed. Nothing of it is kept.
     pub fn terminal_closed(&self, terminal_id: &str) {
-        for key in self.0.store.close(terminal_id) {
-            self.remove(&key);
-        }
+        self.remove_all(&self.0.store.close(terminal_id));
     }
 
     /// Ends the waits of `terminal_id`'s calls, when its own turn has ended or been interrupted:
@@ -166,10 +166,7 @@ impl SurfaceTools {
                     };
                     match self.check_and_commit(&key, creation, json!(ask)).await {
                         Err(failure) => return failure,
-                        Ok(Committed { record, left }) => {
-                            for left in &left {
-                                self.remove(left);
-                            }
+                        Ok(record) => {
                             self.show(&record);
                             if !record.asks {
                                 return text_result(json!({ "shown": true }));
@@ -207,7 +204,7 @@ impl SurfaceTools {
         key: &SurfaceKey,
         creation: Creation<'_>,
         arguments: Value,
-    ) -> Result<Committed, Value> {
+    ) -> Result<SurfaceRecord, Value> {
         let SurfaceKey { terminal_id, id } = key;
         let tool = creation.tool;
         let send = |request: &CheckRequest| {
@@ -229,6 +226,7 @@ impl SurfaceTools {
         };
         self.0.store.commit(key, creation, accepted).map_err(|refused| match refused {
             CommitRefused::TerminalOver => QuayFailed::TerminalOver.result(),
+            CommitRefused::Dismissed => text_result(json!({ "dismissed": true })),
             CommitRefused::IdInUse => {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
@@ -267,6 +265,18 @@ impl SurfaceTools {
         }
     }
 
+    fn remove_all(&self, keys: &[SurfaceKey]) {
+        for key in keys {
+            self.remove(key);
+        }
+    }
+
+    /// Draws a surface that has locked, and takes what left for it off the screen.
+    fn show_locked(&self, Locked { record, left }: &Locked) {
+        self.show(record);
+        self.remove_all(left);
+    }
+
     /// The webview's verdict on the check `call`. One that is late, or a second one, is dropped.
     pub fn verdict(&self, call: u64, verdict: Verdict) {
         self.0.checks.verdict(call, verdict);
@@ -296,22 +306,26 @@ impl SurfaceTools {
     /// its terminal. One to an older revision has the surface drawn again. Blocks while it types.
     pub fn answer(&self, key: &SurfaceKey, revision: u64, answer: Value) -> Result<(), AnswerRefused> {
         let store = &self.0.store;
-        let (record, taken) = match store.answer(key, revision, answer) {
-            Ok(Answered::Returned(record)) => (Some(record), Ok(())),
+        let locked = match store.answer(key, revision, answer) {
+            Ok(Answered::Returned(locked)) => Some(locked),
             Ok(Answered::ToType(to_type)) => match self.type_in(&key.terminal_id, &to_type) {
-                Ok(()) => (store.typed(key), Ok(())),
+                Ok(()) => store.typed(key),
                 Err(why) => {
                     store.not_typed(key);
-                    (None, Err(AnswerRefused::NotTyped(why)))
+                    return Err(AnswerRefused::NotTyped(why));
                 }
             },
-            Err(AnswerRefused::OlderRevision) => (store.record(key), Err(AnswerRefused::OlderRevision)),
-            Err(refused) => (None, Err(refused)),
+            Err(refused) => {
+                if let (AnswerRefused::OlderRevision, Some(record)) = (refused, store.record(key)) {
+                    self.show(&record);
+                }
+                return Err(refused);
+            }
         };
-        if let Some(record) = record {
-            self.show(&record);
+        if let Some(locked) = locked {
+            self.show_locked(&locked);
         }
-        taken
+        Ok(())
     }
 
     fn type_in(&self, terminal_id: &str, ToType { launch, line }: &ToType) -> Result<(), NotTyped> {
@@ -335,6 +349,12 @@ impl SurfaceTools {
             self.type_in_or_log(&key.terminal_id, &line);
         }
         Ok(())
+    }
+
+    /// The operator's dismissal of those of `terminal_id`'s surfaces `ids` that are locked. No agent is
+    /// told.
+    pub fn dismiss_locked(&self, terminal_id: &str, ids: &[String]) {
+        self.remove_all(&self.0.store.dismiss_locked(terminal_id, ids));
     }
 
     /// `type_in`, for a surface that has no way back: a failure is only logged, and
