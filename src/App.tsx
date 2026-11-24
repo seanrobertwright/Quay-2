@@ -840,7 +840,7 @@ export function App() {
     setPendingView({ terminalId, view, entryId });
   };
   const openActivity = (terminalId: string, entryId?: string) => showCompanionView(terminalId, "activity", entryId);
-  // A terminal row's chip and its pane's questions button open one of the terminal's surfaces.
+  // A terminal row's chip and its pane title's button open one of the terminal's surfaces.
   const openSurface = ({ terminal_id, id }: SurfaceKey) => {
     if (terminal_id !== activeTerminalId) showTerminal(terminal_id);
     setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id });

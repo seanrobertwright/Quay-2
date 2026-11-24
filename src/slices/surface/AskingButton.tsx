@@ -1,13 +1,13 @@
 import { useAskingSurfacesOf } from "./surfaceAttention.ts";
 import type { SurfaceKey } from "./surfaceTypes.ts";
 
-interface QuestionsForYouProps {
+interface AskingButtonProps {
   terminalId: string;
   onOpen: (key: SurfaceKey) => void;
 }
 
 /** The pane title's button while the terminal's surfaces ask: how many do, and a click opens the oldest. */
-export const QuestionsForYou = ({ terminalId, onOpen }: QuestionsForYouProps) => {
+export const AskingButton = ({ terminalId, onOpen }: AskingButtonProps) => {
   const asking = useAskingSurfacesOf(terminalId);
   if (asking.length === 0) return null;
   const { terminal_id, id } = asking[0];

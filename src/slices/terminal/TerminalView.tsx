@@ -1,5 +1,5 @@
 import { neonPart } from "../../lib/neon.ts";
-import { FC, CSSProperties, MouseEvent, useState, useEffect, useCallback } from "react";
+import { FC, CSSProperties, MouseEvent, ReactNode, useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
@@ -8,8 +8,6 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
 import { PaneStatus } from "./PaneStatus.tsx";
-import { QuestionsForYou } from "../surface/QuestionsForYou.tsx";
-import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { SkipBanner } from "./SkipBanner";
 // The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
 import { TerminalBodyMenu, TerminalMenu, type TerminalMenuHandlers } from "./TerminalMenu.tsx";
@@ -48,8 +46,8 @@ interface TerminalViewProps {
   onToggleAsk?: () => void;
   /** Closes the terminal itself, as the Projects panel row's close button does. */
   onCloseTerminal?: () => void;
-  /** Opens one of the terminal's agent surfaces, from the pane header's questions button. */
-  onOpenSurface?: (key: SurfaceKey) => void;
+  /** What the pane header shows after the session's state. */
+  headerExtra?: ReactNode;
   /** How many panes the stage shows, which decides whether Close pane can run. */
   paneCount?: number;
   className?: string;
@@ -73,7 +71,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onRename,
   onToggleAsk,
   onCloseTerminal,
-  onOpenSurface,
+  headerExtra,
   paneCount = 1,
   className = "",
   style,
@@ -275,7 +273,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
               )}
 
               {terminal && <PaneStatus terminal={terminal} activeTool={activeTool} onToggleAsk={onToggleAsk} />}
-              {onOpenSurface && <QuestionsForYou terminalId={terminalId} onOpen={onOpenSurface} />}
+              {headerExtra}
             </div>
 
             {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { WAITING_ON_YOU } from "../../lib/waiting.ts";
 import { lookOf } from "./looks/index.ts";
 import { useAskingSurfacesOf, useLiveSurfacesOf } from "./surfaceAttention.ts";
 import type { SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
@@ -34,7 +35,7 @@ interface SurfaceChipsProps {
   onOpen: (key: SurfaceKey) => void;
 }
 
-/** A terminal row's chips: one for each live surface, oldest first, which a click opens. */
+/** A terminal row's chips: one for each live surface, oldest first, which a click opens. The chip of one that asks has a dot. */
 export const SurfaceChips = ({ terminalId, terminalName, onOpen }: SurfaceChipsProps) => {
   const live = useLiveSurfacesOf(terminalId);
   const asking = useAskingSurfacesOf(terminalId);
@@ -44,10 +45,13 @@ export const SurfaceChips = ({ terminalId, terminalName, onOpen }: SurfaceChipsP
     <div data-surface-chips className="flex flex-wrap gap-1 pl-4.5">
       {live.slice(0, CHIPS_SHOWN).map((surface, i) => {
         const { kind, KindIcon } = lookOf(surface.tool);
+        const asks = asking.includes(surface);
+        const label = `${kind}, surface ${i + 1} of ${live.length} from ${terminalName}`;
         return (
-          <Chip key={surface.id} surface={surface} label={`${kind}, surface ${i + 1} of ${live.length} from ${terminalName}`} onOpen={onOpen}>
-            <KindIcon aria-hidden="true" className={`h-3 w-3 shrink-0 ${asking.includes(surface) ? "text-[#d29922]" : "text-[#8b949e]"}`} />
+          <Chip key={surface.id} surface={surface} label={asks ? `${label}, ${WAITING_ON_YOU}` : label} onOpen={onOpen}>
+            <KindIcon aria-hidden="true" className="h-3 w-3 shrink-0 text-[#8b949e]" />
             {kind}
+            {asks && <span aria-hidden="true" data-waiting-dot className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d29922]" />}
           </Chip>
         );
       })}
@@ -64,6 +68,6 @@ export const SurfaceChips = ({ terminalId, terminalName, onOpen }: SurfaceChipsP
 export const SurfaceDot = ({ terminalId }: { terminalId: string }) =>
   useAskingSurfacesOf(terminalId).length > 0 ? (
     <span data-surface-dot className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#0d1117] bg-[#d29922]">
-      <span className="sr-only">question for you</span>
+      <span className="sr-only">{WAITING_ON_YOU}</span>
     </span>
   ) : null;

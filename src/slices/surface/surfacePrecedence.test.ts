@@ -1,14 +1,14 @@
 /// <reference types="node" />
 // Which view the companion shows while a surface asks (#718), with only Tauri's `invoke` and events
 // faked. It draws the real companion over the real attention queue and surface store.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, useEffect, type ComponentProps, type FC } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { companionPrefs } from "../companion/companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "../companion/fixtures/companionFixtures.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
+import { answered, arrives, changed, emit, mount, redraw, settle, surface, unmount } from "./fixtures/surfaceFixtures.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 
 const { startSurfaces } = await import("./surfaceHost.ts");
@@ -22,13 +22,10 @@ const T2: TerminalInfo = { ...terminalInfo("t2", PROJECT), name: "docs" };
 /** What Rust holds when the page loads, and when it says so. */
 let surfaceList: () => Promise<SurfaceRecord[]>;
 let permissionList: () => Promise<unknown[]>;
-let mounted: { root: Root; container: HTMLElement } | null = null;
-let change = 0;
 
 beforeEach(() => {
   surfaceList = async () => [];
   permissionList = async () => [];
-  change = 0;
   fakeInvoke(async (cmd) => {
     if (cmd === "surface_list") return surfaceList();
     if (cmd === "get_pending_permissions") return permissionList();
@@ -36,32 +33,10 @@ beforeEach(() => {
     return cmd === "surface_checks" ? [] : null;
   });
 });
-afterEach(async () => {
-  if (!mounted) return;
-  const { root, container } = mounted;
-  await act(async () => root.unmount());
-  container.remove();
-  mounted = null;
-});
+afterEach(unmount);
 
-/** Lets what is under way finish: promises and what they draw. */
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
-
-/** The surface `id`, of terminal `t1` unless `over` says another, as Rust holds it. */
-function surface(id: string, over: Partial<SurfaceRecord> = {}): SurfaceRecord {
-  change += 1;
-  const text = { id: "root", component: "Text", text: `What ${id} says` };
-  const state: SurfaceRecord["state"] = { version: "1.0", createSurface: { surfaceId: id, catalogId: "urn:quay:a2ui:catalog:v1", components: [text], dataModel: {} } };
-  return { terminal_id: "t1", id, tool: "quay_ask", state, revision: 1, order: change, change, asks: true, answer: null, ...over };
-}
 const permission = (requestId: string, terminalId: string) => ({ requestId, sessionId: "s", tag: terminalId, tool: "Bash", input: { command: "ls" } });
 
-async function emit(event: string, payload: unknown): Promise<void> {
-  await act(async () => emitEvent(event, payload));
-  await settle();
-}
-const arrives = (record: SurfaceRecord) => emit("surface-changed", record);
-const answered = (record: SurfaceRecord) => emit("surface-changed", { ...record, change: (change += 1), answer: { answers: [] } });
 const asksPermission = (requestId: string, terminalId = "t1") => emit("permission-requested", permission(requestId, terminalId));
 
 type Extra = Partial<Pick<ComponentProps<typeof Companion>, "showRequest" | "run" | "inspector" | "ticket" | "onShowTicket">>;
@@ -83,18 +58,13 @@ const Window: FC<{ selected: TerminalInfo | null; extra: Extra }> = ({ selected,
 
 let current: { selected: TerminalInfo | null; extra: Extra };
 async function open(selected: TerminalInfo | null = T1, extra: Extra = {}): Promise<HTMLElement> {
-  const container = document.createElement("div");
-  document.body.append(container);
-  mounted = { root: createRoot(container), container };
-  current = { selected: null, extra: {} };
-  await draw({ selected, extra });
-  return container;
+  current = { selected, extra };
+  return mount(createElement(Window, current));
 }
 /** Draws the window again with `next` changed. */
 async function draw(next: Partial<typeof current>): Promise<void> {
   current = { ...current, ...next };
-  await act(async () => mounted!.root.render(createElement(Window, current)));
-  await settle();
+  await redraw(createElement(Window, current));
 }
 const select = (selected: TerminalInfo | null) => draw({ selected });
 
@@ -230,11 +200,12 @@ test("selecting a terminal with a pending permission and no question, or a settl
 
 test("a view picked over a question holds until another question arrives", async () => {
   const container = await open();
-  await arrives(surface("ask_1"));
+  const ask = surface("ask_1");
+  await arrives(ask);
   await pick(container, "Repository");
   assert.equal(view(container), "repository");
   assert.ok(dotted(container, "Surface"));
-  await arrives({ ...surface("ask_1"), order: 1, revision: 2 });
+  await arrives(changed(ask, { revision: 2 }));
   assert.equal(view(container), "repository", "an update of the same question");
   await arrives(surface("ask_2"));
   assert.equal(view(container), "surface");
