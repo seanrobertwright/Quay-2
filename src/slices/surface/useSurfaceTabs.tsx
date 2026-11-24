@@ -46,6 +46,8 @@ export interface SurfaceTabs {
   earlier: ReactNode;
   /** Selects a surface's terminal and brings its tab in front, at the operator's click. `false` when it has no tab. */
   open: (key: SurfaceKey) => boolean;
+  /** Brings the tab `id` in front and the focus to it, at the operator's click. `false` when it is no surface's tab. */
+  select: (id: string) => boolean;
   /** Closes the tab `id`, which dismisses its surface. `false` when it is no surface's tab. */
   close: (id: string) => boolean;
 }
@@ -86,6 +88,11 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
     if (!terminal) return false;
     onSelectTerminal(terminal);
     bring(tabId(record));
+    return true;
+  };
+  const select = (id: string): boolean => {
+    if (!tabbed.some((tab) => tab.id === id)) return false;
+    bring(id);
     return true;
   };
   const close = (id: string): boolean => {
@@ -134,5 +141,5 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
     // A locked surface changes no more, so its last change is its locking
     .sort((a, b) => b.record.change - a.record.change)
     .map((tab) => ({ id: tab.id, record: tab.record, title: titleOf(tab), terminalName: tab.terminal.name }));
-  return { tools, earlier: folded.length > 0 ? <EarlierTabs tabs={folded} onOpen={bring} /> : null, open, close };
+  return { tools, earlier: folded.length > 0 ? <EarlierTabs tabs={folded} onOpen={bring} /> : null, open, select, close };
 }

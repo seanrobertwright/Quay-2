@@ -175,6 +175,16 @@ test("opening a review from elsewhere brings its tab in front and takes the focu
   assert.equal(inFront(container), null);
 });
 
+test("picking a review's tab takes the focus to it, so the keyboard goes on from there", async () => {
+  const container = await load([await acceptedReview("review_1"), await acceptedReview("review_2", { ...REVIEW, title: "Findings" }, "t1", 2)]);
+  for (const [at, id] of ["review_1", "review_2", "review_1"].entries()) {
+    const button = tabs(container)[at % 2];
+    await act(async () => button.focus());
+    await click(button);
+    assert.equal(document.activeElement?.getAttribute("data-surface"), id);
+  }
+});
+
 test("the tab bar has the active project's reviews, and opening another's makes its project active", async () => {
   const beta = { ...TERMINAL, id: "t2", name: "docs", project_path: "E:/beta" };
   const container = await load([await acceptedReview("review_1"), await acceptedReview("review_1", { ...REVIEW, title: "Findings" }, "t2", 2)], [TERMINAL, beta]);

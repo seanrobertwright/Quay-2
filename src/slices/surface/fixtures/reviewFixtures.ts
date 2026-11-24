@@ -76,7 +76,7 @@ export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL]
         onToggleZoom: noop,
         tools: tabs.tools,
         frontToolId: frontId,
-        onSelectTool: setFrontId,
+        onSelectTool: tabs.select,
         onCloseTool: tabs.close,
         earlierTabs: tabs.earlier,
       }),

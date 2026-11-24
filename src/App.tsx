@@ -1339,7 +1339,9 @@ export function App() {
         }
         tools={[...stageTools, ...surfaceTabs.tools]}
         frontToolId={frontToolId}
-        onSelectTool={setFrontToolId}
+        onSelectTool={(id) => {
+          if (!surfaceTabs.select(id)) setFrontToolId(id);
+        }}
         onCloseTool={(id) => {
           if (!surfaceTabs.close(id)) closeTool(id);
         }}
