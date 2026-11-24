@@ -166,6 +166,137 @@ test("a pending permission request shows at the top with Allow once, Allow for s
   assert.equal(view().querySelector('[aria-label="Permission request"]'), null);
 });
 
+/** A request the backend holds for `agent`, as `get_pending_permissions` lists it. */
+const pendingRequest = (tool: string, input: unknown, requestId = "req-1") => ({ requestId, sessionId: "s", tag: agent.id, tool, input });
+const requests = () => [...view().querySelectorAll<HTMLElement>('[aria-label="Permission request"]')];
+/** Each pending request's scroll box for the rest of its input. */
+const inputBoxes = () => [...view().querySelectorAll<HTMLElement>('[role="group"][tabindex="0"]')];
+/** The labelled blocks in a scroll box, each as its name and its value. */
+const blocks = (box: HTMLElement) =>
+  [...box.querySelectorAll('[role="group"][aria-labelledby]')].map((block) => [
+    document.getElementById(block.getAttribute("aria-labelledby") ?? "")?.textContent,
+    block.querySelector("pre")?.textContent,
+  ]);
+
+test("a Write request shows its path and its content, newlines kept, with nothing to click first", async () => {
+  await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one\n  two\n" })] });
+  assert.match(requests()[0].textContent ?? "", /Write.*src\/a\.ts/);
+  assert.equal(inputBoxes().length, 1);
+  assert.deepEqual(blocks(inputBoxes()[0]), [["content", "one\n  two\n"]]);
+  const value = inputBoxes()[0].querySelector("pre")!;
+  assert.ok(value.classList.contains("whitespace-pre-wrap"), "newlines and spaces are kept");
+  assert.ok(value.classList.contains("wrap-anywhere"), "a long unbroken line wraps");
+});
+
+test("a request from an MCP tool with a path shows its other arguments, nested ones as indented JSON", async () => {
+  await render({
+    pending: [pendingRequest("mcp__files__copy", { path: "src", to: "dist", options: { deep: true, skip: ["a"] }, depth: 3, force: false, mode: null })],
+  });
+  assert.deepEqual(blocks(inputBoxes()[0]), [
+    ["to", "dist"],
+    ["options", '{\n  "deep": true,\n  "skip": [\n    "a"\n  ]\n}'],
+    ["depth", "3"],
+    ["force", "false"],
+    ["mode", "null"],
+  ]);
+});
+
+test("the scroll box's accessible name includes the tool", async () => {
+  await render({ pending: [pendingRequest("Write", { file_path: "src/a.ts", content: "one" })] });
+  assert.equal(inputBoxes()[0].getAttribute("aria-label"), "Rest of the Write input");
+});
+
+test("an input that is not a plain object is one JSON value with no name, under the tool's name alone", async () => {
+  await render({ pending: [pendingRequest("mcp__list__add", ["a", { b: 1 }])] });
+  assert.equal(requests()[0].querySelector("p")?.textContent, "mcp__list__add");
+  const box = inputBoxes()[0];
+  assert.equal(box.querySelector("pre")?.textContent, '[\n  "a",\n  {\n    "b": 1\n  }\n]');
+  assert.deepEqual(box.querySelectorAll("[aria-labelledby]").length, 0, "nothing names the one value");
+});
+
+test("a value of 20,001 characters draws 20,000 and a button that draws the rest, keeping focus in the box", async () => {
+  await render({ pending: [pendingRequest("Write", { file_path: "a.txt", content: "x".repeat(20_000) + "y", note: "short" })] });
+  const box = inputBoxes()[0];
+  const content = () => box.querySelectorAll("pre")[0].textContent ?? "";
+  assert.ok(content() === "x".repeat(20_000), "the first 20,000 characters");
+  const showAll = button("Show all (20,001 characters)");
+  assert.ok(box.contains(showAll));
+  showAll.focus();
+  await act(async () => showAll.click());
+  assert.ok(content() === "x".repeat(20_000) + "y", "the whole value");
+  assert.equal(box.querySelectorAll("button").length, 0);
+  assert.ok(document.activeElement === box, "focus stays in the scroll box");
+});
+
+test("a value of 20,000 characters is drawn whole, with no button", async () => {
+  await render({ pending: [pendingRequest("Write", { file_path: "a.txt", content: "x".repeat(20_000) })] });
+  assert.ok(inputBoxes()[0].querySelector("pre")?.textContent === "x".repeat(20_000));
+  assert.equal(inputBoxes()[0].querySelectorAll("button").length, 0);
+});
+
+test("a large value is not cut inside a character", async () => {
+  await render({ pending: [pendingRequest("Write", { file_path: "a.txt", content: "x".repeat(19_999) + "😀" })] });
+  assert.ok(inputBoxes()[0].querySelector("pre")?.textContent === "x".repeat(19_999));
+  button("Show all (20,001 characters)");
+});
+
+test("an Edit request shows its old and new text as two labelled blocks", async () => {
+  await render({ pending: [pendingRequest("Edit", { file_path: "a.ts", old_string: "let a;\n", new_string: "const a = 1;\n" })] });
+  assert.deepEqual(blocks(inputBoxes()[0]), [
+    ["old_string", "let a;\n"],
+    ["new_string", "const a = 1;\n"],
+  ]);
+});
+
+test("a Bash request with only its command shows no box", async () => {
+  await render({ pending: [pendingRequest("Bash", { command: "pnpm test" })] });
+  assert.equal(requests()[0].querySelector("p")?.textContent, "Bash pnpm test");
+  assert.equal(inputBoxes().length, 0);
+});
+
+test("a Bash request that also leaves the sandbox shows that field", async () => {
+  await render({ pending: [pendingRequest("Bash", { command: "pnpm test", dangerouslyDisableSandbox: true })] });
+  assert.deepEqual(blocks(inputBoxes()[0]), [["dangerouslyDisableSandbox", "true"]]);
+});
+
+test("markup in a name or a value is drawn as those characters, with no link", async () => {
+  const markup = "<b>bold</b> [x](http://y) **z** <a href='http://y'>y</a>";
+  await render({ pending: [pendingRequest("Write", { file_path: "a.md", content: markup, "<i>name</i>": { "<b>": "**z**" } })] });
+  const box = inputBoxes()[0];
+  assert.deepEqual(blocks(box), [
+    ["content", markup],
+    ["<i>name</i>", '{\n  "<b>": "**z**"\n}'],
+  ]);
+  assert.equal(box.querySelectorAll("a, b, i, strong, em").length, 0);
+});
+
+test("the answers stay outside the scroll box and answer the request", async () => {
+  const { backend } = await render({ pending: [pendingRequest("Write", { file_path: "a.ts", content: "one" })] });
+  const box = inputBoxes()[0];
+  for (const name of ["Allow once", "Allow for session", "Deny"]) {
+    assert.ok(!box.contains(button(name)), name);
+    assert.ok(box.compareDocumentPosition(button(name)) & Node.DOCUMENT_POSITION_FOLLOWING, `${name} comes after the box`);
+  }
+  await act(async () => button("Deny").click());
+  await settle();
+  assert.deepEqual(
+    backend.calls.filter((c) => c.command === "resolve_permission").map((c) => c.args.decision),
+    ["deny"],
+  );
+});
+
+test("two requests with the same field names share no element ids", async () => {
+  await render({
+    pending: [
+      pendingRequest("Write", { file_path: "a.ts", content: "one" }, "req-1"),
+      pendingRequest("Write", { file_path: "b.ts", content: "two" }, "req-2"),
+    ],
+  });
+  assert.deepEqual(inputBoxes().map(blocks), [[["content", "one"]], [["content", "two"]]]);
+  const ids = [...view().querySelectorAll("[id]")].map((element) => element.id);
+  assert.equal(new Set(ids).size, ids.length, ids.join(" "));
+});
+
 test("a request to show a message marks that message as the one shown", async () => {
   const { rerender } = await render();
   assert.equal(view().querySelector('[aria-current="true"]'), null);

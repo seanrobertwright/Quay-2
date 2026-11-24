@@ -6,7 +6,9 @@ import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { AttentionItem, PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
 import { formatClock } from "../../lib/dates.ts";
-import { activityEntries, toolInputSummary, type ActivityEntry, type MessageEntry, type ToolCallEntry } from "./activity.ts";
+import { activityEntries, type ActivityEntry, type MessageEntry, type ToolCallEntry } from "./activity.ts";
+import { PermissionInputBox } from "./PermissionInputBox.tsx";
+import { splitPermissionInput } from "./permissionInput.ts";
 
 /** What the Activity view reads: the bridge's events, the A2A trail and what waits on the operator. */
 export interface CompanionActivity {
@@ -148,15 +150,22 @@ const Message = ({ message }: { message: MessageEntry }) => (
   </>
 );
 
-/** A pending permission request with its three answers. */
+/** A pending permission request: what it asks to do, the input its summary leaves out, and its three answers. */
 const PermissionRequest = ({ permission, onAnswer }: { permission: PermissionItem; onAnswer: AnswerPermission }) => {
-  const summary = toolInputSummary(permission.input);
+  const { summary, rest } = splitPermissionInput(permission.input);
   return (
     <section aria-label="Permission request" className="p-3 bg-[#d2992214] border-l-2 border-[#d29922] text-xs space-y-2">
       <p className="text-[#c9d1d9] break-words">
-        <span className="text-[#e3b341] font-semibold">{permission.tool}</span> <code>{summary}</code>
+        <span className="text-[#e3b341] font-semibold">{permission.tool}</span>
+        {summary && (
+          <>
+            {" "}
+            <code>{summary}</code>
+          </>
+        )}
         {permission.reason && <span className="text-[#8b949e]"> · {permission.reason}</span>}
       </p>
+      {rest.length > 0 && <PermissionInputBox tool={permission.tool} rest={rest} />}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
