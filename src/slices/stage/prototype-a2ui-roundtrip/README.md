@@ -22,8 +22,11 @@ answer is typed in)?
 - `question.json`: the fixed question. `run-2026-11-23.*.txt`: Quay's and the relay's logs of the run.
 - For #709: `quay_surface_reject_proto` (an `isError` result), an `instructions` codeword in
   `initialize`, a log line per agent event, and a relay that closes its HTTP call on a cancel.
-  Findings in `docs/research/a2ui-findings-709.md`; logs in `run-2026-11-24-709.*.txt`, with the
-  user name replaced and long lines cut.
+  Findings in `docs/research/a2ui-findings-709.md`; logs in `run-2026-11-24-709*.txt`, with the
+  user name replaced and long lines cut. The `EVENT` lines of the first Quay log hold part of each
+  event's data; the code now logs only its type, terminal, turn and reason.
+
+Quay writes its log only when `QUAY_A2UI_PROTO_LOG` names a file.
 
 ## Run it
 
