@@ -9,7 +9,7 @@ import { PRIMARY } from "../../companion/buttonStyles.ts";
 import { AskCard } from "./ask.tsx";
 import { BoardBody, RawStripLine, StripLine } from "./board.tsx";
 import { ConnectSettings } from "./connect.tsx";
-import { ASKS, BOARDS, RAW, REVIEWS, TITLES } from "./content.ts";
+import { ASKS, BOARDS, RAW, RAW2, REVIEWS, TITLES, plainAsk } from "./content.ts";
 import { Frame, KIND, LooksContext, QuayCard, type Key, type Kind } from "./frame.tsx";
 import { RawSurface } from "./raw.tsx";
 import { ReviewSurface } from "./review.tsx";
@@ -250,10 +250,101 @@ const STEPS: Step[] = [
     ],
     views: [],
   },
+  {
+    id: "parts",
+    name: "Tabs, date and the new components",
+    todo: "Round two, drawn with the catalog as decided. Look at all three tabs: a choice with descriptions, a date and a time, and Progress, Steps, Stat and FileLink.",
+    groups: [
+      {
+        id: "tabs",
+        label: "Tabs inside a surface",
+        recommended: "B",
+        options: abc(["Underlined", "Looks like the companion's own views just above it."], ["Segmented", "Cannot be taken for the companion's views."], ["Drop-down", "Fits any number; hides the choices."]),
+      },
+    ],
+    views: [{ id: "width", label: "Companion", options: [["340", "340 px"], ["560", "560 px"]] }],
+  },
+  {
+    id: "text",
+    name: "Diff block and tables",
+    todo: "A diff, a five-column table and a plain code block in the companion. Check both widths.",
+    groups: [
+      {
+        id: "diff",
+        label: "Diff block",
+        recommended: "A",
+        options: abc(["Tinted lines", "Like Quay's diff view, with the signs kept."], ["Coloured text", "Quieter; weak for small changes."], ["Edge bar, no signs", "Cleanest; a copied line loses its sign."]),
+      },
+      {
+        id: "table",
+        label: "Table at 340 px",
+        recommended: "A",
+        options: abc(["Scrolls in its own box", "Columns stay readable and comparable."], ["Squeezed to fit", "Nothing hidden; five columns break words."], ["Stacked rows", "Reads well, but loses comparison down a column."]),
+      },
+    ],
+    views: [{ id: "width", label: "Companion", options: [["340", "340 px"], ["560", "560 px"]] }],
+  },
+  {
+    id: "refused",
+    name: "Images and files that cannot be shown",
+    todo: "A web image and a missing one, then click the two file links at the bottom: one is missing, one is on the network.",
+    groups: [
+      {
+        id: "image",
+        label: "Image placeholder",
+        recommended: "A",
+        options: abc(["Small box with the reason", "Says what, why and where."], ["One line", "Smallest; no reason."], ["Full-size box", "Keeps the image's space, which is mostly empty."]),
+      },
+      {
+        id: "notice",
+        label: "Missing-file notice",
+        recommended: "A",
+        options: abc(["Foot of the frame", "Where link addresses already show; Quay's own ground."], ["Under the header bar", "Seen first, but pushes the content down."], ["Under the link", "Closest, but inside the agent's content."]),
+      },
+    ],
+    views: [],
+  },
+  {
+    id: "approve",
+    name: "The Approve button's count",
+    todo: "Drop two items and read the button. If Quay's frame lays out the review (the next step), the count costs nothing. If not, it needs one small function in the catalog.",
+    groups: [
+      {
+        id: "approve",
+        label: "Label",
+        recommended: "A",
+        options: abc(
+          ["Approve without 2 items", "You see what you are agreeing to; also gives \"3 of 5 kept\"."],
+          ["Approve kept items", "Always true, says nothing about how many."],
+          ["Approve", "Plainest; only the struck-out items show what was dropped."],
+        ),
+      },
+    ],
+    views: [],
+  },
+  {
+    id: "typed",
+    name: "Who lays out the typed surfaces",
+    todo: "Your picks for the question card (one open at a time) and the review (a rail) need layouts the 19 components lack. Left: quay_ask. Right: the same questions sent raw.",
+    groups: [
+      {
+        id: "typed",
+        label: "Layout",
+        recommended: "A",
+        options: abc(
+          ["Quay's frame lays out typed surfaces", "Your picks stay, and the catalog stays at 19. Raw gets the same content, plainer."],
+          ["Add a fold and a rail to the catalog", "Raw can match, at the cost of two more components to build and teach."],
+          ["Typed looks like raw", "One look everywhere; undoes two of your picks."],
+        ),
+      },
+    ],
+    views: [{ id: "content", label: "Questions", options: [["lowered", "At the picked limits"], ["three", "Three"]] }],
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
-// Kept in this browser only
+// Kept in this browser only. The raw messages are made once, so a redraw keeps the engine's state.
+const PLAIN = { lowered: plainAsk(ASKS.lowered), three: plainAsk(ASKS.three) };
 
 const STORE = "a2ui-look-696";
 interface Saved {
@@ -490,7 +581,12 @@ const SceneFrame = ({ pick, say }: { pick: (id: string) => string; say: (t: stri
 
 export function LookPrototype() {
   const [saved, setSaved] = useState<Saved>(load);
-  const [at, setAt] = useState(0);
+  // Opens at the first step with nothing picked, so a second round starts where the first ended.
+  const [at, setAt] = useState(() => {
+    const { picks } = load();
+    const first = STEPS.findIndex((s) => s.groups.some((g) => !picks[g.id]));
+    return first < 0 ? STEPS.length : first;
+  });
   const [trying, setTrying] = useState<Record<string, string>>({});
   const [views, setViews] = useState<Record<string, string>>({});
   const [log, setLog] = useState<string[]>([]);
@@ -704,6 +800,54 @@ export function LookPrototype() {
     companion = null;
   }
 
+  if (step.id === "parts" || step.id === "text" || step.id === "refused") {
+    const title = { parts: "Start the 0.9.0 release", text: "Why two cargo tests fail", refused: "Before and after" }[step.id];
+    companion = (
+      <CompanionMock width={step.id === "refused" ? 340 : width}>
+        {gone ? (
+          again
+        ) : (
+          <Frame key={`${step.id} ${round}`} terminal="fix-75" cli="claude" kind="raw" title={title} onDismiss={() => dismissed("the surface")}>
+            <RawSurface messages={RAW2[step.id]} onAction={say} />
+          </Frame>
+        )}
+      </CompanionMock>
+    );
+  } else if (step.id === "approve") {
+    tab = { kind: "review", title: REVIEWS.plan.title };
+    front = "tab";
+    stage = (
+      <div className="absolute inset-0">
+        {gone ? again : <ReviewSurface key={key} review={REVIEWS.plan} layout={look("review")} approve={look("approve")} onVerdict={say} onDismiss={() => dismissed("the review")} />}
+      </div>
+    );
+  } else if (step.id === "typed") {
+    const content = view("content") === "three" ? "three" : "lowered";
+    const typed = look("typed");
+    const plain = (
+      <Frame terminal="fix-75" cli="claude" kind="raw" title="Before the pull request" onDismiss={() => say("dismissed")}>
+        <RawSurface messages={PLAIN[content]} onAction={say} />
+      </Frame>
+    );
+    const picked = <AskCard key={`${key} picked`} ask={ASKS[content]} layout={look("ask")} onSend={say} onDismiss={() => say("dismissed")} />;
+    companion = null;
+    stage = (
+      <div className="absolute inset-0 flex justify-center gap-6 p-4">
+        {(
+          [
+            ["quay_ask", typed === "C" ? plain : picked],
+            ["The same, sent raw", typed === "B" ? <AskCard key={`${key} raw`} ask={ASKS[content]} layout={look("ask")} onSend={say} onDismiss={() => say("dismissed")} /> : plain],
+          ] as [string, ReactNode][]
+        ).map(([name, card]) => (
+          <div key={name} className="w-[340px] min-h-0 flex flex-col">
+            <div className="text-[11px] text-[#8b949e] mb-1.5">{name}</div>
+            <div className="flex-1 min-h-0 overflow-y-auto">{card}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   const summary = STEPS.map((s) => {
     const lines = s.groups.map((g) => {
       const k = saved.picks[g.id];
@@ -716,7 +860,7 @@ export function LookPrototype() {
   const report = `#696 picks\n\n${summary}`;
 
   const accent = { "--quay-accent": "#7df9ff", "--quay-accent-line": "#7df9ff8c", "--quay-accent-haze": "#7df9ff38" } as CSSProperties;
-  const looks = { frame: look("frame"), mark: look("mark"), link: look("link"), move: look("move") };
+  const looks = { frame: look("frame"), mark: look("mark"), link: look("link"), move: look("move"), tabs: look("tabs"), diff: look("diff"), table: look("table"), image: look("image"), notice: look("notice") };
   const quietRow = step.id === "quiet" && look("quiet") === "A" ? REASONS[view("reason")].text : undefined;
 
   return (

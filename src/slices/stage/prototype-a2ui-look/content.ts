@@ -74,8 +74,8 @@ const three: Ask = {
   ],
 };
 
-const limitQuestion = (n: number, multiple: boolean): Question => ({
-  question: pad(`Question ${n}: how should the bridge treat an answer whose turn has already ended when it arrives?`, 200),
+const limitQuestion = (q: number, multiple: boolean, n = 200): Question => ({
+  question: pad(`Question ${q}: how should the bridge treat an answer whose turn has already ended when it arrives?`, 200),
   multiple,
   options: [
     "Attach it to the turn that asked",
@@ -86,7 +86,7 @@ const limitQuestion = (n: number, multiple: boolean): Question => ({
     "Stop the terminal",
   ].map((label, i) => ({
     label: i === 0 ? pad(`${label} and mark it as late`, 60) : label,
-    description: pad("The answer keeps its own id and waits in the store until something reads it.", 200),
+    description: pad("The answer keeps its own id and waits in the store until something reads it.", n),
     recommended: i === 0,
   })),
 });
@@ -97,7 +97,12 @@ const limits: Ask = {
   ),
   questions: [limitQuestion(1, false), limitQuestion(2, true), limitQuestion(3, false), { question: pad("Question 4: what should the operator see when an answer is dropped?", 200) }],
 };
-export const ASKS = { one, three, limits };
+/** At the limits as picked in round one: context 600, description 120. */
+const lowered: Ask = {
+  context: limits.context?.slice(0, 600),
+  questions: [limitQuestion(1, false, 120), limitQuestion(2, true, 120), limitQuestion(3, false, 120), limits.questions[3]],
+};
+export const ASKS = { one, three, limits, lowered };
 
 const plan: Review = {
   title: "Plan: pair each answer with its turn",
@@ -255,6 +260,99 @@ export const RAW = {
     text("not", "Deny"),
   ]),
 };
+
+const F = "```";
+const TABLE = `| Suite | Passed | Failed | Skipped | Slowest test |
+|---|---|---|---|---|
+| node | 1,204 | 0 | 3 | graphFind 1M rows |
+| cargo | 412 | 2 | 0 | orchestrator::mcp |
+| tutorials | 20 | 0 | 0 | hello-a2a |`;
+const DIFF = `${F}diff
+ export function pairAnswers(turns, answers) {
+-  return answers.map((a, i) => [turns[i], a]);
++  const byId = new Map(turns.map((t) => [t.id, t]));
++  return answers.filter((a) => byId.has(a.turnId));
+ }
+${F}`;
+export const RAW2 = {
+  parts: surface(
+    "raw-parts",
+    [
+      { id: "root", component: "Column", children: ["tabs", "send"] },
+      { id: "tabs", component: "Tabs", tabs: [{ title: "Choose", child: "t1" }, { title: "When", child: "t2" }, { title: "Progress", child: "t3" }] },
+      { id: "t1", component: "Column", children: ["pick", "keep"] },
+      {
+        id: "pick",
+        component: "ChoicePicker",
+        label: "Which branch leads the release?",
+        variant: "mutuallyExclusive",
+        value: path("/pick"),
+        options: [
+          { label: "fix/75", value: "a", description: "Three commits, reviewed.", recommended: true },
+          { label: "docs-sweep", value: "b", description: "Nine files, not reviewed." },
+          { label: "Both", value: "c" },
+        ],
+      },
+      { id: "keep", component: "Slider", label: "Retries", min: 0, max: 5, value: path("/retries") },
+      { id: "t2", component: "Column", children: ["day", "time"] },
+      { id: "day", component: "DateTimeInput", label: "Release day", enableDate: true, value: path("/day") },
+      { id: "time", component: "DateTimeInput", label: "Not before", enableTime: true, value: path("/time") },
+      { id: "t3", component: "Column", children: ["prog", "steps", "stats", "file"] },
+      { id: "prog", component: "Progress", done: 3, total: 5, label: "Suites" },
+      {
+        id: "steps",
+        component: "Steps",
+        steps: [
+          { label: "Unit tests", state: "done" },
+          { label: "Cargo tests", state: "failed", note: "2 failed in orchestrator::mcp" },
+          { label: "Tutorial checks", state: "active" },
+          { label: "Benchmarks", state: "pending" },
+        ],
+      },
+      { id: "stats", component: "Row", children: ["s1", "s2"] },
+      { id: "s1", component: "Stat", label: "passed", value: "1,636" },
+      { id: "s2", component: "Stat", label: "failed", value: "2" },
+      { id: "file", component: "FileLink", path: "src-tauri/src/slices/orchestrator/mcp.rs" },
+      { id: "send", component: "Button", variant: "primary", child: "sendt", action: { event: { name: "release", context: { pick: path("/pick"), day: path("/day") } } } },
+      text("sendt", "Start the release"),
+    ],
+    { pick: [], retries: 2, day: "2026-12-01", time: "09:00" },
+  ),
+  text: surface("raw-text", [
+    { id: "root", component: "Column", children: ["a", "b", "c", "d"] },
+    text("a", "Two cargo tests fail after the change. The **first** one is the pairing:"),
+    text("b", DIFF),
+    text("c", TABLE),
+    text("d", `Run it with:\n\n${F}sh\ncargo test -p quay orchestrator::mcp -- --nocapture\n${F}`),
+  ]),
+  refused: surface("raw-refused", [
+    { id: "root", component: "Column", children: ["a", "img", "b", "c", "d"] },
+    text("a", "The panel before and after. ![Companion before](https://example.net/before.png)"),
+    { id: "img", component: "Image", url: "shots/missing-after.png", description: "Companion after" },
+    text("b", "Open these two. Neither can be shown:"),
+    { id: "c", component: "FileLink", path: "logs/missing-run.log" },
+    text("d", "[the shared copy](//server/share/run.log)"),
+  ]),
+};
+/** The question card at the picked limits, drawn with nothing but the 19 components. */
+export const plainAsk = (ask: Ask) =>
+  surface(
+    "raw-ask",
+    [
+      { id: "root", component: "Column", children: ["ctx", ...ask.questions.flatMap((q, i) => [`q${i}`, ...(q.options ? [`o${i}`] : []), `n${i}`]), "send"] },
+      text("ctx", ask.context ?? ""),
+      ...ask.questions.flatMap((q, i) => [
+        text(`q${i}`, `**${q.question}**`),
+        ...(q.options
+          ? [{ id: `o${i}`, component: "ChoicePicker", variant: q.multiple ? "multipleSelection" : "mutuallyExclusive", value: path(`/c${i}`), options: q.options.map((o) => ({ ...o, value: o.label })) }]
+          : []),
+        { id: `n${i}`, component: "TextField", label: q.options ? "Other, or a note" : "Your answer", value: path(`/t${i}`) },
+      ]),
+      { id: "send", component: "Button", variant: "primary", child: "sendt", action: { event: { name: "answer", context: {} } } },
+      text("sendt", "Send"),
+    ],
+    Object.fromEntries(ask.questions.flatMap((_, i) => [[`c${i}`, []], [`t${i}`, ""]])),
+  );
 
 export const TITLES: Record<"60" | "80" | "120", string> = {
   "60": "Worktree clean-up before the 0.9.0 release branch is cut now",

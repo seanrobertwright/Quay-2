@@ -1,14 +1,82 @@
 // PROTOTYPE (#696), throwaway. What Quay draws around an agent's surface, the mark on Quay's own
 // cards, and a web link: three takes of each.
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { AppWindow, ExternalLink, LayoutList, ListChecks, MessageCircleQuestion, MoreHorizontal, PanelRight, Shapes, ShieldCheck, X } from "lucide-react";
+import { AppWindow, ExternalLink, FileText, ImageOff, LayoutList, ListChecks, MessageCircleQuestion, MoreHorizontal, PanelRight, Shapes, ShieldCheck, X } from "lucide-react";
 import { AgentIcon } from "../../terminal/AgentIcons.tsx";
 import type { RunKind } from "../../terminal/types.ts";
 import { PRIMARY, SECONDARY } from "../../companion/buttonStyles.ts";
 
 export type Key = "A" | "B" | "C";
-export const LooksContext = createContext<{ frame: Key; mark: Key; link: Key; move: Key }>({ frame: "A", mark: "B", link: "B", move: "A" });
+export interface Looks {
+  frame: Key;
+  mark: Key;
+  link: Key;
+  move: Key;
+  tabs: Key;
+  diff: Key;
+  table: Key;
+  image: Key;
+  notice: Key;
+}
+export const LooksContext = createContext<Looks>({ frame: "A", mark: "B", link: "B", move: "A", tabs: "B", diff: "A", table: "A", image: "A", notice: "A" });
 const FootContext = createContext<(href: string | null) => void>(() => {});
+const RefuseContext = createContext<(reason: string) => void>(() => {});
+
+/** Why Quay will not show a path, or null when it can. Made up: the real check is Quay's Rust side. */
+const refusal = (path: string) => (path.startsWith("//") ? "Quay does not open network paths." : /missing/.test(path) ? "That file is not there." : null);
+
+export const FileLink = ({ path, label }: { path: string; label?: string }) => {
+  const { notice } = useContext(LooksContext);
+  const refuse = useContext(RefuseContext);
+  const [inline, setInline] = useState<string | null>(null);
+  return (
+    <span>
+      <button
+        type="button"
+        title={`Show ${path}`}
+        onClick={() => {
+          const why = refusal(path);
+          if (why && notice === "C") setInline(why);
+          else if (why) refuse(`${path}: ${why}`);
+        }}
+        className="inline-flex items-baseline gap-1 max-w-full font-mono text-[11px] text-[#58a6ff] hover:underline text-left"
+      >
+        <FileText className="w-3 h-3 shrink-0 self-center" aria-hidden />
+        <span className="break-all">{label ?? path}</span>
+      </button>
+      {inline && (
+        <span role="status" className="block text-[11px] text-[#ff7b72]">
+          {inline}
+        </span>
+      )}
+    </span>
+  );
+};
+
+/** What stands where an image was refused or is missing. Nothing was fetched. */
+export const ImageBox = ({ alt, src }: { alt: string; src: string }) => {
+  const { image } = useContext(LooksContext);
+  const why = /^https?:/.test(src) ? "Web images are not loaded." : /^data:/.test(src) ? "Embedded images are not shown." : "That image file is not there.";
+  if (image === "B")
+    return (
+      <span className="flex items-baseline gap-1.5 text-[11px] text-[#8b949e]">
+        <ImageOff className="w-3 h-3 shrink-0 self-center" aria-hidden />
+        <span className="break-all">
+          {alt || "Image"} <span className="font-mono">{src}</span>
+        </span>
+      </span>
+    );
+  return (
+    <span className={`flex flex-col justify-center gap-0.5 rounded-md border border-dashed border-[#484f58] px-3 text-[11px] text-[#8b949e] ${image === "C" ? "min-h-40 items-center text-center" : "py-2"}`}>
+      <span className="flex items-center gap-1.5 text-[#c9d1d9]">
+        <ImageOff className="w-3.5 h-3.5 shrink-0" aria-hidden />
+        {alt || "Image"}
+      </span>
+      <span>{why}</span>
+      <span className="font-mono break-all">{src}</span>
+    </span>
+  );
+};
 
 export type Kind = "ask" | "review" | "board" | "raw";
 export const KIND: Record<Kind, { Icon: typeof X; tone: string }> = {
@@ -68,7 +136,8 @@ export interface FrameProps {
 const ICON_BUTTON = "p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#30363d] shrink-0";
 
 export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, footer }: FrameProps) => {
-  const { frame, move: moveLook } = useContext(LooksContext);
+  const { frame, move: moveLook, notice } = useContext(LooksContext);
+  const [refused, setRefused] = useState<string | null>(null);
   const [href, setHref] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const { Icon, tone } = KIND[kind];
@@ -109,8 +178,17 @@ export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, f
     </button>
   );
   const heading = title && <h3 className="text-[13px] leading-[18px] font-semibold text-[#f0f6fc] break-words">{title}</h3>;
+  const refusedLine = refused && (
+    <div role="alert" className="px-3 py-1 flex items-start gap-2 text-[11px] text-[#ff7b72] bg-[#da3633]/10 border-y border-[#da3633]/40">
+      <span className="flex-1 min-w-0 break-words">{refused}</span>
+      <button type="button" aria-label="Close the notice" onClick={() => setRefused(null)} className={ICON_BUTTON}>
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
   const foot = (
     <>
+      {notice === "A" && refusedLine}
       {move && moveLook === "C" && (
         <div className="px-3 pb-2">
           <button type="button" onClick={move.go} className="text-[11px] text-[#58a6ff] hover:underline">
@@ -133,6 +211,7 @@ export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, f
     </>
   );
   return (
+    <RefuseContext.Provider value={setRefused}>
     <FootContext.Provider value={setHref}>
       {frame === "A" && (
         <section aria-label={`From ${terminal}`} className="rounded-lg border border-[#30363d] bg-[#0d1117]">
@@ -143,6 +222,7 @@ export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, f
             {moveControl}
             {dismiss}
           </header>
+          {notice === "B" && refusedLine}
           <div className="p-3 flex flex-col gap-2.5">
             {heading}
             {children}
@@ -186,6 +266,7 @@ export const Frame = ({ terminal, cli, kind, title, onDismiss, move, children, f
         </section>
       )}
     </FootContext.Provider>
+    </RefuseContext.Provider>
   );
 };
 

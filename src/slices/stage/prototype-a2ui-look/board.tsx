@@ -70,9 +70,31 @@ const Step = ({ s }: { s: Board["steps"][number] }) => (
   </li>
 );
 
+/** The board's steps in two columns where there is room. Also the look of the Steps component. */
+export const StepColumns = ({ steps }: { steps: Board["steps"] }) => {
+  const half = Math.ceil(steps.length / 2);
+  return (
+    <div className="@container">
+      <div className="grid gap-x-5 gap-y-1 @lg:grid-cols-2">
+        {[steps.slice(0, half), steps.slice(half)].map((column, i) => (
+          <ul key={i === 0 ? "first" : "second"} className="flex flex-col gap-1 min-w-0">
+            {column.map((s) => (
+              <Step key={s.label} s={s} />
+            ))}
+          </ul>
+        ))}
+      </div>
+    </div>
+  );
+};
+export const StatChip = ({ label, value }: { label: string; value: string }) => (
+  <span className="px-2 py-0.5 rounded border border-[#30363d] bg-[#161b22] text-[11px]">
+    <span className="text-[#f0f6fc] font-mono">{value}</span> <span className="text-[#8b949e]">{label}</span>
+  </span>
+);
+
 export const BoardBody = ({ board, onDismiss }: { board: Board; onDismiss: () => void }) => {
   const { done, total } = tally(board);
-  const half = Math.ceil(total / 2);
   return (
     <Frame terminal="fix-75" cli="claude" kind="board" title={board.title} onDismiss={onDismiss}>
       <div className="@container flex flex-col gap-2.5">
@@ -86,20 +108,10 @@ export const BoardBody = ({ board, onDismiss }: { board: Board; onDismiss: () =>
           <span className="font-mono text-[11px] text-[#8b949e]">{board.elapsed}</span>
           {board.quiet && <span className="text-[11px] text-[#e3b341]">{board.quiet}</span>}
         </div>
-        <div className="grid gap-x-5 gap-y-1 @lg:grid-cols-2">
-          {[board.steps.slice(0, half), board.steps.slice(half)].map((column, i) => (
-            <ul key={i === 0 ? "first" : "second"} className="flex flex-col gap-1 min-w-0">
-              {column.map((s) => (
-                <Step key={s.label} s={s} />
-              ))}
-            </ul>
-          ))}
-        </div>
+        <StepColumns steps={board.steps} />
         <div className="flex flex-wrap gap-1.5">
           {board.stats.map((s) => (
-            <span key={s.label} className="px-2 py-0.5 rounded border border-[#30363d] bg-[#161b22] text-[11px]">
-              <span className="text-[#f0f6fc] font-mono">{s.value}</span> <span className="text-[#8b949e]">{s.label}</span>
-            </span>
+            <StatChip key={s.label} label={s.label} value={s.value} />
           ))}
         </div>
       </div>

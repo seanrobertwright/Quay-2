@@ -14,7 +14,7 @@ const toggled = (s: ReadonlySet<string>, t: string) => {
   return next;
 };
 
-export const ReviewSurface = ({ review, layout, onVerdict, onDismiss }: { review: Review; layout: Key; onVerdict: (text: string) => void; onDismiss: () => void }) => {
+export const ReviewSurface = ({ review, layout, approve = "A", onVerdict, onDismiss }: { review: Review; layout: Key; approve?: Key; onVerdict: (text: string) => void; onDismiss: () => void }) => {
   const items = review.items ?? [];
   const id = useId();
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
@@ -37,7 +37,7 @@ export const ReviewSurface = ({ review, layout, onVerdict, onDismiss }: { review
       <div className="flex items-baseline gap-2 mb-1.5">
         <h4 className="text-xs font-semibold text-[#f0f6fc]">Keep or drop</h4>
         <span className="text-[11px] text-[#8b949e]">
-          {items.length - dropped.size} of {items.length} kept
+          {approve === "A" ? `${items.length - dropped.size} of ${items.length} kept` : `${items.length} items`}
         </span>
       </div>
       <ul className="flex flex-col rounded-md border border-[#30363d] divide-y divide-[#30363d]">
@@ -96,7 +96,7 @@ export const ReviewSurface = ({ review, layout, onVerdict, onDismiss }: { review
   const buttons = (
     <div className="flex flex-wrap gap-2">
       <button type="button" className={PRIMARY} onClick={() => give("Approved")}>
-        {dropped.size ? `Approve without ${dropped.size} item${dropped.size > 1 ? "s" : ""}` : "Approve"}
+        {approve === "B" && items.length ? "Approve kept items" : dropped.size && approve === "A" ? `Approve without ${dropped.size} item${dropped.size > 1 ? "s" : ""}` : "Approve"}
       </button>
       <button type="button" className={SECONDARY} onClick={() => give("Changes requested")}>
         Request changes
