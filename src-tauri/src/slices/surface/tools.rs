@@ -8,11 +8,12 @@ use serde_json::{json, Value};
 
 use super::arguments::spelled;
 use super::ask::{self, Ask};
-use super::check::{CheckRequest, Checks, Verdict};
+use super::board::{self, Board};
+use super::check::{Accepted, CheckRequest, Checks, Verdict};
 use super::names;
 use super::place::MOST_LIVE;
 use super::read;
-use super::rejection::{QuayFailed, Rejection};
+use super::rejection::{CallError, QuayFailed, Rejection};
 use super::store::{
     AnswerRefused, Answered, BeingSent, CommitRefused, Creation, Dismissed, Locked, Standing, SurfaceKey,
     SurfaceRecord, SurfaceStore, ToType,
@@ -141,6 +142,13 @@ impl SurfaceTools {
                     None => QuayFailed::TerminalOver.result(),
                 },
             }),
+            board::TOOL => Some(match Board::parse(arguments) {
+                Err(rejection) => self.reject(terminal_id, board::TOOL, &rejection),
+                Ok(board) => match Wait::start(self, terminal_id, request) {
+                    Some(wait) => self.show_board(wait, arguments, &board).await,
+                    None => QuayFailed::TerminalOver.result(),
+                },
+            }),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Err(rejection) => self.reject(terminal_id, read::TOOL, &rejection),
                 Ok(body) => {
@@ -187,6 +195,27 @@ impl SurfaceTools {
         }
     }
 
+    /// Shows a board, which sends nothing back, so its call waits for no answer.
+    async fn show_board(&self, wait: Wait, arguments: &Value, board: &Board) -> Value {
+        let terminal_id = wait.terminal_id();
+        let creation =
+            Creation { tool: board::TOOL, arguments, title: &board.title, place: board::PLACE, call: wait.number() };
+        let key = SurfaceKey::new(terminal_id, &board.id);
+        let queue = self.queue(terminal_id);
+        let _one_at_a_time = queue.lock().await;
+        let accepted = match self.check(&key, creation, json!(board)).await {
+            Err(failure) => return failure,
+            Ok(accepted) => accepted,
+        };
+        match self.0.store.commit_board(&key, creation, board, accepted) {
+            Err(refused) => self.commit_refused(&key, creation, refused),
+            Ok(shown) => {
+                self.show_locked(&shown);
+                text_result(json!({ "shown": true }))
+            }
+        }
+    }
+
     fn queue(&self, terminal_id: &str) -> Arc<tokio::sync::Mutex<()>> {
         let mut queues = self.0.queues.lock();
         if let Some(queue) = queues.get(terminal_id).and_then(Weak::upgrade) {
@@ -207,6 +236,13 @@ impl SurfaceTools {
         creation: Creation<'_>,
         arguments: Value,
     ) -> Result<SurfaceRecord, Value> {
+        let accepted = self.check(key, creation, arguments).await?;
+        self.0.store.commit(key, creation, accepted).map_err(|refused| self.commit_refused(key, creation, refused))
+    }
+
+    /// What the webview made of a call it found nothing wrong with. One for a dismissed id is not checked.
+    /// The error is the result its agent gets.
+    async fn check(&self, key: &SurfaceKey, creation: Creation<'_>, arguments: Value) -> Result<Accepted, Value> {
         let SurfaceKey { terminal_id, id } = key;
         let tool = creation.tool;
         if self.0.store.is_dismissed(key, creation) {
@@ -218,20 +254,38 @@ impl SurfaceTools {
                 webview.check(request);
             }
         };
-        let accepted = match self.0.checks.check(tool, id, arguments, self.0.timing.verdict, send).await {
+        match self.0.checks.check(tool, id, arguments, self.0.timing.verdict, send).await {
             None => {
                 tracing::error!("{terminal_id}: no verdict on a {tool} call in {:?}", self.0.timing.verdict);
-                return Err(QuayFailed::NoVerdict.result());
+                Err(QuayFailed::NoVerdict.result())
             }
             Some(Verdict::Failed { errors }) => {
                 tracing::error!("{terminal_id}: Quay's expansion of a {tool} call failed the engine: {errors:?}");
-                return Err(QuayFailed::Expansion.result());
+                Err(QuayFailed::Expansion.result())
             }
-            Some(Verdict::Accepted(accepted)) => accepted,
-        };
-        self.0.store.commit(key, creation, accepted).map_err(|refused| match refused {
+            Some(Verdict::Accepted(accepted)) => Ok(accepted),
+        }
+    }
+
+    /// The result of a call whose surface was not committed.
+    fn commit_refused(&self, key: &SurfaceKey, creation: Creation, refused: CommitRefused) -> Value {
+        let SurfaceKey { terminal_id, id } = key;
+        let tool = creation.tool;
+        match refused {
             CommitRefused::TerminalOver => QuayFailed::TerminalOver.result(),
             CommitRefused::Dismissed => dismissed_result(),
+            // The one tool whose agent chooses the id
+            CommitRefused::IdInUse if tool == board::TOOL => {
+                let error = CallError {
+                    code: "INTEGRITY_ERROR".into(),
+                    surface_id: Some(id.clone()),
+                    path: "/id".to_string(),
+                    message: format!(
+                        "Surface \"{id}\" already exists. Update it, or delete it and create it again."
+                    ),
+                };
+                self.reject(terminal_id, tool, &Rejection::of(error))
+            }
             CommitRefused::IdInUse => {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
@@ -244,7 +298,7 @@ impl SurfaceTools {
                 );
                 self.reject(terminal_id, tool, &Rejection::invalid("", message))
             }
-        })
+        }
     }
 
     /// The result of `terminal_id`'s call of `tool` that `rejection` rejects. The window is told nothing.

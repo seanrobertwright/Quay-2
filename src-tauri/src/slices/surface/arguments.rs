@@ -120,6 +120,19 @@ impl Arguments {
         self.invalid(path, message);
     }
 
+    /// `count`, for a list that may be empty. `has` starts the message: "A board has".
+    pub fn at_most(&mut self, list: &[Value], most: usize, path: &str, has: &str, items: &str) {
+        let length = list.len();
+        if length > most {
+            let (most, place) = (spelled(most), self.place);
+            let message = format!(
+                "{has} at most {most} {items}; this one has {length}. \
+                 For more, send a surface with quay_surface and place {place}."
+            );
+            self.invalid(path, message);
+        }
+    }
+
     /// `text`, which may be at most `limit` characters.
     fn within(&mut self, text: &str, path: String, what: &str, limit: usize) -> String {
         let length = text.chars().count();
