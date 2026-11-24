@@ -490,30 +490,62 @@ fn shell_command(command_text: Option<&str>) -> CommandBuilder {
     }
 }
 
-/// PROTOTYPE (#693), throwaway: launch knobs for `kind`, read at every launch from the JSON
-/// file `QUAY_A2UI_PROTO_KNOBS` names, e.g.
+/// PROTOTYPE (#693), throwaway: launch knobs for one CLI. `mcp_timeout_ms` is Claude's,
+/// `config` (#708) is OpenCode's.
+#[derive(Default, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct ProtoKnobs {
+    args: Vec<String>,
+    env: std::collections::BTreeMap<String, String>,
+    mcp_timeout_ms: Option<std::num::NonZeroU64>,
+    config: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// PROTOTYPE (#693), throwaway: the knobs for `kind`, read at every launch from the JSON file
+/// `QUAY_A2UI_PROTO_KNOBS` names, e.g.
 /// `{"claude": {"args": [], "env": {}, "mcp_timeout_ms": 150000}, "codex": {"args": []}}`.
-fn proto_knobs(kind: RunKind) -> serde_json::Value {
-    let key = serde_json::to_value(kind).ok().and_then(|v| v.as_str().map(str::to_string));
-    std::env::var("QUAY_A2UI_PROTO_KNOBS")
-        .ok()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .zip(key)
-        .map(|(all, key)| all[key.as_str()].clone())
-        .unwrap_or(serde_json::Value::Null)
+/// None are set without the variable. A file that cannot be read or parsed is an error.
+fn proto_knobs(kind: RunKind) -> Result<ProtoKnobs, String> {
+    let Some(path) = std::env::var_os("QUAY_A2UI_PROTO_KNOBS") else { return Ok(ProtoKnobs::default()) };
+    let refused = |e: String| format!("QUAY_A2UI_PROTO_KNOBS {path:?}: {e}");
+    let text = std::fs::read_to_string(&path).map_err(|e| refused(e.to_string()))?;
+    let all: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&text).map_err(|e| refused(e.to_string()))?;
+    let key = serde_json::to_value(kind).map_err(|e| refused(e.to_string()))?;
+    match key.as_str().and_then(|key| all.get(key)) {
+        Some(knobs) => serde_json::from_value(knobs.clone()).map_err(|e| refused(format!("{key}: {e}"))),
+        None => Ok(ProtoKnobs::default()),
+    }
 }
 
 /// PROTOTYPE (#708), throwaway: lays `patch` over `base`, object by object.
-fn proto_merge(base: &mut serde_json::Value, patch: &serde_json::Value) {
-    match (base.as_object_mut(), patch.as_object()) {
-        (Some(base), Some(patch)) => {
-            for (key, value) in patch {
-                proto_merge(base.entry(key.clone()).or_insert(serde_json::Value::Null), value);
+fn proto_merge(
+    base: &mut serde_json::Map<String, serde_json::Value>,
+    patch: serde_json::Map<String, serde_json::Value>,
+) {
+    for (key, value) in patch {
+        match (base.get_mut(&key), value) {
+            (Some(serde_json::Value::Object(base)), serde_json::Value::Object(value)) => {
+                proto_merge(base, value);
+            }
+            (_, value) => {
+                base.insert(key, value);
             }
         }
-        _ => *base = patch.clone(),
     }
+}
+
+/// PROTOTYPE (#708), throwaway: `patch` laid over `passed`, the `OPENCODE_CONFIG_CONTENT` the
+/// terminal would otherwise get.
+fn proto_opencode_config(
+    passed: Option<&str>,
+    patch: serde_json::Map<String, serde_json::Value>,
+) -> Result<String, String> {
+    let passed = passed.ok_or_else(|| format!("{OPENCODE_CONFIG_VAR} is not set"))?;
+    let mut config: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(passed).map_err(|e| format!("{OPENCODE_CONFIG_VAR}: {e}"))?;
+    proto_merge(&mut config, patch);
+    Ok(serde_json::Value::Object(config).to_string())
 }
 
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
@@ -700,26 +732,29 @@ pub(crate) fn build_command(
         }
     }
 
-    // PROTOTYPE (#693), throwaway
-    let knobs = proto_knobs(request.run_kind);
-    if let Some(env) = knobs["env"].as_object() {
-        for (key, value) in env {
-            cmd.env(key, value.as_str().unwrap_or_default());
-        }
+    // PROTOTYPE (#693), throwaway. Knobs that cannot be read stop the launch, so no run is
+    // measured with settings other than the ones asked for.
+    let refuse = |message: &str| {
+        let mut c = message_command(message);
+        c.cwd(&request.project_path);
+        c
+    };
+    let knobs = match proto_knobs(request.run_kind) {
+        Ok(knobs) => knobs,
+        Err(message) => return refuse(&message),
+    };
+    for (key, value) in &knobs.env {
+        cmd.env(key, value);
     }
     // #708: OpenCode's config layer, laid over the one Quay passes
-    if request.run_kind == RunKind::OpenCode && knobs["config"].is_object() {
+    if let Some(patch) = knobs.config.filter(|_| request.run_kind == RunKind::OpenCode) {
         let passed = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
-        let mut config: serde_json::Value =
-            passed.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
-        proto_merge(&mut config, &knobs["config"]);
-        cmd.env(OPENCODE_CONFIG_VAR, config.to_string());
-    }
-    if let Some(args) = knobs["args"].as_array() {
-        for arg in args {
-            cmd.arg(arg.as_str().unwrap_or_default());
+        match proto_opencode_config(passed.as_deref(), patch) {
+            Ok(config) => cmd.env(OPENCODE_CONFIG_VAR, config),
+            Err(message) => return refuse(&message),
         }
     }
+    cmd.args(&knobs.args);
 
     // After the custom flags, so a custom `-c` can't replace them, and before the launch
     // prompt, Codex's positional argument
@@ -755,8 +790,8 @@ pub(crate) fn build_command(
         // PROTOTYPE (#693): the per-server tool timeout, when the knobs set one
         let mut config: serde_json::Value =
             serde_json::from_str(&mcp_config_arg(bridge_port)).unwrap_or_default();
-        if let Some(timeout) = knobs["mcp_timeout_ms"].as_u64() {
-            config["mcpServers"]["quay"]["timeout"] = timeout.into();
+        if let Some(timeout) = knobs.mcp_timeout_ms {
+            config["mcpServers"]["quay"]["timeout"] = timeout.get().into();
         }
         cmd.arg(config.to_string());
     }

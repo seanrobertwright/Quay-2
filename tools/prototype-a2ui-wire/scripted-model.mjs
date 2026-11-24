@@ -2,8 +2,8 @@
 // PROTOTYPE (#708), throwaway. A loopback OpenAI-compatible model with no intelligence, so what
 // a CLI sends its model can be read off the wire. A user message holding
 // "CALL <part of a tool name> [<JSON arguments>]" is answered with that tool call; anything
-// else, and every tool result, is answered with text. Every request body is written to the log.
-// Headers are not. Usage: node scripted-model.mjs <port> <log>
+// else, and every tool result, is answered with text. Every request body is written to the log,
+// as text when it is not JSON. Headers are not. Usage: node scripted-model.mjs <port> <log>
 import { appendFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -18,15 +18,20 @@ const textOf = (content) =>
 createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
-  let body = {};
+  const text = Buffer.concat(chunks).toString("utf8");
+  let body = text;
   try {
-    body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    body = JSON.parse(text);
   } catch {
-    // a request with no JSON body
+    // logged as text, and refused below
   }
   appendFileSync(logPath, `${JSON.stringify({ at: new Date().toISOString(), path: request.url, body })}\n`);
   if (!request.url.endsWith("/chat/completions")) {
     response.writeHead(404).end();
+    return;
+  }
+  if (typeof body !== "object" || body === null) {
+    response.writeHead(400).end();
     return;
   }
   const messages = body.messages ?? [];

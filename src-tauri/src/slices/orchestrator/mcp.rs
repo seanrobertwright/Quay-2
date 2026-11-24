@@ -102,8 +102,18 @@ pub async fn handle_mcp_request(
                 })),
                 error: None,
             };
-            if let (Some(result), Some(text)) = (res.result.as_mut(), super::a2ui_proto::instructions()) {
-                result["instructions"] = text.into();
+            match super::a2ui_proto::instructions() {
+                Ok(Some(text)) => {
+                    if let Some(result) = res.result.as_mut() {
+                        result["instructions"] = text.into();
+                    }
+                }
+                Ok(None) => {}
+                Err(message) => {
+                    super::a2ui_proto::log(&format!("INITIALIZE from {caller_id} refused: {message}"));
+                    res.result = None;
+                    res.error = Some(JsonRpcError { code: -32603, message, data: None });
+                }
             }
             Json(res).into_response()
         }
@@ -541,6 +551,9 @@ mod tests {
                 "machina_submit_work_order",
                 "machina_get_work_order",
                 "machina_submit_deliverable",
+                // PROTOTYPE (#693, #708)
+                "quay_surface_proto",
+                "quay_reject_proto",
             ]
         );
         for tool in tools {

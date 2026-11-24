@@ -33,8 +33,8 @@ const LOG_NAME: &str = "pig-bridge.log";
 
 const MCP_URL_VAR: &str = "QUAY_MCP_URL";
 
-/// Seconds PiG waits on one request to Quay's MCP server: above the 60 seconds a
-/// `wait_for_reply` can take.
+/// Seconds PiG waits on one request to Quay's MCP server: above the 100 seconds a surface's
+/// call waits (#708), and the 60 a `wait_for_reply` can take.
 const MCP_TIMEOUT_SECS: u64 = 150;
 
 /// The answer for a turn that was stopped before it finished.
@@ -63,11 +63,17 @@ fn main() -> ExitCode {
     if let Some(wire) = var("QUAY_A2UI_PROTO_PIG_WIRE") {
         for event in [EVENT_BEFORE_PROVIDER_REQUEST, EVENT_TOOL_RESULT] {
             let wire = wire.clone();
+            let write_log = write_log.clone();
             ext.on_event(event, move |_ctx, data| {
                 use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&wire) {
-                    let line = json!({ "at": unix_ms() as u64, "event": event, "data": data });
-                    let _ = writeln!(file, "{}", line);
+                let line = json!({ "at": unix_ms() as u64, "event": event, "data": data });
+                let written = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&wire)
+                    .and_then(|mut file| writeln!(file, "{}", line));
+                if let Err(e) = written {
+                    write_log(&format!("QUAY_A2UI_PROTO_PIG_WIRE {}: {}", wire, e));
                 }
                 None
             });
@@ -131,12 +137,19 @@ fn mcp_server_config(var: &dyn Fn(&str) -> Option<String>) -> Result<Value, Stri
     if var(TOKEN_VAR).filter(|token| !token.is_empty()).is_none() {
         return Err(format!("{} is not set", TOKEN_VAR));
     }
+    // PROTOTYPE (#708), throwaway: the variable is for the control runs
+    let timeout = match var("QUAY_A2UI_PROTO_PIG_TIMEOUT") {
+        None => MCP_TIMEOUT_SECS,
+        Some(text) => match text.parse::<u64>() {
+            Ok(seconds) if seconds > 0 => seconds,
+            _ => return Err(format!("QUAY_A2UI_PROTO_PIG_TIMEOUT {:?} is not a number of seconds above 0", text)),
+        },
+    };
     Ok(json!({
         "url": url,
         "headers": { "Authorization": format!("Bearer ${{{}}}", TOKEN_VAR) },
         "exposure": "direct",
-        // PROTOTYPE (#708): the variable is for the control runs
-        "timeout": var("QUAY_A2UI_PROTO_PIG_TIMEOUT").and_then(|s| s.parse().ok()).unwrap_or(MCP_TIMEOUT_SECS),
+        "timeout": timeout,
     }))
 }
 

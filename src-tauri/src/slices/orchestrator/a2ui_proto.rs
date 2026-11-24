@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::sync::{mpsc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
@@ -33,11 +33,12 @@ fn surfaces() -> &'static Mutex<HashMap<String, Surface>> {
     SURFACES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Appends a UTC-stamped line to the prototype's log, `QUAY_A2UI_PROTO_LOG` or a file in temp.
+/// Sends a UTC-stamped line to the prototype's log, the file `QUAY_A2UI_PROTO_LOG` names.
+/// Without the variable nothing is written, because a line can hold a whole turn's answer.
+/// The file is written on a thread of its own, so this never blocks.
 pub fn log(line: &str) {
-    let path = std::env::var("QUAY_A2UI_PROTO_LOG")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir().join("quay-a2ui-proto.log"));
+    static LINES: OnceLock<Option<mpsc::Sender<String>>> = OnceLock::new();
+    let Some(lines) = LINES.get_or_init(start_log) else { return };
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let day = now.as_secs() % 86_400;
     let stamp = format!(
@@ -47,16 +48,38 @@ pub fn log(line: &str) {
         day % 60,
         now.subsec_millis()
     );
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "{stamp} {line}");
-    }
+    // It fails only when the writer has ended, which says so itself
+    let _ = lines.send(format!("{stamp} {line}"));
+}
+
+/// Starts the log's writer, or returns `None` when no log is asked for. The writer ends at the
+/// first line it cannot write, and says so on stderr.
+fn start_log() -> Option<mpsc::Sender<String>> {
+    let path = std::env::var_os("QUAY_A2UI_PROTO_LOG")?;
+    let (lines, queue) = mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let written = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut file| queue.iter().try_for_each(|line| writeln!(file, "{line}")));
+        if let Err(e) = written {
+            eprintln!("QUAY_A2UI_PROTO_LOG {path:?} is not being written: {e}");
+        }
+    });
+    Some(lines)
 }
 
 /// The `instructions` text of Quay's handshake reply: the file `QUAY_A2UI_PROTO_INSTRUCTIONS`
-/// names, read at each handshake, or none.
-pub fn instructions() -> Option<String> {
-    let path = std::env::var("QUAY_A2UI_PROTO_INSTRUCTIONS").ok()?;
-    std::fs::read_to_string(path).ok().filter(|text| !text.trim().is_empty())
+/// names, read at each handshake. `None` without the variable; an error when the file cannot
+/// be read or is blank.
+pub fn instructions() -> Result<Option<String>, String> {
+    let Some(path) = std::env::var_os("QUAY_A2UI_PROTO_INSTRUCTIONS") else { return Ok(None) };
+    match std::fs::read_to_string(&path) {
+        Ok(text) if text.trim().is_empty() => Err(format!("QUAY_A2UI_PROTO_INSTRUCTIONS {path:?} is blank")),
+        Ok(text) => Ok(Some(text)),
+        Err(e) => Err(format!("QUAY_A2UI_PROTO_INSTRUCTIONS {path:?}: {e}")),
+    }
 }
 
 /// The `quay_reject_proto` tool: always the spec's rejection object, as an `isError` result.
