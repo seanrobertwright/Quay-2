@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, type Ref } from "react";
 import { z } from "zod";
 import { createComponentImplementation } from "@a2ui/react";
 import { DynamicStringSchema } from "@a2ui/web_core/v1_0";
@@ -24,21 +24,22 @@ interface FileLinkViewProps {
   path: string;
   line: number | undefined;
   label: string | undefined;
+  linkRef: Ref<HTMLButtonElement> | undefined;
 }
 
-const FileLinkView = ({ path, line, label }: FileLinkViewProps) => {
+const FileLinkView = ({ path, line, label, linkRef }: FileLinkViewProps) => {
   const links = useContext(LinksContext);
   const insideButton = useContext(InsideButton);
   const address = line === undefined ? path : `${path}:${line}`;
   if (!links || insideButton || path === "") return label ?? address;
   return (
-    <PointedLink links={links} address={address} onClick={() => duringClick("showFile", () => links.effects.showFile(path, line))}>
+    <PointedLink ref={linkRef} links={links} address={address} onClick={() => duringClick("showFile", () => links.effects.showFile(path, line))}>
       <FileLabel>{label ?? address}</FileLabel>
     </PointedLink>
   );
 };
 
 /** A link that shows a file at the operator's click. The path is judged then. */
-export const FileLink = createComponentImplementation(FileLinkApi, ({ props }) => (
-  <FileLinkView {...namedFile(props)} label={textOf(props.label) || undefined} />
+export const FileLink = createComponentImplementation(FileLinkApi, ({ props, accessibilityRef }) => (
+  <FileLinkView {...namedFile(props)} label={textOf(props.label) || undefined} linkRef={accessibilityRef} />
 ));

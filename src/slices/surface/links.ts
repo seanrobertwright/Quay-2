@@ -8,6 +8,10 @@ export interface SurfaceEffects {
   openUrl: (url: string) => void;
   /** Shows a file: in the file manager, or in the diff view when it has uncommitted changes. */
   showFile: (path: string, line?: number) => void;
+  /** Selects a terminal of the surface's own project, by its id or its exact name. */
+  focusTerminal: (terminal: string) => void;
+  /** Puts a text on the clipboard. */
+  copyText: (text: string) => void;
 }
 
 export interface SurfaceLinks {

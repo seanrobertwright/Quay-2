@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState, type Ref } from "react";
-import { shownAddress, type ImageTarget } from "../../imageTarget.ts";
+import type { ImageTarget } from "../../imageTarget.ts";
+import { shownText } from "../../shownText.ts";
 import { ImagesContext, READING, type ImageReading } from "../../surfaceImages.ts";
 
 interface RefusedImageProps {
@@ -15,7 +16,7 @@ const RefusedImage = ({ name, why, address }: RefusedImageProps) => (
     <span>{why}</span>
     {address !== "" && (
       <bdi dir="ltr" className="font-mono">
-        {shownAddress(address)}
+        {shownText(address)}
       </bdi>
     )}
   </span>

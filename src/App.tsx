@@ -72,6 +72,7 @@ import { SourceControlPanel } from "./slices/github/SourceControlPanel";
 import { GithubIssue, GithubPullRequest } from "./slices/github/types";
 import type { LinkRef, LinkSlotName, RunKind, TerminalInfo } from "./slices/terminal/types";
 import { getGlobalTerminalDimensions } from "./slices/terminal/useTerminal";
+import { useTerminalSelectionRequests } from "./slices/terminal/useTerminalSelectionRequests";
 import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
 import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
@@ -788,6 +789,7 @@ export function App() {
     select(id);
   };
   const showTerminal = inFront(selectTerminal);
+  useTerminalSelectionRequests(terminals, showTerminal);
 
   // A companion view for a terminal, once it is the selected one: selecting a terminal in another
   // project lands a moment later, and the companion takes a request only for the selected terminal.

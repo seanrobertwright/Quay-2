@@ -1,13 +1,11 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
-import { LinksContext } from "../links.ts";
 import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
 import { sameSurface } from "../surfaceAttention.ts";
 import type { CreateSurface, SentAction, SurfaceRecord } from "../surfaceTypes.ts";
 import { followUnsent, unsentIn } from "../unsent.ts";
 import { actionMessage } from "./actionMessage.ts";
-import { giveEffects } from "./effects.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
 
 type OnAction = (action: SentAction) => Promise<void>;
@@ -93,10 +91,6 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
     live.onAction = onAction;
   }, [live, onAction]);
   const [images] = useState(() => surfaceImages(record));
-  const links = useContext(LinksContext);
-  useEffect(() => {
-    if (links) giveEffects(live.surface, links.effects);
-  }, [live, links]);
   useEffect(() => followUnsent(record, live.data), [record, live]);
   const { components } = record.state.createSurface;
   const value = useMemo(() => (layout ? { Layout: layout, components, data: live.data } : null), [layout, components, live]);

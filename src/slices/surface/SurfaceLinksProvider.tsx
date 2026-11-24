@@ -15,7 +15,7 @@ interface SurfaceLinksProviderProps {
   children: ReactNode;
 }
 
-/** What a frame holds, with the foot that says where its links lead and why one opened nothing. */
+/** What a frame holds, with the foot that says where its links lead and why a click did nothing. */
 export const SurfaceLinksProvider = ({ terminalId, children }: SurfaceLinksProviderProps) => {
   const footId = useId();
   const [count, setCount] = useState(0);
