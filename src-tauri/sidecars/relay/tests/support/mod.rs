@@ -1,5 +1,8 @@
 //! The relay as a child process, and the listener it talks to.
 
+// Each test file uses its own part of this
+#![allow(dead_code)]
+
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
@@ -212,9 +215,18 @@ impl Relay {
         self.child.stdout = None;
     }
 
+    /// The relay's stdin, for a thread that writes to it for as long as the relay reads.
+    pub fn take_stdin(&mut self) -> ChildStdin {
+        self.stdin.take().unwrap()
+    }
+
     /// How the relay exits, if it exits soon.
     pub fn exits_soon(&mut self) -> Option<ExitStatus> {
-        let deadline = Instant::now() + SOON;
+        self.exits_within(SOON)
+    }
+
+    pub fn exits_within(&mut self, limit: Duration) -> Option<ExitStatus> {
+        let deadline = Instant::now() + limit;
         while Instant::now() < deadline {
             if let Some(status) = self.child.try_wait().unwrap() {
                 return Some(status);

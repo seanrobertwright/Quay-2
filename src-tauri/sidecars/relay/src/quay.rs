@@ -2,6 +2,7 @@
 
 use std::net::Ipv4Addr;
 use std::pin::pin;
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
 use hyper::body::Bytes;
@@ -10,6 +11,11 @@ use hyper::{Request, Uri};
 use hyper_util::rt::TokioIo;
 use quay_bridge_post::parse_loopback_url;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
+
+/// How long one message may take, from the connection to the end of the reply: above the
+/// 100 s a surface's call waits for its answer, and below the 150 s a CLI gives the call.
+const REPLY_LIMIT: Duration = Duration::from_secs(120);
 
 /// The most bytes a reply may have.
 const MAX_REPLY: usize = 4 * 1024 * 1024;
@@ -46,8 +52,14 @@ impl Quay {
 
     /// Posts `body` on a connection of its own, and returns the body of a 2xx answer. Nothing
     /// follows a redirect and nothing is sent twice. Dropping the future closes the
-    /// connection.
+    /// connection, and so does `REPLY_LIMIT`.
     pub async fn post(&self, body: Bytes) -> Result<Bytes, String> {
+        timeout(REPLY_LIMIT, self.exchange(body))
+            .await
+            .unwrap_or_else(|_| Err(format!("Quay did not reply in {} s.", REPLY_LIMIT.as_secs())))
+    }
+
+    async fn exchange(&self, body: Bytes) -> Result<Bytes, String> {
         let closed = |_| CLOSED.to_string();
         let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, self.port)).await.map_err(|_| UNREACHABLE.to_string())?;
         let (mut sender, connection) =

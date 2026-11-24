@@ -4,6 +4,7 @@ use std::io::{BufRead, Read, Write};
 use std::time::Duration;
 
 use hyper::body::Bytes;
+use tokio::sync::mpsc::error::SendTimeoutError;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::oneshot;
 use tokio::time::timeout;
@@ -18,6 +19,9 @@ const MAX_SCAN: u64 = 16 * 1024 * 1024;
 
 /// How many replies may wait for the CLI to read its end of stdout.
 const QUEUED: usize = 16;
+
+/// How long the CLI may leave a full queue unread.
+const READ_LIMIT: Duration = Duration::from_secs(30);
 
 /// How long what is already queued for stdout gets to go out once stdin has closed.
 const FLUSH_LIMIT: Duration = Duration::from_secs(1);
@@ -94,10 +98,12 @@ impl<R: BufRead> Read for RestOfLine<'_, R> {
 pub struct Out(Sender<Bytes>);
 
 impl Out {
-    /// Queues `line`, which must hold no line break.
+    /// Queues `line`, which must hold no line break. Once the queue has been full for
+    /// `READ_LIMIT`, the CLI is taken to be gone or stuck, and the relay ends.
     pub async fn send(&self, line: Bytes) {
-        // A send fails only when stdout has closed, which ends the relay
-        let _ = self.0.send(line).await;
+        if let Err(SendTimeoutError::Timeout(_)) = self.0.send_timeout(line, READ_LIMIT).await {
+            std::process::exit(1);
+        }
     }
 
     /// Waits until stdout has closed.

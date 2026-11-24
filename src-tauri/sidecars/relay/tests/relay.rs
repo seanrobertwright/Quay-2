@@ -270,10 +270,15 @@ fn it_exits_when_its_stdin_closes_and_closes_every_open_call() {
 #[test]
 fn what_it_has_answered_is_written_before_it_exits() {
     let mut relay = Relay::with_env(&[]);
-    relay.send(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
-    relay.send(r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#);
+    for id in 1..=4 {
+        relay.send(&initialize_of_a_megabyte(id));
+    }
     let (stdout, _) = relay.finish();
-    assert_eq!(stdout, [r#"{"id":1,"jsonrpc":"2.0","result":{}}"#, r#"{"id":2,"jsonrpc":"2.0","result":{}}"#]);
+    let ids: Vec<serde_json::Value> = stdout
+        .iter()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("a whole reply")["id"].clone())
+        .collect();
+    assert_eq!(ids, [1, 2, 3, 4]);
 }
 
 #[test]
