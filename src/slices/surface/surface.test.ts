@@ -77,7 +77,7 @@ test("a check the webview missed while it loaded is answered, after it listens a
 
   assert.deepEqual(
     calls.map((c) => c.cmd),
-    ["surface_list", "surface_checks", "surface_verdict"],
+    ["surface_open_page", "surface_list", "surface_checks", "surface_verdict"],
   );
   assert.equal(verdicts()[0].call, 7);
   assert.ok("state" in verdicts()[0].verdict, "accepted");
