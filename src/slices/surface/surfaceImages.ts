@@ -1,5 +1,5 @@
-// The image files of a drawn surface: Rust reads each once, and what it gave is a blob URL for as long
-// as something in the surface draws it.
+// The image files of a drawn surface: Rust reads each once for as long as something in the surface draws
+// it, and what it gave is a blob URL for that long.
 import { createContext } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { SurfaceKey } from "./surfaceTypes.ts";
