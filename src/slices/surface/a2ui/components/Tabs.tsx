@@ -15,7 +15,9 @@ interface TabsViewProps {
 }
 
 const TabsView = ({ tabs, written, buildChild, groupRef }: TabsViewProps) => {
-  const [picked, setPicked] = useState(0);
+  const [last, setPicked] = useState(0);
+  // An update can take the last pick away
+  const picked = last < tabs.length ? last : 0;
   const tab: unknown = Array.isArray(written) ? written[picked] : undefined;
   return (
     <div className="flex min-w-0 flex-col gap-2.5">

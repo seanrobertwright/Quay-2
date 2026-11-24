@@ -109,6 +109,31 @@ test("an update is drawn in place, and the field the operator is in keeps what t
   assert.deepEqual([sent.revision, sent.answer.action.context], [2, { name: "Ada", note: "from the agent" }]);
 });
 
+test("an update that takes away the tab the operator picked draws the first one, and any other pick stays", async () => {
+  const tabs = (...ids: string[]): Component => ({ id: "tabs", component: "Tabs", tabs: ids.map((id) => ({ title: `Tab ${id}`, child: id })) });
+  const parts = (shown: string[], rest: string[]): Component[] => [
+    { id: "root", component: "Column", children: ["tabs", ...rest] },
+    tabs(...shown),
+    ...["a", "b", "c"].map((id) => text(id, `In ${id}`)),
+  ];
+  const [go, label] = button("go", { event: { name: "send", context: {} } });
+  const withButton = ([root, ...others]: Component[]): Component[] => [{ ...root, children: [...(root.children as string[]), "go"] }, ...others, go, label];
+  const pressed = (container: HTMLElement) => [...content(container).querySelectorAll('[aria-pressed="true"]')].map(({ textContent }) => textContent);
+  for (const [pick, drawn, gone] of [["Tab c", "Tab a", "In b"], ["Tab b", "Tab b", "In a"]]) {
+    const record = await acceptedRaw([create(withButton(parts(["a", "b", "c"], [])))]);
+    list = [record];
+    const container = await openSurfaces();
+    await act(async () => findButton(content(container), pick)!.click());
+    const { createSurface } = (await acceptedRaw([create(withButton(parts(["a", "b"], ["c"])))])).state;
+    await arrivesAndIsDrawn(changed(record, { revision: 2, state: { version: "1.0", createSurface } }));
+    assert.deepEqual(pressed(container), [drawn]);
+    const said = content(container).textContent!;
+    assert.deepEqual([said.includes(drawn.replace("Tab", "In")), said.includes(gone)], [true, false], pick);
+    await unmount(mounted!);
+    mounted = null;
+  }
+});
+
 test("what the operator typed at a path the update sets is gone, also at one under it or that holds it", async () => {
   const record = await acceptedRaw([create([...column(text("said", "First"), FIELD, { ...NOTE, value: { "@path": "/deep/note" } })], { dataModel: { name: "", deep: { note: "" } } })]);
   const cases: [Record<string, number>, string[]][] = [
