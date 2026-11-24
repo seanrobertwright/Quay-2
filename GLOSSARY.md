@@ -177,6 +177,14 @@ _Avoid_: dead, orphaned
 Said of an asking surface its agent deleted before the operator answered.
 _Avoid_: cancelled, retracted
 
+**Locked**:
+Said of a surface that is settled, ended or withdrawn: it can be read, and not answered.
+_Avoid_: frozen, archived
+
+**Earlier**:
+The fold beneath a terminal's questions in the Surface view that its locked surfaces are in.
+_Avoid_: history, archive
+
 **Relay**:
 The stdio program that connects a CLI with only static configuration to Quay's MCP server.
 _Avoid_: proxy, bridge (the event bridge is another thing)

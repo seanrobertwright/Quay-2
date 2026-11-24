@@ -10,7 +10,7 @@ import type { SurfaceRecord } from "./surfaceTypes.ts";
 import type { Mounted } from "./fixtures/askFixtures.ts";
 import { acceptedAsk, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
-const { findButton: button, mountCompanion, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { findButton: button, mountCompanion, openLocked, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 let list: SurfaceRecord[];
 /** What each `surface_answer` sent. */
@@ -306,6 +306,7 @@ test("once sent, the frame shows each question with its answer, and when it was 
   await settle();
   // The companion went back to its earlier view
   await act(async () => viewEntry(mounted!.container, "Surface")!.click());
+  await openLocked(mounted!.container, "ask_1");
 
   const settled = mounted!.container.querySelector<HTMLElement>("[data-surface]")!;
   assert.deepEqual(
@@ -320,7 +321,7 @@ test("once sent, the frame shows each question with its answer, and when it was 
   const time = settled.querySelector("time")!;
   assert.equal(time.textContent, "19:42:05");
   assert.equal(parseUtcTimestamp(time.dateTime), at);
-  assert.equal(settled.querySelectorAll("[data-surface-content] :is(input, textarea, button)").length, 0);
+  assert.equal(settled.querySelectorAll("[data-surface-content] :is(input, textarea)").length, 0);
 });
 
 test("an ask at every limit is drawn whole", async () => {

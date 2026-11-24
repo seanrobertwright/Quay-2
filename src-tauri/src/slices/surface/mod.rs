@@ -3,7 +3,7 @@
 //! An agent's call is checked here (`ask`), then by the webview on a scratch copy of the engine
 //! (`check`), then committed (`store`), then drawn. `tools` runs those steps and waits for the answer
 //! (`wait`), which is typed into the terminal (`typing`) once no call is open to return it. `read` tells
-//! an agent where a surface stands.
+//! an agent where a surface stands. A terminal's surfaces end with its launch, and go when it closes.
 
 mod arguments;
 mod ask;

@@ -11,6 +11,7 @@ import { terminalInfo } from "../companion/fixtures/companionFixtures.ts";
 import { acceptedAsk, called, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
 const { useSurfacesOf } = await import("./surfaceHost.ts");
+const { earlierButton, openLocked } = await import("./fixtures/askFixtures.ts");
 const { SurfaceView } = await import("./SurfaceView.tsx");
 
 const TERMINAL = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
@@ -109,7 +110,10 @@ test("a dismissal that is refused says why, and can be tried again", async () =>
 
 test("an answered question can be dismissed", async () => {
   list = [{ ...(await accepted("ask_1")), answer: ANSWER }];
-  await open();
+  loadSurfaces();
+  await act(async () => root.render(createElement(View)));
+  await until(() => earlierButton(container) !== undefined, "the surface was never drawn");
+  await openLocked(container, "ask_1");
   await act(async () => dismissOf(regions()[0]).click());
   assert.deepEqual(called("surface_dismiss"), [{ terminalId: "t1", id: "ask_1" }]);
 });

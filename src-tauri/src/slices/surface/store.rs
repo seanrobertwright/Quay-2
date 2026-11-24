@@ -285,8 +285,8 @@ impl Left {
 }
 
 /// A terminal that has been listed and not closed: its surfaces, in the order they were committed,
-/// where those that have left stand, how many asks have been named, its rejected calls, and its calls
-/// that have not returned.
+/// where those that have left stand, the ids the operator dismissed, how many asks have been named, its
+/// rejected calls, and its calls that have not returned.
 #[derive(Default)]
 struct Terminal {
     /// Its latest launch.

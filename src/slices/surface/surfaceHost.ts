@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isLive, type CheckRequest, type SurfaceKey, type SurfaceRecord, type Verdict } from "./surfaceTypes.ts";
-import { closePage, dropUnsent, keepUnsent, openPage, type Page } from "./unsent.ts";
+import { closePage, dropUnsent, keepEnded, keepUnsent, openPage, type Page } from "./unsent.ts";
 
 /** The A2UI module. It is large, so nothing imports it until the shell has been drawn. */
 export const loadA2ui = () => import("./a2ui/index.ts");
@@ -33,8 +33,10 @@ function keep(record: SurfaceRecord): void {
   const surfaces = byTerminal.get(record.terminal_id) ?? NONE;
   const kept = surfaces.find((s) => s.id === record.id);
   if (kept && kept.change >= record.change) return;
-  // Before anything draws again: what goes off the screen by it sends nothing more
+  // Before anything draws again: what goes off the screen by it sends nothing more, and one that ended
+  // is drawn with all that was put in it
   if (isLive(record)) keepUnsent(record);
+  else if (record.ended_at !== null) keepEnded(record);
   else dropUnsent(record);
   const next = [...surfaces.filter((s) => s !== kept), record].sort((a, b) => a.order - b.order);
   set(new Map(byTerminal).set(record.terminal_id, next));
@@ -138,6 +140,11 @@ export const useSurfacesRead = (): boolean => useSyncExternalStore(subscribeToSu
 /** Dismisses a surface. It rejects with Quay's words for why it stays. */
 export function dismissSurface({ terminal_id, id }: SurfaceKey): Promise<void> {
   return invoke("surface_dismiss", { terminalId: terminal_id, id });
+}
+
+/** Dismisses those of `terminalId`'s surfaces `ids` that are locked, of which no agent is told. It rejects with why they stay. */
+export function dismissLocked(terminalId: string, ids: readonly string[]): Promise<void> {
+  return invoke("surface_dismiss_locked", { terminalId, ids });
 }
 
 /** Sends the operator's answer. It rejects with Quay's words for why it was not taken. */
