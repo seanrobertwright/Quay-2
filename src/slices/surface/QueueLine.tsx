@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { formatWait } from "../../lib/dates.ts";
+import { formatTimeWaited } from "../../lib/dates.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
 
-/** How often a line reads its wait again, in milliseconds. */
+/** How often a line reads again how long its question has waited, in milliseconds. */
 const TICK_MS = 30_000;
 
 /** How long something has waited since `ms`, kept true while it is drawn. */
@@ -17,7 +17,7 @@ const Waited = ({ since }: { since: number }) => {
   return (
     <span className="shrink-0 text-[10px] text-[#8b949e]">
       <span className="sr-only">Waiting: </span>
-      {formatWait(since)}
+      {formatTimeWaited(since)}
     </span>
   );
 };

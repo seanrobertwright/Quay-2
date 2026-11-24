@@ -5,7 +5,7 @@ import {
   formatLocalDateTimeInput,
   formatUtcDateTime,
   formatUtcTimestamp,
-  formatWait,
+  formatTimeWaited,
   startOfLocalDay,
   localPartsOf,
   localTimeZoneName,
@@ -68,7 +68,7 @@ test("a moment writes as the UTC timestamp GitHub takes, and its local day start
   assert.equal(startOfLocalDay(ms), Date.UTC(2026, 10, 14, 5, 0));
 });
 
-test("a wait reads in whole minutes, then hours and minutes, then days", () => {
+test("a time waited reads in whole minutes, then hours and minutes, then days", () => {
   const MINUTE = 60_000;
   const cases: [number, string][] = [
     [0, "just now"],
@@ -83,5 +83,5 @@ test("a wait reads in whole minutes, then hours and minutes, then days", () => {
     [-5 * MINUTE, "just now"],
     [NaN, "just now"],
   ];
-  for (const [waited, said] of cases) assert.equal(formatWait(1_000_000, 1_000_000 + waited), said);
+  for (const [waited, said] of cases) assert.equal(formatTimeWaited(1_000_000, 1_000_000 + waited), said);
 });

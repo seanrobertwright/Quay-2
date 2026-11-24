@@ -46,7 +46,7 @@ export function formatRelative(ms: number, now: number = Date.now()): string {
 }
 
 /** How long something has waited since `ms`, as "just now", "12 min", "1 h 39 min" or "2 d 3 h"; a future start reads as "just now". */
-export function formatWait(ms: number, now: number = Date.now()): string {
+export function formatTimeWaited(ms: number, now: number = Date.now()): string {
   const min = Math.floor((now - ms) / 60_000);
   if (!Number.isFinite(min) || min < 1) return "just now";
   if (min < 60) return `${min} min`;
