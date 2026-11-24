@@ -5,6 +5,7 @@ import {
   formatLocalDateTimeInput,
   formatUtcDateTime,
   formatUtcTimestamp,
+  formatRunClock,
   formatTimeWaited,
   startOfLocalDay,
   localPartsOf,
@@ -84,4 +85,18 @@ test("a time waited reads in whole minutes, then hours and minutes, then days", 
     [NaN, "just now"],
   ];
   for (const [waited, said] of cases) assert.equal(formatTimeWaited(1_000_000, 1_000_000 + waited), said);
+});
+
+test("formatRunClock reads minutes and seconds, with hours from the first, and never less than none", () => {
+  const cases: [number, string][] = [
+    [0, "00:00"],
+    [999, "00:00"],
+    [252_000, "04:12"],
+    [3_599_000, "59:59"],
+    [3_852_000, "1:04:12"],
+    [108_000_000, "30:00:00"],
+    [-5_000, "00:00"],
+    [Number.NaN, "00:00"],
+  ];
+  for (const [ms, said] of cases) assert.equal(formatRunClock(ms), said);
 });
