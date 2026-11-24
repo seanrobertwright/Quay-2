@@ -34,6 +34,8 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 - **`agents/`**: The Agents panel: Waiting on you, agents in the project, saved swarms and session history.
 - **`orchestrator/`**: The A2A message trail, the Broadcast to all agents dialog, the swarm builder and its saved presets, and the live dispatch toasts.
 - **`github/`**: The Source control panel: the repository's pull requests and issues with state, search and label filters and capped paging, plus the Topos, Diffs and Pre-PR Audit tools.
+- **`cards/`**: Quay's own decision cards, on one shell that carries the Quay mark: the accent edge and glow and the QUAY badge. The permission request is one.
+- **`parts/`**: Plain button, text field and option row, for Quay's cards and for the components of agent surfaces. Lint holds the boundary between the two: only `src/slices/surface/a2ui/`, the A2UI module's folder, may import `@a2ui/*`; `cards/` may not import that folder, that folder may not import `cards/`, and `parts/` imports neither.
 - **`archon/`**: Visual DAG execution canvas, live node status inspector, streaming execution logs, and spec task trackers.
 - **`machina/`**: Machina, Quay's local factory: the work order detail, the work order composer and the project gate config.
 - **`workflows/`**: The Workflows panel (engine strip, Needs you, Running, Start, Recent) over Archon, the Machina Factory and Praxis, the companion's Run view with each run's decision, the run lens, and the Factory's New work order and Factory config stage tabs.
