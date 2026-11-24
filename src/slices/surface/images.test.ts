@@ -221,6 +221,25 @@ test("a reading has nothing to fetch, and says that it is under way", async () =
   assert.equal(images(content).length, 0);
 });
 
+test("how a reading ends is said in the status that said it was under way", async () => {
+  const ends = new Map<string, { give: (read: ArrayBuffer) => void; refuse: (why: string) => void }>();
+  onImage = (path) => new Promise((give, refuse) => ends.set(path, { give, refuse }));
+  const content = await draw(surfaceOf([image("a", "a.png"), image("b", "b.png"), image("web", "https://a.example/x.png")]));
+  const [first, second, ...others] = content.querySelectorAll('[role="status"]');
+  assert.equal(others.length, 0, "what is refused from the start is no change");
+  assert.deepEqual([first.textContent, second.textContent], ["Reading the image", "Reading the image"]);
+
+  await act(async () => ends.get("a.png")!.refuse("There is no such file."));
+  await act(async () => ends.get("b.png")!.give(bytes(...PNG)));
+  await settle();
+  assert.equal(first.isConnected && second.isConnected, true);
+  assert.deepEqual([first.textContent, second.textContent], ["There is no such file.a.png", ""]);
+  assert.equal(second.contains(images(content)[0]), false);
+
+  await act(async () => void images(content)[0].dispatchEvent(new Event("error")));
+  assert.equal(second.textContent, "It could not be drawn.b.png");
+});
+
 test("an image goes by its accessibility label, then its description, and with neither only decorates", async () => {
   const content = await draw(
     surfaceOf(

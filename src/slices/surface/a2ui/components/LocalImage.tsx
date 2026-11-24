@@ -43,10 +43,18 @@ const ReadImage = ({ path, address, name, className, ref }: Omit<LocalImageProps
   const reading = useReading(path);
   // The URL whose bytes the webview could not draw
   const [bad, setBad] = useState<string | null>(null);
-  if (reading.state === "reading") return <span className="text-[11px] text-[#8b949e]">Reading the image{name === "" ? "" : `: ${name}`}</span>;
-  if (reading.state === "refused") return <RefusedImage name={name} why={reading.why} address={address} />;
-  if (reading.url === bad) return <RefusedImage name={name} why="It could not be drawn." address={address} />;
-  return <img ref={ref} src={reading.url} alt={name} draggable={false} onError={() => setBad(reading.url)} className={className} />;
+  const url = reading.state === "read" && reading.url !== bad ? reading.url : null;
+  const why = reading.state === "refused" ? reading.why : "It could not be drawn.";
+  return (
+    <>
+      {url !== null && <img ref={ref} src={url} alt={name} draggable={false} onError={() => setBad(url)} className={className} />}
+      {/* There from the start, so that a change in it is told */}
+      <span role="status">
+        {reading.state === "reading" && <span className="text-[11px] text-[#8b949e]">Reading the image{name === "" ? "" : `: ${name}`}</span>}
+        {reading.state !== "reading" && url === null && <RefusedImage name={name} why={why} address={address} />}
+      </span>
+    </>
+  );
 };
 
 /** An image file on this computer, or a box that says why there is none. */
