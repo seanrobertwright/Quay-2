@@ -100,3 +100,18 @@ test("a request whose input is all in the Activity view's summary offers no Whol
   const { container } = render({ permission });
   assert.ok(!button(container, "Whole input"));
 });
+
+/** How many QUAY badges `root` draws where a screen reader reads them. */
+const badges = (root: HTMLElement) =>
+  [...root.querySelectorAll("span")].filter((span) => span.textContent === "QUAY" && !span.closest('[aria-hidden="true"]')).length;
+
+test("the reply strip carries the QUAY badge, without the glow, while it asks for an answer", () => {
+  const { container } = render({ permission });
+  assert.equal(badges(container), 1);
+  assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow in a lens");
+});
+
+test("a reply strip with nothing to answer carries no QUAY badge", () => {
+  const { container } = render({ permission: null });
+  assert.equal(badges(container), 0);
+});
