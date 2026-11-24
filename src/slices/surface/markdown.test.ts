@@ -57,6 +57,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     change: 1,
     asks: false,
     answer: null,
+    answered_at: null,
   };
 }
 
@@ -159,7 +160,7 @@ test("plain text a typed tool puts in a Text is shown as it is written", async (
 test("a question is plain text, whatever it holds", async () => {
   const { expand } = await import("./typed/ask.ts");
   const question = "Use **bold** or [this](https://a.example)?";
-  const { createSurface } = expand({ questions: [{ question, options: [{ label: "Yes", recommended: false }] }] }, "ask_1");
+  const { createSurface } = expand({ questions: [{ question, options: [{ label: "Yes", recommended: false }], multiple: false }] }, "ask_1");
   const part = createSurface.components.find(({ id }) => id === "q0_question")!;
   const content = await drawText(String(part.text));
 
@@ -499,7 +500,7 @@ test("inside a Button only inline formatting is drawn, and no link", async () =>
       { id: "b_file", component: "FileLink", path: "a.ts" },
     ]),
   );
-  const [first, second, ...others] = container.querySelectorAll("button");
+  const [first, second, ...others] = container.querySelectorAll<HTMLElement>("[data-surface-content] button");
   assert.equal(others.length, 0, "no link is in one");
   assert.equal(first.textContent?.replace(/\s+/g, " "), "# Open the plan here file - one > two | a | | - |");
   assert.equal(second.textContent, "1. Showa.ts");
