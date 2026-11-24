@@ -281,6 +281,8 @@ test("an answered question is locked with its answer, and an older record does n
   await act(async () => emitEvent("surface-changed", { ...asked, change: 2, answer: REBASE }));
   await act(async () => emitEvent("surface-changed", asked));
   await settle();
+  // The companion went back to its earlier view
+  await act(async () => viewEntry(container, "Surface")!.click());
   const region = regions(container)[0];
   assert.equal(region.querySelector('[role="status"]')?.textContent, "Answered and sent to the agent.");
   for (const text of ["Which base should this branch take?", "Rebase onto master", "skip the suite"]) assert.ok(region.textContent?.includes(text), text);

@@ -17,6 +17,8 @@ export interface CompanionActivity {
   messages: readonly TrailMessage[];
   /** Everything waiting on the operator, oldest first, from the attention queue. */
   waiting: readonly AttentionItem[];
+  /** Whether `waiting` holds the requests that were pending when the page loaded; absent means it does. */
+  permissionsRead?: boolean;
   answer: AnswerPermission;
 }
 
