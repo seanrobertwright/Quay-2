@@ -2,6 +2,7 @@
 // Component tests for the companion's Run view (#645): the picked run or work order and its
 // decision. Tauri's `invoke`, the out-of-process boundary, is faked and records each call.
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { inset } from "../../test-support/insets.ts";
 import { installShellLook } from "../../test-support/shellLook.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -234,12 +235,6 @@ for (const [title, source, buttons] of DECISIONS) {
     assert.deepEqual(buttonNames(card), buttons);
   });
 }
-
-/** The inset under `label`, a box of its own with that accessible name. */
-const inset = (root: Element, label: string) =>
-  [...root.querySelectorAll<HTMLElement>('[role="group"]')].find(
-    (box) => document.getElementById(box.getAttribute("aria-labelledby") ?? "")?.textContent === label,
-  );
 
 test("a hold's summary is inset under Quay's own label, verbatim, and the hold's options follow it", async () => {
   const summary = "Agent **fix-75** submitted this\n  [admit](http://example.com) <b>now</b>";

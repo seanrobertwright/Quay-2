@@ -3,6 +3,7 @@
 // what the card shows while it has none, and when the prompt is read. Tauri's `invoke`, the
 // out-of-process boundary, is faked: `archon_get_run_detail` answers with a run's pending approval.
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { inset } from "../../test-support/insets.ts";
 import { afterEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -90,11 +91,6 @@ const click = async (root: Element, name: string) => {
   assert.ok(button !== undefined, `there is a ${name} button`);
   await act(async () => button.click());
 };
-/** The inset under `label`, a box of its own with that accessible name. */
-const inset = (root: Element, label: string) =>
-  [...root.querySelectorAll<HTMLElement>('[role="group"]')].find(
-    (box) => document.getElementById(box.getAttribute("aria-labelledby") ?? "")?.textContent === label,
-  );
 const typeComment = async (root: Element, text: string) => {
   const field = root.querySelector<HTMLTextAreaElement>("textarea")!;
   await act(async () => {
