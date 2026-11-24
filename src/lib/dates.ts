@@ -32,6 +32,14 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
+/** A clock that has run for a time, e.g. "04:12" or "1:04:12"; less than none reads as none. */
+export function formatRunClock(ms: number): string {
+  const totalSec = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 1000)) : 0;
+  const hours = Math.floor(totalSec / 3600);
+  const minSec = `${String(Math.floor(totalSec / 60) % 60).padStart(2, "0")}:${String(totalSec % 60).padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${minSec}` : minSec;
+}
+
 /** "just now", "12s ago", "5m ago", "3h ago", "2d ago"; future times read as "just now". */
 export function formatRelative(ms: number, now: number = Date.now()): string {
   const diff = now - ms;

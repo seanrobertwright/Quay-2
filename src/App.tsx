@@ -4,6 +4,7 @@ import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { startSurfaces } from "./slices/surface/surfaceHost";
 import type { SurfaceKey } from "./slices/surface/surfaceTypes";
+import { openBoard } from "./slices/surface/strip/openBoards.ts";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
@@ -853,6 +854,10 @@ export function App() {
   const openActivity = (terminalId: string, entryId?: string) => showCompanionView(terminalId, "activity", entryId);
   // A terminal row's chip and its pane title's button open one of the terminal's surfaces.
   const openSurface = ({ terminal_id, id }: SurfaceKey) => {
+    if (openBoard({ terminal_id, id })) {
+      showTerminal(terminal_id);
+      return;
+    }
     if (terminal_id !== activeTerminalId) showTerminal(terminal_id);
     setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id });
   };

@@ -9,6 +9,8 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
 
+use super::board::Board;
+use super::board_run::BoardRun;
 use super::calls::{Handed, OpenCalls};
 use super::check::Accepted;
 use super::place::{Place, MOST_LIVE};
@@ -17,8 +19,8 @@ use super::typing::NotTyped;
 use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
 use crate::dates::now_ms;
 
-/// The most locked surfaces a terminal keeps. Past it the one that locked first leaves at once, which
-/// counts as deleted.
+/// The most locked surfaces a terminal keeps. Past it the one whose last change is the oldest leaves at
+/// once, which counts as deleted. That change is its lock, or the last its agent sent of a board after it.
 const MOST_LOCKED: usize = 10;
 
 /// The most images a surface may have, each time one is shown counted.
@@ -47,6 +49,7 @@ pub struct SurfaceRecord {
     pub terminal_id: String,
     pub id: String,
     pub tool: String,
+    pub place: Place,
     /// The accepted state as one compact `createSurface`.
     pub state: Value,
     /// Which version of the content `state` is. An answer names the one it was given to.
@@ -65,6 +68,8 @@ pub struct SurfaceRecord {
     pub answered_at: Option<i64>,
     /// When its terminal exited before it was settled, in milliseconds since the epoch.
     pub ended_at: Option<i64>,
+    /// The run a board shows. Other surfaces have none.
+    pub board: Option<BoardRun>,
 }
 
 /// Why an answer was not taken. The surface is as it was.
@@ -83,7 +88,7 @@ pub enum AnswerRefused {
 /// How an answer reaches its agent.
 pub enum Answered {
     /// An open call returns it, which settles the surface.
-    Returned(Locked),
+    Returned(Changed),
     /// It is to be typed in. Until `typed` or `not_typed` says how that went, the surface takes no
     /// other answer.
     ToType(ToType),
@@ -175,10 +180,10 @@ pub enum CommitRefused {
     TooManyImages(usize),
 }
 
-/// A surface that has just locked: it was settled, or it ended.
-pub struct Locked {
+/// A surface that has just changed: it was settled, or it is a board that was shown.
+pub struct Changed {
     pub record: SurfaceRecord,
-    /// The locked surface that left for it, past `MOST_LOCKED`.
+    /// The locked surfaces that left for it, past `MOST_LOCKED`.
     pub left: Vec<SurfaceKey>,
 }
 
@@ -197,6 +202,11 @@ enum Phase {
 }
 
 impl Phase {
+    /// Whether it was answered, or its terminal exited first.
+    fn is_over(&self) -> bool {
+        matches!(self, Self::Settled { .. } | Self::Ended { .. })
+    }
+
     fn standing(&self) -> Standing {
         match self {
             Self::NotAsking => Standing::Shown,
@@ -210,7 +220,7 @@ impl Phase {
 struct Surface {
     id: String,
     tool: String,
-    /// The arguments of the call that created it, which the same call again is told by.
+    /// The arguments of the call that its content is from, which the same ask again is told by.
     arguments: Value,
     title: String,
     place: Place,
@@ -224,14 +234,45 @@ struct Surface {
     phase: Phase,
     /// Whether the launch that created it is over.
     launch_over: bool,
+    /// The run a board shows. Other surfaces have none.
+    board: Option<BoardRun>,
     /// What the operator has put in it and not sent, until it is settled.
     unsent: Option<UnsentSave>,
 }
 
+/// Whether what the webview accepted has at most `MOST_IMAGES`. Each file it names is an image of it,
+/// whatever its count says.
+fn has_few_images(accepted: &Accepted) -> Result<(), CommitRefused> {
+    let images = (accepted.images as usize).max(accepted.image_paths.len());
+    if images <= MOST_IMAGES { Ok(()) } else { Err(CommitRefused::TooManyImages(images)) }
+}
+
 impl Surface {
-    /// Whether it is settled or ended. It takes nothing more, and its `change` stays as it is.
+    /// The surface `id` as a call creates it with the change `change`. It asks for nothing.
+    fn new(id: &str, creation: Creation, accepted: Accepted, change: u64) -> Self {
+        Self {
+            id: id.to_string(),
+            tool: creation.tool.to_string(),
+            arguments: creation.arguments.clone(),
+            title: creation.title.to_string(),
+            place: creation.place,
+            state: accepted.state,
+            image_paths: accepted.image_paths,
+            revision: 1,
+            order: change,
+            change,
+            shown_at: now_ms(),
+            phase: Phase::NotAsking,
+            launch_over: false,
+            board: None,
+            unsent: None,
+        }
+    }
+
+    /// Whether it is settled or ended. It takes nothing more, and its `change` stays as it is, unless it
+    /// is a board that its agent sends again.
     fn is_locked(&self) -> bool {
-        matches!(self.phase, Phase::Settled { .. } | Phase::Ended { .. })
+        self.phase.is_over() || self.board.as_ref().is_some_and(|run| run.stopped_at.is_some())
     }
 
     /// Settles it, which what is unsent in it does not outlive.
@@ -244,8 +285,12 @@ impl Surface {
     /// Ends it, as its terminal exited before it was settled. What is unsent in it stays.
     fn end(&mut self, change: u64) {
         let asked = !matches!(self.phase, Phase::NotAsking);
-        self.phase = Phase::Ended { asked, at: now_ms() };
+        let at = now_ms();
+        self.phase = Phase::Ended { asked, at };
         self.change = change;
+        if let Some(run) = &mut self.board {
+            run.stopped_at = Some(at);
+        }
     }
 
     fn unsent(&self, terminal_id: &str) -> Option<Unsent> {
@@ -269,6 +314,7 @@ impl Surface {
             terminal_id: terminal_id.to_string(),
             id: self.id.clone(),
             tool: self.tool.clone(),
+            place: self.place,
             state: self.state.clone(),
             revision: self.revision,
             order: self.order,
@@ -278,6 +324,7 @@ impl Surface {
             answer,
             answered_at,
             ended_at,
+            board: self.board.clone(),
         }
     }
 }
@@ -334,8 +381,14 @@ impl Terminal {
         dismissed
     }
 
-    /// Takes the locked surfaces past `MOST_LOCKED` out, the one that locked first first. `terminal_id`
-    /// is its own id.
+    /// Whether `place` takes another live surface.
+    fn has_room(&self, place: Place) -> Result<(), CommitRefused> {
+        let live = self.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
+        if live.count() < MOST_LIVE { Ok(()) } else { Err(CommitRefused::Full(place)) }
+    }
+
+    /// Takes the locked surfaces past `MOST_LOCKED` out, the one whose last change is the oldest first.
+    /// `terminal_id` is its own id.
     fn drop_past_most_locked(&mut self, terminal_id: &str) -> Vec<SurfaceKey> {
         let mut left = Vec::new();
         loop {
@@ -360,7 +413,7 @@ impl Terminal {
             self.dismissed.insert(surface.id.clone());
         }
         // What an agent was answered stays readable, and so does that a surface ended
-        let standing = match surface.is_locked() {
+        let standing = match surface.phase.is_over() {
             true => surface.phase.standing(),
             false => Standing::Dismissed,
         };
@@ -400,6 +453,17 @@ impl Inner {
     fn next_change(&mut self) -> u64 {
         self.last_change += 1;
         self.last_change
+    }
+
+    /// The terminal that takes `creation` as the surface `key`: its call has not returned, and the
+    /// operator has not dismissed that id.
+    fn terminal_to_commit(&mut self, key: &SurfaceKey, creation: Creation) -> Result<&mut Terminal, CommitRefused> {
+        let terminal = self.terminals.get_mut(&key.terminal_id).filter(|terminal| terminal.calls.has(creation.call));
+        let terminal = terminal.ok_or(CommitRefused::TerminalOver)?;
+        if terminal.is_dismissed(&key.id, creation.tool) {
+            return Err(CommitRefused::Dismissed);
+        }
+        Ok(terminal)
     }
 }
 
@@ -553,48 +617,70 @@ impl SurfaceStore {
     ) -> Result<SurfaceRecord, CommitRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
-        let terminal = inner.terminals.get_mut(&key.terminal_id).filter(|terminal| terminal.calls.has(creation.call));
-        let terminal = terminal.ok_or(CommitRefused::TerminalOver)?;
-        if terminal.is_dismissed(&key.id, creation.tool) {
-            return Err(CommitRefused::Dismissed);
-        }
+        let terminal = inner.terminal_to_commit(key, creation)?;
         if terminal.find(&key.id).is_some() {
             return Err(CommitRefused::IdInUse);
         }
-        // Each file it names is an image of it, whatever its count says
-        let images = (accepted.images as usize).max(accepted.image_paths.len());
-        if images > MOST_IMAGES {
-            return Err(CommitRefused::TooManyImages(images));
-        }
-        let place = creation.place;
-        let live = terminal.surfaces.iter().filter(|surface| !surface.is_locked() && surface.place == place);
-        if live.count() >= MOST_LIVE {
-            return Err(CommitRefused::Full(place));
-        }
+        has_few_images(&accepted)?;
+        terminal.has_room(creation.place)?;
         let phase = match accepted.asks {
             true => Phase::Asking { waiters: vec![creation.call] },
             false => Phase::NotAsking,
         };
-        let surface = Surface {
-            id: key.id.clone(),
-            tool: creation.tool.to_string(),
-            arguments: creation.arguments.clone(),
-            title: creation.title.to_string(),
-            place,
-            state: accepted.state,
-            image_paths: accepted.image_paths,
-            revision: 1,
-            order: change,
-            change,
-            shown_at: now_ms(),
-            phase,
-            launch_over: false,
-            unsent: None,
-        };
+        let surface = Surface { phase, ..Surface::new(&key.id, creation, accepted, change) };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
         Ok(record)
+    }
+
+    /// Shows `board` as the webview accepted it, as the surface `key`: in place of the board its launch
+    /// has there, or as a new one if its place has room for it. It asks for nothing.
+    pub fn commit_board(
+        &self,
+        key: &SurfaceKey,
+        creation: Creation,
+        board: &Board,
+        accepted: Accepted,
+    ) -> Result<Changed, CommitRefused> {
+        let mut inner = self.0.lock();
+        let change = inner.next_change();
+        let terminal = inner.terminal_to_commit(key, creation)?;
+        let at = terminal.surfaces.iter().position(|surface| surface.id == key.id);
+        let there = at.map(|at| &terminal.surfaces[at]);
+        if there.is_some_and(|surface| surface.board.is_none()) {
+            return Err(CommitRefused::IdInUse);
+        }
+        has_few_images(&accepted)?;
+        // An earlier launch's board makes way for a new one
+        let same = there.filter(|surface| !surface.launch_over);
+        let now = now_ms();
+        let run = match same.and_then(|surface| surface.board.as_ref()) {
+            Some(run) => run.replaced_by(board, now),
+            None => BoardRun::start(board, now),
+        };
+        if run.stopped_at.is_none() && there.is_none_or(Surface::is_locked) {
+            terminal.has_room(creation.place)?;
+        }
+        let mut surface =
+            Surface { board: Some(run), shown_at: now, ..Surface::new(&key.id, creation, accepted, change) };
+        if let Some(same) = same {
+            surface.revision = same.revision + 1;
+            surface.order = same.order;
+            surface.shown_at = same.shown_at;
+        }
+        let record = surface.record(&key.terminal_id);
+        match (at, same.is_some()) {
+            (Some(at), true) => terminal.surfaces[at] = surface,
+            (at, _) => {
+                if let Some(at) = at {
+                    terminal.surfaces.remove(at);
+                }
+                terminal.surfaces.push(surface);
+            }
+        }
+        terminal.rejected.remove(creation.tool);
+        Ok(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
     }
 
     /// The operator's answer to `revision` of a surface, which takes one. It goes back through the open
@@ -619,7 +705,7 @@ impl SurfaceStore {
             surface.settle(answer, change);
             let record = surface.record(&key.terminal_id);
             let left = terminal.drop_past_most_locked(&key.terminal_id);
-            return Ok(Answered::Returned(Locked { record, left }));
+            return Ok(Answered::Returned(Changed { record, left }));
         }
         surface.phase = Phase::Typing { answer };
         Ok(Answered::ToType(ToType { launch: *launch, line }))
@@ -666,7 +752,7 @@ impl SurfaceStore {
     }
 
     /// Settles a surface whose answer has been typed in. `None` when it has left or ended meanwhile.
-    pub fn typed(&self, key: &SurfaceKey) -> Option<Locked> {
+    pub fn typed(&self, key: &SurfaceKey) -> Option<Changed> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.get_mut(&key.terminal_id)?;
@@ -677,7 +763,7 @@ impl SurfaceStore {
         let answer = answer.take();
         surface.settle(answer, change);
         let record = surface.record(&key.terminal_id);
-        Some(Locked { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
+        Some(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
     }
 
     /// Opens a surface again whose answer could not be typed in, unless it has left or ended meanwhile.

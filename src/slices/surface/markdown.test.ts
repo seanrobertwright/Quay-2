@@ -42,6 +42,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     terminal_id: "t1",
     id: "plan",
     tool: "quay_surface",
+    place: "companion",
     state: {
       version: "1.0",
       createSurface: {
@@ -59,6 +60,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     answer: null,
     answered_at: null,
     ended_at: null,
+    board: null,
   };
 }
 

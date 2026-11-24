@@ -23,7 +23,8 @@ import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
 import { ActivityView, type ActivityFocus, type CompanionActivity } from "./ActivityView.tsx";
 import { SurfaceView, type SurfaceFocus } from "../surface/SurfaceView.tsx";
-import { useSurfacesOf, useSurfacesRead } from "../surface/surfaceHost.ts";
+import { useSurfacesRead } from "../surface/surfaceHost.ts";
+import { useSurfacesIn } from "../surface/surfacePlaces.ts";
 import { askingOf } from "../surface/surfaceAttention.ts";
 import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
 import { useKeptFocus } from "../surface/useKeptFocus.ts";
@@ -377,7 +378,7 @@ export const Companion = ({
   // What the latest request asked of the pull request view, while its terminal stays selected and
   // until the view takes it, so a view that comes back later does not act on it again.
   const [prAsk, setPrAsk] = useState<(NumberedPullRequestAsk & { terminalId: string }) | null>(null);
-  const surfaces = useSurfacesOf(selectedTerminal?.id ?? null);
+  const surfaces = useSurfacesIn(selectedTerminal?.id ?? null, "companion");
   const asking = askingOf(surfaces);
   const ready = useSurfacesRead() && activity?.permissionsRead !== false;
   // While an asking surface of the terminal shows, the Surface view is over the view the state below gives.
