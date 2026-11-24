@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { paced } from "./paced.ts";
 import { isLive, type CheckRequest, type SurfaceKey, type SurfaceRecord, type Verdict } from "./surfaceTypes.ts";
 import { closePage, dropUnsent, keepEnded, keepUnsent, openPage, type Page } from "./unsent.ts";
 
@@ -72,15 +73,23 @@ export function startSurfaces(): () => void {
   const onCheck = (request: CheckRequest) => {
     if (!stopped) answerCheck(request).catch(failed("A check could not be answered"));
   };
+  // A board may be sent as often as its agent likes
+  const boards = paced(keep);
   const onRecord = (record: SurfaceRecord) => {
-    if (!stopped) keep(record);
+    if (stopped) return;
+    if (record.board) boards.take(record);
+    else keep(record);
+  };
+  const leave = (key: SurfaceKey) => {
+    boards.forget(key);
+    drop(key);
   };
   // What left while the list was read, which may still be in it. Null once the list has been kept.
   let leftMeanwhile: SurfaceKey[] | null = [];
   const onRemoved = (key: SurfaceKey) => {
     if (stopped) return;
     leftMeanwhile?.push(key);
-    drop(key);
+    leave(key);
   };
   const listening = Promise.all([
     listen<CheckRequest>("surface-check", (event) => onCheck(event.payload)),
@@ -97,7 +106,7 @@ export function startSurfaces(): () => void {
     if (stopped) return;
     for (const record of await invoke<SurfaceRecord[]>("surface_list")) onRecord(record);
     if (stopped) return;
-    leftMeanwhile?.forEach(drop);
+    leftMeanwhile?.forEach(leave);
     leftMeanwhile = null;
   };
   const readUnsent = async () => {
@@ -117,6 +126,7 @@ export function startSurfaces(): () => void {
   const frame = requestAnimationFrame(() => void loadA2ui().catch(failed("The A2UI module could not be loaded")));
   return () => {
     stopped = true;
+    boards.stop();
     cancelAnimationFrame(frame);
     listDone = false;
     closePage();

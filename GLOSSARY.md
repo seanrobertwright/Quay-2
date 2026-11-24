@@ -140,6 +140,10 @@ _Avoid_: renderer, which also covers Quay's components
 The components and functions a surface may use, all of them drawn or run by Quay.
 _Avoid_: basic catalog, which is the standard's own
 
+**Board**:
+A surface that shows how a run stands, sent whole each time through `quay_board`. It asks for nothing.
+_Avoid_: dashboard, status card
+
 **Place**:
 Where a surface is drawn: `companion`, `tab` or `strip`. Fixed for the surface's life.
 _Avoid_: location, slot, target

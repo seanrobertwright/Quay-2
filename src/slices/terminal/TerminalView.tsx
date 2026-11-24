@@ -50,6 +50,8 @@ interface TerminalViewProps {
   headerExtra?: ReactNode;
   /** What the pane header shows before its own actions, at the other end from `headerExtra`. */
   headerMark?: ReactNode;
+  /** What is drawn over the top of the terminal, which keeps its size, as a column that lets clicks through. */
+  strip?: ReactNode;
   /** A line the pane shows above the terminal, after the pane's own notices. */
   note?: ReactNode;
   /** How many panes the stage shows, which decides whether Close pane can run. */
@@ -77,6 +79,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onCloseTerminal,
   headerExtra,
   headerMark,
+  strip,
   note,
   paneCount = 1,
   className = "",
@@ -385,55 +388,61 @@ export const TerminalView: FC<TerminalViewProps> = ({
             onGetScrollback={exportScrollback}
           />
 
-          {/* Incoming A2A Task Floating Banner */}
-          {a2aNotification && (
-            <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#1f6feb]/70 rounded shadow-lg backdrop-blur text-xs animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]" />
-                </span>
-                <span className="font-semibold text-[#58a6ff] shrink-0">
-                  {a2aNotification.broadcast ? "Swarm Broadcast" : "Incoming A2A Task"} from {a2aNotification.fromName}:
-                </span>
-                <span className="text-[#c9d1d9] truncate font-mono text-[11px]">
-                  {a2aNotification.content}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setA2aNotification(null)}
-                className="text-[#8b949e] hover:text-white p-0.5 rounded cursor-pointer shrink-0 ml-2"
-                title="Dismiss"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+          {/* Over the terminal and never beside it, so its rows and columns stay as they are. The notices
+              come under the strip and cover none of it. */}
+          <div data-over-terminal className="pointer-events-none absolute inset-0 z-20 flex flex-col">
+            {strip}
 
-          {/* Restored Dormant / Exited Session Ribbon */}
-          {terminal?.claude_status === "exited" && (
-            <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
-              <div className="flex items-center gap-2 text-[#8b949e]">
-                <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
-                <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
-                <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
-              </div>
-              {onRelaunch && (
+            {/* Incoming A2A Task Floating Banner */}
+            {a2aNotification && (
+              <div className="pointer-events-auto mx-2 mt-2 shrink-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#1f6feb]/70 rounded shadow-lg backdrop-blur text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]" />
+                  </span>
+                  <span className="font-semibold text-[#58a6ff] shrink-0">
+                    {a2aNotification.broadcast ? "Swarm Broadcast" : "Incoming A2A Task"} from {a2aNotification.fromName}:
+                  </span>
+                  <span className="text-[#c9d1d9] truncate font-mono text-[11px]">
+                    {a2aNotification.content}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRelaunch();
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
+                  onClick={() => setA2aNotification(null)}
+                  className="text-[#8b949e] hover:text-white p-0.5 rounded cursor-pointer shrink-0 ml-2"
+                  title="Dismiss"
                 >
-                  <Play className="w-3 h-3 fill-white" />
-                  <span>{relaunchLabel(terminal?.run_kind)}</span>
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+
+            {/* Restored Dormant / Exited Session Ribbon */}
+            {terminal?.claude_status === "exited" && (
+              <div className="pointer-events-auto mx-2 mt-2 shrink-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
+                <div className="flex items-center gap-2 text-[#8b949e]">
+                  <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
+                  <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
+                  <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
+                </div>
+                {onRelaunch && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRelaunch();
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Play className="w-3 h-3 fill-white" />
+                    <span>{relaunchLabel(terminal?.run_kind)}</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* A plain right-click here copies the selection, or pastes, unless the running program
               has turned on mouse reporting and has the click; Shift+right-click opens the body

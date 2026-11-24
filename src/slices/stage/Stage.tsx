@@ -2,6 +2,7 @@ import { FC, useState, useRef, CSSProperties, type ReactNode } from "react";
 import { TerminalInfo, StageLayout } from "../terminal/types";
 import { TerminalView } from "../terminal/TerminalView";
 import { AskingButton } from "../surface/AskingButton.tsx";
+import { BoardStrip } from "../surface/strip/BoardStrip.tsx";
 import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
@@ -262,6 +263,7 @@ export const Stage: FC<StageProps> = ({
         onCloseTerminal={onCloseTerminal ? () => onCloseTerminal(term.id) : undefined}
         headerExtra={onOpenSurface && <AskingButton terminalId={term.id} onOpen={onOpenSurface} />}
         headerMark={terminalMark?.(term, isVisible)}
+        strip={isVisible && <BoardStrip terminal={term} />}
         note={terminalNote?.(term, isVisible)}
         paneCount={paneCount}
         style={paneStyle}

@@ -31,14 +31,14 @@ const LiveSurface = ({ record, terminal }: SurfaceProps) => {
   const dismiss = useDismiss(record, setRefusal);
   const onAction = useCallback(
     async (action: SurfaceAction) => {
-      const typed = typedTool(record.tool);
-      if (!typed) {
+      const collapse = typedTool(record.tool)?.collapse;
+      if (!collapse) {
         setRefusal("Not sent: Quay cannot send an answer to this kind of surface.");
         return;
       }
       setRefusal(null);
       try {
-        await answerSurface(record, typed.collapse(action));
+        await answerSurface(record, collapse(action));
       } catch (error) {
         setRefusal(String(error));
       }

@@ -115,9 +115,23 @@ impl Arguments {
         let (least, most) = (spelled(*count.start()), spelled(*count.end()));
         let mut message = format!("{takes} {least} to {most} {items}; this one has {length}.");
         if length > *count.end() {
-            message.push_str(&format!(" For more, send a surface with quay_surface and place {}.", self.place));
+            message.push_str(&self.for_more());
         }
         self.invalid(path, message);
+    }
+
+    /// `count`, for a list that may be empty. `has` starts the message: "A board has".
+    pub fn at_most(&mut self, list: &[Value], most: usize, path: &str, has: &str, items: &str) {
+        let length = list.len();
+        if length > most {
+            let (most, more) = (spelled(most), self.for_more());
+            self.invalid(path, format!("{has} at most {most} {items}; this one has {length}.{more}"));
+        }
+    }
+
+    /// How a message about a list with too many items ends.
+    fn for_more(&self) -> String {
+        format!(" For more, send a surface with quay_surface and place {}.", self.place)
     }
 
     /// `text`, which may be at most `limit` characters.

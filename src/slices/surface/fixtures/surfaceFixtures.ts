@@ -11,7 +11,7 @@ export function surface(id: string, over: Partial<SurfaceRecord> = {}): SurfaceR
   change += 1;
   const text = { id: "root", component: "Text", text: `What ${id} says` };
   const state: SurfaceRecord["state"] = { version: "1.0", createSurface: { surfaceId: id, catalogId: "urn:quay:a2ui:catalog:v1", components: [text], dataModel: {} } };
-  return { terminal_id: "t1", id, tool: "quay_ask", state, revision: 1, order: change, change, asks: true, shown_at: Date.now(), answer: null, answered_at: null, ended_at: null, ...over };
+  return { terminal_id: "t1", id, tool: "quay_ask", place: "companion", state, revision: 1, order: change, change, asks: true, shown_at: Date.now(), answer: null, answered_at: null, ended_at: null, board: null, ...over };
 }
 
 /** `record` changed by `over`, as Rust holds it after. */
