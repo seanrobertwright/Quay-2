@@ -12,6 +12,9 @@ use tokio::sync::oneshot;
 
 use super::check::Accepted;
 
+/// The most surfaces a terminal keeps: the spec's four live and ten locked, not told apart yet.
+pub const MOST_KEPT: usize = 14;
+
 /// Which surface: its id is one among its terminal's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SurfaceKey {
@@ -56,6 +59,24 @@ pub enum AnswerRefused {
     CallEnded,
 }
 
+/// Why a surface was not added. Nothing was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitRefused {
+    /// The terminal has a surface of that id.
+    IdInUse,
+    /// The terminal has `MOST_KEPT` surfaces, and a call waits on each.
+    Full,
+}
+
+/// A surface that was added.
+pub struct Committed {
+    pub record: SurfaceRecord,
+    /// The call's wait, when the surface asks for something.
+    pub wait: Option<Wait>,
+    /// The surface that left to make room for it.
+    pub left: Option<SurfaceKey>,
+}
+
 enum Phase {
     /// It has no action to its agent.
     NotAsking,
@@ -75,6 +96,11 @@ struct Surface {
 }
 
 impl Surface {
+    /// Whether an open call waits for its answer.
+    fn is_waited_on(&self) -> bool {
+        matches!(&self.phase, Phase::Asking { waiter: Some(waiter) } if !waiter.is_closed())
+    }
+
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
         SurfaceRecord {
             terminal_id: terminal_id.to_string(),
@@ -136,15 +162,22 @@ impl SurfaceStore {
         }
     }
 
-    /// Adds the surface `key` as the webview accepted it. With it, the call's wait when the surface
-    /// asks for something. `None` when the terminal has a surface of that id.
-    pub fn commit(&self, key: &SurfaceKey, tool: &str, accepted: Accepted) -> Option<(SurfaceRecord, Option<Wait>)> {
+    /// Adds the surface `key` as the webview accepted it. A terminal that has `MOST_KEPT` loses its
+    /// oldest one that no call waits on: an answer to it would be refused, or it has or wants none.
+    pub fn commit(&self, key: &SurfaceKey, tool: &str, accepted: Accepted) -> Result<Committed, CommitRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.entry(key.terminal_id.clone()).or_default();
         if terminal.find(&key.id).is_some() {
-            return None;
+            return Err(CommitRefused::IdInUse);
         }
+        let left = if terminal.surfaces.len() < MOST_KEPT {
+            None
+        } else {
+            let oldest = terminal.surfaces.iter().position(|surface| !surface.is_waited_on());
+            let left = terminal.surfaces.remove(oldest.ok_or(CommitRefused::Full)?);
+            Some(SurfaceKey::new(&key.terminal_id, left.id))
+        };
         let (phase, wait) = if accepted.asks {
             let (tx, rx) = oneshot::channel();
             let wait = Wait { store: self.clone(), key: key.clone(), rx };
@@ -163,7 +196,7 @@ impl SurfaceStore {
         };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
-        Some((record, wait))
+        Ok(Committed { record, wait, left })
     }
 
     /// The operator's answer to `revision` of a surface. The first one returned through an open call

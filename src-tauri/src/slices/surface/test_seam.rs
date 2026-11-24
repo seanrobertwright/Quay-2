@@ -11,7 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 use super::check::{CheckRequest, Verdict};
-use super::store::SurfaceRecord;
+use super::store::{SurfaceKey, SurfaceRecord};
 use super::timing::Timing;
 use super::tools::{SurfaceTools, Webview};
 use crate::slices::bridge::routes::mcp_router;
@@ -32,6 +32,7 @@ pub const A_WHILE: Duration = Duration::from_millis(200);
 struct Sent {
     checks: mpsc::UnboundedSender<CheckRequest>,
     shown: mpsc::UnboundedSender<SurfaceRecord>,
+    removed: mpsc::UnboundedSender<SurfaceKey>,
 }
 
 impl Webview for Sent {
@@ -42,12 +43,17 @@ impl Webview for Sent {
     fn show(&self, record: &SurfaceRecord) {
         let _ = self.shown.send(record.clone());
     }
+
+    fn remove(&self, key: &SurfaceKey) {
+        let _ = self.removed.send(key.clone());
+    }
 }
 
 /// What the window was sent.
 pub struct FakeWebview {
     checks: mpsc::UnboundedReceiver<CheckRequest>,
     shown: mpsc::UnboundedReceiver<SurfaceRecord>,
+    removed: mpsc::UnboundedReceiver<SurfaceKey>,
 }
 
 impl FakeWebview {
@@ -59,6 +65,16 @@ impl FakeWebview {
     /// The next surface the window is sent to draw.
     pub async fn next_shown(&mut self) -> SurfaceRecord {
         tokio::time::timeout(SOON, self.shown.recv()).await.expect("no surface was sent").unwrap()
+    }
+
+    /// The next surface the window is sent to take off the screen.
+    pub async fn next_removed(&mut self) -> SurfaceKey {
+        tokio::time::timeout(SOON, self.removed.recv()).await.expect("no surface was removed").unwrap()
+    }
+
+    /// Whether the window has been sent no surface to take off the screen.
+    pub fn none_removed(&mut self) -> bool {
+        self.removed.try_recv().is_err()
     }
 
     /// Whether the window is sent no check for a while.
@@ -90,7 +106,8 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     let surfaces = SurfaceTools::with(offered, timing);
     let (checks_tx, checks) = mpsc::unbounded_channel();
     let (shown_tx, shown) = mpsc::unbounded_channel();
-    surfaces.set_webview(Sent { checks: checks_tx, shown: shown_tx });
+    let (removed_tx, removed) = mpsc::unbounded_channel();
+    surfaces.set_webview(Sent { checks: checks_tx, shown: shown_tx, removed: removed_tx });
 
     let pty_manager = PtyManager::new();
     for id in ["term-a", "term-b"] {
@@ -110,7 +127,7 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     tokio::spawn(async move {
         axum::serve(listener, app.into_make_service()).await.unwrap();
     });
-    (Seam { surfaces, bridge_state, port, _dir: dir }, FakeWebview { checks, shown })
+    (Seam { surfaces, bridge_state, port, _dir: dir }, FakeWebview { checks, shown, removed })
 }
 
 impl Seam {

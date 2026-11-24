@@ -1,21 +1,23 @@
 //! The surface tools: a call's checks, its commit, its wait and its result.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, Weak};
 
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 
 use super::ask::{self, Ask};
 use super::check::{CheckRequest, Checks, Verdict};
-use super::rejection::QuayFailed;
-use super::store::{AnswerRefused, SurfaceKey, SurfaceRecord, SurfaceStore, Wait};
+use super::rejection::{QuayFailed, Rejection};
+use super::store::{AnswerRefused, CommitRefused, Committed, SurfaceKey, SurfaceRecord, SurfaceStore, MOST_KEPT};
 use super::timing::Timing;
 
 /// The window that checks and draws surfaces.
 pub trait Webview: Send + Sync {
     fn check(&self, request: &CheckRequest);
     fn show(&self, record: &SurfaceRecord);
+    /// Takes a surface Quay no longer has off the screen.
+    fn remove(&self, key: &SurfaceKey);
 }
 
 struct Inner {
@@ -25,8 +27,8 @@ struct Inner {
     store: SurfaceStore,
     checks: Checks,
     /// One lock per terminal, held while a call of it is checked and committed and never while one
-    /// waits for its answer.
-    queues: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// waits for its answer. It lives as long as a call holds it or is queued for it.
+    queues: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
     webview: OnceLock<Box<dyn Webview>>,
 }
 
@@ -85,11 +87,14 @@ impl SurfaceTools {
             let _one_at_a_time = queue.lock().await;
             let key = self.0.store.name_ask(terminal_id);
             match self.check_and_commit(&key, ask::TOOL, json!(ask)).await {
-                Ok((record, wait)) => {
+                Ok(Committed { record, wait, left }) => {
+                    if let Some(left) = left {
+                        self.remove(&left);
+                    }
                     self.show(&record);
                     (key, wait)
                 }
-                Err(failed) => return failed.result(),
+                Err(failure) => return failure,
             }
         };
         let Some(wait) = wait else {
@@ -102,17 +107,24 @@ impl SurfaceTools {
     }
 
     fn queue(&self, terminal_id: &str) -> Arc<tokio::sync::Mutex<()>> {
-        self.0.queues.lock().entry(terminal_id.to_string()).or_default().clone()
+        let mut queues = self.0.queues.lock();
+        if let Some(queue) = queues.get(terminal_id).and_then(Weak::upgrade) {
+            return queue;
+        }
+        queues.retain(|_, queue| queue.strong_count() > 0);
+        let queue = Arc::default();
+        queues.insert(terminal_id.to_string(), Arc::downgrade(&queue));
+        queue
     }
 
     /// Commits a call once the webview has found nothing wrong with it. Nothing is committed for a
-    /// verdict that came too late.
+    /// verdict that came too late. The error is the result its agent gets.
     async fn check_and_commit(
         &self,
         key: &SurfaceKey,
         tool: &str,
         arguments: Value,
-    ) -> Result<(SurfaceRecord, Option<Wait>), QuayFailed> {
+    ) -> Result<Committed, Value> {
         let SurfaceKey { terminal_id, id } = key;
         let send = |request: &CheckRequest| {
             // One sent before the window is named is handed over when it has loaded
@@ -123,23 +135,35 @@ impl SurfaceTools {
         let accepted = match self.0.checks.check(tool, id, arguments, self.0.timing.verdict, send).await {
             None => {
                 tracing::error!("{terminal_id}: no verdict on a {tool} call in {:?}", self.0.timing.verdict);
-                return Err(QuayFailed::NoVerdict);
+                return Err(QuayFailed::NoVerdict.result());
             }
             Some(Verdict::Failed { errors }) => {
                 tracing::error!("{terminal_id}: Quay's expansion of a {tool} call failed the engine: {errors:?}");
-                return Err(QuayFailed::Expansion);
+                return Err(QuayFailed::Expansion.result());
             }
             Some(Verdict::Accepted(accepted)) => accepted,
         };
-        self.0.store.commit(key, tool, accepted).ok_or_else(|| {
-            tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
-            QuayFailed::Expansion
+        self.0.store.commit(key, tool, accepted).map_err(|refused| match refused {
+            CommitRefused::IdInUse => {
+                tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
+                QuayFailed::Expansion.result()
+            }
+            CommitRefused::Full => {
+                let message = format!("This terminal has {MOST_KEPT} questions open, the most allowed. Wait for an answer.");
+                Rejection::invalid("", message).typed_result()
+            }
         })
     }
 
     fn show(&self, record: &SurfaceRecord) {
         if let Some(webview) = self.0.webview.get() {
             webview.show(record);
+        }
+    }
+
+    fn remove(&self, key: &SurfaceKey) {
+        if let Some(webview) = self.0.webview.get() {
+            webview.remove(key);
         }
     }
 

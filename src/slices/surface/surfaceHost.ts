@@ -2,7 +2,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { CheckRequest, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
+import type { CheckRequest, SurfaceKey, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
 
 /** The A2UI module. It is large, so nothing imports it until the shell has been drawn. */
 export const loadA2ui = () => import("./a2ui/index.ts");
@@ -23,6 +23,15 @@ function keep(record: SurfaceRecord): void {
   if (kept && kept.change >= record.change) return;
   const next = [...surfaces.filter((s) => s !== kept), record].sort((a, b) => a.order - b.order);
   set(new Map(byTerminal).set(record.terminal_id, next));
+}
+
+/** Drops the surface `terminal_id` had as `id`, if it is kept. */
+function drop({ terminal_id, id }: SurfaceKey): void {
+  const left = (byTerminal.get(terminal_id) ?? NONE).filter((s) => s.id !== id);
+  const next = new Map(byTerminal);
+  if (left.length > 0) next.set(terminal_id, left);
+  else next.delete(terminal_id);
+  set(next);
 }
 
 async function answerCheck(request: CheckRequest): Promise<void> {
@@ -47,15 +56,25 @@ export function startSurfaces(): () => void {
   const onRecord = (record: SurfaceRecord) => {
     if (!stopped) keep(record);
   };
+  // What left while the list was read, which may still be in it. Null once the list has been kept.
+  let leftMeanwhile: SurfaceKey[] | null = [];
+  const onRemoved = (key: SurfaceKey) => {
+    if (stopped) return;
+    leftMeanwhile?.push(key);
+    drop(key);
+  };
   const listening = Promise.all([
     listen<CheckRequest>("surface-check", (event) => onCheck(event.payload)),
     listen<SurfaceRecord>("surface-changed", (event) => onRecord(event.payload)),
+    listen<SurfaceKey>("surface-removed", (event) => onRemoved(event.payload)),
   ]);
   const start = async () => {
     await listening;
     if (stopped) return;
     for (const record of await invoke<SurfaceRecord[]>("surface_list")) onRecord(record);
     if (stopped) return;
+    leftMeanwhile?.forEach(drop);
+    leftMeanwhile = null;
     for (const request of await invoke<CheckRequest[]>("surface_checks")) onCheck(request);
   };
   start().catch(failed("The surfaces could not be read"));

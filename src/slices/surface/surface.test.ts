@@ -327,6 +327,31 @@ test("an answered question is locked with its answer, and an older record does n
   assert.equal(region.querySelectorAll("input, textarea, button").length, 0);
 });
 
+test("a surface Quay no longer has leaves the screen", async () => {
+  list = [await accepted("ask_1"), await accepted("ask_2", { order: 2 })];
+  const container = await open();
+  await act(async () => emitEvent("surface-removed", { terminal_id: "t2", id: "ask_2" }));
+  await act(async () => emitEvent("surface-removed", { terminal_id: "t1", id: "ask_1" }));
+  assert.deepEqual(
+    regions(container).map((region) => region.dataset.surface),
+    ["ask_2"],
+  );
+});
+
+test("a surface that left while the list was read is not drawn", async () => {
+  const asked = [await accepted("ask_1"), await accepted("ask_2", { order: 2 })];
+  fakeInvoke(async (cmd) => {
+    if (cmd !== "surface_list") return cmd === "surface_checks" ? [] : null;
+    emitEvent("surface-removed", { terminal_id: "t1", id: "ask_1" });
+    return asked;
+  });
+  const container = await open();
+  assert.deepEqual(
+    regions(container).map((region) => region.dataset.surface),
+    ["ask_2"],
+  );
+});
+
 test("a reload draws the question again", async () => {
   const asked = await accepted("ask_1");
   list = [asked];

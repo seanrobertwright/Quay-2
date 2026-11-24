@@ -22,6 +22,12 @@ impl Webview for AppWebview {
             tracing::error!("A surface could not be sent to be drawn: {e}");
         }
     }
+
+    fn remove(&self, key: &SurfaceKey) {
+        if let Err(e) = self.0.emit("surface-removed", key) {
+            tracing::error!("A surface's removal could not be sent: {e}");
+        }
+    }
 }
 
 /// The webview's verdict on a check.

@@ -45,10 +45,14 @@ export interface EngineError {
 /** What the webview made of a check. Mirrors `Verdict`. */
 export type Verdict = { errors: EngineError[] } | { state: CreateSurface; asks: boolean; components: number; images: number };
 
-/** A surface as Rust holds it. Mirrors `SurfaceRecord`. */
-export interface SurfaceRecord {
+/** Which surface. Mirrors `SurfaceKey`. */
+export interface SurfaceKey {
   terminal_id: string;
   id: string;
+}
+
+/** A surface as Rust holds it. Mirrors `SurfaceRecord`. */
+export interface SurfaceRecord extends SurfaceKey {
   tool: string;
   state: CreateSurface;
   revision: number;
