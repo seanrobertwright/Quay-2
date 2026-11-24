@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::commands::emit_broadcast;
+use super::instructions;
 use super::models::{A2ADispatchRequest, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::{A2ARouter, WaitOutcome};
 use super::target::resolve_target;
@@ -96,20 +97,27 @@ pub async fn handle_mcp_request(
                 .and_then(|p| p.get("protocolVersion"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("2024-11-05");
+            ctx.pty_manager.record_handshake(caller_id);
+
+            let mut result = json!({
+                "protocolVersion": requested_version,
+                "capabilities": {
+                    "tools": {}
+                },
+                "serverInfo": {
+                    "name": "quay-a2a",
+                    "version": "1.0.0"
+                }
+            });
+            let names = tools(&ctx, caller_id).into_iter().filter_map(|tool| tool["name"].as_str());
+            if let Some(instructions) = instructions::for_tools(names) {
+                result["instructions"] = instructions.into();
+            }
 
             let res = JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id,
-                result: Some(json!({
-                    "protocolVersion": requested_version,
-                    "capabilities": {
-                        "tools": {}
-                    },
-                    "serverInfo": {
-                        "name": "quay-a2a",
-                        "version": "1.0.0"
-                    }
-                })),
+                result: Some(result),
                 error: None,
             };
             Json(res).into_response()
@@ -148,7 +156,7 @@ pub async fn handle_mcp_request(
         "tools/list" => Json(JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
-            result: Some(json!({ "tools": tools(ctx.surfaces.list()) })),
+            result: Some(json!({ "tools": tools(&ctx, caller_id) })),
             error: None,
         })
         .into_response(),
@@ -161,7 +169,10 @@ pub async fn handle_mcp_request(
                 .unwrap_or("");
             let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
+            let listed = tools(&ctx, caller_id).iter().any(|tool| tool["name"] == tool_name);
             let result = match tool_name {
+                _ if !listed => Err(format!("Unknown tool: {}", tool_name)),
+
                 "quay_list_agents" => {
                     let terminals = ctx.pty_manager.list();
                     let agents_list: Vec<Value> = terminals
@@ -415,9 +426,9 @@ pub async fn handle_mcp_request(
     }
 }
 
-/// The tools `tools/list` answers with, before the surface tools. `pnpm docs:build` checks the
-/// A2A page's tool reference against this file (see `scripts/mcp-tools`), so the two can't
-/// drift apart.
+/// The bus tools, which `tools/list` answers a full peer with before the surface tools.
+/// `pnpm docs:build` checks the A2A page's tool reference against this file (see
+/// `scripts/mcp-tools`), so the two can't drift apart.
 const TOOL_LIST: &str = include_str!("mcp_tools.json");
 
 /// `TOOL_LIST`, parsed once.
@@ -426,11 +437,13 @@ pub(super) fn tool_list() -> &'static Value {
     TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
 }
 
-/// Every tool the server lists: those of `TOOL_LIST`, then the surface tools.
-fn tools(surface_tools: &[Value]) -> Vec<Value> {
-    let mut tools = tool_list().as_array().cloned().unwrap_or_default();
-    tools.extend_from_slice(surface_tools);
-    tools
+/// Every tool `terminal_id` has, and so those it is listed and may call: the bus tools when its CLI
+/// gets them, then the surface tools.
+fn tools(ctx: &McpContext, terminal_id: &str) -> Vec<&'static Value> {
+    let gets_bus_tools =
+        ctx.pty_manager.get_info(terminal_id).is_some_and(|info| info.run_kind.gets_bus_tools());
+    let bus_tools = tool_list().as_array().filter(|_| gets_bus_tools);
+    bus_tools.into_iter().flatten().chain(ctx.surfaces.list()).collect()
 }
 
 /// What `quay_broadcast` answers with: the peers its notice reached, those holding it until

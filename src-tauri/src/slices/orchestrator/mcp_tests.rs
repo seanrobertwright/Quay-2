@@ -18,7 +18,8 @@ use crate::test_support::TempDir;
 use crate::webview::WebviewEvents;
 
 /// The bridge's routes on a free loopback port, with one open terminal, until dropped.
-struct TestBridge {
+pub(super) struct TestBridge {
+    pub(super) pty_manager: PtyManager,
     port: u16,
     token: String,
     server: tokio::task::JoinHandle<()>,
@@ -32,34 +33,40 @@ impl Drop for TestBridge {
 }
 
 impl TestBridge {
+    /// Its terminal is a Claude one, and it offers no surface tools.
     async fn start() -> Self {
+        Self::start_with(RunKind::Claude, false).await
+    }
+
+    /// Its terminal is `term-mcp`. `offered` is whether it lists and accepts the surface tools.
+    pub(super) async fn start_with(run_kind: RunKind, offered: bool) -> Self {
         let machina_dir = TempDir::new("mcp-bridge");
         let bridge_state = BridgeState::new();
         let pty_manager = PtyManager::new();
-        pty_manager.insert_test_terminal(test_terminal("term-mcp", RunKind::Claude, ClaudeStatus::Idle));
+        pty_manager.insert_test_terminal(test_terminal("term-mcp", run_kind, ClaudeStatus::Idle));
         let token = bridge_state.token_for("term-mcp");
 
         let listener = bind_bridge_listener(None).await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let router = create_router(AppContext {
             bridge_state,
-            pty_manager,
+            pty_manager: pty_manager.clone(),
             a2a_router: A2ARouter::new(),
             machina_manager: MachinaManager::with_paths(
                 machina_dir.join("state.json"),
                 machina_dir.join("vault"),
             ),
-            surfaces: SurfaceTools::with(false, Timing::default()),
+            surfaces: SurfaceTools::with(offered, Timing::default()),
             webview: WebviewEvents::to(|_, _| {}),
         });
         let server = tokio::spawn(async move {
             axum::serve(listener, router.into_make_service()).await.unwrap();
         });
-        Self { port, token, server, _machina_dir: machina_dir }
+        Self { pty_manager, port, token, server, _machina_dir: machina_dir }
     }
 
     /// Posts `message` to `/mcp` with the open terminal's token.
-    async fn post(&self, message: &Value) -> Reply {
+    pub(super) async fn post(&self, message: &Value) -> Reply {
         let bearer = format!("Bearer {}", self.token);
         let headers = [
             ("Authorization", bearer.as_str()),

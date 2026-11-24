@@ -1,6 +1,9 @@
 pub mod commands;
+mod instructions;
 pub mod launch_prompt;
 pub mod mcp;
+#[cfg(test)]
+mod mcp_terminal_tests;
 #[cfg(test)]
 mod mcp_tests;
 pub mod models;
