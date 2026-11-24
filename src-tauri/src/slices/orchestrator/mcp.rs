@@ -33,6 +33,15 @@ fn reply_to_notification(req: &JsonRpcRequest) -> Option<Response> {
         .then(|| StatusCode::ACCEPTED.into_response())
 }
 
+/// Tells a client that probes with MCP 2026-07-28's `server/discover` that Quay speaks the earlier
+/// versions, which start with `initialize`. That revision's Streamable HTTP page, section "Backward
+/// Compatibility", has the client fall back on `400 Bad Request` when "the body is empty or is not a
+/// recognized modern JSON-RPC error". The body is left empty because the same page lists unknown
+/// method among the errors a modern server returns, so a client could take `-32601` as that sign.
+fn fall_back_to_the_handshake() -> Response {
+    StatusCode::BAD_REQUEST.into_response()
+}
+
 #[derive(Debug, Serialize)]
 pub struct JsonRpcResponse {
     pub jsonrpc: String,
@@ -248,7 +257,7 @@ pub async fn handle_mcp_request(
                             .broadcast_toast_async(text, &sender, &ctx.pty_manager)
                             .await
                             .map(|sent| {
-                                emit_broadcast(&ctx.app_handle, text, &sent);
+                                emit_broadcast(&ctx.webview, text, &sent);
                                 json!({
                                     "content": [
                                         {
@@ -370,6 +379,8 @@ pub async fn handle_mcp_request(
             }
         }
 
+        "server/discover" => fall_back_to_the_handshake(),
+
         _ => Json(JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
@@ -389,7 +400,7 @@ pub async fn handle_mcp_request(
 const TOOL_LIST: &str = include_str!("mcp_tools.json");
 
 /// `TOOL_LIST`, parsed once.
-fn tool_list() -> &'static Value {
+pub(super) fn tool_list() -> &'static Value {
     static TOOLS: OnceLock<Value> = OnceLock::new();
     TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
 }

@@ -1,5 +1,7 @@
 //! Helpers shared by the crate's unit tests.
 
+pub mod loopback;
+
 use std::ffi::OsStr;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
