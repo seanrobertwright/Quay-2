@@ -5,8 +5,6 @@ import { useSyncExternalStore } from "react";
 import { subscribeToSurfaces, surfacesByTerminal, useSurfacesOf } from "./surfaceHost.ts";
 import { isLive, type SurfaceRecord } from "./surfaceTypes.ts";
 
-export { isLive };
-
 interface Attention {
   live: readonly SurfaceRecord[];
   asking: readonly SurfaceRecord[];

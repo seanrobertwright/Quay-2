@@ -6,9 +6,8 @@ import { lookOf } from "./looks/index.ts";
 import { QueueLine } from "./QueueLine.tsx";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
-import { isLive } from "./surfaceAttention.ts";
 import { answerSurface, loadA2ui, useSurfacesRead } from "./surfaceHost.ts";
-import type { SurfaceAction, SurfaceRecord } from "./surfaceTypes.ts";
+import { isLive, type SurfaceAction, type SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
 import { useSurfaceQueue } from "./useSurfaceQueue.ts";
 
@@ -77,7 +76,7 @@ const SettledSurface = ({ record, terminal }: SurfaceProps) => {
   );
 };
 
-/** The most questions one terminal may have waiting. Rust holds to it. */
+/** The most questions one terminal may have waiting. Mirrors `MOST_LIVE`, which Rust holds all its live companion surfaces to. */
 const MOST_WAITING = 4;
 
 /** The surface a request asked to show. Each request has a `seq` of its own. */
