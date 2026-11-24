@@ -1,6 +1,6 @@
 /**
- * Display formatting for timestamps. Callers pass epoch milliseconds (the Rust side parses
- * every timestamp string, treating zone-less ones as UTC), so nothing here parses strings.
+ * The app's dates and times: moments, as epoch milliseconds, as they are shown, and the readers of
+ * date texts. A text with no zone is read as the digits it has, never in this machine's time zone.
  */
 
 /** Local wall-clock time on a 24-hour clock, e.g. "14:06:11". */
@@ -86,16 +86,24 @@ export function formatUtcDateStamp(ms: number): string {
 }
 
 /**
- * Whether text is a calendar date written "YYYY-MM-DD", such as "2026-10-21". The digits are read
- * as they are, with no time zone; "2026-02-30" is not a date.
+ * The UTC midnight of the calendar date written "YYYY-MM-DD", in milliseconds since the epoch. Null
+ * for any other text, an impossible date such as "2026-02-30" and the year 0.
  */
-export function isDateStamp(text: string): boolean {
+function utcDay(text: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (!match) return false;
+  if (!match) return null;
   const [year, month, day] = match.slice(1).map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  // `setUTCFullYear`, because `Date.UTC` reads years 0 to 99 as 1900 to 1999.
+  const ms = new Date(0).setUTCFullYear(year, month - 1, day);
+  const back = new Date(ms);
+  return year > 0 && back.getUTCMonth() === month - 1 && back.getUTCDate() === day ? ms : null;
 }
+
+/**
+ * Whether text is a calendar date written "YYYY-MM-DD", such as "2026-10-21". The digits are read
+ * as they are, with no time zone; "2026-02-30" is not a date, nor is any in the year 0.
+ */
+export const isDateStamp = (text: string): boolean => utcDay(text) !== null;
 
 /** The digits of an ISO 8601 text, as they are written. */
 export interface IsoDigits {
@@ -112,23 +120,18 @@ export interface IsoDigits {
  * another time zone. Seconds are left out. Null for any other text, including an impossible date or time.
  */
 export function isoDigits(text: string): IsoDigits | null {
-  const match = /^(?:(\d{4})-(\d{2})-(\d{2}))?(?:([T ]?)(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:(Z)|([+-]\d{2}):?(\d{2}))?)?$/.exec(text);
+  const match = /^(\d{4}-\d{2}-\d{2})?(?:([T ]?)(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:(Z)|([+-]\d{2}):?(\d{2}))?)?$/.exec(text);
   if (!match) return null;
-  const [, year, month, day, between, hour, minute, second, utc, zoneHour, zoneMinute] = match;
-  const hasDate = year !== undefined;
+  const [, date, between, hour, minute, second, utc, zoneHour, zoneMinute] = match;
+  const hasDate = date !== undefined;
   const hasTime = hour !== undefined;
   // What is between a date and a time is between nothing else
   if ((!hasDate && !hasTime) || (hasTime && hasDate !== (between !== ""))) return null;
-  if (hasDate) {
-    // `setUTCFullYear`, because `Date.UTC` reads years 0 to 99 as 1900 to 1999.
-    const date = new Date(0);
-    date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
-    if (Number(year) === 0 || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
-  }
+  if (hasDate && !isDateStamp(date)) return null;
   if (hasTime && (Number(hour) > 23 || Number(minute) > 59 || Number(second ?? 0) > 59)) return null;
   if (zoneHour !== undefined && (Math.abs(Number(zoneHour)) > 23 || Number(zoneMinute) > 59)) return null;
   return {
-    date: hasDate ? `${year}-${month}-${day}` : null,
+    date: date ?? null,
     time: hasTime ? `${hour}:${minute}` : null,
     zone: utc ?? (zoneHour === undefined ? "" : `${zoneHour}:${zoneMinute}`),
   };
@@ -140,9 +143,9 @@ export function isoDigits(text: string): IsoDigits | null {
  */
 export function daysBetweenDateStamps(from: string, to: string): number {
   const dayNumber = (text: string) => {
-    if (!isDateStamp(text)) throw new Error(`${JSON.stringify(text)} is not a date written YYYY-MM-DD`);
-    const [year, month, day] = text.split("-").map(Number);
-    return Date.UTC(year, month - 1, day) / 86_400_000;
+    const ms = utcDay(text);
+    if (ms === null) throw new Error(`${JSON.stringify(text)} is not a date written YYYY-MM-DD`);
+    return ms / 86_400_000;
   };
   return dayNumber(to) - dayNumber(from);
 }
@@ -154,12 +157,12 @@ export function daysBetweenDateStamps(from: string, to: string): number {
  */
 export function parseUtcTimestamp(text: string): number | null {
   const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/.exec(text);
-  if (!match || !isDateStamp(match[1])) return null;
+  const midnight = match && utcDay(match[1]);
+  if (!match || midnight === null) return null;
   const [hours, minutes, seconds] = match.slice(2, 5).map(Number);
   if (hours > 23 || minutes > 59 || seconds > 59) return null;
-  const [year, month, day] = match[1].split("-").map(Number);
   const ms = Number((match[5] ?? "0").padEnd(3, "0").slice(0, 3));
-  return Date.UTC(year, month - 1, day, hours, minutes, seconds, ms);
+  return midnight + ((hours * 60 + minutes) * 60 + seconds) * 1000 + ms;
 }
 
 /** A wall-clock date and time to the minute, as numbers: `month` runs 1 to 12. */

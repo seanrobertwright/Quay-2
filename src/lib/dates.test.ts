@@ -13,6 +13,8 @@ import {
   localTimeZoneName,
   parseUtcTimestamp,
   wallClockPartsOf,
+  daysBetweenDateStamps,
+  isDateStamp,
   isoDigits,
 } from "./dates.ts";
 
@@ -112,6 +114,18 @@ test("formatRunClock reads minutes and seconds, with hours from the first, and n
     [Number.NaN, "00:00"],
   ];
   for (const [ms, said] of cases) assert.equal(formatRunClock(ms), said);
+});
+
+test("a date stamp is a calendar date of any year from 1 to 9999", () => {
+  for (const text of ["2026-10-21", "2024-02-29", "0002-10-21", "0099-12-31", "9999-12-31"]) assert.equal(isDateStamp(text), true, text);
+  for (const text of ["0000-01-01", "2026-02-30", "2025-02-29", "2026-13-01", "2026-00-10", "2026-1-1", "2026-10-21T00:00", ""]) assert.equal(isDateStamp(text), false, text);
+});
+
+test("the days between two date stamps are counted across years, the first hundred among them", () => {
+  assert.equal(daysBetweenDateStamps("2026-10-21", "2026-10-28"), 7);
+  assert.equal(daysBetweenDateStamps("2024-03-01", "2024-02-28"), -2);
+  assert.equal(daysBetweenDateStamps("0099-12-31", "0100-01-01"), 1);
+  assert.throws(() => daysBetweenDateStamps("2026-02-30", "2026-03-01"), /"2026-02-30" is not a date/);
 });
 
 test("isoDigits reads the digits of an ISO 8601 date, time, or both as they are written, and of no other text", () => {
