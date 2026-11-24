@@ -57,7 +57,7 @@ pub struct PluginWatch {
     first_output_at: Option<Instant>,
     /// When the launch began.
     began: Instant,
-    /// When its first turn started, for a CLI that connects then (`RunKind::connects_at_first_prompt`).
+    /// When it first worked, for a CLI that connects then (`RunKind::connects_at_first_prompt`).
     prompted_at: Option<Instant>,
     /// Whether the launch's CLI has shaken hands with Quay's MCP server.
     handshake: bool,
@@ -110,8 +110,9 @@ impl PluginWatch {
                 .is_some_and(|at| now.saturating_duration_since(at) >= PLUGIN_SILENCE)
     }
 
-    /// Records the start of a turn. Whether it is the launch's first, of a CLI that connects then.
-    pub fn start_turn(&mut self) -> bool {
+    /// Records that the CLI works, so that it has been prompted. Whether that is the launch's first time, of
+    /// a CLI that connects then.
+    pub fn works(&mut self) -> bool {
         let first = self.run_kind.connects_at_first_prompt() && self.prompted_at.is_none();
         if first {
             self.prompted_at = Some(Instant::now());

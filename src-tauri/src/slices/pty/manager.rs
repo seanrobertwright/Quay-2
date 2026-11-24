@@ -42,7 +42,7 @@ pub enum LaunchEvent {
     Listed(LaunchRef),
     /// The launch's CLI has shaken hands with Quay's MCP server, for the first time.
     ShookHands(LaunchRef),
-    /// The launch's first turn has started, of a CLI that connects to Quay's MCP server then.
+    /// The launch's CLI works for the first time, and is one that connects to Quay's MCP server then.
     Prompted(LaunchRef),
     /// The launch is over: its process exited, or a later launch has begun.
     Over(LaunchRef),
@@ -1085,8 +1085,9 @@ impl PtyManager {
         let moved = {
             let mut watches = self.plugin_watches.lock();
             let watch = launch.current_in(&mut watches)?;
-            if report.starts_turn {
-                prompted = watch.start_turn();
+            // A sign-in or a folder's trust question, which it asks as it starts, is no prompt of the operator's
+            if report.status == Some(ClaudeStatus::Working) {
+                prompted = watch.works();
             }
             let mut info_map = self.terminals_info.lock();
             let info = info_map.get_mut(&launch.terminal_id)?;
