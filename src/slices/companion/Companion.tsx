@@ -308,8 +308,9 @@ interface CompanionProps {
   /** A toast at the foot of the companion, such as the Merge undo window's; none when null. */
   toast?: ReactNode;
   /**
-   * A ticket that is not the selected terminal's. Until it is closed it shows in the Ticket view
-   * over the terminal's views, with no terminal selected too.
+   * A ticket that is not the selected terminal's. Until it is closed, a view is asked for over it
+   * or another terminal is selected, it shows in the Ticket view over the terminal's views, with
+   * no terminal selected too.
    */
   ticket?: CompanionTicket | null;
   /** Shows another ticket the handed-in one names, such as its blocker; without it none is offered. */
@@ -372,6 +373,16 @@ export const Companion = ({
     [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos, activity, focus, run, inspector, prAsk],
   );
   const selectedId = context?.terminal.id ?? null;
+  // A handed-in ticket shows until its Close, until a view is asked for over it, or until another
+  // terminal is selected; a new seq shows it again.
+  const [closedTicketSeq, setClosedTicketSeq] = useState<number | null>(null);
+  const [ticketOver, setTicketOver] = useState<{ seq: number; terminalId: string | null } | null>(null);
+  if (ticket && ticket.seq !== ticketOver?.seq) setTicketOver({ seq: ticket.seq, terminalId: selectedId });
+  // Once a ticket is withdrawn the next one may carry its seq again, so nothing is kept of it.
+  if (!ticket && ticketOver) {
+    setTicketOver(null);
+    setClosedTicketSeq(null);
+  }
   // Each request is taken once, when it arrives, as if its view were picked on the switch.
   const [takenSeq, setTakenSeq] = useState<number | null>(null);
   if (showRequest && showRequest.seq !== takenSeq) {
@@ -380,6 +391,8 @@ export const Companion = ({
       setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
       if (inspector) setOverInspector(showRequest.view);
       if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
+      // A reload follows a merge and is not an ask to see the view, so the ticket stays over it.
+      if (ticket && showRequest.pullRequest?.kind !== "reload") setClosedTicketSeq(ticket.seq);
       if (showRequest.pullRequest) setPrAsk({ ...showRequest.pullRequest, terminalId: showRequest.terminalId, seq: showRequest.seq });
     }
   }
@@ -408,11 +421,6 @@ export const Companion = ({
         : run
           ? { view: RUN_VIEW, content: run.content }
           : null;
-  // A handed-in ticket shows until its Close or until another terminal is selected; a new seq
-  // shows it again.
-  const [closedTicketSeq, setClosedTicketSeq] = useState<number | null>(null);
-  const [ticketOver, setTicketOver] = useState<{ seq: number; terminalId: string | null } | null>(null);
-  if (ticket && ticket.seq !== ticketOver?.seq) setTicketOver({ seq: ticket.seq, terminalId: selectedId });
   const looseTicket =
     ticket && ticket.seq !== closedTicketSeq && (ticket.seq !== ticketOver?.seq || ticketOver.terminalId === selectedId) ? ticket : null;
   const resize = (next: number) => {

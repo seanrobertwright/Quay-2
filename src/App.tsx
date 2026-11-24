@@ -673,6 +673,7 @@ export function App() {
       terminalName={selectedTerminal.name}
       permission={latestPermission(waitingItems, selectedTerminal.id)}
       onAnswer={attentionQueue.answerPermission}
+      onShowActivity={() => openActivity(selectedTerminal.id)}
     />
   );
 
@@ -786,7 +787,7 @@ export function App() {
   }, [pendingView, activeTerminalId]);
 
   // The Projects panel's ticket pipeline (#651). A ticket picked with no terminal, or a lane's
-  // blocker, opens in the companion; picking a terminal leaves it.
+  // blocker, opens in the companion; picking a terminal leaves it, and so does asking for a view.
   const [companionTicket, setCompanionTicket] = useState<CompanionTicket | null>(null);
   const selectFromPanel = (id: string) => {
     setCompanionTicket(null);

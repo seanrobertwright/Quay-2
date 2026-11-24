@@ -1,6 +1,7 @@
 /// <reference types="node" />
 // Component tests for the reply strip at a lens's foot (#640): it shows the terminal's newest
-// waiting permission request and answers it through the attention queue's `answerPermission`.
+// waiting permission request and answers it through the attention queue's `answerPermission`, and
+// offers the way to the Activity view where that view draws more than its summary (#704).
 import "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -31,6 +32,7 @@ const permission: PermissionItem = {
 
 function render(props: { permission: PermissionItem | null }) {
   const answers: unknown[][] = [];
+  const shown: string[] = [];
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -40,11 +42,12 @@ function render(props: { permission: PermissionItem | null }) {
         terminalName: "implement 5",
         ...props,
         onAnswer: async (...args: unknown[]) => void answers.push(args),
+        onShowActivity: () => void shown.push("activity"),
       }),
     ),
   );
   mounted = { root, container };
-  return { container, answers };
+  return { container, answers, shown };
 }
 
 const button = (container: HTMLElement, text: string) =>
@@ -76,4 +79,19 @@ test("with no permission request waiting, the strip says so and offers no replie
   const { container } = render({ permission: null });
   assert.match(container.textContent ?? "", /implement 5 is not asking anything/);
   assert.equal(container.querySelectorAll("button").length, 0);
+});
+
+test("a request whose input the Activity view draws under its summary offers Whole input, which shows that view", () => {
+  const { container, answers, shown } = render({
+    permission: { ...permission, tool: "Write", input: { file_path: "src/a.ts", content: "one" } },
+  });
+  act(() => button(container, "Whole input")?.click());
+  assert.deepEqual(shown, ["activity"]);
+  assert.deepEqual(answers, [], "it answers nothing");
+  for (const reply of ["Allow once", "Allow for session", "Deny"]) assert.ok(button(container, reply), reply);
+});
+
+test("a request whose input is all in the Activity view's summary offers no Whole input", () => {
+  const { container } = render({ permission });
+  assert.ok(!button(container, "Whole input"));
 });

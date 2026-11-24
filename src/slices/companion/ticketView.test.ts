@@ -9,6 +9,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
 import type { IssueChoices, IssuePullRequest, IssueStatus, IssueRef, PullRequestReadiness } from "../github/types.ts";
+import type { CompanionShowRequest, CompanionTicket } from "./Companion.tsx";
 import { companionPrefs } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "./fixtures/companionFixtures.ts";
 
@@ -612,4 +613,52 @@ test("a ticket handed to the companion gives way once another terminal is select
   await settle();
   assert.equal(container.querySelector('button[aria-label="Close this ticket"]'), null);
   assert.equal(container.querySelector("[data-companion-view]")?.getAttribute("data-companion-view"), "repository");
+});
+
+/** The companion on one terminal with no link, and a ticket handed to it over that terminal's views. */
+async function renderUnderTicket() {
+  const props = {
+    selectedTerminal: { ...terminalInfo("a", "E:/alpha"), link: { ticket: null, pull_request: null, candidates: [] } },
+    projects: [{ path: "E:/alpha", name: "Alpha", terminal_ids: [] }],
+    projectWorktrees: {},
+    views: COMPANION_VIEWS,
+    prefs: companionPrefs(memoryStorage()),
+    ticket: { repoPath: "E:/alpha", repo: null, number: 9, seq: 1 } as CompanionTicket | null,
+  };
+  const { container } = await render(github({ number: 9 }), { link: props.selectedTerminal.link, ticket: props.ticket });
+  return {
+    ticketOver: () => container.querySelector('button[aria-label="Close this ticket"]') !== null,
+    shown: () => container.querySelector("[data-companion-view]")?.getAttribute("data-companion-view"),
+    rerender: async (over: { showRequest?: CompanionShowRequest; ticket?: CompanionTicket | null }) => {
+      act(() => mounted!.root.render(createElement(Companion, { ...props, ...over })));
+      await settle();
+    },
+  };
+}
+const repositoryAsk: CompanionShowRequest = { terminalId: "a", view: "repository", seq: 1 };
+
+test("a ticket handed to the companion gives way to a view asked for over it, and stays away", async () => {
+  const { ticketOver, shown, rerender } = await renderUnderTicket();
+  assert.ok(ticketOver());
+  await rerender({ showRequest: repositoryAsk });
+  assert.ok(!ticketOver());
+  assert.equal(shown(), "repository");
+  await rerender({ showRequest: repositoryAsk, ticket: { repoPath: "E:/alpha", repo: null, number: 10, seq: 2 } });
+  assert.ok(ticketOver(), "a ticket picked after the request shows over the view");
+});
+
+test("a ticket handed to the companion stays when a view is asked for on another terminal, or a merge re-reads the pull request", async () => {
+  const { ticketOver, rerender } = await renderUnderTicket();
+  await rerender({ showRequest: { ...repositoryAsk, terminalId: "b" } });
+  assert.ok(ticketOver());
+  await rerender({ showRequest: { terminalId: "a", view: "pull-request", pullRequest: { kind: "reload" }, seq: 2 } });
+  assert.ok(ticketOver());
+});
+
+test("a ticket handed over after the last one was withdrawn shows, though it carries the same seq", async () => {
+  const { ticketOver, rerender } = await renderUnderTicket();
+  await rerender({ showRequest: repositoryAsk });
+  await rerender({ showRequest: repositoryAsk, ticket: null });
+  await rerender({ showRequest: repositoryAsk, ticket: { repoPath: "E:/alpha", repo: null, number: 11, seq: 1 } });
+  assert.ok(ticketOver());
 });
