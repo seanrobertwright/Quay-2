@@ -33,6 +33,15 @@ fn reply_to_notification(req: &JsonRpcRequest) -> Option<Response> {
         .then(|| StatusCode::ACCEPTED.into_response())
 }
 
+/// Tells a client that probes with MCP 2026-07-28's `server/discover` that Quay speaks the earlier
+/// versions, which start with `initialize`. That revision's Streamable HTTP page, section "Backward
+/// Compatibility", has the client fall back on `400 Bad Request` when "the body is empty or is not a
+/// recognized modern JSON-RPC error". The body is left empty because the same page lists unknown
+/// method among the errors a modern server returns, so a client could take `-32601` as that sign.
+fn fall_back_to_the_handshake() -> Response {
+    StatusCode::BAD_REQUEST.into_response()
+}
+
 #[derive(Debug, Serialize)]
 pub struct JsonRpcResponse {
     pub jsonrpc: String,
@@ -369,6 +378,8 @@ pub async fn handle_mcp_request(
                 .into_response(),
             }
         }
+
+        "server/discover" => fall_back_to_the_handshake(),
 
         _ => Json(JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
