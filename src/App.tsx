@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, use
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
+import { startSurfaces } from "./slices/surface/surfaceHost";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
@@ -190,6 +191,7 @@ export function App() {
   } = useWorkspace();
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
+  useEffect(startSurfaces, []);
   const attentionQueue = useAttentionQueue(terminals);
   const { items: waitingItems } = attentionQueue;
   // The A2A trail, newest first: the Activity view's messages and the Agents panel's reply previews.

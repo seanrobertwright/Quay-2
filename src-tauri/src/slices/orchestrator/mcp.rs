@@ -403,8 +403,9 @@ pub async fn handle_mcp_request(
     }
 }
 
-/// The tools `tools/list` answers with, beside the surface tools. `pnpm docs:build` checks the A2A page's tool
-/// reference against this file (see `scripts/mcp-tools`), so the two can't drift apart.
+/// The tools `tools/list` answers with, before the surface tools. `pnpm docs:build` checks the
+/// A2A page's tool reference against this file (see `scripts/mcp-tools`), so the two can't
+/// drift apart.
 const TOOL_LIST: &str = include_str!("mcp_tools.json");
 
 /// `TOOL_LIST`, parsed once.
@@ -413,7 +414,7 @@ fn tool_list() -> &'static Value {
     TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
 }
 
-/// Every tool the server lists: those of `TOOL_LIST`, then `surface_tools`.
+/// Every tool the server lists: those of `TOOL_LIST`, then the surface tools.
 fn tools(surface_tools: &[Value]) -> Vec<Value> {
     let mut tools = tool_list().as_array().cloned().unwrap_or_default();
     tools.extend_from_slice(surface_tools);

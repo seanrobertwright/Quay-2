@@ -6,10 +6,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { attachTerminalKeys } from "./terminalBody";
+import { isTypingOutside } from "./terminalFocus";
 import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminalReports";
 import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
+
+/** The pane a terminal's container is in. */
+const paneOf = (container: HTMLElement | null) => container?.closest("[data-terminal-pane]") ?? null;
 
 /**
  * Focuses a terminal unless an overlay is open: these focus calls run on timers and output
@@ -230,7 +234,9 @@ export function useTerminal(
       // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
       if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
-        requestAnimationFrame(() => focusXterm(term));
+        requestAnimationFrame(() => {
+          if (!isTypingOutside(paneOf(containerRef.current))) focusXterm(term);
+        });
       }
 
       if (!initialLoaded) {
@@ -344,12 +350,13 @@ export function useTerminal(
     } catch (_) {}
   }, []);
 
-  // A timed focus leaves focus in one of the pane's own controls, such as its search box or
-  // rename box: the terminal menu's Find opens the search just as selecting the terminal
-  // schedules these focus calls.
+  // A timed focus leaves focus in a field outside the pane, such as an agent's question, and in
+  // one of the pane's own controls, such as its search box or rename box: the terminal menu's Find
+  // opens the search just as selecting the terminal schedules these focus calls.
   const focusUnlessInPaneControl = useCallback(() => {
     const active = document.activeElement;
-    const pane = containerRef.current?.closest("[data-terminal-pane]");
+    const pane = paneOf(containerRef.current);
+    if (isTypingOutside(pane)) return;
     if (active && pane?.contains(active) && active.closest("[data-no-terminal-focus]")) return;
     focusTerminal();
   }, [focusTerminal]);
