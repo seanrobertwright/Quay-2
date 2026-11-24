@@ -1,11 +1,11 @@
-// Which board of each terminal is open over it. It is kept here, so a pane that comes back to the screen
-// is as it was left, and a board can be opened from outside its pane.
+// Which surface of each terminal's strip, a board or a raw one, is open over it. It is kept here, so a
+// pane that comes back to the screen is as it was left, and one can be opened from outside its pane.
 import { useSyncExternalStore } from "react";
 import { surfaceKey } from "../surfaceAttention.ts";
 import { surfacesByTerminal } from "../surfaceHost.ts";
 import type { SurfaceKey, SurfaceRecord } from "../surfaceTypes.ts";
 
-/** By terminal, the key of its open board. */
+/** By terminal, the key of its open surface. */
 const open = new Map<string, string>();
 const subscribers = new Set<() => void>();
 
@@ -31,5 +31,5 @@ export function openBoard({ terminal_id, id }: SurfaceKey): boolean {
   return true;
 }
 
-/** The key of `terminalId`'s open board, as `surfaceKey` gives it. The board may have left since. */
+/** The key of `terminalId`'s open surface, as `surfaceKey` gives it. It may have left since. */
 export const useOpenBoard = (terminalId: string): string | null => useSyncExternalStore(subscribe, () => open.get(terminalId) ?? null);

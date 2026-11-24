@@ -174,7 +174,7 @@ pub enum CommitRefused {
     TerminalOver,
     /// The operator dismissed the terminal's surface of that id.
     Dismissed,
-    /// The terminal has a surface of that id.
+    /// The terminal has a surface of that id, which does not make way.
     IdInUse,
     PastLimit(PastLimit),
 }
