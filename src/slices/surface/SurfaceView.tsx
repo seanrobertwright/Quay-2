@@ -105,7 +105,7 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
     regionOf(focus.surfaceId)?.scrollIntoView?.({ block: "start" });
   }, [focus]);
   return (
-    <div ref={listRef} tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2">
+    <div ref={listRef} data-surface-view tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2">
       {queue.waiting === MOST_WAITING && <p className="px-1 text-[11px] text-[#8b949e]">{MOST_WAITING} questions waiting, the most one terminal may have.</p>}
       {surfaces.filter(isLive).map((record) => {
         // Not by revision: why an answer to an older one was not taken is said over the newer one

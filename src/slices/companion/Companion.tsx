@@ -26,6 +26,7 @@ import { SurfaceView, type SurfaceFocus } from "../surface/SurfaceView.tsx";
 import { useSurfacesOf, useSurfacesRead } from "../surface/surfaceHost.ts";
 import { askingOf } from "../surface/surfaceAttention.ts";
 import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
+import { useKeptFocus } from "../surface/useKeptFocus.ts";
 import { useAskingOver, useAskingState, type AskedOfRender } from "./useAskingOver.ts";
 
 /** What the companion reads and changes about terminal links. */
@@ -385,6 +386,13 @@ export const Companion = ({
   const asks = asking.length > 0;
   const selectedId = selectedTerminal?.id ?? null;
   const hasInspector = inspector !== null;
+  const asideRef = useRef<HTMLElement | null>(null);
+  // The Surface view keeps the focus while it is on screen. When the view leaves with the focus in it,
+  // as it does with the last question, the focus goes to the switch, on the view that shows instead.
+  const keptFocus = useKeptFocus(selectedId ?? "", (left) => {
+    if (left.closest("[data-surface-view]") === null) return;
+    asideRef.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')?.focus();
+  });
   /** Makes `view` the one underneath. */
   const showUnderneath = useCallback(
     (view: CompanionViewId) => {
@@ -517,6 +525,8 @@ export const Companion = ({
   };
   return (
     <aside
+      ref={asideRef}
+      {...keptFocus}
       aria-label="Companion"
       // The companion is a pie surface: plain right-click opens the pie (#648).
       data-pie-surface="pie"

@@ -390,6 +390,22 @@ test("a locked one that leaves gives the focus to Earlier, and the last one to t
   assert.ok(view !== null && document.activeElement === view, focused());
 });
 
+test("when the Surface view itself leaves with the focus, the focus goes to the view that shows instead", async () => {
+  const shown = () => container().querySelector('[aria-label="Companion view"] [aria-checked="true"]');
+  const record = await asked(1);
+  await load(record);
+  await act(async () => region("ask_1").querySelector("textarea")!.focus());
+  await changes(settled(record, ANSWER));
+  assert.equal(container().querySelector("[data-surface-view]") === null, true, "the last question settled, so its view gave way");
+  assert.ok(shown() !== null && document.activeElement === shown(), focused());
+
+  await showView();
+  await click(earlier()!);
+  await act(async () => button("Dismiss all").focus());
+  await removed("ask_1");
+  assert.ok(shown() !== null && document.activeElement === shown(), focused());
+});
+
 test("the focus is not taken by another terminal's questions", async () => {
   const [one, two] = [await asked(1), { ...(await asked(2)), terminal_id: "t2", id: "ask_1" }];
   await load(one, two);
