@@ -105,11 +105,23 @@ pub async fn surface_dismiss(terminal_id: String, id: String, surfaces: State<'_
         .map_err(|BeingSent| "Not dismissed: its answer is being sent.".to_string())
 }
 
+/// Takes those of a terminal's surfaces `ids` that are locked off the screen. No agent is told.
+#[tauri::command]
+pub async fn surface_dismiss_locked(
+    terminal_id: String,
+    ids: Vec<String>,
+    surfaces: State<'_, SurfaceTools>,
+) -> Result<(), String> {
+    surfaces.dismiss_locked(&terminal_id, &ids);
+    Ok(())
+}
+
 fn refusal(refused: AnswerRefused) -> &'static str {
     match refused {
         AnswerRefused::NoSuchSurface => "Not sent: Quay no longer has this surface.",
         AnswerRefused::AlreadyAnswered => "Not sent: this was already answered.",
         AnswerRefused::OlderRevision => "Not sent: the agent has changed this since. Check it and send again.",
+        AnswerRefused::Ended => "Not sent: the terminal exited before this was answered.",
         AnswerRefused::NotTyped(NotTyped::TerminalOver) => "Not sent: the terminal has exited.",
         AnswerRefused::NotTyped(NotTyped::Failed) => "Not sent: it could not be typed into the terminal.",
     }

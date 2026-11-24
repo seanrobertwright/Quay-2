@@ -222,6 +222,24 @@ test("the pane's button counts every question and opens the oldest", async () =>
   assert.deepEqual(openedSurfaces[1], { terminal_id: "t1", id: "ask_2" });
 });
 
+test("a question whose terminal exited waits on nobody", async () => {
+  const container = await mount(createElement(Waiting, { terminals: [T1, T2] }));
+  const ask = surface("ask_1");
+  await arrives(ask);
+  assert.deepEqual([waitingRows(container).length, badge, nextWait], [1, 1, "t1"]);
+  await arrives(changed(ask, { ended_at: 1 }));
+  assert.deepEqual([waitingRows(container).length, badge, nextWait], [0, 0, null]);
+});
+
+test("a question whose terminal exited has no chip, no dot and no button", async () => {
+  const container = await mountMarks();
+  const ask = surface("ask_1");
+  await arrives(ask);
+  assert.ok(chips(container).length === 1 && iconDot(container) !== null && paneButton(container) !== null);
+  await arrives(changed(ask, { ended_at: 1 }));
+  assert.ok(chips(container).length === 0 && iconDot(container) === null && paneButton(container) === null);
+});
+
 test("when the last question settles, its chip, its dot and the pane's button go at once", async () => {
   const container = await mountMarks();
   const ask = surface("ask_1");

@@ -10,7 +10,7 @@ import type { Mounted } from "./fixtures/askFixtures.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { acceptedAsk, called, calls, loadSurfaces, settle, startRust, unloadSurfaces, until, verdictOn, verdicts } from "./fixtures/fakeRust.ts";
 
-const { askCheck, companion, findButton, mountCompanion, TERMINAL, typeInto: type, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { askCheck, companion, findButton, mountCompanion, openLocked, TERMINAL, typeInto: type, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 /** What Rust holds, as the fake `invoke` answers it. */
 let list: SurfaceRecord[];
@@ -259,10 +259,12 @@ test("an answered question is locked with its answer, and an older record does n
   await settle();
   // The companion went back to its earlier view
   await act(async () => viewEntry(container, "Surface")!.click());
+  await openLocked(container, "ask_1");
   const region = regions(container)[0];
   assert.equal(region.querySelector('[role="status"]')?.textContent, "Answered and sent to the agent.");
   for (const text of ["Which base should this branch take?", "Rebase onto master", "skip the suite"]) assert.ok(region.textContent?.includes(text), text);
-  assert.equal(region.querySelectorAll("[data-surface-content] :is(input, textarea, button)").length, 0);
+  assert.equal(region.querySelectorAll("[data-surface-content] :is(input, textarea)").length, 0);
+  assert.equal(findButton(region, "Send"), undefined);
 });
 
 test("a surface Quay no longer has leaves the screen", async () => {
@@ -301,6 +303,12 @@ test("an action Quay has no way to send is refused in words", async () => {
 
   assert.equal(regions(container)[0].querySelector('[role="alert"]')?.textContent, "Not sent: Quay cannot send an answer to this kind of surface.");
   assert.equal(called("surface_answer").length, 0);
+
+  // A terminal may use an id again, for another surface
+  await act(async () => emitEvent("surface-changed", { ...list[0], order: asked.order + 1, change: asked.change + 1 }));
+  await settle();
+  assert.equal(regions(container).length, 1);
+  assert.equal(regions(container)[0].querySelectorAll('[role="alert"]').length, 0, "it is not said of the next one of that id");
 });
 
 test("a reload draws the question again", async () => {

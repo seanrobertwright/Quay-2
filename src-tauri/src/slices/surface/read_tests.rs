@@ -49,6 +49,18 @@ async fn a_surface_is_read_by_its_id_in_each_state() {
 }
 
 #[tokio::test]
+async fn the_tool_names_each_state_it_returns() {
+    let (seam, _webview) = start(Timing::default()).await;
+    let list = seam.cli("term-a").post("tools/list", json!({})).result().await;
+    let tools = list["tools"].as_array().unwrap();
+    let tool = tools.iter().find(|tool| tool["name"] == "quay_surface_read").unwrap();
+    let description = tool["description"].as_str().unwrap();
+    for state in ["shown", "no_answer_yet", "answered", "dismissed", "ended"] {
+        assert!(description.contains(state), "{state}");
+    }
+}
+
+#[tokio::test]
 async fn an_answer_is_read_after_its_surface_has_left_the_screen() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
@@ -58,7 +70,6 @@ async fn an_answer_is_read_after_its_surface_has_left_the_screen() {
         seam.surfaces.answer(&key("term-a", &format!("ask_{n}")), 1, answer()).unwrap();
         webview.next_shown().await;
     }
-    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
     assert_eq!(webview.next_removed().await, key("term-a", "ask_1"), "ten answered stay");
     assert_eq!(read(&cli, "ask_1").await, answered);
 

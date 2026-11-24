@@ -52,6 +52,20 @@ export const viewEntry = (container: HTMLElement, name: string) =>
 export const findButton = (container: HTMLElement, name: string) =>
   [...container.querySelectorAll("button")].find((button) => button.textContent === name);
 
+/** The button that folds and unfolds a terminal's locked surfaces, if there are any. */
+export const earlierButton = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")].find((button) => button.textContent?.startsWith("Earlier"));
+
+/** The line of the locked surface `id`, which opens it. Earlier is open. */
+export const lockedLine = (container: HTMLElement, id: string) =>
+  [...container.querySelectorAll<HTMLElement>("[data-locked]")].find((item) => item.dataset.locked === id)!.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+
+/** Opens Earlier, and the locked surface `id` in it. */
+export async function openLocked(container: HTMLElement, id: string): Promise<void> {
+  await act(async () => earlierButton(container)!.click());
+  await act(async () => lockedLine(container, id).click());
+}
+
 /** Types `text` into a field as the operator would, so React hears it. */
 export async function typeInto(field: HTMLTextAreaElement, text: string): Promise<void> {
   Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!.call(field, text);

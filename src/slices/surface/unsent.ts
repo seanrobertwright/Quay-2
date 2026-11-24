@@ -27,7 +27,7 @@ export interface Page {
   unsent: Unsent[];
 }
 
-/** What is kept of a live surface. */
+/** What is kept of a surface that is not settled. */
 interface Kept extends Version {
   /** What is unsent, as JSON, so nothing the engine does to its lists reaches it. */
   values: string;
@@ -35,6 +35,8 @@ interface Kept extends Version {
 
 const NOTHING = "{}";
 const kept = new Map<string, Kept>();
+/** By surface, what saves at once what the operator has put in the one on the screen. */
+const followed = new Map<string, () => void>();
 /** This page's number, or null until Rust has given it. */
 let page: number | null = null;
 let saves = 0;
@@ -65,6 +67,12 @@ export function keepUnsent(record: SurfaceRecord): void {
   if (keptFor(record)) return;
   const { order, revision } = record;
   kept.set(keyOf(record), { order, revision, values: NOTHING });
+}
+
+/** Says that `record` ended before it was settled: what is unsent in it up to now is kept. */
+export function keepEnded(record: SurfaceRecord): void {
+  followed.get(keyOf(record))?.();
+  keepUnsent(record);
 }
 
 /** Drops what is unsent in a surface that is settled, or that Quay no longer has. */
@@ -111,8 +119,11 @@ export function followUnsent(record: SurfaceRecord, data: SurfaceData): () => vo
     timer = setTimeout(saveNow, PAUSE_MS);
   });
   window.addEventListener("pagehide", saveNow);
+  const key = keyOf(record);
+  followed.set(key, saveNow);
   return () => {
     unsubscribe();
+    if (followed.get(key) === saveNow) followed.delete(key);
     window.removeEventListener("pagehide", saveNow);
     saveNow();
   };

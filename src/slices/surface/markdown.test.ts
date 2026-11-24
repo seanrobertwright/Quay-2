@@ -58,6 +58,7 @@ function surfaceOf(components: SurfaceComponent[], data: Record<string, unknown>
     shown_at: 0,
     answer: null,
     answered_at: null,
+    ended_at: null,
   };
 }
 
