@@ -3,7 +3,7 @@ import type { CreateSurface, SurfaceAction } from "../surfaceTypes.ts";
 import * as ask from "./ask.ts";
 
 export interface TypedTool {
-  /** The surface a call's checked arguments make. It throws on arguments Rust would have refused. */
+  /** The surface a call's arguments make. They are as Rust checked them, and are not checked again. */
   expand: (args: unknown, surfaceId: string) => CreateSurface;
   /** The result the agent gets for an action. */
   collapse: (action: SurfaceAction) => unknown;
