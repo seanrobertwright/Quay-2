@@ -4,7 +4,7 @@
 import "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { isTypingOutside } from "./terminalFocus.ts";
+import { focusXterm, isTypingOutside } from "./terminalFocus.ts";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -33,4 +33,24 @@ test("a field outside the pane keeps the focus", () => {
 
 test("the pane's own fields, another terminal and a button do not", () => {
   for (const id of ["search", "own", "other", "send", null]) assert.equal(typingIn(id), false, String(id));
+});
+
+/** The terminal in the first pane, as xterm gives it. */
+const xterm = (pane: HTMLElement) => {
+  const textarea = pane.querySelector<HTMLTextAreaElement>("#own")!;
+  return { element: textarea.parentElement!, textarea, focus: () => textarea.focus() };
+};
+
+test("a terminal that focuses itself leaves the focus in a field outside its pane", () => {
+  const term = xterm(draw());
+  document.getElementById("box")!.focus();
+  focusXterm(term);
+  assert.equal(document.activeElement?.id, "box");
+});
+
+test("a terminal that focuses itself takes the focus from a button", () => {
+  const term = xterm(draw());
+  document.getElementById("send")!.focus();
+  focusXterm(term);
+  assert.equal(document.activeElement?.id, "own");
 });

@@ -6,26 +6,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { attachTerminalKeys } from "./terminalBody";
-import { isTypingOutside } from "./terminalFocus";
+import { focusXterm, isTypingOutside, paneOf } from "./terminalFocus";
 import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminalReports";
 import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
-
-/** The pane a terminal's container is in. */
-const paneOf = (container: HTMLElement | null) => container?.closest("[data-terminal-pane]") ?? null;
-
-/**
- * Focuses a terminal unless an overlay is open: these focus calls run on timers and output
- * events, and would otherwise pull focus out from under an overlay opened in the meantime.
- */
-function focusXterm(term: Terminal) {
-  if (isOverlayOpen()) return;
-  try {
-    term.focus();
-    term.textarea?.focus({ preventScroll: true });
-  } catch (_) {}
-}
 
 let globalTerminalCols = 160;
 let globalTerminalRows = 40;
@@ -234,9 +219,7 @@ export function useTerminal(
       // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
       if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
-        requestAnimationFrame(() => {
-          if (!isTypingOutside(paneOf(containerRef.current))) focusXterm(term);
-        });
+        requestAnimationFrame(() => focusXterm(term));
       }
 
       if (!initialLoaded) {
@@ -353,7 +336,7 @@ export function useTerminal(
   // A timed focus leaves focus in a field outside the pane, such as an agent's question, and in
   // one of the pane's own controls, such as its search box or rename box: the terminal menu's Find
   // opens the search just as selecting the terminal schedules these focus calls.
-  const focusUnlessInPaneControl = useCallback(() => {
+  const focusUnlessInControl = useCallback(() => {
     const active = document.activeElement;
     const pane = paneOf(containerRef.current);
     if (isTypingOutside(pane)) return;
@@ -364,12 +347,12 @@ export function useTerminal(
   // Multi-stage staggered focus scheduler to overcome modal unmount blurs and DOM layouts
   const scheduleFocus = useCallback(() => {
     const rafId = requestAnimationFrame(() => {
-      focusUnlessInPaneControl();
+      focusUnlessInControl();
     });
-    const t1 = setTimeout(focusUnlessInPaneControl, 30);
-    const t2 = setTimeout(focusUnlessInPaneControl, 100);
-    const t3 = setTimeout(focusUnlessInPaneControl, 250);
-    const t4 = setTimeout(focusUnlessInPaneControl, 500);
+    const t1 = setTimeout(focusUnlessInControl, 30);
+    const t2 = setTimeout(focusUnlessInControl, 100);
+    const t3 = setTimeout(focusUnlessInControl, 250);
+    const t4 = setTimeout(focusUnlessInControl, 500);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -378,7 +361,7 @@ export function useTerminal(
       clearTimeout(t3);
       clearTimeout(t4);
     };
-  }, [focusUnlessInPaneControl]);
+  }, [focusUnlessInControl]);
 
   // Refit when terminal becomes visible; only resize PTY if dimensions changed
   useEffect(() => {
