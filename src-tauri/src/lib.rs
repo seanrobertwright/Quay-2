@@ -61,6 +61,7 @@ use slices::pty::{
     rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
+use slices::surface::{surface_answer, surface_checks, surface_list, surface_verdict, AppWebview, SurfaceTools};
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
     list_recent_projects, open_in_vscode, open_project_places, remove_project, save_project_view, set_active_project,
@@ -77,6 +78,7 @@ pub fn run() {
     let workspace_manager = WorkspaceManager::new();
     let a2a_router = A2ARouter::new();
     let machina_manager = MachinaManager::new();
+    let surfaces = SurfaceTools::new();
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();
@@ -85,6 +87,7 @@ pub fn run() {
     let a2a_router_clone = a2a_router.clone();
     let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
+    let surfaces_clone = surfaces.clone();
 
     // A terminal whose status moved off the bridge's event route (it left Starting, went
     // Unknown, its OSC 7501 output moved it, or it closed) may stop holding its messages: type
@@ -115,6 +118,7 @@ pub fn run() {
         .manage(a2a_router)
         .manage(SwarmStore::new())
         .manage(machina_manager)
+        .manage(surfaces)
         .manage(GraphSessions::default())
         .manage(GitOps::default())
         .manage(GitSearches::default())
@@ -123,6 +127,7 @@ pub fn run() {
         .manage(PraxisCli::new())
         .setup(move |app| {
             let app_handle = app.handle().clone();
+            surfaces_clone.set_webview(AppWebview(app_handle.clone()));
 
             // Every trail entry the router adds or changes updates Mission Control's trail,
             // and a message raises its toast when it is typed in, waited on or not.
@@ -162,6 +167,7 @@ pub fn run() {
                             pty_manager_clone,
                             a2a_router_clone,
                             machina_manager_clone,
+                            surfaces_clone,
                             app_handle,
                             pinned_port,
                         )
@@ -311,6 +317,10 @@ pub fn run() {
             set_github_issue_type,
             get_github_pr_files,
             get_github_pr_commits,
+            surface_answer,
+            surface_checks,
+            surface_list,
+            surface_verdict,
             run_pre_pr_audit,
             list_claude_sessions,
             get_claude_stats,

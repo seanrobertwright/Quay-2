@@ -17,10 +17,12 @@ use super::models::{
 use super::pending::{PendingAnswer, PermissionResolved, ResolvedSink, PERMISSION_TIMEOUT};
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
+use crate::slices::orchestrator::mcp::McpContext;
 use crate::slices::orchestrator::router::strip_peer_prefix;
-use crate::slices::orchestrator::A2ARouter;
+use crate::slices::orchestrator::{emit_broadcast, A2ARouter};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
+use crate::slices::surface::SurfaceTools;
 
 #[derive(Clone)]
 pub struct AppContext {
@@ -28,6 +30,7 @@ pub struct AppContext {
     pub pty_manager: PtyManager,
     pub a2a_router: A2ARouter,
     pub machina_manager: MachinaManager,
+    pub surfaces: SurfaceTools,
     pub app_handle: AppHandle,
 }
 
@@ -390,7 +393,7 @@ async fn decide_permission(
 }
 
 pub async fn handle_mcp(
-    State(ctx): State<Arc<AppContext>>,
+    State(ctx): State<Arc<McpContext>>,
     headers: HeaderMap,
     Json(req): Json<crate::slices::orchestrator::mcp::JsonRpcRequest>,
 ) -> Response {
@@ -418,15 +421,31 @@ pub async fn handle_machina_agent_card(State(ctx): State<Arc<AppContext>>) -> Re
     Json(card).into_response()
 }
 
+/// The routes of Quay's MCP server, which needs none of the app's window.
+pub fn mcp_router(ctx: McpContext) -> Router {
+    Router::new()
+        .route("/mcp", post(handle_mcp).get(handle_mcp_get))
+        .with_state(Arc::new(ctx))
+}
+
 pub fn create_router(ctx: AppContext) -> Router {
+    let app_handle = ctx.app_handle.clone();
+    let mcp = mcp_router(McpContext {
+        bridge_state: ctx.bridge_state.clone(),
+        pty_manager: ctx.pty_manager.clone(),
+        a2a_router: ctx.a2a_router.clone(),
+        machina_manager: ctx.machina_manager.clone(),
+        surfaces: ctx.surfaces.clone(),
+        on_broadcast: Arc::new(move |text, sent| emit_broadcast(&app_handle, text, sent)),
+    });
     Router::new()
         .route("/v1/events", post(handle_events))
         .route("/v1/commands", get(handle_commands))
         .route("/v1/permission", post(handle_permission))
-        .route("/mcp", post(handle_mcp).get(handle_mcp_get))
         .route("/.well-known/agent.json", get(handle_machina_agent_card))
         .route("/a2a/machina-praxis", get(handle_machina_agent_card))
         .with_state(Arc::new(ctx))
+        .merge(mcp)
 }
 
 #[cfg(test)]

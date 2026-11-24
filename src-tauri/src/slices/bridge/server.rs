@@ -9,6 +9,7 @@ use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
+use crate::slices::surface::SurfaceTools;
 
 /// Binds the bridge's listener on loopback: on the pinned port when there is
 /// one, otherwise on a random port from the OS.
@@ -34,6 +35,7 @@ impl BridgeServer {
         pty_manager: PtyManager,
         a2a_router: A2ARouter,
         machina_manager: MachinaManager,
+        surfaces: SurfaceTools,
         app_handle: AppHandle,
         pinned_port: Option<u16>,
     ) -> Result<u16, String> {
@@ -52,6 +54,7 @@ impl BridgeServer {
             pty_manager,
             a2a_router,
             machina_manager,
+            surfaces,
             app_handle,
         };
 
