@@ -227,7 +227,7 @@ export function useTerminal(
     const unlistenPromise = listen<PtyOutputPayload>("pty-output", (event) => {
       if (event.payload.terminal_id !== terminalId) return;
 
-      // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
+      // When first output packet arrives from newly spawned agent, focus the terminal
       if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
         // PROTOTYPE (#711), throwaway: not out of a field the operator is typing in elsewhere

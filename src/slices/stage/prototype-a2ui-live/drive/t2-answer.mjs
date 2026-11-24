@@ -35,7 +35,7 @@ const seen = () => page.evaluate((S) => {
 }, S);
 log("1 drawn", await seen());
 await page.screenshot({ path: `${Q}/out/ask-1.png`, clip: await page.locator("aside[aria-label=Companion]").boundingBox() });
-// Send is held: a real click on a disabled button, and the engine's own action called straight.
+// Send is held: a real click on a disabled button. engine-probe.mjs calls the engine's own action.
 await page.locator(`[data-surface=${S}] [data-ask-foot] button`).click({ force: true });
 await sleep(200);
 log("2 actions after a click on the held Send", (await events(page)).filter((e) => e.what === "action").length);

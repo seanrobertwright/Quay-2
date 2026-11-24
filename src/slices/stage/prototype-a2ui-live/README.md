@@ -17,13 +17,17 @@ real Tauri webview with the unsent answer held in Rust?
 - `engine-probe.mjs`: what the engine alone says, in Node.
 - `bundle.mjs`: the bundle's growth, from vite's release profile.
 - `drive/`: the scripts that drove the built app over CDP, as they were run except that local paths
-  now read `C:/scratch/q711` and `C:/scratch/quay-worktree`. `call.mjs` and `gocall.mjs` are the fake
+  now read `C:/scratch/q711` and `C:/scratch/quay-worktree`, and one comment in `t2-answer.mjs` was
+  corrected. `call.mjs` and `gocall.mjs` are the fake
   CLI and run inside a Quay terminal.
 - `run-2026-11-24.quay-log.txt`: the prototype's log of the runs, UTC.
 
-Two changes outside the prototype were made to prove a fix: `a2ui711_checks` hands unanswered checks
-to a page that has just loaded, and `useTerminal.ts` leaves the focus in a field being typed in when
-a terminal first prints.
+Two changes were made to prove a fix: in the prototype, `a2ui711_checks` hands unanswered checks to a
+page that has just loaded; outside it, `useTerminal.ts` leaves the focus in a field being typed in
+when a terminal first prints. `Companion.tsx`, `companionViews.ts`, `mcp.rs`, `mod.rs` and `lib.rs`
+only hook the prototype in.
+
+The code was changed after the runs; the findings say how.
 
 ## Run it
 

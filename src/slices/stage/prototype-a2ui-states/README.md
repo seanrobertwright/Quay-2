@@ -9,7 +9,7 @@ one offers different takes with one marked recommended, and the last screen has 
 
 - The looks settled in #696 are fixed here: header-bar frame, listed questions, review rail, live strip.
 - The shell is a mock, and picks are saved only in the browser.
-- Raw surfaces run through the official engine (`@a2ui/react` 0.15.0, strict mode). Questions, reviews and
+- Raw surfaces run through the official engine (`@a2ui/react` 0.16.1, strict mode). Questions, reviews and
   boards are plain React.
 - In the last step "Reload Quay's window" is simulated: what would be lost is cleared and the rest is
   kept in the page. It proves nothing about Rust holding the text.
