@@ -274,6 +274,13 @@ fn settle_after_first_output(info: &mut TerminalInfo) -> bool {
     }
 }
 
+/// Shows a terminal a message reached as Working (see `TerminalInfo::shows_working_on_delivery`).
+fn show_delivered(info: &mut TerminalInfo) {
+    if info.shows_working_on_delivery() {
+        info.claude_status = ClaudeStatus::Working;
+    }
+}
+
 fn status_payload(info: &TerminalInfo) -> TerminalStatusPayload {
     TerminalStatusPayload {
         terminal_id: info.id.clone(),
@@ -567,8 +574,9 @@ impl PtyManager {
         self.submit(terminal_id, None, prompt)
     }
 
-    /// `submit_prompt` into `launch`'s terminal, of which nothing reaches a later launch: it fails once
-    /// `launch` is over.
+    /// `submit_prompt` into the session `launch` started. It fails when the terminal has another
+    /// session by then, or none, so nothing of it reaches a later launch. An exit by itself doesn't
+    /// fail it.
     pub fn submit_prompt_to(&self, launch: &LaunchRef, prompt: &str) -> Result<(), String> {
         self.submit(&launch.terminal_id, Some(launch), prompt)
     }
@@ -737,14 +745,17 @@ impl PtyManager {
 
     /// Whether `launch` is its terminal's current launch and the terminal hasn't exited.
     pub fn launch_running(&self, launch: &LaunchRef) -> bool {
+        self.with_running(launch, |_| ()).is_some()
+    }
+
+    /// Runs `change` on the terminal's info if `launch` is running (see `launch_running`), which it
+    /// stays meanwhile.
+    fn with_running<T>(&self, launch: &LaunchRef, change: impl FnOnce(&mut TerminalInfo) -> T) -> Option<T> {
         let mut watches = self.plugin_watches.lock();
-        if launch.current_in(&mut watches).is_none() {
-            return false;
-        }
-        self.terminals_info
-            .lock()
-            .get(&launch.terminal_id)
-            .is_some_and(|info| info.claude_status != ClaudeStatus::Exited)
+        launch.current_in(&mut watches)?;
+        let mut info_map = self.terminals_info.lock();
+        let info = info_map.get_mut(&launch.terminal_id)?;
+        (info.claude_status != ClaudeStatus::Exited).then(|| change(info))
     }
 
     /// Shows the terminal Unknown when `launch` is still running and Quay can no longer see
@@ -819,6 +830,11 @@ impl PtyManager {
         if let Some(info) = info_map.get_mut(terminal_id) {
             info.claude_status = status;
         }
+    }
+
+    /// `update_status`, if `launch` is running.
+    pub fn update_status_of(&self, launch: &LaunchRef, status: ClaudeStatus) {
+        self.with_running(launch, |info| info.claude_status = status);
     }
 
     /// Starts a new launch of `terminal_id`: no plugin heard and no clock running. The one before
@@ -1108,13 +1124,19 @@ impl PtyManager {
     /// that turn end (see `TerminalInfo::shows_working_on_delivery`). Any other terminal
     /// keeps its status, so it is never left Working with nothing to show it Idle again.
     pub fn mark_a2a_delivered(&self, terminal_id: &str) {
-        let mut info_map = self.terminals_info.lock();
-        if let Some(info) = info_map
-            .get_mut(terminal_id)
-            .filter(|info| info.shows_working_on_delivery())
-        {
-            info.claude_status = ClaudeStatus::Working;
+        if let Some(info) = self.terminals_info.lock().get_mut(terminal_id) {
+            show_delivered(info);
         }
+    }
+
+    /// `mark_a2a_delivered`, if `launch` is running. Returns the status before it, or `None` when
+    /// `launch` isn't running.
+    pub fn mark_a2a_delivered_to(&self, launch: &LaunchRef) -> Option<ClaudeStatus> {
+        self.with_running(launch, |info| {
+            let before = info.claude_status.clone();
+            show_delivered(info);
+            before
+        })
     }
 
     pub fn increment_auto_approved(&self, terminal_id: &str) {

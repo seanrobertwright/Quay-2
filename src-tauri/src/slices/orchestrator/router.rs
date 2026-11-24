@@ -159,23 +159,26 @@ fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
 
 /// Types `text` into `terminal_id` with its Enter. The terminal shows Working from before
 /// the Enter goes in, so the turn the Enter starts can't end before Working is set and be
-/// overwritten by it. A failed write puts the status back. With a `launch`, text goes only to that
-/// one: once it is over, nothing is typed and the status is left alone.
+/// overwritten by it. A failed write puts the status back. With a `launch`, text and status changes
+/// are that launch's only: no later one gets any of the text, and once it is over the status is left
+/// alone. When it is over before the typing starts, nothing is typed.
 fn type_in(
     pty_manager: &PtyManager,
     terminal_id: &str,
     text: &str,
     launch: Option<&LaunchRef>,
 ) -> Result<(), String> {
-    if launch.is_some_and(|launch| !pty_manager.launch_running(launch)) {
-        return Err("the terminal exited".to_string());
+    if let Some(launch) = launch {
+        let before = pty_manager.mark_a2a_delivered_to(launch).ok_or("the terminal exited")?;
+        let typed = pty_manager.submit_prompt_to(launch, text);
+        if typed.is_err() {
+            pty_manager.update_status_of(launch, before);
+        }
+        return typed;
     }
     let before = pty_manager.get_info(terminal_id).map(|t| t.claude_status);
     pty_manager.mark_a2a_delivered(terminal_id);
-    let typed = match launch {
-        Some(launch) => pty_manager.submit_prompt_to(launch, text),
-        None => pty_manager.submit_prompt(terminal_id, text),
-    };
+    let typed = pty_manager.submit_prompt(terminal_id, text);
     if let (Err(_), Some(before)) = (&typed, before) {
         pty_manager.update_status(terminal_id, before);
     }

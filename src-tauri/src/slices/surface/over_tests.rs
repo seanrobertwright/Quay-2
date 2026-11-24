@@ -279,10 +279,7 @@ async fn an_answer_that_is_being_typed_as_its_launch_ends_ends_with_it() {
         let launch = launched(&seam);
         seam.asked(&mut webview, "term-a", "One?").await.answer().await;
 
-        // Its text goes in, and its Enter a moment later
-        let surfaces = seam.surfaces.clone();
-        let sent = std::thread::spawn(move || surfaces.answer(&key("term-a", "ask_1"), 1, answer_to("One?")));
-        until(|| !seam.typed("term-a").is_empty(), "nothing was typed").await;
+        let sent = half_typed(&seam).await;
         over_and_launched(&seam, &launch, exits);
 
         assert_eq!(webview.next_shown().await.id, "ask_1");
@@ -291,5 +288,38 @@ async fn an_answer_that_is_being_typed_as_its_launch_ends_ends_with_it() {
         assert_eq!(seam.typed("term-a"), "", "no Enter goes to the launch after");
         assert_eq!(answer(&seam, "ask_1"), Err(AnswerRefused::Ended));
         assert!(record(&seam, "ask_1")["ended_at"].is_i64() && record(&seam, "ask_1")["answer"].is_null());
+    }
+}
+
+/// The answer to `term-a`'s `ask_1`, once its text has been typed in. Its Enter comes a moment later.
+async fn half_typed(seam: &Seam) -> std::thread::JoinHandle<Result<(), AnswerRefused>> {
+    let surfaces = seam.surfaces.clone();
+    let sent = std::thread::spawn(move || surfaces.answer(&key("term-a", "ask_1"), 1, answer_to("One?")));
+    until(|| !seam.typed("term-a").is_empty(), "nothing was typed").await;
+    sent
+}
+
+#[tokio::test]
+async fn an_answer_that_is_being_typed_as_its_launch_ends_leaves_the_status_after_it_alone() {
+    for relaunched in [false, true] {
+        let (seam, mut webview) = start(short_wait()).await;
+        let launch = launched(&seam);
+        seam.asked(&mut webview, "term-a", "One?").await.answer().await;
+
+        let sent = half_typed(&seam).await;
+        exit(&seam, &launch);
+        let after = match relaunched {
+            true => {
+                seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Starting);
+                ClaudeStatus::Starting
+            }
+            false => {
+                seam.pty_manager.close_test_input("term-a");
+                ClaudeStatus::Exited
+            }
+        };
+
+        assert_eq!(sent.join().unwrap(), Err(AnswerRefused::NotTyped(NotTyped::TerminalOver)));
+        assert_eq!(seam.pty_manager.get_info("term-a").unwrap().claude_status, after);
     }
 }
