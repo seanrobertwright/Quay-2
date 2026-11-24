@@ -1,6 +1,6 @@
-import { useId, type ChangeEvent, type RefCallback } from "react";
-import { FieldNote } from "./FieldNote.tsx";
+import type { ChangeEvent, RefCallback } from "react";
 import { FIELD } from "./fieldStyles.ts";
+import { LabelledField } from "./LabelledField.tsx";
 
 interface TextFieldProps {
   /** The label on screen, which also names the field for a screen reader. */
@@ -21,28 +21,22 @@ interface TextFieldProps {
 
 /** A labelled text field. It holds no text of its own: `value` is what it shows. */
 export const TextField = ({ label, value, rows, type = "text", placeholder, disabled = false, note, onChange, ref }: TextFieldProps) => {
-  const id = useId();
-  const noteId = useId();
   const field = {
-    id,
     value,
     disabled,
     placeholder: placeholder || undefined,
-    "aria-describedby": note ? noteId : undefined,
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value),
     className: FIELD,
   };
   return (
-    <div className="space-y-1">
-      <label htmlFor={id} className="block text-[11px] text-[#8b949e]">
-        {label}
-      </label>
-      {rows === undefined ? (
-        <input ref={ref} type={type} autoComplete={type === "password" ? "off" : undefined} {...field} />
-      ) : (
-        <textarea ref={ref} rows={rows} {...field} />
-      )}
-      <FieldNote id={noteId} note={note} />
-    </div>
+    <LabelledField label={label} note={note}>
+      {(ids) =>
+        rows === undefined ? (
+          <input ref={ref} type={type} autoComplete={type === "password" ? "off" : undefined} {...ids} {...field} />
+        ) : (
+          <textarea ref={ref} rows={rows} {...ids} {...field} />
+        )
+      }
+    </LabelledField>
   );
 };

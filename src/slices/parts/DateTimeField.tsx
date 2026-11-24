@@ -1,6 +1,6 @@
-import { useId, type Ref } from "react";
-import { FieldNote } from "./FieldNote.tsx";
+import type { Ref } from "react";
 import { FIELD } from "./fieldStyles.ts";
+import { LabelledField } from "./LabelledField.tsx";
 
 interface DateTimeFieldProps {
   /** The label on screen, which also names the field for a screen reader. */
@@ -17,26 +17,19 @@ interface DateTimeFieldProps {
 }
 
 /** A labelled field for a date, a time or both. It holds nothing of its own: `value` is what it shows. */
-export const DateTimeField = ({ label, type, value, min, max, note, onChange, ref }: DateTimeFieldProps) => {
-  const id = useId();
-  const noteId = useId();
-  return (
-    <div className="min-w-0 space-y-1">
-      <label htmlFor={id} className="block text-[11px] wrap-anywhere text-[#8b949e]">
-        {label}
-      </label>
+export const DateTimeField = ({ label, type, value, min, max, note, onChange, ref }: DateTimeFieldProps) => (
+  <LabelledField label={label} note={note}>
+    {(ids) => (
       <input
         ref={ref}
-        id={id}
+        {...ids}
         type={type}
         value={value}
         min={min || undefined}
         max={max || undefined}
-        aria-describedby={note ? noteId : undefined}
         onChange={(e) => onChange(e.target.value)}
         className={`${FIELD} max-w-64 scheme-dark`}
       />
-      <FieldNote id={noteId} note={note} />
-    </div>
-  );
-};
+    )}
+  </LabelledField>
+);
