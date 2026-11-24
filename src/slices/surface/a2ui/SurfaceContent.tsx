@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { LinksContext } from "../links.ts";
+import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
 import type { SurfaceAction, SurfaceRecord } from "../surfaceTypes.ts";
 import { followUnsent, unsentIn } from "../unsent.ts";
 import { giveEffects } from "./effects.ts";
@@ -58,6 +59,7 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
   useEffect(() => {
     live.onAction = onAction;
   }, [live, onAction]);
+  const [images] = useState(() => surfaceImages(record));
   const links = useContext(LinksContext);
   useEffect(() => {
     if (links) giveEffects(live.surface, links.effects);
@@ -67,7 +69,9 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
   const value = useMemo(() => (layout ? { Layout: layout, components, data: live.data } : null), [layout, components, live]);
   return (
     <LayoutContext.Provider value={value}>
-      <A2uiSurface surface={live.surface} />
+      <ImagesContext.Provider value={images}>
+        <A2uiSurface surface={live.surface} />
+      </ImagesContext.Provider>
     </LayoutContext.Provider>
   );
 };

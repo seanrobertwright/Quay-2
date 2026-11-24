@@ -1,5 +1,5 @@
 // The one Markdown dialect every `Text` draws: markdown-it's tokens, turned into React elements. No
-// HTML string is made or injected, and nothing here loads anything or reads a file.
+// HTML string is made or injected, and nothing here loads anything: an image is a file Rust reads.
 import { createElement, Fragment, memo, type ReactNode } from "react";
 import type { Token } from "markdown-it";
 import { blockTokens, inlineTokens } from "./parse.ts";

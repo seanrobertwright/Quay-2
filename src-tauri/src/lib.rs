@@ -67,8 +67,8 @@ use slices::redirection_guard::{
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::surface::{
-    surface_answer, surface_checks, surface_dismiss, surface_dismiss_locked, surface_list, surface_open_page,
-    surface_save_unsent, surface_show_file, surface_verdict, AppWebview, SurfaceTools,
+    surface_answer, surface_checks, surface_dismiss, surface_dismiss_locked, surface_image, surface_list,
+    surface_open_page, surface_save_unsent, surface_show_file, surface_verdict, AppWebview, SurfaceTools,
 };
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
@@ -336,6 +336,7 @@ pub fn run() {
             surface_checks,
             surface_dismiss,
             surface_dismiss_locked,
+            surface_image,
             surface_list,
             surface_open_page,
             surface_save_unsent,
