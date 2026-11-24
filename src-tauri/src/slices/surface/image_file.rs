@@ -74,7 +74,7 @@ pub fn read_file(path: &Path, deadline: Instant) -> Result<Vec<u8>, NotRead> {
 }
 
 /// The bytes of an image that is said to have `size` of them. No more is read than it takes to refuse
-/// it, and nothing after `deadline`.
+/// it, and after `deadline` nothing past its head.
 pub fn read_all(mut source: impl Read, size: u64, deadline: Instant) -> Result<Vec<u8>, NotRead> {
     if size > MOST_BYTES {
         return Err(NotRead::TooLarge);

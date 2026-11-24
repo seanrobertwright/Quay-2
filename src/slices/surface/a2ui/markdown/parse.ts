@@ -9,9 +9,41 @@ const MOST_CHARACTERS = 20_000;
 const DEEPEST_BLOCK = 20;
 
 const parser = new MarkdownIt({ html: false, linkify: false, typographer: false });
-// A link's address is judged as it was written, and one that leads nowhere Quay opens is no link.
+// An address is judged as it was written, and a link to one that leads nowhere Quay opens is no link.
 parser.normalizeLink = (href) => href;
 parser.validateLink = (href) => linkTarget(href) !== null;
+
+/** `parser`'s rule for an image. */
+function imageRule() {
+  const { ruler } = parser.inline;
+  const rules = ruler.getRules("");
+  ruler.disable("image");
+  const others = new Set(ruler.getRules(""));
+  ruler.enable("image");
+  return rules.find((rule) => !others.has(rule))!;
+}
+
+// An image is one whatever its address: what leads nowhere is drawn as a box that says so.
+const readImage = imageRule();
+parser.inline.ruler.at("image", (state, silent) => {
+  const { validateLink } = parser;
+  parser.validateLink = () => true;
+  try {
+    return readImage(state, silent);
+  } finally {
+    parser.validateLink = validateLink;
+  }
+});
+
+/** What `tokens` read as, without their formatting. */
+const textOf = (tokens: readonly Token[]): string =>
+  tokens.map(({ type, content, children }) => (type === "image" ? textOf(children ?? []) : type.endsWith("break") ? "\n" : content)).join("");
+
+/** What an image's token names: an address, and the image's text. */
+export const imageOf = (token: Token): { src: string; name: string } => ({
+  src: String(token.attrGet("src") ?? ""),
+  name: textOf(token.children ?? []).trim(),
+});
 
 /** Whether `text` is over the limit, counted in characters as the limit is. */
 const isTooLong = (text: string) => text.length > MOST_CHARACTERS && [...text].length > MOST_CHARACTERS;

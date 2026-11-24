@@ -20,7 +20,7 @@ const MAX_ADDRESS = 2048;
 const MAX_DECODES = 4;
 
 /** Control and invisible characters, which some parsers drop and no reader sees. */
-const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{fffd}]/u;
+export const UNSEEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{fffd}]/u;
 
 /** The web address `href` is, spelled as the network spells it, or null when it is none. */
 export function webTarget(href: string): WebTarget | null {

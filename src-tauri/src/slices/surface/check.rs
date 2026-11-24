@@ -47,7 +47,7 @@ pub struct Accepted {
     pub asks: bool,
     pub components: u32,
     pub images: u32,
-    /// The image files it names, each once, in the order they are drawn.
+    /// The image files it names, each once, in the order the surface has them.
     #[serde(default)]
     pub image_paths: Vec<String>,
 }

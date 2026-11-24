@@ -43,7 +43,16 @@ export interface EngineError {
 }
 
 /** What the webview made of a check. Mirrors `Verdict`. */
-export type Verdict = { errors: EngineError[] } | { state: CreateSurface; asks: boolean; components: number; images: number };
+export type Verdict =
+  | { errors: EngineError[] }
+  | {
+      state: CreateSurface;
+      asks: boolean;
+      components: number;
+      images: number;
+      /** The image files it names, each once, in the order the surface has them. */
+      image_paths: string[];
+    };
 
 /** Which surface. Mirrors `SurfaceKey`. */
 export interface SurfaceKey {
