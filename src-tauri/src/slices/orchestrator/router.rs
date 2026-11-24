@@ -9,7 +9,7 @@ use super::models::{trail_now, A2ADispatchRequest, A2AMessage, A2AMessageStatus,
 use super::target::{resolve_target, same_project};
 use crate::slices::pty::manager::{PtyManager, TurnEvent};
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
-use crate::slices::pty::plugin_watch::{EVENT_BRIDGE_INSTALL_LINE, PIG_TESTED_VERSION};
+use crate::slices::pty::plugin_watch::{LaunchRef, EVENT_BRIDGE_INSTALL_LINE, PIG_TESTED_VERSION};
 
 /// The sender recorded for a message dispatched as the user, whatever From Agent held.
 const USER_SENDER: &str = "user";
@@ -159,11 +159,23 @@ fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
 
 /// Types `text` into `terminal_id` with its Enter. The terminal shows Working from before
 /// the Enter goes in, so the turn the Enter starts can't end before Working is set and be
-/// overwritten by it. A failed write puts the status back.
-fn type_in(pty_manager: &PtyManager, terminal_id: &str, text: &str) -> Result<(), String> {
+/// overwritten by it. A failed write puts the status back. With a `launch`, text goes only to that
+/// one: once it is over, nothing is typed and the status is left alone.
+fn type_in(
+    pty_manager: &PtyManager,
+    terminal_id: &str,
+    text: &str,
+    launch: Option<&LaunchRef>,
+) -> Result<(), String> {
+    if launch.is_some_and(|launch| !pty_manager.launch_running(launch)) {
+        return Err("the terminal exited".to_string());
+    }
     let before = pty_manager.get_info(terminal_id).map(|t| t.claude_status);
     pty_manager.mark_a2a_delivered(terminal_id);
-    let typed = pty_manager.submit_prompt(terminal_id, text);
+    let typed = match launch {
+        Some(launch) => pty_manager.submit_prompt_to(launch, text),
+        None => pty_manager.submit_prompt(terminal_id, text),
+    };
     if let (Err(_), Some(before)) = (&typed, before) {
         pty_manager.update_status(terminal_id, before);
     }
@@ -174,6 +186,8 @@ fn type_in(pty_manager: &PtyManager, terminal_id: &str, text: &str) -> Result<()
 struct HeldDelivery {
     message_id: String,
     text: String,
+    /// The one launch of its target it is for, or `None` when any takes it.
+    launch: Option<LaunchRef>,
 }
 
 /// A message typed in whose turn hasn't started yet, and the text Quay typed for it.
@@ -261,6 +275,20 @@ impl DeliveryQueues {
             || self.waiting.get(terminal_id).is_some_and(|queue| !queue.is_empty())
     }
 
+    /// Takes the messages held for `launch` out of its terminal's queue.
+    fn take_held_for(&mut self, launch: &LaunchRef) -> VecDeque<HeldDelivery> {
+        let Some(queue) = self.waiting.get_mut(&launch.terminal_id) else {
+            return VecDeque::new();
+        };
+        let (taken, kept): (VecDeque<_>, VecDeque<_>) =
+            queue.drain(..).partition(|held| held.launch.as_ref() == Some(launch));
+        *queue = kept;
+        if queue.is_empty() {
+            self.waiting.remove(&launch.terminal_id);
+        }
+        taken
+    }
+
     fn pop_next(&mut self, terminal_id: &str) -> Option<HeldDelivery> {
         let queue = self.waiting.get_mut(terminal_id)?;
         let next = queue.pop_front();
@@ -345,8 +373,19 @@ impl A2ARouter {
     /// as soon as it is queued or typed in, before the call returns. Blocks while it types.
     fn deliver(
         &self,
+        message: A2AMessage,
+        text: String,
+        pty_manager: Option<&PtyManager>,
+    ) -> Result<A2AMessage, String> {
+        self.deliver_to(message, text, None, pty_manager)
+    }
+
+    /// `deliver`, to the one launch of its target that `launch` names, if it names one.
+    fn deliver_to(
+        &self,
         mut message: A2AMessage,
         text: String,
+        launch: Option<LaunchRef>,
         pty_manager: Option<&PtyManager>,
     ) -> Result<A2AMessage, String> {
         let Some(pty) = pty_manager else {
@@ -372,7 +411,7 @@ impl A2ARouter {
                     .waiting
                     .entry(target.clone())
                     .or_default()
-                    .push_back(HeldDelivery { message_id: message.id.clone(), text });
+                    .push_back(HeldDelivery { message_id: message.id.clone(), text, launch });
                 drop(queues);
                 // A terminal that doesn't hold deliveries takes its queue now, in order.
                 if !held {
@@ -383,7 +422,7 @@ impl A2ARouter {
             queues.start_typing(&target, &message.id, &text);
         }
 
-        let typed = type_in(pty, &target, &text);
+        let typed = type_in(pty, &target, &text, launch.as_ref());
         if typed.is_ok() {
             message.mark_dispatched();
             self.record(&message);
@@ -420,7 +459,7 @@ impl A2ARouter {
             let typed = if exited {
                 Err("the terminal exited".to_string())
             } else {
-                type_in(pty_manager, terminal_id, &next.text)
+                type_in(pty_manager, terminal_id, &next.text, next.launch.as_ref())
             };
             let typed_at = trail_now();
             // Only a Queued entry moves. A waiter whose reply came first may have completed
@@ -464,6 +503,39 @@ impl A2ARouter {
         let (target_id, target) = checked_target(&request, pty_manager)?;
         let (message, text) = self.prepare(request, target_id, target, pty_manager);
         self.deliver(message, text, pty_manager)
+    }
+
+    /// `dispatch` to `launch`'s terminal, for that launch alone: no later one gets the message, held or
+    /// not. `launch_over` is to be told when it is over.
+    pub fn dispatch_to_launch(
+        &self,
+        request: A2ADispatchRequest,
+        launch: LaunchRef,
+        pty_manager: &PtyManager,
+    ) -> Result<A2AMessage, String> {
+        let (target_id, target) = checked_target(&request, Some(pty_manager))?;
+        let (message, text) = self.prepare(request, target_id, target, Some(pty_manager));
+        let sent = self.deliver_to(message, text, Some(launch.clone()), Some(pty_manager))?;
+        // One that was over before the message was held was told of too early to fail it
+        if !pty_manager.launch_running(&launch) {
+            self.launch_over(&launch);
+        }
+        Ok(sent)
+    }
+
+    /// Fails the messages held for `launch` alone, which is over.
+    pub fn launch_over(&self, launch: &LaunchRef) {
+        let held = self.deliveries.lock().take_held_for(launch);
+        for delivery in held {
+            self.update(&delivery.message_id, |msg| {
+                if msg.status != A2AMessageStatus::Queued {
+                    return false;
+                }
+                msg.status = A2AMessageStatus::Failed;
+                msg.response = Some("Not delivered: the terminal exited".to_string());
+                true
+            });
+        }
     }
 
     /// `dispatch`, with the typing on a blocking thread so the caller's async worker stays free.

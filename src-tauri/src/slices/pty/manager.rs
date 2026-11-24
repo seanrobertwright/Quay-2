@@ -34,6 +34,20 @@ type InputWatcher = Arc<dyn Fn(&str, &str) + Send + Sync>;
 /// loopback port it serves them on.
 type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
 
+/// What becomes of a terminal's launches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LaunchEvent {
+    /// The terminal is listed, with this launch's process started in it.
+    Listed(LaunchRef),
+    /// The launch is over: its process exited, or a later launch has begun.
+    Over(LaunchRef),
+    /// The terminal with this id closed.
+    Closed(String),
+}
+
+/// What the launch watcher runs.
+type LaunchWatcher = Arc<dyn Fn(LaunchEvent) + Send + Sync>;
+
 /// A free loopback port for a launch's CLI to serve its events on, for a CLI that serves
 /// them (OpenCode), or `None`.
 fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
@@ -279,6 +293,7 @@ pub struct PtyManager {
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     server_watcher: Arc<Mutex<Option<ServerWatcher>>>,
+    launch_watcher: Arc<Mutex<Option<LaunchWatcher>>>,
     turn_watchers: Arc<Mutex<Vec<TurnWatcher>>>,
     input_watcher: Arc<Mutex<Option<InputWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
@@ -296,6 +311,7 @@ impl PtyManager {
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
             server_watcher: Arc::new(Mutex::new(None)),
+            launch_watcher: Arc::new(Mutex::new(None)),
             turn_watchers: Arc::new(Mutex::new(Vec::new())),
             input_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
@@ -379,7 +395,8 @@ impl PtyManager {
             on_first_output,
             on_osc7501,
             on_exit,
-        )?;
+        )?
+        .of_launch(launch_ref.launch);
 
         let created_at = next_created_at();
 
@@ -465,7 +482,8 @@ impl PtyManager {
             on_first_output,
             on_osc7501,
             on_exit,
-        )?;
+        )?
+        .of_launch(launch_ref.launch);
 
         let mut updated_info = info;
         updated_info.claude_status = if updated_info.run_kind.is_agent() {
@@ -516,16 +534,27 @@ impl PtyManager {
     }
 
     pub fn write(&self, terminal_id: &str, data: &str) -> Result<(), String> {
+        self.write_for(terminal_id, None, data)
+    }
+
+    /// `write`, into the session `launch` started and no other when there is a `launch`: a relaunch
+    /// in between fails it.
+    fn write_for(&self, terminal_id: &str, launch: Option<&LaunchRef>, data: &str) -> Result<(), String> {
         #[cfg(test)]
         if let Some(input) = self.test_input.lock().get_mut(terminal_id) {
+            if launch.is_some_and(|launch| !self.launch_current(launch)) {
+                return Err(format!("Terminal {} was relaunched", terminal_id));
+            }
             input.push(data.to_string());
             return Ok(());
         }
         let sessions = self.sessions.lock();
-        if let Some(session) = sessions.get(terminal_id) {
-            session.write(data)
-        } else {
-            Err(format!("Terminal {} not found or inactive", terminal_id))
+        match sessions.get(terminal_id) {
+            None => Err(format!("Terminal {} not found or inactive", terminal_id)),
+            Some(session) if launch.is_some_and(|launch| !session.is_of_launch(launch.launch)) => {
+                Err(format!("Terminal {} was relaunched", terminal_id))
+            }
+            Some(session) => session.write(data),
         }
     }
 
@@ -535,6 +564,16 @@ impl PtyManager {
     /// write `PROMPT_SUBMIT_DELAY` later, and the call blocks for that long. A Codex terminal
     /// also gets `END_KEY` straight after the prompt. It fails when any write fails.
     pub fn submit_prompt(&self, terminal_id: &str, prompt: &str) -> Result<(), String> {
+        self.submit(terminal_id, None, prompt)
+    }
+
+    /// `submit_prompt` into `launch`'s terminal, of which nothing reaches a later launch: it fails once
+    /// `launch` is over.
+    pub fn submit_prompt_to(&self, launch: &LaunchRef, prompt: &str) -> Result<(), String> {
+        self.submit(&launch.terminal_id, Some(launch), prompt)
+    }
+
+    fn submit(&self, terminal_id: &str, launch: Option<&LaunchRef>, prompt: &str) -> Result<(), String> {
         let unit = self
             .submit_locks
             .lock()
@@ -542,13 +581,13 @@ impl PtyManager {
             .or_default()
             .clone();
         let _unit = unit.lock();
-        self.write(terminal_id, prompt)?;
+        self.write_for(terminal_id, launch, prompt)?;
         if self.get_info(terminal_id).is_some_and(|info| info.run_kind == RunKind::Codex) {
-            self.write(terminal_id, END_KEY)
+            self.write_for(terminal_id, launch, END_KEY)
                 .map_err(|e| format!("Typed the prompt but couldn't press End: {}", e))?;
         }
         std::thread::sleep(PROMPT_SUBMIT_DELAY);
-        self.write(terminal_id, "\r")
+        self.write_for(terminal_id, launch, "\r")
             .map_err(|e| format!("Typed the prompt but couldn't press Enter: {}", e))
     }
 
@@ -624,6 +663,7 @@ impl PtyManager {
             info_map.remove(terminal_id).is_some()
         };
         self.dormant_buffers.lock().remove(terminal_id);
+        self.notify_launch_watcher(LaunchEvent::Closed(terminal_id.to_string()));
 
         // 4. Clean up disk files
         remove_saved_output(terminal_id);
@@ -672,6 +712,20 @@ impl PtyManager {
         let watcher = self.server_watcher.lock().clone();
         if let (Some(watcher), Some(port)) = (watcher, server_port) {
             watcher(launch, port);
+        }
+    }
+
+    /// Runs `watcher` with what becomes of each terminal's launches, on the thread that did it and
+    /// with no lock of this manager held. So an event can come after a later one of its terminal:
+    /// `launch_running` says what holds now.
+    pub fn set_launch_watcher(&self, watcher: impl Fn(LaunchEvent) + Send + Sync + 'static) {
+        *self.launch_watcher.lock() = Some(Arc::new(watcher));
+    }
+
+    fn notify_launch_watcher(&self, event: LaunchEvent) {
+        let watcher = self.launch_watcher.lock().clone();
+        if let Some(watcher) = watcher {
+            watcher(event);
         }
     }
 
@@ -767,14 +821,19 @@ impl PtyManager {
         }
     }
 
-    /// Starts a new launch of `terminal_id`: no plugin heard and no clock running.
+    /// Starts a new launch of `terminal_id`: no plugin heard and no clock running. The one before
+    /// it, if there was one, is over.
     pub fn begin_launch(&self, terminal_id: &str, run_kind: RunKind) -> LaunchRef {
         let watch = PluginWatch::new(run_kind);
         let launch = LaunchRef {
             terminal_id: terminal_id.to_string(),
             launch: watch.launch(),
         };
-        self.plugin_watches.lock().insert(terminal_id.to_string(), watch);
+        let before = self.plugin_watches.lock().insert(terminal_id.to_string(), watch);
+        if let Some(before) = before {
+            let over = LaunchRef { terminal_id: terminal_id.to_string(), launch: before.launch() };
+            self.notify_launch_watcher(LaunchEvent::Over(over));
+        }
         launch
     }
 
@@ -843,6 +902,8 @@ impl PtyManager {
             settle_after_first_output(&mut info);
         }
         self.terminals_info.lock().insert(info.id.clone(), info.clone());
+        drop(watches);
+        self.notify_launch_watcher(LaunchEvent::Listed(launch.clone()));
         info
     }
 
@@ -879,6 +940,9 @@ impl PtyManager {
             info.link = listed.link.clone();
         }
         info_map.insert(info.id.clone(), info.clone());
+        drop(info_map);
+        drop(watches);
+        self.notify_launch_watcher(LaunchEvent::Listed(launch.clone()));
         Ok(info)
     }
 
@@ -1061,8 +1125,8 @@ impl PtyManager {
     }
 
     /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
-    /// `launch` is still current, and tells the status watcher, so held messages fail rather
-    /// than wait. An earlier launch that a relaunch ended, or a closed terminal, changes
+    /// `launch` is still current, and tells the launch watcher, and the status watcher, so held
+    /// messages fail rather than wait. An earlier launch that a relaunch ended, or a closed terminal, changes
     /// nothing. Returns whether the terminal moved.
     pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
         {
@@ -1077,6 +1141,7 @@ impl PtyManager {
             info.claude_status = ClaudeStatus::Exited;
             info.exit_code = exit_code;
         }
+        self.notify_launch_watcher(LaunchEvent::Over(launch.clone()));
         self.save_sessions_to_disk();
         self.notify_status_watcher(&launch.terminal_id);
         true

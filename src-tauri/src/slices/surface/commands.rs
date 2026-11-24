@@ -110,6 +110,7 @@ fn refusal(refused: AnswerRefused) -> &'static str {
         AnswerRefused::NoSuchSurface => "Not sent: Quay no longer has this surface.",
         AnswerRefused::AlreadyAnswered => "Not sent: this was already answered.",
         AnswerRefused::OlderRevision => "Not sent: the agent has changed this since. Check it and send again.",
+        AnswerRefused::Ended => "Not sent: the terminal exited before this was answered.",
         AnswerRefused::NotTyped(NotTyped::TerminalOver) => "Not sent: the terminal has exited.",
         AnswerRefused::NotTyped(NotTyped::Failed) => "Not sent: it could not be typed into the terminal.",
     }

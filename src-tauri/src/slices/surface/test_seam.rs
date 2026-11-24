@@ -18,7 +18,7 @@ use super::tools::{SurfaceTools, Webview};
 use crate::slices::bridge::routes::{create_router, AppContext};
 use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
-use crate::slices::orchestrator::{connect_surfaces, A2ARouter};
+use crate::slices::orchestrator::{connect_surfaces, A2AMessage, A2AMessageStatus, A2ARouter};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
 use crate::slices::pty::plugin_watch::LaunchRef;
@@ -104,6 +104,7 @@ impl FakeWebview {
 pub struct Seam {
     pub surfaces: SurfaceTools,
     pub pty_manager: PtyManager,
+    a2a_router: A2ARouter,
     bridge_state: BridgeState,
     port: u16,
     _dir: TempDir,
@@ -130,7 +131,7 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     let app = create_router(AppContext {
         bridge_state: bridge_state.clone(),
         pty_manager: pty_manager.clone(),
-        a2a_router,
+        a2a_router: a2a_router.clone(),
         machina_manager: MachinaManager::with_paths(dir.join("state.json"), dir.join("vault")),
         surfaces: surfaces.clone(),
         webview: WebviewEvents::to(|_, _| {}),
@@ -140,7 +141,7 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     tokio::spawn(async move {
         axum::serve(listener, app.into_make_service()).await.unwrap();
     });
-    let seam = Seam { surfaces, pty_manager, bridge_state, port, _dir: dir };
+    let seam = Seam { surfaces, pty_manager, a2a_router, bridge_state, port, _dir: dir };
     for id in ["term-a", "term-b"] {
         seam.open_terminal(id, RunKind::Claude, ClaudeStatus::Working);
     }
@@ -156,8 +157,10 @@ impl Seam {
 
     /// Opens a terminal, or launches an open one again, with nothing typed into it.
     pub fn open_terminal(&self, id: &str, kind: RunKind, status: ClaudeStatus) -> LaunchRef {
-        self.pty_manager.insert_test_terminal(test_terminal(id, kind, status));
-        self.pty_manager.begin_launch(id, kind)
+        self.pty_manager.open_test_input(id);
+        let launch = self.pty_manager.begin_launch(id, kind);
+        self.pty_manager.insert_launched(&launch, test_terminal(id, kind, status));
+        launch
     }
 
     /// The question `title` as `terminal_id`'s request `id`, once it has been drawn.
@@ -185,6 +188,12 @@ impl Seam {
     /// The operator types `data` into `terminal_id`'s pane.
     pub fn operator_types(&self, terminal_id: &str, data: &str) {
         self.pty_manager.write_from_operator(terminal_id, data).unwrap();
+    }
+
+    /// How many messages the trail says were not delivered.
+    pub fn not_delivered(&self) -> usize {
+        let failed = |message: &A2AMessage| message.status == A2AMessageStatus::Failed;
+        self.a2a_router.get_messages().iter().filter(|message| failed(message)).count()
     }
 
     /// Everything typed into `terminal_id` so far.
