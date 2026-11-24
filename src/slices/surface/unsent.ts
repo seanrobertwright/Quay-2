@@ -6,15 +6,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { differences, type DataValues } from "./differences.ts";
 import type { SurfaceData } from "./layout.ts";
 import type { SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
-import { READY } from "./typed/ask.ts";
+import { typedTool } from "./typed/index.ts";
 
 /** How long after the operator's last change it is sent to Rust, in milliseconds. */
 const PAUSE_MS = 400;
 
+/** Which of the surfaces a terminal has had by one id, and which revision of it. */
+type Version = Pick<SurfaceRecord, "order" | "revision">;
+
+const sameVersion = (a: Version, b: Version) => a.order === b.order && a.revision === b.revision;
+
 /** What is unsent in a surface, as Rust holds it. Mirrors `Unsent`. */
-interface Unsent extends SurfaceKey {
-  order: number;
-  revision: number;
+interface Unsent extends SurfaceKey, Version {
   values: DataValues;
 }
 
@@ -25,9 +28,7 @@ export interface Page {
 }
 
 /** What is kept of a live surface. */
-interface Kept {
-  order: number;
-  revision: number;
+interface Kept extends Version {
   /** What is unsent, as JSON, so nothing the engine does to its lists reaches it. */
   values: string;
 }
@@ -43,11 +44,12 @@ const keyOf = ({ terminal_id, id }: SurfaceKey) => JSON.stringify([terminal_id, 
 /** Starts saving as the page `opened` says, with what Rust held. */
 export function openPage(opened: Page): void {
   page = opened.page;
-  for (const { terminal_id, id, order, revision, values } of opened.unsent) {
-    const key = keyOf({ terminal_id, id });
+  for (const unsent of opened.unsent) {
+    const key = keyOf(unsent);
     const its = kept.get(key);
     // A surface that came while the page opened is newer than what Rust had of that id
-    if (its && (its.order !== order || its.revision !== revision)) continue;
+    if (its && !sameVersion(its, unsent)) continue;
+    const { order, revision, values } = unsent;
     kept.set(key, { order, revision, values: JSON.stringify(values) });
   }
 }
@@ -59,10 +61,10 @@ export function closePage(): void {
 }
 
 /** Says that `record` is live, so what is unsent in it is kept from here on. */
-export function keepUnsent({ terminal_id, id, order, revision }: SurfaceRecord): void {
-  const key = keyOf({ terminal_id, id });
-  const its = kept.get(key);
-  if (its?.order !== order || its.revision !== revision) kept.set(key, { order, revision, values: NOTHING });
+export function keepUnsent(record: SurfaceRecord): void {
+  if (keptFor(record)) return;
+  const { order, revision } = record;
+  kept.set(keyOf(record), { order, revision, values: NOTHING });
 }
 
 /** Drops what is unsent in a surface that is settled, or that Quay no longer has. */
@@ -73,7 +75,7 @@ export function dropUnsent(key: SurfaceKey): void {
 /** What is kept for `record`: not for another surface of the same id, nor for another revision of it. */
 function keptFor(record: SurfaceRecord): Kept | null {
   const its = kept.get(keyOf(record));
-  return its?.order === record.order && its.revision === record.revision ? its : null;
+  return its && sameVersion(its, record) ? its : null;
 }
 
 /** What is unsent in `record`. */
@@ -82,7 +84,9 @@ export const unsentIn = (record: SurfaceRecord): DataValues => JSON.parse(keptFo
 function save(record: SurfaceRecord, data: SurfaceData): void {
   const its = keptFor(record);
   if (!its) return;
-  const { [READY]: _ready, ...values } = differences(record.state.createSurface.dataModel, data.get("/"));
+  const workedOut = typedTool(record.tool)?.workedOut ?? [];
+  const differing = Object.entries(differences(record.state.createSurface.dataModel, data.get("/")));
+  const values = Object.fromEntries(differing.filter(([path]) => !workedOut.includes(path)));
   const text = JSON.stringify(values);
   if (text === its.values) return;
   its.values = text;

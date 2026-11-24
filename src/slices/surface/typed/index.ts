@@ -7,10 +7,12 @@ export interface TypedTool {
   expand: (args: unknown, surfaceId: string) => CreateSurface;
   /** The result the agent gets for an action. */
   collapse: (action: SurfaceAction) => unknown;
+  /** The data paths the frame works out of what the operator has put in, and can work out again. */
+  workedOut: readonly string[];
 }
 
 const TYPED: ReadonlyMap<string, TypedTool> = new Map([
-  ["quay_ask", { expand: (args, surfaceId) => ask.expand(args as ask.AskArguments, surfaceId), collapse: ask.collapse }],
+  ["quay_ask", { expand: (args, surfaceId) => ask.expand(args as ask.AskArguments, surfaceId), collapse: ask.collapse, workedOut: [ask.READY] }],
 ]);
 
 /** The typed tool `name`, or null when Quay has none of that name. */
