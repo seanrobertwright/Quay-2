@@ -1,11 +1,13 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { messageTitle, promptTitle } from "./taskTitle.ts";
 
-/** What Rust types for an answer after the wait, as its `return_tests` have it. */
-const TYPED_ANSWER =
-  '[Quay surface "Which base should this branch take?" (ask_1)]: {"answers":[{"question":"Which base should this branch take?","chosen":["Yes"],"text":"skip the suite"}]}';
+/** Prompts that title nothing, the first as Rust types it, and prompts that are titles. Rust's `return_tests` hold them too. */
+const vectors: { title_nothing: string[]; titles: string[] } = JSON.parse(
+  readFileSync(new URL("../../../src-tauri/src/slices/surface/typed_line.vectors.json", import.meta.url), "utf8"),
+);
 
 test("a turn's prompt titles its terminal by its first line", () => {
   assert.equal(promptTitle("  Fix the login bug\nmore detail"), "Fix the login bug");
@@ -19,14 +21,17 @@ test("a message titles the terminal it reaches, without its peer prefix", () => 
 });
 
 test("a surface's answer that Quay typed in titles nothing", () => {
-  for (const prompt of [TYPED_ANSWER, `\n${TYPED_ANSWER}\n`, `<pasted_content id="62ae">\n${TYPED_ANSWER}\n</pasted_content>`]) {
-    assert.equal(promptTitle(prompt), "");
-    assert.equal(messageTitle(prompt), "");
+  assert.ok(vectors.title_nothing.length > 0);
+  for (const prompt of vectors.title_nothing) {
+    assert.equal(promptTitle(prompt), "", prompt);
+    assert.equal(messageTitle(prompt), "", prompt);
   }
-  assert.equal(messageTitle('[Quay surface "a)]: {" (ask_2)]: {"dismissed":true}'), "");
 });
 
 test("a prompt that only mentions a surface is a title", () => {
-  assert.equal(promptTitle("[Quay surface] looks odd"), "[Quay surface] looks odd");
-  assert.equal(messageTitle(`Explain ${TYPED_ANSWER}`).startsWith("Explain [Quay surface"), true);
+  assert.ok(vectors.titles.length > 0);
+  for (const prompt of vectors.titles) {
+    assert.equal(promptTitle(prompt), prompt);
+    assert.equal(messageTitle(prompt), prompt);
+  }
 });

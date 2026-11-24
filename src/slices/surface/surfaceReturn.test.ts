@@ -1,15 +1,16 @@
 /// <reference types="node" />
 // What the operator does with a surface besides answering it (#716), with only Tauri's `invoke` faked:
 // dismissing it from its frame, and answering one the agent has changed since.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { SurfaceRecord, Verdict } from "./surfaceTypes.ts";
+import type { SurfaceRecord } from "./surfaceTypes.ts";
 import { terminalInfo } from "../companion/fixtures/companionFixtures.ts";
+import { acceptedAsk, called, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
-const { startSurfaces, useSurfacesOf } = await import("./surfaceHost.ts");
+const { useSurfacesOf } = await import("./surfaceHost.ts");
 const { SurfaceView } = await import("./SurfaceView.tsx");
 
 const TERMINAL = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
@@ -28,26 +29,16 @@ const ANSWER = { answers: [{ question: "Which base should this branch take?", ch
 
 /** What Rust holds, and what the two commands under test do. */
 let list: SurfaceRecord[];
-let calls: { cmd: string; args: Record<string, unknown> }[];
 let onAnswer: () => Promise<void>;
 let onDismiss: () => Promise<void>;
-let stop: (() => void) | null = null;
 let root: Root;
 let container: HTMLElement;
 
 beforeEach(() => {
   list = [];
-  calls = [];
   onAnswer = async () => {};
   onDismiss = async () => {};
-  fakeInvoke(async (cmd, args) => {
-    calls.push({ cmd, args });
-    if (cmd === "surface_list") return list;
-    if (cmd === "surface_checks") return [];
-    if (cmd === "surface_answer") return onAnswer();
-    if (cmd === "surface_dismiss") return onDismiss();
-    return null;
-  });
+  startRust({ surface_list: () => list, surface_checks: () => [], surface_answer: () => onAnswer(), surface_dismiss: () => onDismiss() });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -55,37 +46,17 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
-  stop?.();
-  stop = null;
+  unloadSurfaces();
 });
 
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
-const called = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args);
-
-/** Waits, for up to two seconds, until `holds`. */
-async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await settle();
-  assert.ok(holds(), what);
-}
-
 /** The question `id`, as Rust holds it once the webview has accepted it. */
-async function accepted(id: string, order = 1): Promise<SurfaceRecord> {
-  stop ??= startSurfaces();
-  await settle();
-  emitEvent("surface-check", { call: order, tool: "quay_ask", surface_id: id, arguments: ASK });
-  const verdicts = () => called("surface_verdict") as unknown as { call: number; verdict: Verdict }[];
-  await until(() => verdicts().some((v) => v.call === order), "no verdict was given");
-  const { verdict } = verdicts().find((v) => v.call === order)!;
-  assert.ok("state" in verdict);
-  return { terminal_id: "t1", id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null };
-}
+const accepted = (id: string, order = 1) => acceptedAsk(id, ASK, "t1", order);
 
 const View = () => createElement(SurfaceView, { terminal: TERMINAL, surfaces: useSurfacesOf("t1") });
 
 /** Loads the page with what Rust holds. */
 async function open(): Promise<void> {
-  stop?.();
-  stop = startSurfaces();
+  loadSurfaces();
   await act(async () => root.render(createElement(View)));
   await until(() => regions().length === list.length && !container.textContent?.includes("Loading"), "the surfaces were never drawn");
 }

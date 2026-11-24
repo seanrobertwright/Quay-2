@@ -1,41 +1,31 @@
 /// <reference types="node" />
 // Agent surfaces in the webview (#715), with only Tauri's `invoke` faked: what the webview answers to
 // Rust's checks, and what the operator sees and sends in the companion's Surface view.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { CheckRequest, SurfaceRecord, Verdict } from "./surfaceTypes.ts";
+import type { CheckRequest, SurfaceRecord } from "./surfaceTypes.ts";
 import { companionPrefs } from "../companion/companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "../companion/fixtures/companionFixtures.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
+import { acceptedAsk, called, calls, loadSurfaces, settle, startRust, unloadSurfaces, until, verdictOn, verdicts } from "./fixtures/fakeRust.ts";
 
-const { startSurfaces } = await import("./surfaceHost.ts");
 const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
 
 /** What Rust holds, as the fake `invoke` answers it. */
 let list: SurfaceRecord[];
 let checks: CheckRequest[];
-/** Every command the webview called, in order. */
-let calls: { cmd: string; args: Record<string, unknown> }[];
 /** What `surface_answer` does. */
 let onAnswer: () => Promise<void>;
-let stop: (() => void) | null = null;
 let mounted: { root: Root; container: HTMLElement } | null = null;
 
 beforeEach(() => {
   list = [];
   checks = [];
-  calls = [];
   onAnswer = async () => {};
-  fakeInvoke(async (cmd, args) => {
-    calls.push({ cmd, args });
-    if (cmd === "surface_list") return list;
-    if (cmd === "surface_checks") return checks;
-    if (cmd === "surface_answer") return onAnswer();
-    return null;
-  });
+  startRust({ surface_list: () => list, surface_checks: () => checks, surface_answer: () => onAnswer() });
 });
 afterEach(async () => {
   if (mounted) {
@@ -44,18 +34,8 @@ afterEach(async () => {
     container.remove();
     mounted = null;
   }
-  stop?.();
-  stop = null;
+  unloadSurfaces();
 });
-
-/** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
-
-/** Waits, for up to two seconds, until `holds`. */
-async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await settle();
-  assert.ok(holds(), what);
-}
 
 const ASK = {
   questions: [
@@ -70,23 +50,9 @@ const ASK = {
 };
 const check = (call: number, args: unknown = ASK): CheckRequest => ({ call, tool: "quay_ask", surface_id: "ask_1", arguments: args });
 
-const called = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args);
-
-/** The verdicts the webview gave, by call. */
-const verdicts = () => called("surface_verdict") as unknown as { call: number; verdict: Verdict }[];
-
-/** The verdict on `request`, from a webview that has loaded. */
-async function verdictOn(request: CheckRequest): Promise<Verdict> {
-  stop ??= startSurfaces();
-  await settle();
-  emitEvent("surface-check", request);
-  await until(() => verdicts().some((v) => v.call === request.call), "no verdict was given");
-  return verdicts().find((v) => v.call === request.call)!.verdict;
-}
-
 test("a check the webview missed while it loaded is answered, after it listens and reads the list", async () => {
   checks = [check(7)];
-  stop = startSurfaces();
+  loadSurfaces();
   await until(() => verdicts().length > 0, "no verdict was given");
 
   assert.deepEqual(
@@ -108,12 +74,11 @@ test("a check is answered with the surface's state, as one createSurface under Q
 });
 
 test("what comes while the list is read is not missed", async () => {
-  fakeInvoke(async (cmd, args) => {
-    calls.push({ cmd, args });
-    if (cmd !== "surface_list") return cmd === "surface_checks" ? [] : null;
+  const surface_list = () => {
     emitEvent("surface-check", check(3));
     return [];
-  });
+  };
+  startRust({ surface_list, surface_checks: () => [] });
   // Tauri takes a moment to register a listener
   const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__;
   const { invoke } = internals;
@@ -122,7 +87,7 @@ test("what comes while the list is read is not missed", async () => {
     return invoke(cmd, args);
   };
   try {
-    stop = startSurfaces();
+    loadSurfaces();
     await until(() => verdicts().length > 0, "the check was missed");
   } finally {
     internals.invoke = invoke;
@@ -151,11 +116,7 @@ test("a call of the wrong shape, or of a tool Quay does not have, gets a verdict
 const TERMINAL = { ...terminalInfo("t1", "E:/alpha"), name: "fix-75" };
 
 /** The surface `id` of `terminal`, as Rust holds it once the webview has accepted `ask`. */
-async function accepted(id: string, { ask = ASK as unknown, terminal = "t1", order = 1 } = {}): Promise<SurfaceRecord> {
-  const verdict = await verdictOn({ ...check(order, ask), surface_id: id });
-  assert.ok("state" in verdict, JSON.stringify(verdict));
-  return { terminal_id: terminal, id, tool: "quay_ask", state: verdict.state, revision: 1, order, change: order, asks: true, answer: null };
-}
+const accepted = (id: string, { ask = ASK as unknown, terminal = "t1", order = 1 } = {}) => acceptedAsk(id, ask, terminal, order);
 
 /** The companion with `terminal` selected. */
 function companion(terminal: TerminalInfo) {
@@ -165,8 +126,7 @@ function companion(terminal: TerminalInfo) {
 
 /** Loads the page: what Rust holds is read, and the companion drawn on `terminal`'s Surface view, if it has one. */
 async function open(terminal: TerminalInfo = TERMINAL): Promise<HTMLElement> {
-  stop?.();
-  stop = startSurfaces();
+  loadSurfaces();
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -340,11 +300,11 @@ test("a surface Quay no longer has leaves the screen", async () => {
 
 test("a surface that left while the list was read is not drawn", async () => {
   const asked = [await accepted("ask_1"), await accepted("ask_2", { order: 2 })];
-  fakeInvoke(async (cmd) => {
-    if (cmd !== "surface_list") return cmd === "surface_checks" ? [] : null;
+  const surface_list = () => {
     emitEvent("surface-removed", { terminal_id: "t1", id: "ask_1" });
     return asked;
-  });
+  };
+  startRust({ surface_list, surface_checks: () => [] });
   const container = await open();
   assert.deepEqual(
     regions(container).map((region) => region.dataset.surface),
