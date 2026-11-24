@@ -7,6 +7,8 @@ import { useSyncExternalStore } from "react";
 export interface ShellWarning {
   id: string;
   message: string;
+  /** What the operator can do about it: a button that says `label`. */
+  action?: { label: string; run: () => void };
   /** Called when the operator dismisses it, before it leaves the screen. */
   onDismiss?: () => void;
 }

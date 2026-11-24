@@ -50,6 +50,8 @@ interface TerminalViewProps {
   headerExtra?: ReactNode;
   /** What is drawn over the top of the terminal, which keeps its size, as a column that lets clicks through. */
   strip?: ReactNode;
+  /** A line the pane shows above the terminal, after the pane's own notices. */
+  note?: ReactNode;
   /** How many panes the stage shows, which decides whether Close pane can run. */
   paneCount?: number;
   className?: string;
@@ -75,6 +77,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onCloseTerminal,
   headerExtra,
   strip,
+  note,
   paneCount = 1,
   className = "",
   style,
@@ -363,6 +366,8 @@ export const TerminalView: FC<TerminalViewProps> = ({
             }}
           />
         )}
+
+        {note}
 
         {/* Terminal Viewport */}
         <div className="flex-1 w-full h-full min-h-0 relative overflow-hidden bg-[#0d1117] p-2">
