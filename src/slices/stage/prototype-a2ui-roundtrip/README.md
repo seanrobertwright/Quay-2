@@ -42,6 +42,8 @@ The same prototype, with the spec's 100 s wait and 150 s limit. Findings:
 - `quay-pig-bridge` registers a 150 s timeout (`QUAY_A2UI_PROTO_PIG_TIMEOUT` overrides it) and, with
   `QUAY_A2UI_PROTO_PIG_WIRE`, writes each request PiG sends its model to a file.
 - `tools/prototype-a2ui-wire/scripted-model.mjs` is a loopback model that calls the tool it is told to
-  and writes down each request it gets. `wire.mjs` is a logging proxy; a hosted provider refused it,
-  and no result rests on it.
-- `run-2026-11-24.ticket-708.quay-log.txt`: Quay's log of the run.
+  and writes down each request it gets.
+- `run-2026-11-24.ticket-708.quay-log.txt`: Quay's log of the run. `run-2026-11-24.ticket-708.wire.txt`:
+  an extract of what the CLIs sent their models, and the permission matrix as it was printed.
+- A knobs or instructions file that cannot be read, and a bad `QUAY_A2UI_PROTO_PIG_TIMEOUT`, are
+  refused. Without `QUAY_A2UI_PROTO_LOG` there is no log. The run was made before these two changes.

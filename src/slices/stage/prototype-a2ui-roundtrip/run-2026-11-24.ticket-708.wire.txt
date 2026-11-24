@@ -1,0 +1,231 @@
+#708, 2026-11-24. Extract of the wire captures of the run; times are UTC. A script made it from three
+captures that are not committed, because their full request bodies hold local paths and system prompts:
+the scripted model's log (OpenCode, OpenCode 2 and PiG) and two QUAY_A2UI_PROTO_PIG_WIRE logs (PiG on
+every model). One line per request, so each count in the findings can be recounted here. Tool results
+and instruction blocks are copied whole, the results as one-line JSON strings.
+
+== What Quay sent
+instructions: "Quay can show the operator a surface beside this terminal.\nThe second line of these instructions holds the surface codeword, which is heron-8821. Use a surface when you need a decision.\n"
+isError text (399 characters): "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+
+== OpenCode 1.19.4: requests that listed Quay's tools, to the scripted model (52)
+(This CLI's other requests list no tools: they ask for a session title.)
+07:40:29.965 messages=2 tools=20 codeword_in=system
+07:40:32.946 messages=4 tools=20 codeword_in=system
+07:43:03.959 messages=2 tools=20 codeword_in=system
+07:43:09.377 messages=4 tools=20 codeword_in=system
+07:43:47.002 messages=2 tools=20 codeword_in=system
+07:43:53.072 messages=4 tools=20 codeword_in=system
+07:44:30.116 messages=2 tools=20 codeword_in=system
+07:44:42.547 messages=4 tools=20 codeword_in=system
+07:45:22.194 messages=2 tools=20 codeword_in=system
+07:45:26.413 messages=4 tools=20 codeword_in=system
+07:46:24.819 messages=2 tools=20 codeword_in=system
+07:46:30.867 messages=4 tools=20 codeword_in=system
+07:47:04.864 messages=2 tools=20 codeword_in=system
+07:47:12.234 messages=4 tools=20 codeword_in=system
+07:47:42.210 messages=2 tools=20 codeword_in=system
+07:47:47.702 messages=4 tools=20 codeword_in=system
+07:49:18.130 messages=2 tools=20 codeword_in=system
+07:49:24.052 messages=4 tools=20 codeword_in=system
+07:49:58.994 messages=2 tools=20 codeword_in=system
+07:50:04.209 messages=4 tools=20 codeword_in=system
+07:50:46.834 messages=2 tools=20 codeword_in=system
+07:50:52.365 messages=4 tools=20 codeword_in=system
+07:51:26.184 messages=2 tools=20 codeword_in=system
+07:51:28.363 messages=4 tools=20 codeword_in=system
+07:52:13.048 messages=2 tools=20 codeword_in=system
+07:52:20.364 messages=4 tools=20 codeword_in=system
+07:52:55.088 messages=2 tools=20 codeword_in=system
+07:53:01.531 messages=4 tools=20 codeword_in=system
+07:53:35.253 messages=2 tools=20 codeword_in=system
+07:53:42.877 messages=4 tools=20 codeword_in=system
+07:54:15.862 messages=2 tools=20 codeword_in=system
+07:54:22.594 messages=4 tools=20 codeword_in=system
+07:54:55.797 messages=2 tools=20 codeword_in=system
+07:55:03.303 messages=4 tools=20 codeword_in=system
+07:56:26.093 messages=2 tools=20 codeword_in=system
+07:56:33.440 messages=4 tools=20 codeword_in=system
+07:57:09.099 messages=2 tools=20 codeword_in=system
+07:57:59.077 messages=2 tools=20 codeword_in=system
+07:58:03.978 messages=4 tools=20 codeword_in=system
+07:58:47.994 messages=2 tools=20 codeword_in=system
+07:59:26.381 messages=2 tools=20 codeword_in=system
+07:59:31.629 messages=4 tools=20 codeword_in=system
+08:00:10.344 messages=2 tools=20 codeword_in=system
+08:00:21.171 messages=4 tools=20 codeword_in=system
+08:00:58.744 messages=2 tools=20 codeword_in=system
+08:01:39.385 messages=2 tools=20 codeword_in=system
+08:01:40.918 messages=4 tools=20 codeword_in=system
+08:02:23.719 messages=2 tools=20 codeword_in=system
+08:02:40.754 messages=4 tools=20 codeword_in=system
+08:03:05.634 messages=4 tools=20 codeword_in=system
+08:46:25.686 messages=2 tools=20 codeword_in=system
+08:47:26.792 messages=4 tools=20 codeword_in=system
+
+The instructions block in those system prompts (distinct versions: 1):
+<mcp_instructions>
+  <server name="quay">
+    Quay can show the operator a surface beside this terminal.
+    The second line of these instructions holds the surface codeword, which is heron-8821. Use a surface when you need a decision.
+  </server>
+</mcp_instructions>
+
+Tool messages that carried the isError text, or the limit's text:
+07:40:32.946 equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+07:45:26.413 equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+07:51:28.363 equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+07:54:22.594 equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:01:40.918 equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:47:26.792 equal_to_sent=n/a "MCP error -32001: Request timed out"
+
+== OpenCode 2.4.1: requests that listed tools, to the scripted model; the MCP server is a loopback stub (7)
+08:04:09.239 messages=2 quay_tools=none execute=True catalog_lists_tools.quay=True codeword_in_system=True
+08:04:34.556 messages=2 quay_tools=quay_quay_reject_proto,quay_quay_surface_proto execute=True catalog_lists_tools.quay=False codeword_in_system=True
+08:04:35.592 messages=4 quay_tools=quay_quay_reject_proto,quay_quay_surface_proto execute=True catalog_lists_tools.quay=False codeword_in_system=True
+    tool message: "{\"error\":{\"type\":\"tool.execution\",\"message\":\"{\\n  \\\"errors\\\": [\\n    {\\n      \\\"code\\\": \\\"VALIDATION_FAILED\\\",\\n      \\\"message\\\": \\\"96 — nonce zebra-4471.\\\"\\n    }\\n  ],\\n  \\\"next\\\": \\\"Nothing was changed.\\\"\\n}\"},\"content\":[]}"
+08:04:40.808 messages=2 quay_tools=quay_quay_reject_proto,quay_quay_surface_proto execute=True catalog_lists_tools.quay=False codeword_in_system=True
+08:04:41.061 messages=4 quay_tools=quay_quay_reject_proto,quay_quay_surface_proto execute=True catalog_lists_tools.quay=False codeword_in_system=True
+    tool message: "{\"error\":{\"type\":\"tool.execution\",\"message\":\"{\\n  \\\"errors\\\": [\\n    {\\n      \\\"code\\\": \\\"VALIDATION_FAILED\\\",\\n      \\\"message\\\": \\\"96 — nonce zebra-4471.\\\"\\n    }\\n  ],\\n  \\\"next\\\": \\\"Nothing was changed.\\\"\\n}\"},\"content\":[]}"
+08:04:44.628 messages=2 quay_tools=quay_quay_reject_proto,quay_quay_surface_proto execute=True catalog_lists_tools.quay=False codeword_in_system=True
+08:04:45.191 messages=4 quay_tools=quay_quay_reject_proto,quay_quay_surface_proto execute=True catalog_lists_tools.quay=False codeword_in_system=True
+    tool message: "{\"error\":{\"type\":\"tool.execution\",\"message\":\"{\\n  \\\"errors\\\": [\\n    {\\n      \\\"code\\\": \\\"VALIDATION_FAILED\\\",\\n      \\\"message\\\": \\\"96 — nonce zebra-4471.\\\"\\n    }\\n  ],\\n  \\\"next\\\": \\\"Nothing was changed.\\\"\\n}\"},\"content\":[]}"
+
+System prompt of the first (no "codemode" setting): the catalog lines for the server, then the instructions block
+- quay (2 tools)
+  - tools.quay.quay_reject_proto(): Promise<unknown> // PROTOTYPE. Always fails with the text of a rejection.
+  - tools.quay.quay_surface_proto({
+<mcp_instructions>
+  <server name="quay">
+    Use tools from this server through `execute` under `tools["quay"]`.
+    Quay can show the operator a surface beside this terminal.
+    The second line holds the surface codeword, which is heron-8821.
+  </server>
+</mcp_instructions>
+The block with "codemode": false:
+<mcp_instructions>
+  <server name="quay">
+    Quay can show the operator a surface beside this terminal.
+    The second line holds the surface codeword, which is heron-8821.
+  </server>
+</mcp_instructions>
+
+Stub log, first launch (no "codemode" setting), copied from the session's terminal output.
+The stub answers a method it does not know with HTTP 200 and JSON-RPC error -32601, as Quay does.
+08:04:08.542 {"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"opencode","version":"2.4.1"},"io.modelcontextprotocol/clientCapabilities":{"elicitation":{"form":{},"url":{}},"roots":{},"extensions":{"io.modelcontextprotocol/events":{}}}}}}
+08:04:08.571 {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}},"roots":{},"extensions":{"io.modelcontextprotocol/events":{}}},"clientInfo":{"name":"opencode","version":"2.4.1"}},"jsonrpc":"2.0","id":0}
+08:04:08.573 answered initialize
+08:04:08.581 {"jsonrpc":"2.0","method":"notifications/initialized"}
+08:04:08.583 GET /mcp
+08:04:08.585 {"method":"tools/list","jsonrpc":"2.0","id":1}
+08:04:08.585 answered tools/list
+Stub log, last launch ("codemode": false under mcp.servers, "protocol": "legacy"): no server/discover
+08:04:44.287 {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"elicitation":{"form":{},"url":{}},"roots":{},"extensions":{"io.modelcontextprotocol/events":{}}},"clientInfo":{"name":"opencode","version":"2.4.1"}},"jsonrpc":"2.0","id":0}
+08:04:44.288 answered initialize
+08:04:44.313 {"jsonrpc":"2.0","method":"notifications/initialized"}
+08:04:44.315 GET /mcp
+08:04:44.317 {"method":"tools/list","jsonrpc":"2.0","id":1}
+08:04:44.317 answered tools/list
+08:04:45.102 {"method":"tools/call","params":{"name":"quay_reject_proto","arguments":{},"_meta":{"ai.opencode/sessionID":"ses_df36a0d08ffeyZfuTBhsC1kuXx","progressToken":2}},"jsonrpc":"2.0","id":2}
+08:04:45.103 answered tools/call
+
+== PiG 0.5.1: every request to a model, as PiG sent it (57)
+08:12:52.903 model=qwen3.5:9b messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:12:57.353 model=qwen3.5:9b messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:13:06.138 model=qwen3.5:9b messages=6 system_chars=2762 quay_tools=9 codeword=False
+08:13:34.520 model=qwen3.5:9b messages=8 system_chars=2762 quay_tools=9 codeword=False
+08:13:54.228 model=qwen3.5:9b messages=10 system_chars=2762 quay_tools=9 codeword=False
+08:14:05.904 model=qwen3.5:9b messages=12 system_chars=2762 quay_tools=9 codeword=False
+08:14:21.431 model=qwen3.5:9b messages=14 system_chars=2762 quay_tools=9 codeword=False
+08:14:33.821 model=qwen3.5:9b messages=16 system_chars=2762 quay_tools=9 codeword=False
+08:14:46.125 model=qwen3.5:9b messages=18 system_chars=2762 quay_tools=9 codeword=False
+08:14:48.130 model=qwen3.5:9b messages=20 system_chars=2762 quay_tools=9 codeword=False
+08:15:00.454 model=qwen3.5:9b messages=22 system_chars=2762 quay_tools=9 codeword=False
+08:15:14.020 model=qwen3.5:9b messages=24 system_chars=2762 quay_tools=9 codeword=False
+08:15:18.892 model=qwen3.5:9b messages=26 system_chars=2762 quay_tools=9 codeword=False
+08:15:21.803 model=qwen3.5:9b messages=28 system_chars=2762 quay_tools=9 codeword=False
+08:15:27.264 model=qwen3.5:9b messages=30 system_chars=2762 quay_tools=9 codeword=False
+08:15:31.069 model=qwen3.5:9b messages=32 system_chars=2762 quay_tools=9 codeword=False
+08:15:33.392 model=qwen3.5:9b messages=34 system_chars=2762 quay_tools=9 codeword=False
+08:15:37.050 model=qwen3.5:9b messages=36 system_chars=2762 quay_tools=9 codeword=False
+08:15:38.695 model=qwen3.5:9b messages=38 system_chars=2762 quay_tools=9 codeword=False
+08:15:46.698 model=qwen3.5:9b messages=40 system_chars=2762 quay_tools=9 codeword=False
+08:16:14.247 model=qwen3.5:9b messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:16:25.886 model=qwen3.5:9b messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:17:17.388 model=qwen3.5:9b messages=6 system_chars=2762 quay_tools=9 codeword=False
+08:17:20.988 model=qwen3.5:9b messages=8 system_chars=2762 quay_tools=9 codeword=False
+08:17:57.128 model=qwen3.5:9b messages=10 system_chars=2762 quay_tools=9 codeword=False
+08:18:10.804 model=qwen3.5:9b messages=12 system_chars=2762 quay_tools=9 codeword=False
+08:19:54.518 model=qwen3.5:9b messages=14 system_chars=2762 quay_tools=9 codeword=False
+08:20:03.828 model=qwen3.5:9b messages=16 system_chars=2762 quay_tools=9 codeword=False
+08:21:47.070 model=fixed messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:21:47.706 model=qwen3.5:9b messages=18 system_chars=2762 quay_tools=9 codeword=False
+08:21:51.622 model=fixed messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:21:54.300 model=qwen3.5:9b messages=20 system_chars=2762 quay_tools=9 codeword=False
+08:21:57.592 model=fixed messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:22:00.718 model=qwen3.5:9b messages=22 system_chars=2762 quay_tools=9 codeword=False
+08:22:04.011 model=fixed messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:22:49.034 model=fixed messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:23:46.691 model=qwen3.5:9b messages=24 system_chars=2762 quay_tools=9 codeword=False
+08:23:57.615 model=fixed messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:24:16.656 model=fixed messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:24:17.092 model=fixed messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:27:46.732 model=qwen3.8:27b messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:30:40.468 model=qwen3.8:27b messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:31:56.020 model=qwen3.8:27b messages=6 system_chars=2762 quay_tools=9 codeword=False
+08:32:06.379 model=qwen3.8:27b messages=8 system_chars=2762 quay_tools=9 codeword=False
+08:32:39.051 model=qwen3.8:27b messages=10 system_chars=2762 quay_tools=9 codeword=False
+08:33:11.678 model=qwen3.8:27b messages=12 system_chars=2762 quay_tools=9 codeword=False
+08:33:48.895 model=qwen3.8:27b messages=14 system_chars=2762 quay_tools=9 codeword=False
+08:36:32.214 model=fixed messages=6 system_chars=2762 quay_tools=9 codeword=False
+08:36:36.152 model=fixed messages=6 system_chars=2762 quay_tools=9 codeword=False
+08:37:09.963 model=fixed messages=9 system_chars=2762 quay_tools=9 codeword=False
+08:37:09.981 model=fixed messages=11 system_chars=2762 quay_tools=9 codeword=False
+08:37:40.807 model=fixed messages=6 system_chars=2762 quay_tools=9 codeword=False
+08:38:23.574 model=qwen3.8:27b messages=2 system_chars=2762 quay_tools=9 codeword=False
+08:39:19.689 model=qwen3.8:27b messages=4 system_chars=2762 quay_tools=9 codeword=False
+08:39:40.833 model=fixed messages=8 system_chars=2762 quay_tools=9 codeword=False
+08:46:43.368 model=fixed messages=2 system_chars=56247 quay_tools=9 codeword=False
+08:46:43.406 model=fixed messages=4 system_chars=56247 quay_tools=9 codeword=False
+
+Tool results as PiG got them: the isError text, and the limit's text
+08:22:49.029 mcp__quay__quay_surface_proto isError=True equal_to_sent=n/a "MCP request timed out after 45000ms"
+08:23:57.610 mcp__quay__quay_surface_proto isError=True equal_to_sent=n/a "MCP request timed out after 120000ms"
+08:24:17.087 mcp__quay__quay_surface_proto isError=True equal_to_sent=n/a "MCP request timed out after 150000ms"
+08:33:48.889 mcp__quay__quay_reject_proto isError=True equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:37:09.976 mcp__quay__quay_reject_proto isError=True equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:39:19.684 mcp__quay__quay_reject_proto isError=True equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:39:40.822 mcp__quay__quay_surface_proto isError=True equal_to_sent=n/a "MCP request timed out after 120000ms"
+08:46:43.397 mcp__quay__quay_reject_proto isError=True equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+
+Tool messages that carried the isError text, in the requests PiG then sent
+08:33:48.895 model=qwen3.8:27b equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:37:09.981 model=fixed equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:39:19.689 model=qwen3.8:27b equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+08:46:43.406 model=fixed equal_to_sent=True "{\n  \"errors\": [\n    {\n      \"code\": \"VALIDATION_FAILED\",\n      \"surfaceId\": \"plan\",\n      \"path\": \"/messages/1/updateComponents/components/2/variant\",\n      \"message\": \"A title is at most 80 characters; this one is 96 — nonce zebra-4471.\"\n    }\n  ],\n  \"next\": \"Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.\"\n}"
+
+== OpenCode 1.19.4 permission matrix: what the driving script printed, 07:56 to 08:02
+("calls" is how many of the terminal's calls had reached Quay; the box lines are from its screen)
+== p1 mode=ask file={} content=null tool=surface_proto: calls=1 terminal=term-af1083818d92409faeee5a4cafcfaba6 p1 opencode idle normal
+== p2 mode=ask file={"permission":{"*":"ask"}} content=null tool=surface_proto: calls=0 terminal= term-1a50d88a9aed46579eb2168e9a2633a9 p2 opencode working normal
+  ┃  △ Permission required
+  ┃    ⚙ Call tool quay_quay_surface_proto
+  ┃   Allow once   Allow always   Reject
+== q3 mode=ask file={"permission":{"*":"ask"}} content={"permission":{"quay_quay_surface_proto":"allow"}} tool=surface_proto: calls=1 terminal= term-5c6e57a0b78b4b2d8302170c398838a9 q3 opencode idle normal
+== q3b mode=ask file={"permission":{"*":"ask"}} content={"permission":{"quay_quay_surface_proto":"allow"}} tool=reject_proto: calls=0 terminal= term-745943a8c3b44bdc9975a0b1871e3569 q3b opencode working normal
+  ┃  CALL reject_proto {"messages":[],"wait_seconds":4}
+     ⚙ quay_quay_reject_proto [wait_seconds=4]
+  ┃  △ Permission required
+  ┃    ⚙ Call tool quay_quay_reject_proto
+  ┃  Tool: quay_quay_reject_proto
+  ┃   Allow once   Allow always   Reject
+== q4 mode=ask file={"permission":"ask"} content={"permission":{"quay_quay_surface_proto":"allow"}} tool=surface_proto: calls=1 terminal= term-bed0d5956cdd499ea1b0e5c656633a17 q4 opencode idle normal
+== q6 mode=skip file={"permission":{"*":"ask"}} content=null tool=surface_proto: calls=1 terminal= term-2dfdc682780c4e39b0a6e81dd719233a q6 opencode idle skip
+== q7 mode=ask file={"agent":{"build":{"permission":{"*":"ask"}}}} content={"permission":{"quay_quay_surface_proto":"allow"}} tool=surface_proto: calls=0 terminal= term-2eb26bac191a4f2f9329270bfde9e501 q7 opencode working normal
+  ┃  △ Permission required
+  ┃    ⚙ Call tool quay_quay_surface_proto
+  ┃   Allow once   Allow always   Reject
+== q8 mode=ask file={"permission":{"*":"ask"}} content={"permission":{"quay_*":"allow"}} tool=reject_proto: calls=1 terminal= term-7ad3b372e01c4008a11cdaa49e717dfc q8 opencode idle normal
+  ┃  CALL reject_proto {"messages":[],"wait_seconds":4}
+     ⚙ quay_quay_reject_proto [wait_seconds=4]
+== q9 mode=ask file={"permission":{"quay_*":"ask"}} content={"permission":{"quay_quay_surface_proto":"allow"}} tool=surface_proto: calls=1 terminal= term-cb6ecf6ca6e845feb84226a85a034a8d q9 opencode working normal
