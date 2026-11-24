@@ -41,7 +41,7 @@ const refused = <Api extends Parameters<typeof createFunctionImplementation>[0]>
     throw new Error(`${api.name} runs only on the operator's click.`);
   });
 
-export const EFFECTS = [refused(APIS.openUrl), refused(APIS.showFile), refused(APIS.focusTerminal), refused(APIS.copyText)];
+export const EFFECTS = Object.values(APIS).map((api) => refused(api));
 
 /** What each causes, of a call's arguments once they are evaluated. */
 const CAUSES: Record<Effect, (args: JsonObject, effects: SurfaceEffects) => void> = {
