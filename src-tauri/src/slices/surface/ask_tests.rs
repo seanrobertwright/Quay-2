@@ -4,10 +4,11 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use super::ask::{DESCRIPTION_LIMIT, LABEL_LIMIT, OPTION_COUNT, QUESTION_LIMIT};
 use super::check::Verdict;
 use super::store::{AnswerRefused, SurfaceKey};
 use super::test_seam::{accepted, start, start_with, CapturedLog, FakeWebview, OpenCall, Seam, A_WHILE};
-use super::timing::Timing;
+use super::timing::{Timing, WAIT};
 
 /// The tools Quay's MCP server had before surfaces, in the order it lists them.
 const SEVEN: [&str; 7] = [
@@ -44,6 +45,26 @@ async fn the_surface_tool_is_listed_after_the_seven() {
     let (seam, _webview) = start(Timing::default()).await;
 
     assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &["quay_ask"]].concat());
+}
+
+#[tokio::test]
+async fn the_listed_schema_states_the_limits_the_calls_are_held_to() {
+    let (seam, _webview) = start(Timing::default()).await;
+    let list = seam.cli("term-a").post("tools/list", json!({})).result().await;
+    let tool = list["tools"].as_array().unwrap().iter().find(|tool| tool["name"] == "quay_ask").unwrap();
+    let question = &tool["inputSchema"]["properties"]["questions"]["items"]["properties"];
+    let options = &question["options"];
+    let option = &options["items"]["properties"];
+
+    let says = |value: &Value, part: String| {
+        let description = value["description"].as_str().unwrap();
+        assert!(description.contains(&part), "{part:?} in {description:?}");
+    };
+    says(tool, format!("up to {} seconds", WAIT.as_secs()));
+    says(&question["question"], format!("at most {QUESTION_LIMIT} characters"));
+    says(&option["label"], format!("At most {LABEL_LIMIT} characters"));
+    says(&option["description"], format!("At most {DESCRIPTION_LIMIT} characters"));
+    assert_eq!((&options["minItems"], &options["maxItems"]), (&json!(OPTION_COUNT.start()), &json!(OPTION_COUNT.end())));
 }
 
 #[tokio::test]

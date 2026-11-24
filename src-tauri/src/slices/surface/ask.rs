@@ -1,5 +1,7 @@
 //! `quay_ask`: what its call may hold.
 
+use std::ops::RangeInclusive;
+
 use serde::Serialize;
 use serde_json::{Map, Value};
 
@@ -7,9 +9,10 @@ use super::rejection::Rejection;
 
 pub const TOOL: &str = "quay_ask";
 
-const QUESTION_LIMIT: usize = 200;
-const LABEL_LIMIT: usize = 60;
-const DESCRIPTION_LIMIT: usize = 120;
+pub(super) const QUESTION_LIMIT: usize = 200;
+pub(super) const LABEL_LIMIT: usize = 60;
+pub(super) const DESCRIPTION_LIMIT: usize = 120;
+pub(super) const OPTION_COUNT: RangeInclusive<usize> = 2..=6;
 
 /// A checked `quay_ask` call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -61,7 +64,7 @@ impl Question {
             .get("options")
             .and_then(Value::as_array)
             .ok_or_else(|| Rejection::invalid(path.as_str(), "A question needs a list of options."))?;
-        if !(2..=6).contains(&values.len()) {
+        if !OPTION_COUNT.contains(&values.len()) {
             let message = format!("A question has two to six options; this one has {}.", values.len());
             return Err(Rejection::invalid(path, message));
         }
