@@ -1,4 +1,5 @@
 // What the verdict on a call says of a surface that nothing is wrong with.
+import { hasOwn, isObject } from "../json.ts";
 import type { CreateSurface, SurfaceComponent, Verdict } from "../surfaceTypes.ts";
 import { CATALOG_ID } from "./catalog.ts";
 import type { EngineSurface } from "./engine.ts";
@@ -16,7 +17,7 @@ export function compact(surface: EngineSurface): CreateSurface {
 }
 
 /** Whether a component has an action to its surface's agent. */
-export const hasEvent = ({ action }: Record<string, unknown>): boolean => typeof action === "object" && action !== null && "event" in action;
+export const hasEvent = ({ action }: Record<string, unknown>): boolean => isObject(action) && hasOwn(action, "event");
 
 /** The verdict that accepts `surface`, whose whole state is `state`. */
 export function acceptedVerdict(surface: EngineSurface, state: CreateSurface): Verdict {

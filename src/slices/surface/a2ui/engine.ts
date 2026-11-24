@@ -1,7 +1,7 @@
 // The engine, with Quay's catalog, in strict mode.
 import type { ReactCatalogComponent } from "@a2ui/react";
 import { mapErrorToRendererMessage, MessageProcessor, STRICT_VALIDATION, type ActionListener, type SurfaceModel } from "@a2ui/web_core/v1_0";
-import type { CreateSurface, EngineError } from "../surfaceTypes.ts";
+import type { CreateSurface, CheckError } from "../surfaceTypes.ts";
 import { catalog } from "./catalog.ts";
 
 /** What an action listener is given. */
@@ -33,7 +33,7 @@ export function scratchEngine() {
 }
 
 /** What the engine threw, as it would tell the agent. */
-export function engineError(error: unknown, surfaceId: string): EngineError {
+export function engineError(error: unknown, surfaceId: string): CheckError {
   const { code, message, path } = mapErrorToRendererMessage(error, { surfaceId, version: "1.0" }).error;
   return { code, message, ...(typeof path === "string" ? { path } : {}) };
 }

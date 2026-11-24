@@ -26,7 +26,7 @@ pub struct CheckRequest {
 #[serde(untagged)]
 pub enum Verdict {
     Failed {
-        errors: Vec<EngineError>,
+        errors: Vec<CheckError>,
         /// How many more there are. Only a raw call's are counted.
         #[serde(default)]
         more: usize,
@@ -37,7 +37,7 @@ pub enum Verdict {
 /// One thing the webview found wrong with a call. A typed tool's is the engine's, as its
 /// `mapErrorToRendererMessage` gives it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct EngineError {
+pub struct CheckError {
     pub code: String,
     /// The surface it is about, when that is known.
     #[serde(rename = "surfaceId", default)]

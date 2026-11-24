@@ -3,7 +3,7 @@
 import "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import type { EngineError } from "./surfaceTypes.ts";
+import type { CheckError } from "./surfaceTypes.ts";
 import { startRust, unloadSurfaces } from "./fixtures/fakeRust.ts";
 import { button, column, create, errorsIn, EVENT, oneButton, text, told, verdictOnRaw, type Component } from "./fixtures/rawFixtures.ts";
 
@@ -14,7 +14,7 @@ const update = (components: Component[]) => ({ version: "1.0", updateComponents:
 const setData = (value: object) => ({ version: "1.0", updateDataModel: { surfaceId: "plan", ...value } });
 
 /** Each error's code and path. */
-const where = (errors: readonly EngineError[]) => errors.map(({ code, path }) => [code, path]);
+const where = (errors: readonly CheckError[]) => errors.map(({ code, path }) => [code, path]);
 
 test("the engine's path is put after the message's own, and the engine's words are told as they are", async () => {
   const [error, ...others] = await errorsIn([create(column({ ...text("said", "x"), variant: "h2" }))]);

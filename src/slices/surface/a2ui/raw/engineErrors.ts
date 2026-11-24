@@ -1,8 +1,9 @@
 // What the engine finds wrong with a message, told at where it is in the call.
-import type { EngineError } from "../../surfaceTypes.ts";
+import { hasOwn, isObject } from "../../json.ts";
+import type { CheckError } from "../../surfaceTypes.ts";
 import { catalog } from "../catalog.ts";
 import { engineError } from "../engine.ts";
-import { componentsOf, hasOwn, isObject, pointerTo, type Message, type Place } from "./callErrors.ts";
+import { componentsOf, pathOf, type Message, type Pointer } from "./callErrors.ts";
 
 const NO_MEDIA = "Quay plays no media. Link the file with FileLink.";
 
@@ -38,7 +39,7 @@ function whatThereIs(body: unknown, path: string): string {
 }
 
 /** The component the engine's `message` names, as `messages` define it last. Its words are held by the contract tests. */
-function namedIn(message: string, messages: readonly Message[]): Place | null {
+function namedIn(message: string, messages: readonly Message[]): Pointer | null {
   const id = /component '([^']+)'/i.exec(message)?.[1];
   const defined = messages.flatMap(componentsOf).filter(({ component }) => component.id === id);
   return defined.length > 0 ? defined[defined.length - 1].at : null;
@@ -48,17 +49,17 @@ function namedIn(message: string, messages: readonly Message[]): Place | null {
  * What the engine threw at `message`, one of the `messages` that make a surface, or at the whole surface
  * when `message` is the create.
  */
-export function engineErrorAt(thrown: unknown, message: Message, messages: readonly Message[]): EngineError {
+export function engineErrorAt(thrown: unknown, message: Message, messages: readonly Message[]): CheckError {
   const { code, path, message: said } = engineError(thrown, message.surfaceId);
   // Of data it gives the path in the data model, which is nowhere in the call
   const inBody = code === "DATA_ERROR" || path === "/" ? undefined : path;
-  const own = pointerTo(message.place);
+  const own = pathOf(message.pointer);
   const named = inBody === undefined ? namedIn(said, messages) : null;
   const there = inBody === undefined ? "" : whatThereIs(message.body, inBody);
   return {
     code,
     surfaceId: message.surfaceId,
-    path: named ? pointerTo(named) : own + (inBody ?? ""),
+    path: named ? pathOf(named) : own + (inBody ?? ""),
     message: there === "" ? said : said.replace(/\.?$/, `.${there}`),
   };
 }

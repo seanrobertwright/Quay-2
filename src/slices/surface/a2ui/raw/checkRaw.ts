@@ -1,11 +1,12 @@
 // The check of a raw call: a pre-pass of each message, the engine's own check of the messages in order
 // on a scratch copy, whether the surface they make is whole, and a post-check of what the engine lets
 // through.
-import type { CreateSurface, EngineError, SurfacePlace, Verdict } from "../../surfaceTypes.ts";
+import { isObject } from "../../json.ts";
+import type { CreateSurface, CheckError, SurfacePlace, Verdict } from "../../surfaceTypes.ts";
 import { acceptedVerdict, compact } from "../accepted.ts";
 import { CATALOG_ID } from "../catalog.ts";
 import { engineFor, scratchEngine } from "../engine.ts";
-import { invalid, isObject, type Message } from "./callErrors.ts";
+import { invalid, type Message } from "./callErrors.ts";
 import { engineErrorAt } from "./engineErrors.ts";
 import { postCheck, tooLarge, withFewImages } from "./postCheck.ts";
 import { prePass } from "./prePass.ts";
@@ -19,12 +20,12 @@ interface RawCall {
 /** The most errors a verdict lists. Mirrors `MOST_LISTED`: Rust lists no more. */
 const MOST_LISTED = 10;
 
-const rejected = (errors: readonly EngineError[]): Verdict => ({ errors: errors.slice(0, MOST_LISTED), more: Math.max(0, errors.length - MOST_LISTED) });
+const rejected = (errors: readonly CheckError[]): Verdict => ({ errors: errors.slice(0, MOST_LISTED), more: Math.max(0, errors.length - MOST_LISTED) });
 
 /** A message of the call with what has been found wrong with it. */
 interface Checked {
   message: Message | null;
-  errors: EngineError[];
+  errors: CheckError[];
 }
 
 /** `message` as the engine is given it, with the catalog's id filled in. */
@@ -50,7 +51,7 @@ function run(messages: readonly (Checked & { message: Message })[]): CreateSurfa
           scratch.run(forEngine(message));
           const surface = scratch.surface(message.surfaceId);
           if (surface && !isObject(surface.dataModel.get("/"))) {
-            errors.push(invalid([...message.place, "value"], "A surface's data model is an object.", message.surfaceId));
+            errors.push(invalid([...message.pointer, "value"], "A surface's data model is an object.", message.surfaceId));
           }
         } catch (error) {
           errors.push(engineErrorAt(error, message, all));
@@ -90,7 +91,7 @@ function whole(state: CreateSurface, messages: readonly Message[]): Verdict {
   if (large.length > 0) return rejected(large);
   try {
     // The engine asks only a surface with a component whether it has a root
-    if (state.createSurface.components.length === 0) return rejected([{ ...invalid(create.place, "Missing root component: No component has id='root'", create.surfaceId), code: "INTEGRITY_ERROR" }]);
+    if (state.createSurface.components.length === 0) return rejected([{ ...invalid(create.pointer, "Missing root component: No component has id='root'", create.surfaceId), code: "INTEGRITY_ERROR" }]);
     const { surface, dispose } = engineFor(state);
     try {
       return withFewImages(acceptedVerdict(surface, state), create);

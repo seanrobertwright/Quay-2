@@ -1,7 +1,7 @@
 // What the tests of raw surfaces share: the messages an agent writes, and the check of a call that holds
 // them.
 import assert from "node:assert/strict";
-import type { EngineError, SurfacePlace, SurfaceRecord, Verdict } from "../surfaceTypes.ts";
+import type { CheckError, SurfacePlace, SurfaceRecord, Verdict } from "../surfaceTypes.ts";
 import { verdicts, verdictOn } from "./fakeRust.ts";
 import { surface } from "./surfaceFixtures.ts";
 
@@ -38,14 +38,14 @@ export const verdictOnRaw = (messages: unknown, place: SurfacePlace = "companion
   verdictOn({ call: verdicts().length + 1, tool: "quay_surface", surface_id: creates, arguments: { messages, place, title: "Migration plan" } });
 
 /** What was found wrong with these messages. */
-export async function errorsIn(messages: unknown, place?: SurfacePlace): Promise<EngineError[]> {
+export async function errorsIn(messages: unknown, place?: SurfacePlace): Promise<CheckError[]> {
   const verdict = await verdictOnRaw(messages, place);
   assert.ok("errors" in verdict, JSON.stringify(verdict));
   return verdict.errors;
 }
 
 /** Each error's code, path and message. */
-export const told = (errors: readonly EngineError[]) => errors.map(({ code, path, message }) => [code, path, message]);
+export const told = (errors: readonly CheckError[]) => errors.map(({ code, path, message }) => [code, path, message]);
 
 /** The raw surface `plan` of terminal `t1`, as Rust holds it once the webview has accepted these messages. */
 export async function acceptedRaw(messages: unknown, over: Partial<SurfaceRecord> = {}): Promise<SurfaceRecord> {

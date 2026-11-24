@@ -42,8 +42,8 @@ export interface CheckRequest {
   arguments: unknown;
 }
 
-/** One thing wrong with a call. A typed tool's is the engine's, as its `mapErrorToRendererMessage` gives it. */
-export interface EngineError {
+/** One thing the webview found wrong with a call. A typed tool's is the engine's, as its `mapErrorToRendererMessage` gives it. Mirrors `CheckError`. */
+export interface CheckError {
   code: string;
   /** The surface it is about, when that is known. */
   surfaceId?: string;
@@ -55,8 +55,8 @@ export interface EngineError {
 /** What the webview made of a check. Mirrors `Verdict`. */
 export type Verdict =
   | {
-      errors: EngineError[];
-      /** How many more there are. Left out for none. */
+      errors: CheckError[];
+      /** How many more there are, which is none when it is left out. Only a raw call's are counted. */
       more?: number;
     }
   | {
