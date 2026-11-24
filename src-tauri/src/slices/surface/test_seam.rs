@@ -22,6 +22,7 @@ use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
 use crate::test_support::TempDir;
+use crate::webview::WebviewEvents;
 
 /// How long a test waits for something that should happen at once.
 const SOON: Duration = Duration::from_secs(5);
@@ -120,7 +121,7 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
         a2a_router: A2ARouter::new(),
         machina_manager: MachinaManager::with_paths(dir.join("state.json"), dir.join("vault")),
         surfaces: surfaces.clone(),
-        on_broadcast: Arc::new(|_, _| {}),
+        webview: WebviewEvents::to(|_, _| {}),
     });
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let port = listener.local_addr().unwrap().port();

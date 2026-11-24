@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use super::commands::emit_broadcast;
 use super::models::{A2ADispatchRequest, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::{A2ARouter, WaitOutcome};
 use super::target::resolve_target;
@@ -17,6 +18,7 @@ use crate::slices::machina::MachinaManager;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::TerminalInfo;
 use crate::slices::surface::SurfaceTools;
+use crate::webview::WebviewEvents;
 
 /// What Quay's MCP server answers from.
 #[derive(Clone)]
@@ -26,8 +28,7 @@ pub struct McpContext {
     pub a2a_router: A2ARouter,
     pub machina_manager: MachinaManager,
     pub surfaces: SurfaceTools,
-    /// Hears the text of each broadcast and the peers it was sent to.
-    pub on_broadcast: Arc<dyn Fn(&str, &Broadcast) + Send + Sync>,
+    pub webview: WebviewEvents,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +47,15 @@ fn reply_to_notification(req: &JsonRpcRequest) -> Option<Response> {
     req.id
         .is_none()
         .then(|| StatusCode::ACCEPTED.into_response())
+}
+
+/// Tells a client that probes with MCP 2026-07-28's `server/discover` that Quay speaks the earlier
+/// versions, which start with `initialize`. That revision's Streamable HTTP page, section "Backward
+/// Compatibility", has the client fall back on `400 Bad Request` when "the body is empty or is not a
+/// recognized modern JSON-RPC error". The body is left empty because the same page lists unknown
+/// method among the errors a modern server returns, so a client could take `-32601` as that sign.
+fn fall_back_to_the_handshake() -> Response {
+    StatusCode::BAD_REQUEST.into_response()
 }
 
 #[derive(Debug, Serialize)]
@@ -263,7 +273,7 @@ pub async fn handle_mcp_request(
                             .broadcast_toast_async(text, &sender, &ctx.pty_manager)
                             .await
                             .map(|sent| {
-                                (ctx.on_broadcast)(text, &sent);
+                                emit_broadcast(&ctx.webview, text, &sent);
                                 json!({
                                     "content": [
                                         {
@@ -389,6 +399,8 @@ pub async fn handle_mcp_request(
             }
         }
 
+        "server/discover" => fall_back_to_the_handshake(),
+
         _ => Json(JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
@@ -409,7 +421,7 @@ pub async fn handle_mcp_request(
 const TOOL_LIST: &str = include_str!("mcp_tools.json");
 
 /// `TOOL_LIST`, parsed once.
-fn tool_list() -> &'static Value {
+pub(super) fn tool_list() -> &'static Value {
     static TOOLS: OnceLock<Value> = OnceLock::new();
     TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
 }

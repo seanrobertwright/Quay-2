@@ -10,6 +10,7 @@ use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::surface::SurfaceTools;
+use crate::webview::WebviewEvents;
 
 /// Binds the bridge's listener on loopback: on the pinned port when there is
 /// one, otherwise on a random port from the OS.
@@ -55,7 +56,7 @@ impl BridgeServer {
             a2a_router,
             machina_manager,
             surfaces,
-            app_handle,
+            webview: WebviewEvents::to_app(app_handle),
         };
 
         // Each OpenCode launch from now on gets a watcher on the server its TUI runs

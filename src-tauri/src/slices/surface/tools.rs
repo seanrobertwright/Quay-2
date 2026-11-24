@@ -47,7 +47,7 @@ impl SurfaceTools {
         Self::with(cfg!(debug_assertions), Timing::default())
     }
 
-    pub(super) fn with(offered: bool, timing: Timing) -> Self {
+    pub(crate) fn with(offered: bool, timing: Timing) -> Self {
         Self(Arc::new(Inner {
             offered,
             timing,

@@ -1,6 +1,8 @@
 pub mod commands;
 pub mod launch_prompt;
 pub mod mcp;
+#[cfg(test)]
+mod mcp_tests;
 pub mod models;
 pub mod router;
 pub mod swarms;

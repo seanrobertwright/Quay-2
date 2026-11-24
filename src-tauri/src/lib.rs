@@ -4,6 +4,7 @@ pub mod slices;
 pub mod spawn;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub mod webview;
 
 use tauri::{Emitter, Manager};
 
@@ -131,7 +132,7 @@ pub fn run() {
 
             // Every trail entry the router adds or changes updates Mission Control's trail,
             // and a message raises its toast when it is typed in, waited on or not.
-            let a2a_events = app_handle.clone();
+            let a2a_events = webview::WebviewEvents::to_app(app_handle.clone());
             a2a_router_updates
                 .set_trail_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
