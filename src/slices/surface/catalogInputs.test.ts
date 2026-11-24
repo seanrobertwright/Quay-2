@@ -190,6 +190,8 @@ test("a DateTimeInput is a labelled native input of the parts it takes", async (
       when("d", {}),
       when("e", { enableTime: true }),
       when("f", { enableDate: true, enableTime: true }),
+      when("g", { enableDate: true, enableTime: true, min: "2026-01-01", max: "2026-12-31" }),
+      when("h", { enableDate: true, enableTime: true, max: "2026-12-31T08:00" }),
     ],
     { a: "2026-10-21", b: "14:06:11", c: "2026-10-21T14:06:11", d: "2026-02-30", e: "tomorrow", f: 4, last: "2026-12-31" },
   );
@@ -200,8 +202,11 @@ test("a DateTimeInput is a labelled native input of the parts it takes", async (
     ["date", "", "", "9999-12-31"],
     ["time", "", "", ""],
     ["datetime-local", "", "", "9999-12-31T23:59"],
+    // The last day it takes is all of that day
+    ["datetime-local", "", "2026-01-01T00:00", "2026-12-31T23:59"],
+    ["datetime-local", "", "", "2026-12-31T08:00"],
   ]);
-  assert.deepEqual(inputs(content).map(labelOf), ["Day", "Time", "Both", "Date", "Time", "Date and time"]);
+  assert.deepEqual(inputs(content).map(labelOf), ["Day", "Time", "Both", "Date", "Time", "Date and time", "Date and time", "Date and time"]);
 });
 
 test("a DateTimeInput shows and writes the digits of its zone, and says which zone that is", async () => {

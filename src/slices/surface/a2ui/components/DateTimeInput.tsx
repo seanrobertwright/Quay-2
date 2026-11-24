@@ -13,14 +13,14 @@ const LABELS = { date: "Date", time: "Time", "datetime-local": "Date and time" }
 /** The most a native input takes, so that its year has the four digits ISO 8601 gives one. */
 const LATEST = { date: "9999-12-31", time: "", "datetime-local": "9999-12-31T23:59" } as const;
 
-/** What of `text`, in ISO 8601, a native input of `type` shows. A date alone is the start of its day. */
-function shownOf(text: string, type: Type): string {
+/** What of `text`, in ISO 8601, a native input of `type` shows. A date alone is the start of its day, or the time `alone`. */
+function shownOf(text: string, type: Type, alone = "00:00"): string {
   const digits = isoDigits(text);
   if (!digits) return "";
   const { date, time } = digits;
   if (type === "date") return date ?? "";
   if (type === "time") return time ?? "";
-  return date === null ? "" : `${date}T${time ?? "00:00"}`;
+  return date === null ? "" : `${date}T${time ?? alone}`;
 }
 
 /** `zone` as a label says it, after a space: nothing for none. */
@@ -61,7 +61,8 @@ export const DateTimeInput = createComponentImplementation(DateTimeInputApi, ({ 
       text={textOf(props.value)}
       setText={(text) => props.setValue(text)}
       min={shownOf(textOf(props.min), type)}
-      max={shownOf(textOf(props.max), type) || LATEST[type]}
+      // A day that is the last it takes is taken to its end
+      max={shownOf(textOf(props.max), type, "23:59") || LATEST[type]}
       note={checkNote(props)}
     />
   );
