@@ -24,7 +24,8 @@ use std::process::ExitCode;
 
 use calls::OpenCalls;
 use hyper::body::Bytes;
-use quay::Quay;
+use quay::{MCP_URL_VAR, Quay};
+use quay_bridge_post::TOKEN_VAR;
 use rpc::{Id, Message, Unreadable};
 use stdio::{Line, Out};
 
@@ -46,7 +47,7 @@ fn main() -> ExitCode {
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else {
         return ExitCode::FAILURE;
     };
-    let route = match var("QUAY_MCP_URL").zip(var("QUAY_A2A_TOKEN")) {
+    let route = match var(MCP_URL_VAR).zip(var(TOKEN_VAR)) {
         None => Route::Outside,
         Some((url, token)) => Quay::new(&url, &token).map_or_else(Route::Refused, Route::Quay),
     };

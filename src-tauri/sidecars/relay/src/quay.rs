@@ -13,9 +13,13 @@ use quay_bridge_post::parse_loopback_url;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-/// How long one message may take, from the connection to the end of the reply: above the
-/// 100 s a surface's call waits for its answer, and below the 150 s a CLI gives the call.
+pub const MCP_URL_VAR: &str = "QUAY_MCP_URL";
+
+/// How long one message may take, from the connection to the end of the reply. The agent
+/// surfaces spec (#706) has a surface's call wait 100 s for its answer, and has each CLI give
+/// the call 150 s.
 const REPLY_LIMIT: Duration = Duration::from_secs(120);
+const _: () = assert!(REPLY_LIMIT.as_secs() > 100 && REPLY_LIMIT.as_secs() < 150);
 
 /// The most bytes a reply may have.
 const MAX_REPLY: usize = 4 * 1024 * 1024;
@@ -39,7 +43,7 @@ pub struct Quay {
 impl Quay {
     /// The server at `url`, which must be on loopback, since each request carries `token`.
     pub fn new(url: &str, token: &str) -> Result<Quay, &'static str> {
-        let url = parse_loopback_url("QUAY_MCP_URL", url).map_err(|_| BAD_URL)?;
+        let url = parse_loopback_url(MCP_URL_VAR, url).map_err(|_| BAD_URL)?;
         let mut authorization = HeaderValue::try_from(format!("Bearer {token}")).map_err(|_| BAD_TOKEN)?;
         authorization.set_sensitive(true);
         Ok(Quay {
