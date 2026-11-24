@@ -38,7 +38,7 @@ async fn settle(seam: &Seam, webview: &mut FakeWebview, id: &str) {
     assert!(webview.next_shown().await.answer.is_some());
 }
 
-/// The ids of `term-a`'s locked surfaces, in no order.
+/// The ids of `term-a`'s locked surfaces, in the order they were asked.
 fn locked(seam: &Seam) -> Vec<String> {
     let mut ids: Vec<(usize, String)> = seam
         .surfaces

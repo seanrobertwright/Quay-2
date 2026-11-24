@@ -626,20 +626,8 @@ impl SurfaceStore {
         left
     }
 
-    /// Settles a surface whose answer has been typed in. `None` when it has left meanwhile.
+    /// Settles a surface whose answer has been typed in. `None` when it has left or ended meanwhile.
     pub fn typed(&self, key: &SurfaceKey) -> Option<Locked> {
-        self.end_typing(key, Surface::settle)
-    }
-
-    /// Opens a surface again whose answer could not be typed in.
-    pub fn not_typed(&self, key: &SurfaceKey) {
-        self.end_typing(key, |surface, _, change| {
-            surface.phase = Phase::Asking { waiters: Vec::new() };
-            surface.change = change;
-        });
-    }
-
-    fn end_typing(&self, key: &SurfaceKey, end: impl FnOnce(&mut Surface, Value, u64)) -> Option<Locked> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.get_mut(&key.terminal_id)?;
@@ -648,9 +636,20 @@ impl SurfaceStore {
             return None;
         };
         let answer = answer.take();
-        end(surface, answer, change);
+        surface.settle(answer, change);
         let record = surface.record(&key.terminal_id);
         Some(Locked { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
+    }
+
+    /// Opens a surface again whose answer could not be typed in, unless it has left or ended meanwhile.
+    pub fn not_typed(&self, key: &SurfaceKey) {
+        let mut inner = self.0.lock();
+        let change = inner.next_change();
+        let surface = inner.terminals.get_mut(&key.terminal_id).and_then(|terminal| terminal.find(&key.id));
+        if let Some(surface) = surface.filter(|surface| matches!(surface.phase, Phase::Typing { .. })) {
+            surface.phase = Phase::Asking { waiters: Vec::new() };
+            surface.change = change;
+        }
     }
 
     /// The surface `key` as it is now.
