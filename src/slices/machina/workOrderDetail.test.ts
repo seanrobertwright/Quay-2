@@ -3,6 +3,7 @@
 // options, Accept: squash-merge and Resume each carry it, without the Quay mark's glow, and a work
 // order that waits on none of them carries none.
 import "../../test-support/dom.ts";
+import { buttonsAround, quayBadges } from "../../test-support/quayBadge.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -88,27 +89,22 @@ function render(wo: MachinaWorkOrder) {
   return container;
 }
 
-/** Every QUAY badge in `root` that a screen reader reads. */
-const badges = (root: Element) =>
-  [...root.querySelectorAll("span")].filter((span) => span.textContent === "QUAY" && !span.closest('[aria-hidden="true"]'));
-
-/** The names of the buttons in the smallest element around `badge` that holds any. */
-const asksFor = (badge: Element) => {
-  let around: Element | null = badge;
-  while (around && around.querySelectorAll("button").length === 0) around = around.parentElement;
-  return [...(around?.querySelectorAll("button") ?? [])].map((button) => button.textContent?.trim());
-};
-
 test("a hold's options carry the QUAY badge, without the glow", () => {
   const container = render(HELD);
-  assert.deepEqual(badges(container).map(asksFor), [["Allow themWiden the scope.", "AbortStop the work order."]]);
-  assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow in a lens");
+  assert.deepEqual(quayBadges(container).map(buttonsAround), [["Allow themWiden the scope.", "AbortStop the work order."]]);
+  assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow");
+});
+
+test("a hold's badge keeps its weight in the bold heading", () => {
+  const [badge] = quayBadges(render(HELD));
+  // The class, as the test DOM compiles no Tailwind.
+  assert.ok(badge?.classList.contains("font-normal"));
 });
 
 test("Accept: squash-merge carries the QUAY badge, without the glow", () => {
   const container = render(workOrder({ status: "AWAITING_ACCEPTANCE" }));
-  assert.deepEqual(badges(container).map(asksFor), [["Accept: squash-merge into master"]]);
-  assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow in a lens");
+  assert.deepEqual(quayBadges(container).map(buttonsAround), [["Accept: squash-merge into master"]]);
+  assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow");
 });
 
 for (const [status, scaffold, button] of [
@@ -119,8 +115,8 @@ for (const [status, scaffold, button] of [
   test(`${button} on a work order that is ${status} carries the QUAY badge, without the glow`, () => {
     const stages = [{ id: "scaffold" as const, status: scaffold, startedAtMs: null, finishedAtMs: null, detail: "" }];
     const container = render(workOrder({ status, stages }));
-    assert.deepEqual(badges(container).map(asksFor), [[button]]);
-    assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow in a lens");
+    assert.deepEqual(quayBadges(container).map(buttonsAround), [[button]]);
+    assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow");
   });
 }
 
@@ -128,6 +124,6 @@ for (const [status, scaffold, button] of [
 const ASKS_NOTHING: WorkOrderStatus[] = ["QUEUED", "SCAFFOLDING", "IN_PROGRESS", "GATING", "COMPLETED", "ABORTED"];
 for (const status of ASKS_NOTHING) {
   test(`a work order that is ${status} carries no QUAY badge`, () => {
-    assert.equal(badges(render(workOrder({ status }))).length, 0);
+    assert.equal(quayBadges(render(workOrder({ status }))).length, 0);
   });
 }

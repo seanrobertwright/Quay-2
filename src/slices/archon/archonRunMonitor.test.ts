@@ -5,6 +5,7 @@
 // that waits on neither carries none. Tauri's `invoke`, the out-of-process boundary, is faked:
 // `archon_get_run_detail` answers with a run's detail.
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { buttonsAround, quayBadges } from "../../test-support/quayBadge.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -65,34 +66,23 @@ async function render(status: string, showRunList: boolean, pendingApproval: Arc
   return container;
 }
 
-/** Every QUAY badge in `root` that a screen reader reads. */
-const badges = (root: Element) =>
-  [...root.querySelectorAll("span")].filter((span) => span.textContent === "QUAY" && !span.closest('[aria-hidden="true"]'));
-
-/** The names of the buttons in the smallest element around `badge` that holds any. */
-const asksFor = (badge: Element) => {
-  let around: Element | null = badge;
-  while (around && around.querySelectorAll("button").length === 0) around = around.parentElement;
-  return [...(around?.querySelectorAll("button") ?? [])].map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim());
-};
-
 for (const { place, showRunList } of PLACES) {
   test(`an approval gate in the ${place} carries the QUAY badge, without the glow`, async () => {
     const container = await render("paused", showRunList, { prompt: "Ship it?", node_id: "gate" });
-    assert.deepEqual(badges(container).map(asksFor), [["Approve", "Reject"]]);
-    assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow in a lens");
+    assert.deepEqual(quayBadges(container).map(buttonsAround), [["Approve", "Reject"]]);
+    assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow");
   });
 
   test(`a failed run's Resume or Abandon in the ${place} carries the QUAY badge, without the glow`, async () => {
     const container = await render("failed", showRunList);
-    assert.deepEqual(badges(container).map(asksFor), [["Resume", "Abandon", "Refresh run"]]);
-    assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow in a lens");
+    assert.deepEqual(quayBadges(container).map(buttonsAround), [["Resume", "Abandon", "Refresh run"]]);
+    assert.equal(container.querySelectorAll("[data-neon]").length, 0, "no glow");
   });
 
   // Cancel and Refresh are the operator's own to press, so they ask nothing.
   for (const status of ["running", "pending", "completed", "cancelled"]) {
     test(`a ${status} run in the ${place} carries no QUAY badge`, async () => {
-      assert.equal(badges(await render(status, showRunList)).length, 0);
+      assert.equal(quayBadges(await render(status, showRunList)).length, 0);
     });
   }
 }
