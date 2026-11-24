@@ -1,6 +1,6 @@
 import type { PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
-import { splitPermissionInput } from "../companion/permissionInput.ts";
+import { splitPermissionInput } from "../attention/permissionInput.ts";
 
 interface ReplyStripProps {
   /** The selected terminal's name. */
@@ -32,8 +32,9 @@ const BUTTON = "h-7 shrink-0 px-3 rounded-md border text-xs font-medium";
  * The strip at a lens's foot: the selected terminal's last question and its reply buttons, so the
  * operator answers the agent without leaving the lens. The question is the terminal's newest
  * waiting permission request; its replies are the attention queue's Allow once, Allow for session
- * and Deny. While the request's input holds more than its summary shows, Whole input shows the
- * Activity view, where the request shows the rest.
+ * and Deny. While the Activity view's request draws input under its summary
+ * (`splitPermissionInput`), Whole input shows that view, even where the strip's one line is already
+ * that input's JSON, cut to the strip's width.
  */
 export const ReplyStrip = ({ terminalName, permission, onAnswer, onShowActivity }: ReplyStripProps) => (
   <footer

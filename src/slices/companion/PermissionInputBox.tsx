@@ -1,5 +1,5 @@
 import { useId, useMemo, useRef, useState } from "react";
-import type { InputField } from "./permissionInput.ts";
+import type { InputField } from "../attention/permissionInput.ts";
 
 /** The most characters (UTF-16 code units) of one value drawn before its "Show all" is pressed. */
 const VALUE_LIMIT = 20_000;

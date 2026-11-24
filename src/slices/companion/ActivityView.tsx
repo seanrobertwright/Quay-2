@@ -5,10 +5,10 @@ import type { Envelope } from "../bridge/useBridgeEvents.ts";
 import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { AttentionItem, PermissionItem } from "../attention/attentionQueue.ts";
 import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
+import { splitPermissionInput } from "../attention/permissionInput.ts";
 import { formatClock } from "../../lib/dates.ts";
 import { activityEntries, type ActivityEntry, type MessageEntry, type ToolCallEntry } from "./activity.ts";
 import { PermissionInputBox } from "./PermissionInputBox.tsx";
-import { splitPermissionInput } from "./permissionInput.ts";
 
 /** What the Activity view reads: the bridge's events, the A2A trail and what waits on the operator. */
 export interface CompanionActivity {

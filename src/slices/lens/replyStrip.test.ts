@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // Component tests for the reply strip at a lens's foot (#640): it shows the terminal's newest
 // waiting permission request and answers it through the attention queue's `answerPermission`, and
-// offers the way to the rest of the request's input where its one line leaves some out (#704).
+// offers the way to the Activity view where that view draws more than its summary (#704).
 import "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -81,7 +81,7 @@ test("with no permission request waiting, the strip says so and offers no replie
   assert.equal(container.querySelectorAll("button").length, 0);
 });
 
-test("a request with more input than its summary offers Whole input, which shows the Activity view", () => {
+test("a request whose input the Activity view draws under its summary offers Whole input, which shows that view", () => {
   const { container, answers, shown } = render({
     permission: { ...permission, tool: "Write", input: { file_path: "src/a.ts", content: "one" } },
   });
@@ -91,7 +91,7 @@ test("a request with more input than its summary offers Whole input, which shows
   for (const reply of ["Allow once", "Allow for session", "Deny"]) assert.ok(button(container, reply), reply);
 });
 
-test("a request whose summary shows all its input offers no Whole input", () => {
+test("a request whose input is all in the Activity view's summary offers no Whole input", () => {
   const { container } = render({ permission });
   assert.ok(!button(container, "Whole input"));
 });

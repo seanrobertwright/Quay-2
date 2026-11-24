@@ -1,3 +1,4 @@
+import { toolInputSummary } from "../attention/permissionInput.ts";
 import type { Envelope } from "../bridge/useBridgeEvents.ts";
 import type { TrailMessage } from "../orchestrator/trailMessages.ts";
 import type { TrailStatus } from "../orchestrator/trailEntry.ts";
@@ -41,26 +42,6 @@ export type ActivityEntry = ToolCallEntry | MessageEntry;
 
 /** The Activity entry id of trail message `messageId`, for a request to show that message. */
 export const messageEntryId = (messageId: string) => `message:${messageId}`;
-
-/** The fields that name what a tool call works on, the first that holds a string being its summary. */
-const SUMMARY_FIELDS = ["command", "file_path", "path", "url", "pattern"];
-
-/** The name of the field `toolInputSummary` takes its result from, or null when it takes no one field. */
-export function summaryField(input: unknown): string | null {
-  if (!input || typeof input !== "object") return null;
-  const fields = input as Record<string, unknown>;
-  return SUMMARY_FIELDS.find((key) => typeof fields[key] === "string") ?? null;
-}
-
-/** What a tool call's arguments name, on one line: a command, a file, a URL, else the arguments. */
-export function toolInputSummary(input: unknown): string {
-  if (typeof input === "string") return input;
-  if (input && typeof input === "object") {
-    const field = summaryField(input);
-    return field === null ? JSON.stringify(input) : ((input as Record<string, unknown>)[field] as string);
-  }
-  return "";
-}
 
 /** What a finished call printed: the bridge's `text`, else an `output` or `result` field. */
 function outputOf(data: Record<string, unknown>): string {
