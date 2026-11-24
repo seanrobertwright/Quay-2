@@ -18,8 +18,9 @@ interface ArchonGateCardProps {
 
 /**
  * An Archon run at an approval gate, a Quay card: the gate's prompt, a comment, and Approve or
- * Reject. Without a prompt it asks neither, says why and offers the run lens. A comment belongs to
- * the gate it was typed for.
+ * Reject. While the prompt is being read it says so and asks neither. When there is none to show it
+ * says so, with the reason if the read failed, and offers the run lens in place of Approve and
+ * Reject. A comment belongs to the gate it was typed for.
  */
 export const ArchonGateCard = ({ runId, busy, onDecide, onOpenLens }: ArchonGateCardProps) => {
   const { gatePrompt, readAgain } = useGatePrompt(runId);
