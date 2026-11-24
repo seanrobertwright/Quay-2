@@ -153,6 +153,8 @@ pub struct TurnReport {
     pub starts_turn: bool,
     /// What a sender waiting on the running turn is told, if it hears now.
     pub answer: Option<String>,
+    /// Whether a turn ends with it.
+    pub ends_turn: bool,
 }
 
 /// Follows one launch of an Antigravity terminal through its sequences, so it can tell a
@@ -173,11 +175,12 @@ impl AntigravityTurn {
             "working" => (ClaudeStatus::Working, true),
             "blocked" => (ClaudeStatus::Waiting, true),
             "done" | "idle" => (ClaudeStatus::Idle, false),
-            _ => return TurnReport { status: None, starts_turn: false, answer: None },
+            _ => return TurnReport { status: None, starts_turn: false, answer: None, ends_turn: false },
         };
         let starts_turn = !self.in_turn && seq.state != "idle";
+        let ends_turn = (self.in_turn || starts_turn) && !in_turn_after;
         self.in_turn = in_turn_after;
-        TurnReport { status: Some(status), starts_turn, answer: seq.answer() }
+        TurnReport { status: Some(status), starts_turn, answer: seq.answer(), ends_turn }
     }
 }
 
@@ -315,12 +318,13 @@ mod tests {
         assert_eq!(
             reports,
             [
-                TurnReport { status: Some(ClaudeStatus::Idle), starts_turn: false, answer: None },
-                TurnReport { status: Some(ClaudeStatus::Working), starts_turn: true, answer: None },
+                TurnReport { status: Some(ClaudeStatus::Idle), starts_turn: false, answer: None, ends_turn: false },
+                TurnReport { status: Some(ClaudeStatus::Working), starts_turn: true, answer: None, ends_turn: false },
                 TurnReport {
                     status: Some(ClaudeStatus::Idle),
                     starts_turn: false,
-                    answer: Some("pong".to_string())
+                    answer: Some("pong".to_string()),
+                    ends_turn: true
                 },
             ]
         );
@@ -336,6 +340,8 @@ mod tests {
         ]);
         let starts: Vec<bool> = reports.iter().map(|r| r.starts_turn).collect();
         assert_eq!(starts, [true, false, false, false]);
+        let ends: Vec<bool> = reports.iter().map(|r| r.ends_turn).collect();
+        assert_eq!(ends, [false, false, false, true]);
         assert_eq!(reports[1].status, Some(ClaudeStatus::Waiting));
         assert_eq!(reports[1].answer.as_deref(), Some("blocked (permission): Trust this folder?"));
     }
@@ -346,6 +352,8 @@ mod tests {
         let reports = read_all(&["state=idle", "state=blocked:kind=auth", "state=idle", "state=done"]);
         let starts: Vec<bool> = reports.iter().map(|r| r.starts_turn).collect();
         assert_eq!(starts, [false, true, false, true]);
+        let ends: Vec<bool> = reports.iter().map(|r| r.ends_turn).collect();
+        assert_eq!(ends, [false, false, true, true]);
     }
 
     #[test]
@@ -354,7 +362,7 @@ mod tests {
         turn.read(&seq("state=working"));
         assert_eq!(
             turn.read(&seq("state=thinking")),
-            TurnReport { status: None, starts_turn: false, answer: None }
+            TurnReport { status: None, starts_turn: false, answer: None, ends_turn: false }
         );
         assert!(!turn.read(&seq("state=done")).starts_turn);
     }

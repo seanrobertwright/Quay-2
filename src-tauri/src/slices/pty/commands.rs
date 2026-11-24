@@ -64,7 +64,7 @@ pub async fn write_pty(
     data: String,
     pty_manager: State<'_, PtyManager>,
 ) -> Result<(), String> {
-    pty_manager.write(&terminal_id, &data)
+    pty_manager.write_from_operator(&terminal_id, &data)
 }
 
 #[tauri::command]

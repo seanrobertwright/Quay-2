@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // Several questions from one terminal in the companion's Surface view (#719), with only Tauri's
 // `invoke` faked: which of them is open, and what the others show.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -9,56 +9,44 @@ import type { CompanionShowRequest } from "../companion/Companion.tsx";
 import { companionPrefs } from "../companion/companionPrefs.ts";
 import { memoryStorage } from "../companion/fixtures/companionFixtures.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
-import type { GivenVerdict, Mounted } from "./fixtures/askFixtures.ts";
+import type { Mounted } from "./fixtures/askFixtures.ts";
+import { acceptedAsk, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
 const { Companion, COMPANION_VIEWS } = await import("../companion/Companion.tsx");
-const { startSurfaces } = await import("./surfaceHost.ts");
-const { acceptedAsk, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { mountCompanion, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 const MINUTE = 60_000;
 
 let list: SurfaceRecord[];
-let verdicts: GivenVerdict[];
-let stop: (() => void) | null = null;
 let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
-  verdicts = [];
-  fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as GivenVerdict);
-    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
-    if (cmd === "surface_list") return list;
-    return cmd === "surface_checks" ? [] : null;
-  });
+  startRust({ surface_list: () => list, surface_checks: () => [] });
 });
 afterEach(async () => {
   mock.timers.reset();
   if (mounted) await unmount(mounted);
   mounted = null;
-  stop?.();
-  stop = null;
+  unloadSurfaces();
 });
 
 const question = (text: string) => ({ question: text, options: [{ label: "Yes", recommended: false }, { label: "No", recommended: false }], multiple: false });
 
 /** `ask_1` and on, each asking its own questions, as Rust holds them; the first has waited the longest. */
 async function asked(...asks: string[][]): Promise<SurfaceRecord[]> {
-  stop ??= startSurfaces();
-  await settle();
   const records: SurfaceRecord[] = [];
   for (const [i, questions] of asks.entries()) {
-    records.push(await acceptedAsk({ questions: questions.map(question) }, verdicts, { id: `ask_${i + 1}`, order: i + 1 }));
+    records.push(await acceptedAsk(`ask_${i + 1}`, { questions: questions.map(question) }, "t1", i + 1));
   }
   return records;
 }
 
 /** Draws `records`, as Rust lists them, in the companion's Surface view. */
 async function draw(records: SurfaceRecord[]): Promise<void> {
-  stop?.();
   // Rust lists them in no order
   list = [...records].reverse();
-  stop = startSurfaces();
+  loadSurfaces();
   mounted = await mountCompanion(TERMINAL);
   await showView();
 }

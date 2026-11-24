@@ -1,6 +1,7 @@
 //! The seam the surface tools are tested at: `/mcp` over a real loopback listener, with a fake CLI
 //! that posts tool calls with a terminal's token and a fake webview that checks, draws and answers.
 
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,13 +15,13 @@ use super::check::{CheckRequest, Verdict};
 use super::store::{SurfaceKey, SurfaceRecord};
 use super::timing::Timing;
 use super::tools::{SurfaceTools, Webview};
-use crate::slices::bridge::routes::mcp_router;
+use crate::slices::bridge::routes::{create_router, AppContext};
 use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
-use crate::slices::orchestrator::mcp::McpContext;
-use crate::slices::orchestrator::A2ARouter;
+use crate::slices::orchestrator::{connect_surfaces, A2ARouter};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
+use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::test_support::TempDir;
 use crate::webview::WebviewEvents;
 
@@ -99,9 +100,10 @@ impl FakeWebview {
     }
 }
 
-/// A Quay server on loopback with two terminals, `term-a` and `term-b`.
+/// A Quay server on loopback with two Claude terminals in a turn, `term-a` and `term-b`.
 pub struct Seam {
     pub surfaces: SurfaceTools,
+    pub pty_manager: PtyManager,
     bridge_state: BridgeState,
     port: u16,
     _dir: TempDir,
@@ -121,14 +123,14 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     surfaces.set_webview(Sent { checks: checks_tx, shown: shown_tx, removed: removed_tx });
 
     let pty_manager = PtyManager::new();
-    for id in ["term-a", "term-b"] {
-        pty_manager.insert_test_terminal(test_terminal(id, RunKind::Claude, ClaudeStatus::Working));
-    }
+    let a2a_router = A2ARouter::new();
+    a2a_router.follow_turns(&pty_manager);
+    connect_surfaces(&surfaces, &pty_manager, &a2a_router);
     let bridge_state = BridgeState::new();
-    let app = mcp_router(McpContext {
+    let app = create_router(AppContext {
         bridge_state: bridge_state.clone(),
-        pty_manager,
-        a2a_router: A2ARouter::new(),
+        pty_manager: pty_manager.clone(),
+        a2a_router,
         machina_manager: MachinaManager::with_paths(dir.join("state.json"), dir.join("vault")),
         surfaces: surfaces.clone(),
         webview: WebviewEvents::to(|_, _| {}),
@@ -138,18 +140,73 @@ pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     tokio::spawn(async move {
         axum::serve(listener, app.into_make_service()).await.unwrap();
     });
-    (Seam { surfaces, bridge_state, port, _dir: dir }, FakeWebview { checks, shown, removed })
+    let seam = Seam { surfaces, pty_manager, bridge_state, port, _dir: dir };
+    for id in ["term-a", "term-b"] {
+        seam.open_terminal(id, RunKind::Claude, ClaudeStatus::Working);
+    }
+    (seam, FakeWebview { checks, shown, removed })
 }
 
 impl Seam {
     /// A CLI in `terminal_id`, with that terminal's own token.
     pub fn cli(&self, terminal_id: &str) -> FakeCli {
-        FakeCli { port: self.port, token: self.bridge_state.token_for(terminal_id) }
+        let token = self.bridge_state.token_for(terminal_id);
+        FakeCli { terminal_id: terminal_id.to_string(), port: self.port, token }
+    }
+
+    /// Opens a terminal, or launches an open one again, with nothing typed into it.
+    pub fn open_terminal(&self, id: &str, kind: RunKind, status: ClaudeStatus) -> LaunchRef {
+        self.pty_manager.insert_test_terminal(test_terminal(id, kind, status));
+        self.pty_manager.begin_launch(id, kind)
+    }
+
+    /// The question `title` as `terminal_id`'s request `id`, once it has been drawn.
+    pub async fn asked_as(&self, webview: &mut FakeWebview, terminal_id: &str, id: Value, title: &str) -> OpenCall {
+        self.drawn(webview, terminal_id, id, title, true).await
+    }
+
+    /// The question `title` of `terminal_id`, once it has been drawn.
+    pub async fn asked(&self, webview: &mut FakeWebview, terminal_id: &str, title: &str) -> OpenCall {
+        self.drawn(webview, terminal_id, json!(1), title, true).await
+    }
+
+    /// `asked`, for a surface that asks for nothing.
+    pub async fn shown(&self, webview: &mut FakeWebview, terminal_id: &str, title: &str) -> OpenCall {
+        self.drawn(webview, terminal_id, json!(1), title, false).await
+    }
+
+    async fn drawn(&self, webview: &mut FakeWebview, terminal_id: &str, id: Value, title: &str, asks: bool) -> OpenCall {
+        let call = self.cli(terminal_id).call_as(id, "quay_ask", question(title));
+        self.surfaces.verdict(webview.next_check().await.call, accepted(asks));
+        webview.next_shown().await;
+        call
+    }
+
+    /// The operator types `data` into `terminal_id`'s pane.
+    pub fn operator_types(&self, terminal_id: &str, data: &str) {
+        self.pty_manager.write_from_operator(terminal_id, data).unwrap();
+    }
+
+    /// Everything typed into `terminal_id` so far.
+    pub fn typed(&self, terminal_id: &str) -> String {
+        self.pty_manager.test_input(terminal_id).concat()
+    }
+
+    /// Everything typed into `terminal_id` once an Enter ends it.
+    pub async fn typed_soon(&self, terminal_id: &str) -> String {
+        let entered = async {
+            while !self.typed(terminal_id).ends_with('\r') {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        tokio::time::timeout(SOON, entered).await.expect("nothing was typed");
+        self.typed(terminal_id)
     }
 }
 
 #[derive(Clone)]
 pub struct FakeCli {
+    terminal_id: String,
     port: u16,
     token: String,
 }
@@ -197,27 +254,63 @@ impl OpenCall {
 impl FakeCli {
     /// Posts a JSON-RPC request and leaves it open.
     pub fn post(&self, method: &str, params: Value) -> OpenCall {
-        let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
+        self.post_as(json!(1), method, params)
+    }
+
+    /// `post`, with `id` as the request's id.
+    pub fn post_as(&self, id: Value, method: &str, params: Value) -> OpenCall {
+        let sent = self.send("/mcp", json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        OpenCall(tokio::spawn(async move {
+            let (_, body) = sent.await;
+            serde_json::from_str(&body).unwrap_or_else(|e| panic!("{e} in {body:?}"))
+        }))
+    }
+
+    /// Posts a JSON-RPC notification, which is accepted with no answer.
+    pub async fn notify(&self, method: &str, params: Value) {
+        let (head, _) = self.send("/mcp", json!({ "jsonrpc": "2.0", "method": method, "params": params })).await;
+        assert!(head.starts_with("HTTP/1.1 202"), "{head}");
+    }
+
+    /// Posts an event of this terminal's, as the event-bridge plugin does, and returns once Quay has
+    /// applied it.
+    pub async fn event(&self, event_type: &str, data: Value) {
+        let event = json!({
+            "v": 1, "boot": "boot-1", "seq": 1, "ts": 0, "sessionId": "sess-1",
+            "tag": self.terminal_id, "type": event_type, "data": data,
+        });
+        let (head, _) = self.send("/v1/events", json!({ "events": [event] })).await;
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    }
+
+    /// Posts `body` to `path` with this terminal's token. Returns the reply's head and body.
+    fn send(&self, path: &str, body: Value) -> impl Future<Output = (String, String)> + Send + 'static {
+        let body = body.to_string();
         let request = format!(
-            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\n\
+            "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\n\
              Content-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
             self.port,
             self.token,
             body.len()
         );
         let port = self.port;
-        OpenCall(tokio::spawn(async move {
+        async move {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
             stream.write_all(request.as_bytes()).await.unwrap();
             let mut reply = String::new();
             stream.read_to_string(&mut reply).await.unwrap();
-            let (_, body) = reply.split_once("\r\n\r\n").unwrap_or_else(|| panic!("no body in {reply:?}"));
-            serde_json::from_str(body).unwrap_or_else(|e| panic!("{e} in {reply:?}"))
-        }))
+            let (head, body) = reply.split_once("\r\n\r\n").unwrap_or_else(|| panic!("no body in {reply:?}"));
+            (head.to_string(), body.to_string())
+        }
     }
 
     pub fn call(&self, tool: &str, arguments: Value) -> OpenCall {
-        self.post("tools/call", json!({ "name": tool, "arguments": arguments }))
+        self.call_as(json!(1), tool, arguments)
+    }
+
+    /// `call`, with `id` as the request's id.
+    pub fn call_as(&self, id: Value, tool: &str, arguments: Value) -> OpenCall {
+        self.post_as(id, "tools/call", json!({ "name": tool, "arguments": arguments }))
     }
 
     /// The names of the tools the server lists to this CLI.
@@ -225,6 +318,20 @@ impl FakeCli {
         let list = self.post("tools/list", json!({})).result().await;
         list["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect()
     }
+}
+
+pub fn key(terminal_id: &str, id: &str) -> SurfaceKey {
+    SurfaceKey::new(terminal_id, id)
+}
+
+/// A question with this title and the options Yes and No.
+pub fn question(title: &str) -> Value {
+    json!({ "questions": [{ "question": title, "options": [{ "label": "Yes" }, { "label": "No" }] }] })
+}
+
+/// An answer to the question `title`.
+pub fn answer_to(title: &str) -> Value {
+    json!({ "answers": [{ "question": title, "chosen": ["Yes"], "text": "skip the suite" }] })
 }
 
 /// The verdict of a webview that accepts a surface. Its state stands for what the engine would give.
@@ -236,34 +343,6 @@ pub fn accepted(asks: bool) -> Verdict {
         "images": 0,
     }))
     .unwrap()
-}
-
-/// The spec's own question.
-pub fn question() -> Value {
-    json!({ "questions": [{
-        "question": "Which base should this branch take?",
-        "options": [
-            { "label": "Rebase onto master", "description": "Two conflicts", "recommended": true },
-            { "label": "Merge master in" },
-        ],
-    }] })
-}
-
-/// An answer to `question`.
-pub fn answer() -> Value {
-    json!({ "answers": [{
-        "question": "Which base should this branch take?",
-        "chosen": ["Rebase onto master"],
-        "text": "skip the suite",
-    }] })
-}
-
-/// A call from `terminal_id` whose question has been drawn.
-pub async fn asked(seam: &Seam, webview: &mut FakeWebview, terminal_id: &str) -> OpenCall {
-    let call = seam.cli(terminal_id).call("quay_ask", question());
-    seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
-    webview.next_shown().await;
-    call
 }
 
 /// What a test captures of the error log, on the thread it runs on.

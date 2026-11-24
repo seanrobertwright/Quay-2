@@ -6,13 +6,13 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::store::SurfaceKey;
-use super::test_seam::{accepted, answer, asked, question, start, until, FakeWebview, OpenCall, Seam};
+use super::test_seam::{accepted, answer_to, question, start, until, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
 
 async fn four_asked(seam: &Seam, webview: &mut FakeWebview) -> Vec<OpenCall> {
     let mut calls = Vec::new();
-    for _ in 0..4 {
-        calls.push(asked(seam, webview, "term-a").await);
+    for n in 1..=4 {
+        calls.push(seam.asked(webview, "term-a", &format!("Waiting {n}?")).await);
     }
     calls
 }
@@ -30,7 +30,7 @@ async fn a_fifth_live_surface_in_a_place_is_rejected_and_another_terminal_has_it
     let (seam, mut webview) = start(Timing::default()).await;
     let calls = four_asked(&seam, &mut webview).await;
 
-    let fifth = seam.cli("term-a").call("quay_ask", question());
+    let fifth = seam.cli("term-a").call("quay_ask", question("Fifth?"));
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
 
     assert_eq!(
@@ -48,7 +48,7 @@ async fn a_fifth_live_surface_in_a_place_is_rejected_and_another_terminal_has_it
     assert!(calls.iter().all(OpenCall::is_open));
     assert_eq!(ids(&seam, "term-a"), ["ask_1", "ask_2", "ask_3", "ask_4"]);
 
-    let other = asked(&seam, &mut webview, "term-b").await;
+    let other = seam.asked(&mut webview, "term-b", "Fifth?").await;
     assert!(other.is_open());
 }
 
@@ -56,7 +56,7 @@ async fn a_fifth_live_surface_in_a_place_is_rejected_and_another_terminal_has_it
 async fn calls_sent_at_once_cannot_pass_the_four() {
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
-    let calls: Vec<OpenCall> = (0..8).map(|_| cli.call("quay_ask", question())).collect();
+    let calls: Vec<OpenCall> = (0..8).map(|n| cli.call("quay_ask", question(&format!("Question {n}?")))).collect();
     for _ in 0..8 {
         seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     }
@@ -73,7 +73,7 @@ async fn a_question_whose_call_is_over_still_counts_and_makes_no_room() {
         assert_eq!(call.answer().await["state"], "no_answer_yet");
     }
 
-    let fifth = seam.cli("term-a").call("quay_ask", question());
+    let fifth = seam.cli("term-a").call("quay_ask", question("Fifth?"));
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
 
     assert!(fifth.failure().await.contains("four live surfaces in companion"));
@@ -85,11 +85,10 @@ async fn a_question_whose_call_is_over_still_counts_and_makes_no_room() {
 async fn a_surface_that_asks_for_nothing_counts_too() {
     let (seam, mut webview) = start(Timing::default()).await;
     for _ in 0..4 {
-        let call = seam.cli("term-a").call("quay_ask", question());
-        seam.surfaces.verdict(webview.next_check().await.call, accepted(false));
+        let call = seam.shown(&mut webview, "term-a", "One?").await;
         assert_eq!(call.answer().await, json!({ "shown": true }));
     }
-    let fifth = seam.cli("term-a").call("quay_ask", question());
+    let fifth = seam.cli("term-a").call("quay_ask", question("Fifth?"));
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     assert!(fifth.failure().await.contains("four live surfaces in companion"));
 }
@@ -97,14 +96,14 @@ async fn a_surface_that_asks_for_nothing_counts_too() {
 /// Has `term-a` ask these of its asks, by number, each answered before the next.
 async fn asked_and_answered(seam: &Seam, webview: &mut FakeWebview, asks: RangeInclusive<usize>) {
     for n in asks {
-        asked(seam, webview, "term-a").await;
+        seam.asked(webview, "term-a", &format!("Question {n}?")).await;
         settle(seam, webview, n).await;
     }
 }
 
 /// Answers `term-a`'s `n`th ask.
 async fn settle(seam: &Seam, webview: &mut FakeWebview, n: usize) {
-    seam.surfaces.answer(&SurfaceKey::new("term-a", format!("ask_{n}")), 1, answer()).unwrap();
+    seam.surfaces.answer(&SurfaceKey::new("term-a", format!("ask_{n}")), 1, answer_to("One?")).unwrap();
     webview.next_shown().await;
 }
 
@@ -116,7 +115,7 @@ async fn an_answer_makes_room_and_ten_answered_all_stay() {
     settle(&seam, &mut webview, 4).await;
     asked_and_answered(&seam, &mut webview, 5..=13).await;
 
-    let _next = asked(&seam, &mut webview, "term-a").await;
+    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
 
     assert!(webview.none_removed());
     assert_eq!(ids(&seam, "term-a").len(), 14);
@@ -131,7 +130,7 @@ async fn the_answered_past_ten_leave_oldest_first_for_the_next() {
         settle(&seam, &mut webview, n).await;
     }
 
-    let _next = asked(&seam, &mut webview, "term-a").await;
+    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
 
     for id in ["ask_1", "ask_2", "ask_3"] {
         assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", id));

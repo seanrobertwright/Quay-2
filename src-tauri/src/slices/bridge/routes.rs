@@ -21,7 +21,7 @@ use crate::slices::orchestrator::router::strip_peer_prefix;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
-use crate::slices::surface::SurfaceTools;
+use crate::slices::surface::{is_typed_line, SurfaceTools};
 use crate::webview::WebviewEvents;
 
 #[derive(Clone)]
@@ -133,10 +133,13 @@ fn authenticate_permission(
 /// The task title a turn's prompt gives its terminal: the first line, without the
 /// `[Peer agent (<name>)]: ` prefix a peer's message arrives with or the
 /// `<pasted_content id="…">` tag Claude Code wraps a pasted prompt in, cut to 32
-/// characters. `None` when that leaves nothing.
+/// characters. `None` when that leaves nothing, and for a surface's answer, which Quay typed in.
 fn task_title(prompt: &str) -> Option<String> {
     let body = strip_peer_prefix(prompt.trim_start());
     let body = strip_pasted_content_tag(body).trim_start();
+    if is_typed_line(body) {
+        return None;
+    }
     let first_line = body.lines().next().unwrap_or("");
     let clean = first_line
         .strip_suffix("</pasted_content>")
@@ -227,6 +230,7 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
                 }
             }
             "turn.completed" => {
+                ctx.surfaces.turn_ended(terminal_id);
                 ctx.pty_manager.update_current_tool(terminal_id, None);
                 let answer = envelope
                     .data

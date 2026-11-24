@@ -1,55 +1,40 @@
 /// <reference types="node" />
 // The whole of quay_ask in the webview (#717), with only Tauri's `invoke` faked: one to four questions
 // of each kind, what holds Send, and what the agent gets.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { epochMsFromLocalParts, parseUtcTimestamp } from "../../lib/dates.ts";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
-import type { GivenVerdict, Mounted } from "./fixtures/askFixtures.ts";
+import type { Mounted } from "./fixtures/askFixtures.ts";
+import { acceptedAsk, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
-const { startSurfaces } = await import("./surfaceHost.ts");
-const { acceptedAsk, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { findButton: button, mountCompanion, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 let list: SurfaceRecord[];
-let verdicts: GivenVerdict[];
 /** What each `surface_answer` sent. */
 let sent: unknown[];
-let stop: (() => void) | null = null;
 let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
-  verdicts = [];
   sent = [];
-  fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as GivenVerdict);
-    if (cmd === "surface_answer") sent.push(args.answer);
-    if (cmd === "surface_open_page") return { page: 1, unsent: [] };
-    if (cmd === "surface_list") return list;
-    return cmd === "surface_checks" ? [] : null;
-  });
+  startRust({ surface_list: () => list, surface_checks: () => [], surface_answer: ({ answer }) => void sent.push(answer) });
 });
 afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = null;
-  stop?.();
-  stop = null;
+  unloadSurfaces();
 });
 
 /** The surface `ask` makes, as Rust holds it once the webview has accepted it. */
-async function accepted(ask: unknown): Promise<SurfaceRecord> {
-  stop ??= startSurfaces();
-  await settle();
-  return acceptedAsk(ask, verdicts);
-}
+const accepted = (ask: unknown) => acceptedAsk("ask_1", ask);
 
 /** The frame of `record` in the companion's Surface view. */
 async function draw(record: SurfaceRecord): Promise<HTMLElement> {
   list = [record];
-  stop?.();
-  stop = startSurfaces();
+  loadSurfaces();
   mounted = await mountCompanion(TERMINAL);
   const { container } = mounted;
   await view("Surface");
@@ -231,7 +216,8 @@ test("what was picked, typed and opened is kept while the questions are off scre
 
 test("everything in a list is a native control with no tab order of its own, and the open row says it stays open", async () => {
   const region = await ask(THREE);
-  const controls = [...region.querySelectorAll<HTMLElement>("input, textarea, button, [tabindex], a")];
+  const content = region.querySelector("[data-surface-content]")!;
+  const controls = [...content.querySelectorAll<HTMLElement>("input, textarea, button, [tabindex], a")];
   assert.deepEqual(
     controls.map((control) => `${control.tagName} ${control.tagName === "BUTTON" ? words(control).replace(/^\d /, "") : ""}`.trim()),
     [`BUTTON ${BASE.question}`, "INPUT", "INPUT", "TEXTAREA", "BUTTON Next", `BUTTON ${SUITES.question}`, `BUTTON ${NAME.question}`, "BUTTON Send"],
@@ -334,7 +320,7 @@ test("once sent, the frame shows each question with its answer, and when it was 
   const time = settled.querySelector("time")!;
   assert.equal(time.textContent, "19:42:05");
   assert.equal(parseUtcTimestamp(time.dateTime), at);
-  assert.equal(settled.querySelectorAll("input, textarea, button").length, 0);
+  assert.equal(settled.querySelectorAll("[data-surface-content] :is(input, textarea, button)").length, 0);
 });
 
 test("an ask at every limit is drawn whole", async () => {

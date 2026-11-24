@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 
 use super::store::SurfaceKey;
-use super::test_seam::{answer, asked, start, CapturedLog, FakeWebview, Seam};
+use super::test_seam::{answer_to, start, CapturedLog, FakeWebview, Seam};
 use super::timing::Timing;
 use super::unsent::UnsentRefused;
 
@@ -54,7 +54,7 @@ fn one(terminal_id: &str, id: &str, text: &str) -> [String; 3] {
 /// A seam whose `term-a` has asked `ask_1`.
 async fn with_question() -> (Seam, FakeWebview) {
     let (seam, mut webview) = start(Timing::default()).await;
-    asked(&seam, &mut webview, "term-a").await;
+    seam.asked(&mut webview, "term-a", "One?").await;
     (seam, webview)
 }
 
@@ -99,8 +99,8 @@ async fn a_save_that_arrives_late_does_not_overwrite_a_newer_one() {
 #[tokio::test]
 async fn what_is_unsent_in_one_question_is_no_other_questions() {
     let (seam, mut webview) = with_question().await;
-    asked(&seam, &mut webview, "term-a").await;
-    asked(&seam, &mut webview, "term-b").await;
+    seam.asked(&mut webview, "term-a", "Two?").await;
+    seam.asked(&mut webview, "term-b", "One?").await;
     let [a2, b1] = [("term-a", "ask_2"), ("term-b", "ask_1")].map(|(terminal, id)| SurfaceKey::new(terminal, id));
 
     save(&seam, &ask_1(), (1, 1), "a1").unwrap();
@@ -135,9 +135,9 @@ async fn it_goes_when_the_question_is_answered_and_a_save_after_that_is_not_kept
     save(&seam, &ask_1(), (1, 1), "half a thought").unwrap();
     let late = unsent(&seam, &ask_1(), (1, 2), "a whole one");
 
-    seam.surfaces.answer(&ask_1(), 2, answer()).unwrap_err();
+    seam.surfaces.answer(&ask_1(), 2, answer_to("One?")).unwrap_err();
     assert_eq!(held(&seam).len(), 1, "an answer that is not taken leaves it");
-    seam.surfaces.answer(&ask_1(), 1, answer()).unwrap();
+    seam.surfaces.answer(&ask_1(), 1, answer_to("One?")).unwrap();
 
     assert!(held(&seam).is_empty());
     assert_eq!(send(&seam, &ask_1(), late), Err(UnsentRefused::NoSuchSurface));

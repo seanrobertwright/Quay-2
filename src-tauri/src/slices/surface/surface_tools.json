@@ -49,5 +49,17 @@
       "required": ["questions"],
       "additionalProperties": false
     }
+  },
+  {
+    "name": "quay_surface_read",
+    "description": "Read where one of this terminal's surfaces stands, by the id a call returned. Use it for an answer you did not get, not to wait for one: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered or dismissed, and result is there only when answered.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "surface_id": { "type": "string", "description": "Such as ask_1." }
+      },
+      "required": ["surface_id"],
+      "additionalProperties": false
+    }
   }
 ]

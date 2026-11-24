@@ -1,15 +1,15 @@
 /// <reference types="node" />
 // What the operator has put in a question and not sent (#719), with only Tauri's `invoke` faked: when
 // the webview sends it to Rust, and that it is there again when the question is.
-import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
+import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import type { SurfaceRecord } from "./surfaceTypes.ts";
-import type { GivenVerdict, Mounted } from "./fixtures/askFixtures.ts";
+import type { Mounted } from "./fixtures/askFixtures.ts";
+import { acceptedAsk, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 
-const { startSurfaces } = await import("./surfaceHost.ts");
-const { acceptedAsk, companion, findButton: button, mountCompanion, settle, TERMINAL, typeInto, unmount, until, viewEntry } = await import("./fixtures/askFixtures.ts");
+const { companion, findButton: button, mountCompanion, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 /** A save, as the webview sends it. */
 interface Save {
@@ -22,34 +22,29 @@ let list: SurfaceRecord[];
 /** What Rust holds for a page that loads. */
 let held: object[];
 let pages: number;
-let verdicts: GivenVerdict[];
 let saves: Save[];
 /** What `surface_open_page` waits for. */
 let opening: Promise<void>;
-let stop: (() => void) | null = null;
 let mounted: Mounted | null = null;
 
 beforeEach(() => {
   list = [];
   held = [];
   pages = 0;
-  verdicts = [];
   saves = [];
   opening = Promise.resolve();
-  fakeInvoke(async (cmd, args) => {
-    if (cmd === "surface_verdict") verdicts.push(args as GivenVerdict);
-    if (cmd === "surface_save_unsent") saves.push(structuredClone(args) as unknown as Save);
-    if (cmd === "surface_open_page") return opening.then(() => ({ page: (pages += 1), unsent: structuredClone(held) }));
-    if (cmd === "surface_list") return list;
-    return cmd === "surface_checks" ? [] : null;
+  startRust({
+    surface_list: () => list,
+    surface_checks: () => [],
+    surface_open_page: () => opening.then(() => ({ page: (pages += 1), unsent: structuredClone(held) })),
+    surface_save_unsent: (args) => void saves.push(structuredClone(args) as unknown as Save),
   });
 });
 afterEach(async () => {
   mock.timers.reset();
   if (mounted) await unmount(mounted);
   mounted = null;
-  stop?.();
-  stop = null;
+  unloadSurfaces();
 });
 
 const BASE = {
@@ -60,18 +55,13 @@ const BASE = {
 const NAME = { question: "What should the branch be called?", options: [], multiple: false };
 
 /** The surface `id` that asks `questions`, as Rust holds it once the webview has accepted it. */
-async function asked(id: string, questions: unknown[], over: { terminal?: string; order?: number } = {}): Promise<SurfaceRecord> {
-  stop ??= startSurfaces();
-  await settle();
-  return acceptedAsk({ questions }, verdicts, { id, ...over });
-}
+const asked = (id: string, questions: unknown[], { terminal = "t1", order = 1 } = {}) => acceptedAsk(id, { questions }, terminal, order);
 
 /** Loads the page on `terminal`'s Surface view, with `records` in Rust's list. */
 async function load(records: SurfaceRecord[], terminal = TERMINAL): Promise<void> {
   if (mounted) await unmount(mounted);
-  stop?.();
   list = structuredClone(records);
-  stop = startSurfaces();
+  loadSurfaces();
   mounted = await mountCompanion(terminal);
   await view("Surface");
   await until(() => region() !== null && !region()!.textContent?.includes("Loading"), "the surface was never drawn");
@@ -271,12 +261,12 @@ test("what Rust holds for another surface of that id, or another revision, is no
 
 test("a question that comes while the page loads is drawn once what is unsent is known", async () => {
   const record = await asked("ask_1", [BASE]);
-  stop!();
+  unloadSurfaces();
   let opened = () => {};
   opening = new Promise((resolve) => (opened = resolve));
   held = [{ terminal_id: "t1", id: "ask_1", order: 1, revision: 1, values: { "/answers/0/text": "half a thought" } }];
   list = [record];
-  stop = startSurfaces();
+  loadSurfaces();
   mounted = await mountCompanion(TERMINAL);
   await changes(record, {});
   await view("Surface");
@@ -308,11 +298,11 @@ test("a question is drawn, and nothing of it saved, when what is unsent could no
 
 test("what Rust held of a surface that was replaced while the page loaded does not keep the new one from being saved", async () => {
   const record = await asked("ask_1", [BASE]);
-  stop!();
+  unloadSurfaces();
   let opened = () => {};
   opening = new Promise((resolve) => (opened = resolve));
   held = [{ terminal_id: "t1", id: "ask_1", order: 1, revision: 1, values: { "/answers/0/text": "for the old one" } }];
-  stop = startSurfaces();
+  loadSurfaces();
   await settle();
   await changes(record, { order: 5 });
   opened();

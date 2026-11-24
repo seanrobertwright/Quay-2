@@ -41,6 +41,13 @@ impl Rejection {
         rejection
     }
 
+    /// A rejection for `error` alone.
+    pub fn of(error: CallError) -> Self {
+        let mut rejection = Self::default();
+        rejection.add(error);
+        rejection
+    }
+
     /// Adds that what is at `path` breaks a rule of Quay's own.
     pub fn add_invalid(&mut self, path: impl Into<String>, message: impl Into<String>) {
         let code = "VALIDATION_FAILED".into();
@@ -76,6 +83,7 @@ fn next(tool: &str, run: u32) -> &'static str {
     }
     match tool {
         "quay_surface" => "Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.",
+        "quay_surface_read" => "Nothing was changed. Correct the call and send it again.",
         _ => "Nothing was shown. Correct the call and send it again.",
     }
 }

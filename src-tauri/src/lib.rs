@@ -65,7 +65,10 @@ use slices::redirection_guard::{
     dismiss_redirection_guard_warning, get_redirection_guard_warning, RedirectionGuardState,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
-use slices::surface::{surface_answer, surface_checks, surface_list, surface_open_page, surface_save_unsent, surface_verdict, AppWebview, SurfaceTools};
+use slices::surface::{
+    surface_answer, surface_checks, surface_dismiss, surface_list, surface_open_page, surface_save_unsent, surface_verdict,
+    AppWebview, SurfaceTools,
+};
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
     list_recent_projects, open_in_vscode, open_project_places, remove_project, save_project_view, set_active_project,
@@ -85,6 +88,7 @@ pub fn run() {
     let a2a_router = A2ARouter::new();
     let machina_manager = MachinaManager::new();
     let surfaces = SurfaceTools::new();
+    slices::orchestrator::connect_surfaces(&surfaces, &pty_manager, &a2a_router);
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();
@@ -328,6 +332,7 @@ pub fn run() {
             get_github_pr_commits,
             surface_answer,
             surface_checks,
+            surface_dismiss,
             surface_list,
             surface_open_page,
             surface_save_unsent,
