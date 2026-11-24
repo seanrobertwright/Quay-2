@@ -8,9 +8,11 @@ use serde_json::{json, Value};
 
 use super::ask::{self, Ask};
 use super::check::{CheckRequest, Checks, Verdict};
+use super::read;
 use super::rejection::{QuayFailed, Rejection};
 use super::store::{
-    AnswerRefused, Answered, CommitRefused, Committed, Creation, SurfaceKey, SurfaceRecord, SurfaceStore, MOST_KEPT,
+    AnswerRefused, Answered, BeingSent, CommitRefused, Committed, Creation, Dismissed, SurfaceKey, SurfaceRecord,
+    SurfaceStore, MOST_KEPT,
 };
 use super::timing::Timing;
 use super::typing::{NotTyped, Typist};
@@ -123,13 +125,20 @@ impl SurfaceTools {
     /// Runs `terminal_id`'s call of `tool`, whose JSON-RPC request has the id `request`. `None` when
     /// it is not a tool this build offers.
     pub async fn call(&self, terminal_id: &str, request: &Value, tool: &str, arguments: &Value) -> Option<Value> {
-        if !self.0.offered || tool != ask::TOOL {
+        if !self.0.offered {
             return None;
         }
-        Some(match Ask::parse(arguments) {
-            Err(rejection) => rejection.typed_result(),
-            Ok(ask) => self.show_ask(OpenCall::open(self, terminal_id, request), terminal_id, arguments, &ask).await,
-        })
+        match tool {
+            ask::TOOL => Some(match Ask::parse(arguments) {
+                Err(rejection) => rejection.typed_result(),
+                Ok(ask) => self.show_ask(OpenCall::open(self, terminal_id, request), terminal_id, arguments, &ask).await,
+            }),
+            read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
+                Ok(body) => text_result(body),
+                Err(rejected) => rejected,
+            }),
+            _ => None,
+        }
     }
 
     async fn show_ask(&self, call: OpenCall, terminal_id: &str, arguments: &Value, ask: &Ask) -> Value {
@@ -242,22 +251,25 @@ impl SurfaceTools {
     }
 
     /// The operator's answer, as the result its agent is to get: from its open call, or typed into
-    /// its terminal. Blocks while it types.
+    /// its terminal. One to an older revision has the surface drawn again. Blocks while it types.
     pub fn answer(&self, key: &SurfaceKey, revision: u64, answer: Value) -> Result<(), AnswerRefused> {
-        let record = match self.0.store.answer(key, revision, answer)? {
-            Answered::Returned(record) => Some(record),
-            Answered::ToType(line) => match self.type_in(&key.terminal_id, &line) {
-                Ok(()) => self.0.store.typed(key),
+        let store = &self.0.store;
+        let (record, taken) = match store.answer(key, revision, answer) {
+            Ok(Answered::Returned(record)) => (Some(record), Ok(())),
+            Ok(Answered::ToType(line)) => match self.type_in(&key.terminal_id, &line) {
+                Ok(()) => (store.typed(key), Ok(())),
                 Err(why) => {
-                    self.0.store.not_typed(key);
-                    return Err(AnswerRefused::NotTyped(why));
+                    store.not_typed(key);
+                    (None, Err(AnswerRefused::NotTyped(why)))
                 }
             },
+            Err(AnswerRefused::OlderRevision) => (store.record(key), Err(AnswerRefused::OlderRevision)),
+            Err(refused) => (None, Err(refused)),
         };
         if let Some(record) = record {
             self.show(&record);
         }
-        Ok(())
+        taken
     }
 
     fn type_in(&self, terminal_id: &str, line: &str) -> Result<(), NotTyped> {
@@ -270,15 +282,31 @@ impl SurfaceTools {
         }
     }
 
-    /// `type_in`, for an answer that settled its surface and then reached no call. A failure can be
-    /// told to nobody but the log; `quay_surface_read` still has the answer.
+    /// The operator's dismissal. The agent that asked is told as it would be of an answer, and one
+    /// that asked for nothing is not. Blocks while it types.
+    pub fn dismiss(&self, key: &SurfaceKey) -> Result<(), BeingSent> {
+        let Some(Dismissed { line }) = self.0.store.dismiss(key)? else {
+            return Ok(());
+        };
+        self.remove(key);
+        if let Some(line) = line {
+            self.type_in_or_log(&key.terminal_id, &line);
+        }
+        Ok(())
+    }
+
+    /// `type_in`, for a surface that has no way back: a failure is only logged, and
+    /// `quay_surface_read` still tells its agent.
+    fn type_in_or_log(&self, terminal_id: &str, line: &str) {
+        if self.type_in(terminal_id, line) == Err(NotTyped::TerminalOver) {
+            tracing::info!("{terminal_id}: the terminal is over, so a surface's answer was not typed in");
+        }
+    }
+
+    /// Types in, on a thread of its own, what a call dropped unread.
     pub(super) fn type_in_later(&self, terminal_id: &str, line: String) {
         let (tools, terminal_id) = (self.clone(), terminal_id.to_string());
-        std::thread::spawn(move || {
-            if tools.type_in(&terminal_id, &line) == Err(NotTyped::TerminalOver) {
-                tracing::warn!("{terminal_id}: its terminal is over, so a surface's answer was not typed in");
-            }
-        });
+        std::thread::spawn(move || tools.type_in_or_log(&terminal_id, &line));
     }
 }
 

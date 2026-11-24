@@ -62,7 +62,7 @@ use slices::pty::{
     rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
-use slices::surface::{surface_answer, surface_checks, surface_list, surface_verdict, AppWebview, SurfaceTools};
+use slices::surface::{surface_answer, surface_checks, surface_dismiss, surface_list, surface_verdict, AppWebview, SurfaceTools};
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
     list_recent_projects, open_in_vscode, open_project_places, remove_project, save_project_view, set_active_project,
@@ -321,6 +321,7 @@ pub fn run() {
             get_github_pr_commits,
             surface_answer,
             surface_checks,
+            surface_dismiss,
             surface_list,
             surface_verdict,
             run_pre_pr_audit,

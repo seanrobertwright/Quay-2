@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::oneshot;
 
 use super::calls::{Handed, OpenCalls};
@@ -70,6 +70,38 @@ pub enum Answered {
     ToType(String),
 }
 
+/// What dismissing a surface still needs. It has left, and takes nothing more.
+pub struct Dismissed {
+    /// The line its agent is told by, when it asked for something and no open call returns that.
+    pub line: Option<String>,
+}
+
+/// Why a surface was not dismissed: its answer is being typed in. The surface is as it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BeingSent;
+
+/// Where a surface stands, as its agent is told.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Standing {
+    /// It asks for nothing.
+    Shown,
+    NoAnswerYet,
+    /// What its call returned, or would have.
+    Answered(Value),
+    Dismissed,
+}
+
+impl Standing {
+    pub fn state(&self) -> &'static str {
+        match self {
+            Self::Shown => "shown",
+            Self::NoAnswerYet => "no_answer_yet",
+            Self::Answered(_) => "answered",
+            Self::Dismissed => "dismissed",
+        }
+    }
+}
+
 /// What a call creates, as its agent wrote it.
 #[derive(Clone, Copy)]
 pub struct Creation<'a> {
@@ -105,6 +137,16 @@ enum Phase {
     /// Its one answer is being typed in.
     Typing { answer: Value },
     Settled { answer: Value },
+}
+
+impl Phase {
+    fn standing(&self) -> Standing {
+        match self {
+            Self::NotAsking => Standing::Shown,
+            Self::Asking { .. } | Self::Typing { .. } => Standing::NoAnswerYet,
+            Self::Settled { answer } => Standing::Answered(answer.clone()),
+        }
+    }
 }
 
 struct Surface {
@@ -144,12 +186,13 @@ impl Surface {
     }
 }
 
-/// One terminal's surfaces, in the order they were committed, how many asks have been named, and the
-/// calls that are open.
+/// One terminal's surfaces, in the order they were committed, where those that have left stand, how
+/// many asks have been named, and the calls that are open.
 #[derive(Default)]
 struct Terminal {
     asks: u64,
     surfaces: Vec<Surface>,
+    left: HashMap<String, Standing>,
     calls: OpenCalls,
 }
 
@@ -188,6 +231,15 @@ impl SurfaceStore {
                 return SurfaceKey::new(terminal_id, id);
             }
         }
+    }
+
+    /// Where the surface `key` stands, also once it has left the screen. `None` when its terminal
+    /// never had it.
+    pub fn standing(&self, key: &SurfaceKey) -> Option<Standing> {
+        let inner = self.0.lock();
+        let terminal = inner.terminals.get(&key.terminal_id)?;
+        let surface = terminal.surfaces.iter().find(|surface| surface.id == key.id);
+        surface.map(|surface| surface.phase.standing()).or_else(|| terminal.left.get(&key.id).cloned())
     }
 
     /// Opens a call of `terminal_id` whose JSON-RPC request has the id `request`. Returns its number
@@ -251,6 +303,7 @@ impl SurfaceStore {
         } else {
             let oldest = terminal.surfaces.iter().position(|surface| !surface.is_open());
             let left = terminal.surfaces.remove(oldest.ok_or(CommitRefused::Full)?);
+            terminal.left.insert(left.id.clone(), left.phase.standing());
             Some(SurfaceKey::new(&key.terminal_id, left.id))
         };
         let phase = match accepted.asks {
@@ -299,6 +352,36 @@ impl SurfaceStore {
         Ok(Answered::ToType(line))
     }
 
+    /// The operator's dismissal of a surface, which leaves. One that asks for something is answered by
+    /// it. `None` when the terminal has no such surface.
+    pub fn dismiss(&self, key: &SurfaceKey) -> Result<Option<Dismissed>, BeingSent> {
+        let mut inner = self.0.lock();
+        let Some(terminal) = inner.terminals.get_mut(&key.terminal_id) else {
+            return Ok(None);
+        };
+        let Terminal { surfaces, calls, left, .. } = terminal;
+        let Some(at) = surfaces.iter().position(|surface| surface.id == key.id) else {
+            return Ok(None);
+        };
+        let line = match &surfaces[at].phase {
+            Phase::Typing { .. } => return Err(BeingSent),
+            Phase::NotAsking | Phase::Settled { .. } => None,
+            Phase::Asking { waiters } => {
+                let result = json!({ "dismissed": true });
+                let line = typed_line(&surfaces[at].title, &key.id, &result);
+                (!calls.hand(waiters, &result, &line)).then_some(line)
+            }
+        };
+        let surface = surfaces.remove(at);
+        // What an agent was answered stays readable
+        let standing = match surface.phase {
+            Phase::Settled { answer } => Standing::Answered(answer),
+            _ => Standing::Dismissed,
+        };
+        left.insert(surface.id, standing);
+        Ok(Some(Dismissed { line }))
+    }
+
     /// Settles a surface whose answer has been typed in. `None` when it has left meanwhile.
     pub fn typed(&self, key: &SurfaceKey) -> Option<SurfaceRecord> {
         self.end_typing(key, |answer| Phase::Settled { answer })
@@ -318,6 +401,13 @@ impl SurfaceStore {
         };
         surface.phase = next(answer.take());
         surface.change = change;
+        Some(surface.record(&key.terminal_id))
+    }
+
+    /// The surface `key` as it is now.
+    pub fn record(&self, key: &SurfaceKey) -> Option<SurfaceRecord> {
+        let mut inner = self.0.lock();
+        let surface = inner.terminals.get_mut(&key.terminal_id)?.find(&key.id)?;
         Some(surface.record(&key.terminal_id))
     }
 

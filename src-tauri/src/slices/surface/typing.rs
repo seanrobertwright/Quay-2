@@ -5,12 +5,12 @@ use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
 use crate::slices::pty::PtyManager;
 
-/// Why an answer could not be typed in. Nothing was typed or queued.
+/// Why an answer could not be typed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotTyped {
     /// The terminal has exited or closed.
     TerminalOver,
-    /// Typing failed. Why is in the error log.
+    /// The delivery failed. Why is in the error log.
     Failed,
 }
 

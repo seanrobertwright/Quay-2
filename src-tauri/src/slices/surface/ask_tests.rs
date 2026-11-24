@@ -41,10 +41,10 @@ fn answer() -> Value {
 }
 
 #[tokio::test]
-async fn the_surface_tool_is_listed_after_the_seven() {
+async fn the_surface_tools_are_listed_after_the_seven() {
     let (seam, _webview) = start(Timing::default()).await;
 
-    assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &["quay_ask"]].concat());
+    assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &["quay_ask", "quay_surface_read"]].concat());
 }
 
 #[tokio::test]

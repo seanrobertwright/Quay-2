@@ -42,6 +42,6 @@ impl QuayFailed {
     }
 }
 
-fn error_result(text: String) -> Value {
+pub(super) fn error_result(text: String) -> Value {
     json!({ "content": [{ "type": "text", "text": text }], "isError": true })
 }

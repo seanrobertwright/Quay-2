@@ -203,7 +203,7 @@ test("a question is drawn in the Surface view, in a frame that says who asks, wi
   assert.equal(region.getAttribute("aria-label"), "Question from fix-75");
   const header = region.querySelector("header")!;
   assert.equal(header.textContent, "fix-75Claude Code");
-  assert.equal(header.querySelectorAll("svg").length, 2, "the kind's icon and the CLI's");
+  assert.equal(header.querySelectorAll("span svg, header > svg").length, 2, "the kind's icon and the CLI's");
 
   assert.ok(region.textContent?.includes("Which base should this branch take?"));
   assert.deepEqual(
@@ -285,7 +285,7 @@ test("everything that answers is a native control the keyboard reaches, in readi
   await act(async () => radios(container)[0].click());
   const region = regions(container)[0];
 
-  const controls = [...region.querySelectorAll<HTMLElement>("input, textarea, button, [tabindex], a")];
+  const controls = [...region.querySelectorAll<HTMLElement>("[data-surface-content] :is(input, textarea, button, [tabindex], a)")];
   assert.deepEqual(
     controls.map((control) => control.tagName),
     ["INPUT", "INPUT", "TEXTAREA", "BUTTON"],
@@ -297,14 +297,14 @@ test("everything that answers is a native control the keyboard reaches, in readi
 
 test("an answer that is not taken says why, and can be sent again", async () => {
   list = [await accepted("ask_1")];
-  onAnswer = () => Promise.reject("Not sent: the agent's call has ended, so the answer would not reach it.");
+  onAnswer = () => Promise.reject("Not sent: the terminal has exited.");
   const container = await open();
   await act(async () => radios(container)[0].click());
   await act(async () => button(container, "Send").click());
   await settle();
 
   const alert = regions(container)[0].querySelector('[role="alert"]');
-  assert.equal(alert?.textContent, "Not sent: the agent's call has ended, so the answer would not reach it.");
+  assert.equal(alert?.textContent, "Not sent: the terminal has exited.");
   assert.ok(radios(container)[0].checked, "what was picked is kept");
   onAnswer = async () => {};
   await act(async () => button(container, "Send").click());
@@ -324,7 +324,7 @@ test("an answered question is locked with its answer, and an older record does n
   const region = regions(container)[0];
   assert.equal(region.querySelector('[role="status"]')?.textContent, "Answered and sent to the agent.");
   for (const text of ["Which base should this branch take?", "Rebase onto master", "skip the suite"]) assert.ok(region.textContent?.includes(text), text);
-  assert.equal(region.querySelectorAll("input, textarea, button").length, 0);
+  assert.equal(region.querySelectorAll("[data-surface-content] :is(input, textarea, button)").length, 0);
 });
 
 test("a surface Quay no longer has leaves the screen", async () => {

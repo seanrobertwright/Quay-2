@@ -78,13 +78,19 @@ async fn answer_is_typed(seam: &Seam) {
     assert_eq!(seam.typed_soon("term-a").await, TYPED);
 }
 
-/// That `call` still waits after a while, and the operator's answer is its result.
+/// That `call` still waits after a while, and the operator's answer is its result and no more.
 async fn still_waits(seam: &Seam, call: OpenCall) {
     tokio::time::sleep(A_WHILE).await;
     assert!(call.is_open(), "the call waits");
+    takes_lines_at_once(seam);
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
     assert_eq!(call.answer().await, answer());
     assert_eq!(seam.typed("term-a"), "");
+}
+
+/// Has a line for `term-a` typed at once, so one that should not be typed is not merely held.
+fn takes_lines_at_once(seam: &Seam) {
+    seam.pty_manager.update_status("term-a", ClaudeStatus::Idle);
 }
 
 #[tokio::test]
@@ -251,8 +257,40 @@ async fn an_answer_handed_to_a_call_that_is_dropped_before_it_returns_is_typed()
 }
 
 #[tokio::test]
+async fn an_answer_that_only_some_of_its_calls_drop_is_not_typed_and_one_that_all_drop_is_typed_once() {
+    for all_drop in [false, true] {
+        let (seam, mut webview) = start(Timing::default()).await;
+        seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
+        let arguments = question(BASE);
+        let (one, two) = (json!(1), json!(2));
+        let mut first = Box::pin(seam.surfaces.call("term-a", &one, "quay_ask", &arguments));
+        tokio::select! {
+            _ = &mut first => panic!("it returned unchecked"),
+            check = webview.next_check() => seam.surfaces.verdict(check.call, accepted(true)),
+        }
+        let mut second = Box::pin(seam.surfaces.call("term-a", &two, "quay_ask", &arguments));
+        let both = async { tokio::join!(&mut first, &mut second) };
+        assert!(tokio::time::timeout(A_WHILE, both).await.is_err(), "both wait");
+
+        seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
+        drop(first);
+        if all_drop {
+            drop(second);
+            assert_eq!(seam.typed_soon("term-a").await, TYPED);
+        } else {
+            let result = second.await.unwrap();
+            assert_eq!(result["content"][0]["text"], json!(answer().to_string()));
+        }
+        // Longer than it takes to type a line
+        tokio::time::sleep(3 * A_WHILE).await;
+        assert_eq!(seam.typed("term-a").matches('\r').count(), usize::from(all_drop));
+    }
+}
+
+#[tokio::test]
 async fn the_same_call_again_rejoins_its_unanswered_question_and_both_get_the_answer() {
     let (seam, mut webview) = start(Timing::default()).await;
+    takes_lines_at_once(&seam);
     let first = asked(&seam, &mut webview, "term-a").await;
     // Equal as parsed JSON: the keys' order and the spacing are the CLI's own
     let again: Value = serde_json::from_str(
@@ -290,6 +328,7 @@ async fn the_same_call_twice_at_once_makes_one_question() {
 #[tokio::test]
 async fn a_question_asked_again_after_its_wait_returns_the_answer_through_the_new_call() {
     let (seam, mut webview) = start(waits(1000)).await;
+    takes_lines_at_once(&seam);
     assert_eq!(asked(&seam, &mut webview, "term-a").await.answer().await, no_answer_yet("ask_1"));
 
     let again = seam.cli("term-a").call("quay_ask", question(BASE));
@@ -331,6 +370,55 @@ async fn a_repeat_of_an_answered_question_and_a_different_one_make_new_ones() {
     seam.surfaces.verdict(check.call, accepted(true));
     let _other = seam.cli("term-a").call("quay_ask", question("Another?"));
     assert_eq!(webview.next_check().await.surface_id, "ask_3");
+}
+
+#[tokio::test]
+async fn of_two_answers_at_once_exactly_one_settles_the_question() {
+    let answer_at_once = |seam: &Seam| {
+        let answers = std::thread::scope(|scope| {
+            let threads: Vec<_> = (0..8)
+                .map(|n| {
+                    let surfaces = seam.surfaces.clone();
+                    scope.spawn(move || surfaces.answer(&key("term-a", "ask_1"), 1, json!({ "answers": [n] })))
+                })
+                .collect();
+            threads.into_iter().map(|thread| thread.join().unwrap()).collect::<Vec<_>>()
+        });
+        assert_eq!(answers.iter().filter(|answer| answer.is_ok()).count(), 1, "{answers:?}");
+        let refused = answers.iter().filter(|answer| **answer == Err(AnswerRefused::AlreadyAnswered)).count();
+        assert_eq!(refused, 7, "{answers:?}");
+        let winner = answers.iter().position(Result::is_ok).unwrap();
+        json!({ "answers": [winner] })
+    };
+
+    let (seam, mut webview) = start(Timing::default()).await;
+    takes_lines_at_once(&seam);
+    let call = asked(&seam, &mut webview, "term-a").await;
+    let settled = answer_at_once(&seam);
+    assert_eq!(call.answer().await, settled);
+    assert_eq!(seam.surfaces.surfaces()[0].answer, Some(settled));
+    assert_eq!(seam.typed("term-a"), "");
+
+    let (seam, mut webview) = start(waits(100)).await;
+    seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
+    asked(&seam, &mut webview, "term-a").await.answer().await;
+    let settled = answer_at_once(&seam);
+    assert_eq!(seam.surfaces.surfaces()[0].answer, Some(settled.clone()));
+    assert_eq!(seam.typed("term-a"), format!("[Quay surface \"{BASE}\" (ask_1)]: {settled}\r"), "typed once");
+}
+
+#[tokio::test]
+async fn an_answer_to_an_older_revision_is_refused_and_the_question_is_drawn_again() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let call = asked(&seam, &mut webview, "term-a").await;
+    let current = seam.surfaces.surfaces().remove(0);
+
+    let older = current.revision - 1;
+    assert_eq!(seam.surfaces.answer(&key("term-a", "ask_1"), older, answer()), Err(AnswerRefused::OlderRevision));
+    assert_eq!(webview.next_shown().await, current);
+    assert!(call.is_open());
+    seam.surfaces.answer(&key("term-a", "ask_1"), current.revision, answer()).unwrap();
+    assert_eq!(call.answer().await, answer());
 }
 
 #[tokio::test]

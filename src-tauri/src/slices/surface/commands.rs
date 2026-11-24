@@ -4,7 +4,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use super::check::{CheckRequest, Verdict};
-use super::store::{AnswerRefused, SurfaceKey, SurfaceRecord};
+use super::store::{AnswerRefused, BeingSent, SurfaceKey, SurfaceRecord};
 use super::tools::{SurfaceTools, Webview};
 use super::typing::NotTyped;
 
@@ -67,6 +67,19 @@ pub async fn surface_answer(
         .await
         .map_err(|e| format!("Not sent: {e}"))?
         .map_err(|refused| refusal(refused).to_string())
+}
+
+/// Takes a surface off the screen. An agent that asked is told so. An error says why it stays, in
+/// words for the operator.
+#[tauri::command]
+pub async fn surface_dismiss(terminal_id: String, id: String, surfaces: State<'_, SurfaceTools>) -> Result<(), String> {
+    let surfaces = surfaces.inner().clone();
+    let key = SurfaceKey::new(terminal_id, id);
+    // Telling an agent whose call has ended types it in, which blocks
+    tokio::task::spawn_blocking(move || surfaces.dismiss(&key))
+        .await
+        .map_err(|e| format!("Not dismissed: {e}"))?
+        .map_err(|BeingSent| "Not dismissed: its answer is being sent.".to_string())
 }
 
 fn refusal(refused: AnswerRefused) -> &'static str {
