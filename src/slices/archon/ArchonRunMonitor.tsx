@@ -383,7 +383,7 @@ export const ArchonRunMonitor: FC<ArchonRunMonitorProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1.5">
               {isActive && (
                 <button
                   type="button"
