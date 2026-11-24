@@ -17,6 +17,9 @@ log(
     `QUAY_TERMINAL_ID=${process.env.QUAY_TERMINAL_ID ?? "<unset>"} cwd=${process.cwd()}`,
 );
 
+// #709: the calls still open, so a cancel can close the HTTP call it names
+const open = new Map();
+
 const reply = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 createInterface({ input: process.stdin }).on("line", async (line) => {
@@ -30,15 +33,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   const name = request.method === "tools/call" ? `tools/call ${request.params?.name}` : request.method;
   const started = Date.now();
   log(`-> ${name} id=${request.id ?? "-"}${request.method?.startsWith("notifications/") ? ` ${JSON.stringify(request.params ?? {})}` : ""}`);
+  if (request.method === "notifications/cancelled") {
+    const call = open.get(request.params?.requestId);
+    log(`cancel of id=${request.params?.requestId}: ${call ? "closing its HTTP call" : "no open call with that id"}`);
+    call?.abort();
+  }
   if (!url || !token) {
     if (request.id !== undefined) {
       reply({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: "The relay has no QUAY_MCP_URL or QUAY_A2A_TOKEN in its environment" } });
     }
     return;
   }
+  const call = new AbortController();
+  if (request.id !== undefined) open.set(request.id, call);
   try {
     const response = await fetch(url, {
       method: "POST",
+      signal: call.signal,
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: line,
     });
@@ -46,10 +57,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     log(`<- ${name} id=${request.id ?? "-"} http=${response.status} after ${((Date.now() - started) / 1000).toFixed(1)}s`);
     if (request.id !== undefined && body) process.stdout.write(`${body.trim()}\n`);
   } catch (error) {
+    if (call.signal.aborted) return;
     log(`!! ${name} id=${request.id ?? "-"} ${error} after ${((Date.now() - started) / 1000).toFixed(1)}s`);
     if (request.id !== undefined) {
       reply({ jsonrpc: "2.0", id: request.id, error: { code: -32000, message: `Quay relay: ${error}` } });
     }
+  } finally {
+    open.delete(request.id);
   }
 });
 

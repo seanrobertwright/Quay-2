@@ -176,5 +176,13 @@
         "messages"
       ]
     }
+  },
+  {
+    "name": "quay_surface_reject_proto",
+    "description": "PROTOTYPE. Checks a surface. Takes nothing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   }
 ]

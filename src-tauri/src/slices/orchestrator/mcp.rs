@@ -69,7 +69,8 @@ pub async fn handle_mcp_request(
     }
     let caller_id = caller.id();
     if req.method != "tools/call" {
-        super::a2ui_proto::log(&format!("REQUEST from {caller_id}: {}", req.method));
+        let params = req.params.as_ref().map(Value::to_string).unwrap_or_default();
+        super::a2ui_proto::log(&format!("REQUEST from {caller_id}: {} {params}", req.method));
     }
     let id = req.id.unwrap_or(Value::Null);
 
@@ -93,7 +94,9 @@ pub async fn handle_mcp_request(
                     "serverInfo": {
                         "name": "quay-a2a",
                         "version": "1.0.0"
-                    }
+                    },
+                    // PROTOTYPE (#709): a codeword found nowhere else, to see if the model gets it
+                    "instructions": super::a2ui_proto::INSTRUCTIONS
                 })),
                 error: None,
             };
@@ -357,6 +360,7 @@ pub async fn handle_mcp_request(
 
                 // PROTOTYPE (#693), throwaway
                 "quay_surface_proto" => super::a2ui_proto::hand_over(&ctx, caller_id, &arguments).await,
+                "quay_surface_reject_proto" => Ok(super::a2ui_proto::reject(caller_id)),
 
                 _ => Err(format!("Unknown tool: {}", tool_name)),
             };

@@ -20,6 +20,10 @@ answer is typed in)?
 - `proto_knobs` in `src-tauri/src/slices/pty/session.rs`: per-CLI launch arguments, variables
   and Claude's MCP `timeout`, read at each launch from the JSON file `QUAY_A2UI_PROTO_KNOBS` names.
 - `question.json`: the fixed question. `run-2026-11-23.*.txt`: Quay's and the relay's logs of the run.
+- For #709: `quay_surface_reject_proto` (an `isError` result), an `instructions` codeword in
+  `initialize`, a log line per agent event, and a relay that closes its HTTP call on a cancel.
+  Findings in `docs/research/a2ui-findings-709.md`; logs in `run-2026-11-24-709.*.txt`, with the
+  user name replaced and long lines cut.
 
 ## Run it
 

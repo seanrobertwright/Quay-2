@@ -18,6 +18,27 @@ use super::router::A2ARouter;
 use crate::slices::bridge::routes::AppContext;
 use crate::slices::pty::manager::PtyManager;
 
+/// The `instructions` of `initialize` (#709). The codeword is in no tool name, description or file
+/// an agent in a scratch folder can read, so a model that names it was given this text.
+pub const INSTRUCTIONS: &str = "Quay shows surfaces beside this terminal. Use quay_surface_proto to ask the operator something. The Quay codeword is HERON-7042.";
+
+/// The spec's rejection object as a tool result with `isError` (#709). The code and the message
+/// carry marks a model would not write by itself.
+pub fn reject(caller_id: &str) -> Value {
+    let text = json!({
+        "errors": [{
+            "code": "VALIDATION_FAILED",
+            "surfaceId": "plan",
+            "path": "/messages/1/updateComponents/components/2/variant",
+            "message": "Expected one of h1, h2, \"body\"; got 'osprey-3318'."
+        }],
+        "next": "Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples."
+    })
+    .to_string();
+    log(&format!("REJECTING a call from {caller_id} with isError: {text}"));
+    json!({ "content": [{ "type": "text", "text": text }], "isError": true })
+}
+
 struct Surface {
     terminal_id: String,
     started: Instant,

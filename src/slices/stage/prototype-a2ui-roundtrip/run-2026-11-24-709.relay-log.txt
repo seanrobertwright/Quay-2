@@ -1,0 +1,120 @@
+07:48:40.073 [83888] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag4 cwd=E:\q709\proj-ag
+07:48:40.077 [83888] -> server/discover id=1
+07:48:40.116 [83888] <- server/discover id=1 http=200 after 0.0s
+07:48:40.117 [83888] -> initialize id=2
+07:48:40.121 [83888] <- initialize id=2 http=200 after 0.0s
+07:48:40.122 [83888] -> notifications/initialized id=- {}
+07:48:40.123 [83888] -> tools/list id=3
+07:48:40.125 [83888] <- notifications/initialized id=- http=202 after 0.0s
+07:48:40.128 [83888] <- tools/list id=3 http=200 after 0.0s
+07:48:53.884 [83888] -> notifications/roots/list_changed id=- {}
+07:48:53.890 [83888] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:50:45.717 [83888] -> notifications/roots/list_changed id=- {}
+07:50:45.725 [83888] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:51:08.556 [83888] -> tools/call quay_surface_reject_proto id=4
+07:51:08.562 [83888] <- tools/call quay_surface_reject_proto id=4 http=200 after 0.0s
+07:51:55.866 [45040] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag5 cwd=E:\q709\proj-ag
+07:51:55.871 [45040] -> server/discover id=1
+07:51:55.925 [45040] <- server/discover id=1 http=200 after 0.1s
+07:51:55.927 [45040] -> initialize id=2
+07:51:55.932 [45040] <- initialize id=2 http=200 after 0.0s
+07:51:55.933 [45040] -> notifications/initialized id=- {}
+07:51:55.936 [45040] -> tools/list id=3
+07:51:55.939 [45040] <- notifications/initialized id=- http=202 after 0.0s
+07:51:55.944 [45040] <- tools/list id=3 http=200 after 0.0s
+07:52:06.769 [45040] -> notifications/roots/list_changed id=- {}
+07:52:06.776 [45040] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:52:17.497 [45040] -> tools/call quay_surface_proto id=4
+07:54:47.498 [45040] -> notifications/cancelled id=- {"reason":"context deadline exceeded","requestId":4}
+07:54:47.498 [45040] cancel of id=4: closing its HTTP call
+07:54:47.503 [45040] <- notifications/cancelled id=- http=202 after 0.0s
+07:55:09.616 [45040] -> notifications/roots/list_changed id=- {}
+07:55:09.623 [45040] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:55:13.492 [45040] -> tools/call quay_surface_proto id=5
+07:56:52.557 [45040] <- tools/call quay_surface_proto id=5 http=200 after 99.1s
+07:57:05.894 [45040] -> notifications/roots/list_changed id=- {}
+07:57:05.900 [45040] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:57:49.116 [45040] -> notifications/roots/list_changed id=- {}
+07:57:49.120 [45040] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:57:52.909 [45040] -> tools/call quay_surface_proto id=6
+07:58:06.381 [45040] -> notifications/cancelled id=- {"reason":"context canceled","requestId":6}
+07:58:06.382 [45040] cancel of id=6: closing its HTTP call
+07:58:06.387 [45040] <- notifications/cancelled id=- http=202 after 0.0s
+07:58:33.589 [36612] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag6 cwd=E:\q709\proj-ag
+07:58:33.594 [36612] -> server/discover id=1
+07:58:33.627 [36612] <- server/discover id=1 http=200 after 0.0s
+07:58:33.628 [36612] -> initialize id=2
+07:58:33.631 [36612] <- initialize id=2 http=200 after 0.0s
+07:58:33.631 [36612] -> notifications/initialized id=- {}
+07:58:33.633 [36612] -> tools/list id=3
+07:58:33.635 [36612] <- notifications/initialized id=- http=202 after 0.0s
+07:58:33.638 [36612] <- tools/list id=3 http=200 after 0.0s
+07:58:45.161 [36612] -> notifications/roots/list_changed id=- {}
+07:58:45.168 [36612] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:59:32.441 [36612] -> tools/call quay_surface_reject_proto id=4
+07:59:32.448 [36612] <- tools/call quay_surface_reject_proto id=4 http=200 after 0.0s
+07:59:54.171 [29024] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag7 cwd=E:\q709\proj-ag
+07:59:54.177 [29024] -> server/discover id=1
+07:59:54.217 [29024] -> notifications/roots/list_changed id=- {}
+07:59:54.239 [29024] <- server/discover id=1 http=200 after 0.1s
+07:59:54.241 [29024] <- notifications/roots/list_changed id=- http=202 after 0.0s
+07:59:54.243 [29024] -> initialize id=2
+07:59:54.248 [29024] <- initialize id=2 http=200 after 0.0s
+07:59:54.250 [29024] -> notifications/initialized id=- {}
+07:59:54.253 [29024] -> tools/list id=3
+07:59:54.255 [29024] <- notifications/initialized id=- http=202 after 0.0s
+07:59:54.257 [29024] <- tools/list id=3 http=200 after 0.0s
+08:00:07.782 [29024] -> notifications/roots/list_changed id=- {}
+08:00:07.787 [29024] <- notifications/roots/list_changed id=- http=202 after 0.0s
+08:00:13.735 [29024] -> tools/call quay_surface_reject_proto id=4
+08:00:13.740 [29024] <- tools/call quay_surface_reject_proto id=4 http=200 after 0.0s
+08:00:30.294 [29024] -> notifications/roots/list_changed id=- {}
+08:00:30.302 [29024] <- notifications/roots/list_changed id=- http=202 after 0.0s
+08:01:08.216 [29024] -> notifications/roots/list_changed id=- {}
+08:01:08.222 [29024] <- notifications/roots/list_changed id=- http=202 after 0.0s
+08:02:27.647 [70372] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag8 cwd=E:\q709\proj-ag
+08:02:27.651 [70372] -> server/discover id=1
+08:02:27.683 [70372] <- server/discover id=1 http=200 after 0.0s
+08:02:27.685 [70372] -> initialize id=2
+08:02:27.688 [70372] <- initialize id=2 http=200 after 0.0s
+08:02:27.689 [70372] -> notifications/initialized id=- {}
+08:02:27.690 [70372] -> tools/list id=3
+08:02:27.693 [70372] <- notifications/initialized id=- http=202 after 0.0s
+08:02:27.695 [70372] <- tools/list id=3 http=200 after 0.0s
+08:02:45.668 [70372] -> notifications/roots/list_changed id=- {}
+08:02:45.675 [70372] <- notifications/roots/list_changed id=- http=202 after 0.0s
+08:03:31.467 [7552] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag9 cwd=E:\q709\proj-ag
+08:03:31.473 [7552] -> server/discover id=1
+08:03:31.525 [7552] <- server/discover id=1 http=200 after 0.1s
+08:03:31.527 [7552] -> initialize id=2
+08:03:31.531 [7552] <- initialize id=2 http=200 after 0.0s
+08:03:31.532 [7552] -> notifications/initialized id=- {}
+08:03:31.534 [7552] -> tools/list id=3
+08:03:31.537 [7552] <- notifications/initialized id=- http=202 after 0.0s
+08:03:31.540 [7552] <- tools/list id=3 http=200 after 0.0s
+08:03:41.872 [7552] -> notifications/roots/list_changed id=- {}
+08:03:41.879 [7552] <- notifications/roots/list_changed id=- http=202 after 0.0s
+08:03:44.347 [7552] -> tools/call quay_list_agents id=4
+08:03:44.349 [7552] <- tools/call quay_list_agents id=4 http=200 after 0.0s
+08:04:11.895 [30080] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag10 cwd=E:\q709\proj-ag
+08:04:11.899 [30080] -> server/discover id=1
+08:04:11.934 [30080] <- server/discover id=1 http=200 after 0.0s
+08:04:11.935 [30080] -> initialize id=2
+08:04:11.939 [30080] <- initialize id=2 http=200 after 0.0s
+08:04:11.940 [30080] -> notifications/initialized id=- {}
+08:04:11.941 [30080] -> tools/list id=3
+08:04:11.944 [30080] <- notifications/initialized id=- http=202 after 0.0s
+08:04:11.946 [30080] <- tools/list id=3 http=200 after 0.0s
+08:04:27.745 [30080] -> notifications/roots/list_changed id=- {}
+08:04:27.751 [30080] <- notifications/roots/list_changed id=- http=202 after 0.0s
+08:05:28.999 [2660] START QUAY_MCP_URL=http://127.0.0.1:60247/mcp QUAY_A2A_TOKEN=<set> QUAY_TERMINAL_ID=ag11 cwd=E:\q709\proj-ag
+08:05:29.002 [2660] -> server/discover id=1
+08:05:29.039 [2660] <- server/discover id=1 http=200 after 0.0s
+08:05:29.040 [2660] -> initialize id=2
+08:05:29.043 [2660] <- initialize id=2 http=200 after 0.0s
+08:05:29.045 [2660] -> notifications/initialized id=- {}
+08:05:29.047 [2660] -> tools/list id=3
+08:05:29.050 [2660] <- notifications/initialized id=- http=202 after 0.0s
+08:05:29.053 [2660] <- tools/list id=3 http=200 after 0.0s
+08:05:39.206 [2660] -> notifications/roots/list_changed id=- {}
+08:05:39.212 [2660] <- notifications/roots/list_changed id=- http=202 after 0.0s
