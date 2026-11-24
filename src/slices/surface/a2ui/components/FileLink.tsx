@@ -4,6 +4,7 @@ import { createComponentImplementation } from "@a2ui/react";
 import { DynamicNumberSchema, DynamicStringSchema } from "@a2ui/web_core/v1_0";
 import { duringClick } from "../../clickOnly.ts";
 import { LinksContext } from "../../links.ts";
+import { lineOf } from "../line.ts";
 import { FileLabel, PointedLink } from "./PointedLink.tsx";
 
 /** Quay's own component: a link to a file. */
@@ -34,9 +35,6 @@ const FileLinkView = ({ path, line, label }: FileLinkViewProps) => {
     </PointedLink>
   );
 };
-
-/** A line number, or nothing for any other number. */
-const lineOf = (line: unknown) => (Number.isInteger(line) && Number(line) > 0 && Number(line) <= 0xffffffff ? Number(line) : undefined);
 
 /** A link that shows a file at the operator's click. The path is judged then. */
 export const FileLink = createComponentImplementation(FileLinkApi, ({ props }) => (

@@ -8,10 +8,11 @@ import { Column } from "./components/Column.tsx";
 import { FileLink } from "./components/FileLink.tsx";
 import { Text } from "./components/Text.tsx";
 import { TextField } from "./components/TextField.tsx";
+import { EFFECTS } from "./effects.ts";
 
 export const CATALOG_ID = "urn:quay:a2ui:catalog:v1";
 
 const COMPONENTS: ReactCatalogComponent[] = [Text, Column, Button, TextField, ChoicePicker, FileLink];
 
-/** No function is in it: no surface calls one yet, and the basic `openUrl` would open a window. */
-export const catalog = basicCatalog.derive({ catalogId: CATALOG_ID, components: COMPONENTS, functions: [] }) as Catalog<ReactCatalogComponent>;
+/** Its functions are Quay's own effects so far: the basic `openUrl` would open a window. */
+export const catalog = basicCatalog.derive({ catalogId: CATALOG_ID, components: COMPONENTS, functions: EFFECTS }) as Catalog<ReactCatalogComponent>;

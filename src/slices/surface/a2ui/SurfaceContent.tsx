@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
+import { LinksContext } from "../links.ts";
 import type { SurfaceAction, SurfaceRecord } from "../surfaceTypes.ts";
+import { giveEffects } from "./effects.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
 
 type OnAction = (action: SurfaceAction) => Promise<void>;
@@ -52,6 +54,10 @@ export const SurfaceContent = ({ record, layout, onAction }: SurfaceContentProps
   useEffect(() => {
     live.onAction = onAction;
   }, [live, onAction]);
+  const links = useContext(LinksContext);
+  useEffect(() => {
+    if (links) giveEffects(live.surface, links.effects);
+  }, [live, links]);
   const value = useMemo(() => (layout ? { Layout: layout, data: live.data } : null), [layout, live]);
   return (
     <LayoutContext.Provider value={value}>

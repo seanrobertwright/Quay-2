@@ -399,3 +399,93 @@ test("a slower answer to an earlier click does not replace what a later one said
   await act(async () => answers[0]("Not opened: there is no a.ts."));
   assert.equal(notice(), "Not opened: there is no b.ts.");
 });
+
+const button = (within: HTMLElement, name: string) => [...within.querySelectorAll("button")].find((b) => b.textContent === name)!;
+/** A Button reading `name` whose action is `action`. */
+const buttonOf = (id: string, name: string, action: unknown): SurfaceComponent[] => [
+  { id, component: "Button", child: `${id}_label`, action },
+  { id: `${id}_label`, component: "Text", text: name },
+];
+const OPEN = { "@call": "openUrl", args: { url: "https://a.example/x" } };
+const SHOW = { "@call": "showFile", args: { path: "src/a.ts", line: 3 } };
+
+test("a Button's own action opens an address or shows a file on the click, and only then", async () => {
+  const container = await draw(
+    surfaceOf([
+      ...buttonOf("a", "Open", { functionCall: OPEN }),
+      ...buttonOf("b", "Show", { functionCall: SHOW }),
+      ...buttonOf("c", "Bad", { functionCall: { "@call": "openUrl", args: { url: "javascript:alert(1)" } } }),
+    ]),
+  );
+  assert.deepEqual(calls, []);
+  await act(async () => button(container, "Open").click());
+  await act(async () => button(container, "Show").click());
+  assert.deepEqual(called(OPEN_URL).map(({ url }) => url), ["https://a.example/x"]);
+  assert.deepEqual(called(SHOW_FILE), [{ terminalId: "t1", path: "src/a.ts", line: 3 }]);
+  await act(async () => button(container, "Bad").click());
+  assert.equal(calls.length, 2, "an address of another kind opens nothing");
+});
+
+test("an effect runs nowhere but in a click on its own control, whatever calls it", async () => {
+  const errors: unknown[] = [];
+  const { error, warn } = console;
+  console.error = console.warn = (...args) => void errors.push(args);
+  try {
+    const container = await draw(
+      surfaceOf(
+        [
+          { id: "value", component: "Text", text: OPEN },
+          { id: "shown", component: "Text", text: SHOW },
+          { id: "path", component: "FileLink", path: SHOW, label: OPEN },
+          { id: "field", component: "TextField", label: "Note", value: { "@path": "/note" }, "@checks": [{ condition: OPEN, message: "no" }] },
+          ...buttonOf("event", "Send", { event: { name: "go", context: { x: OPEN, y: [SHOW] } } }),
+          ...buttonOf("nested", "Nested", { functionCall: { "@call": "showFile", args: { path: OPEN } } }),
+          ...buttonOf("twice", "Twice", { functionCall: { "@call": "openUrl", args: { url: OPEN } } }),
+          { id: "bound", component: "Text", text: { "@call": "openUrl", args: { url: { "@path": "/note" } } } },
+        ],
+        { note: "https://a.example/y" },
+      ),
+    );
+    await settle();
+    assert.deepEqual(calls, [], "drawing causes nothing");
+
+    const field = container.querySelector("input, textarea") as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")!.set!.call(field, "https://a.example/z");
+    await act(async () => void field.dispatchEvent(new Event("input", { bubbles: true })));
+    await act(async () => button(container, "Send").click());
+    await act(async () => button(container, "Nested").click());
+    await settle();
+    assert.deepEqual(
+      calls.filter(({ cmd }) => cmd === OPEN_URL),
+      [],
+      "nor does typing, an event's context or another effect's argument",
+    );
+    await act(async () => button(container, "Twice").click());
+    await settle();
+    assert.ok(called(OPEN_URL).length <= 1, "one click, one effect");
+  } finally {
+    Object.assign(console, { error, warn });
+  }
+});
+
+test("an effect called after its click, or with no click, throws", async () => {
+  const { duringClick, spendClick } = await import("./clickOnly.ts");
+  const { surfaceEffects } = await import("./surfaceEffects.ts");
+  const effects = surfaceEffects("t1", () => {});
+  const refused = /runs only on the operator's click/;
+
+  assert.throws(() => effects.openUrl("https://a.example"), refused);
+  assert.throws(() => effects.showFile("a.ts"), refused);
+  duringClick("openUrl", () => assert.throws(() => effects.showFile("a.ts"), refused));
+  await duringClick("openUrl", async () => {
+    await null;
+    assert.throws(() => effects.openUrl("https://a.example"), refused);
+  });
+  duringClick("showFile", () => {
+    spendClick("showFile");
+    assert.throws(() => effects.showFile("a.ts"), refused);
+  });
+  assert.throws(() => duringClick("openUrl", () => { throw new Error("handler"); }), /handler/);
+  assert.throws(() => effects.openUrl("https://a.example"), refused);
+  assert.deepEqual(calls, []);
+});
