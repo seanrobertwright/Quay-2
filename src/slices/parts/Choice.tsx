@@ -1,9 +1,10 @@
-import { useId, useState, type ReactNode, type Ref } from "react";
+import { useId, useMemo, useState, type ReactNode, type Ref } from "react";
 import { FieldNote } from "./FieldNote.tsx";
 import { FIELD } from "./fieldStyles.ts";
 import { keyed } from "./keyed.ts";
 import { OptionChip } from "./OptionChip.tsx";
 import { OptionRow } from "./OptionRow.tsx";
+import { usePaged } from "./usePaged.tsx";
 
 export interface ChoiceOption {
   label: string;
@@ -58,7 +59,8 @@ export const Choice = ({ label, many, chips, filterable, options, chosen, note, 
   const group = useId();
   const noteId = useId();
   const [filter, setFilter] = useState("");
-  const shown = filterable ? matching(options, filter) : options;
+  const found = useMemo(() => (filterable ? matching(options, filter) : options), [filterable, options, filter]);
+  const { shown, more } = usePaged(found);
   const change = (value: string, checked: boolean) => {
     if (!many) onChoose([value]);
     else onChoose(checked ? [...chosen, value] : chosen.filter((other) => other !== value));
@@ -82,6 +84,7 @@ export const Choice = ({ label, many, chips, filterable, options, chosen, note, 
           />
         ))}
       </Options>
+      {more}
       {filterable && (
         // There from the start, so that a change in it is told
         <p role="status" className="text-[11px] text-[#8b949e]">

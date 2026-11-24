@@ -4,9 +4,12 @@
 import "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act } from "react";
-import { text, type Component } from "./fixtures/rawFixtures.ts";
-import { buttonOf, click, drawAll, drawTree, leavePage, one, put, startPage, texts } from "./fixtures/catalogFixtures.ts";
+import { act, createElement } from "react";
+import { acceptedRaw, create, text, type Component } from "./fixtures/rawFixtures.ts";
+import { mount, settle } from "./fixtures/surfaceFixtures.ts";
+import { buttonOf, click, drawAll, drawTree, leavePage, one, put, startPage, texts, type Data } from "./fixtures/catalogFixtures.ts";
+import type { LayoutProps, SurfaceData } from "./layout.ts";
+import { loadA2ui } from "./surfaceHost.ts";
 
 beforeEach(startPage);
 afterEach(leavePage);
@@ -101,6 +104,99 @@ test("a row stays the one it was as the data it is of moves and as it is typed i
   await put(first, "yy");
   assert.deepEqual([...names.querySelectorAll("input")].map(({ value }) => value), ["yy", "y"]);
   assert.equal(names.querySelector("input") === first && document.activeElement === first, true, "typing in a row leaves the focus in it");
+});
+
+/** Draws `part`, which is among `components`, and gives what changes its data model, as an agent's update will. */
+async function drawWithData(part: string, components: Component[], dataModel: Data): Promise<{ content: HTMLElement; set: (path: string, value: unknown) => Promise<void> }> {
+  const record = await acceptedRaw([create([{ id: "root", component: "Column", children: [part] }, ...components], { dataModel })]);
+  const { SurfaceContent } = await loadA2ui();
+  let held: SurfaceData | undefined;
+  const layout = (props: LayoutProps) => {
+    held = props.data;
+    return props.part(part);
+  };
+  const content = await mount(createElement(SurfaceContent, { record, layout }));
+  await settle();
+  return { content, set: (path, value) => act(async () => held!.set(path, value)) };
+}
+
+test("rows put in another order, as many as they were, each stay the one they were", async () => {
+  const row: Component[] = [
+    { id: "row", component: "Card", child: "tabs" },
+    { id: "tabs", component: "Tabs", tabs: [{ title: "Name", child: "name" }, { title: "Form", child: "form" }] },
+    text("name", { "@path": "name" }),
+    { id: "form", component: "Card", child: "inner" },
+    { id: "inner", component: "Column", children: ["field"] },
+    { id: "field", component: "TextField", label: "Name", value: { "@path": "name" } },
+  ];
+  for (const component of ["List", "Row", "Column"]) {
+    const { content, set } = await drawWithData("box", [{ id: "box", component, children: { componentId: "row", path: "/rows" } }, ...row], { rows: [{ name: "a" }, { name: "b" }, { name: "c" }] });
+    await click([...content.querySelectorAll("button")].filter(({ textContent }) => textContent === "Form")[2]);
+    const field = one<HTMLInputElement>(content, "input");
+    await act(async () => field.focus());
+    assert.equal(field.value, "c", component);
+
+    await set("/rows", [{ name: "c" }, { name: "a" }, { name: "b" }]);
+    const moved = one<HTMLInputElement>(content, "input");
+    assert.deepEqual([moved.value, moved === field, document.activeElement === field], ["c", true, true], component);
+    const pressed = [...content.querySelectorAll('[aria-pressed="true"]')].map(({ textContent }) => textContent);
+    assert.deepEqual(pressed, ["Form", "Name", "Name"], component);
+    await put(field, "cc");
+    assert.deepEqual([one<HTMLInputElement>(content, "input") === field, texts(content, "a2ui-react-text")], [true, ["a", "b"]], component);
+    await leavePage();
+    await startPage();
+  }
+});
+
+test("a template's rows are drawn a hundred at a time, and the rest are a press away", async () => {
+  const rows = Array.from({ length: 250 }, (_, i) => ({ name: `row ${i}` }));
+  for (const component of ["List", "Row", "Column"]) {
+    const content = await drawTree(
+      ["box"],
+      [{ id: "box", component, children: { componentId: "row", path: "/rows" } }, text("row", { "@path": "name" })],
+      { rows },
+    );
+    const drawn = () => texts(content, "a2ui-react-text");
+    const more = () => one(content, '[role="button"]');
+    const told = () => texts(content, '[role="status"]');
+    assert.deepEqual([drawn().length, more().textContent, told()], [100, "Show 100 more", ["100 of 250 shown"]], component);
+    await click(more());
+    assert.deepEqual([drawn().length, more().textContent, told()], [200, "Show 50 more", ["200 of 250 shown"]], component);
+    // A key does what a click does, as it does on a native button
+    await act(async () => {
+      more().focus();
+      more().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    assert.deepEqual([drawn().length, drawn().pop(), told()], [250, "row 249", ["250 of 250 shown"]], component);
+    assert.equal(content.querySelectorAll('[role="button"]').length, 0);
+    assert.equal(document.activeElement === one(content, '[role="status"]'), true, "the focus has not gone with the button");
+    await leavePage();
+    await startPage();
+  }
+});
+
+test("steps and options are drawn a hundred at a time too, and what is filtered for is found among all", async () => {
+  const names = Array.from({ length: 150 }, (_, i) => `item ${i}`);
+  const content = await drawTree(
+    ["steps", "pick"],
+    [
+      { id: "steps", component: "Steps", steps: { "@path": "/steps" } },
+      { id: "pick", component: "ChoicePicker", label: "Pick", filterable: true, options: names.map((name) => ({ label: name, value: name })), value: { "@path": "/pick" } },
+    ],
+    { steps: names.map((label) => ({ label, state: "pending" })) },
+  );
+  const drawn = () => [content.querySelectorAll("ol > li").length, content.querySelectorAll('input[type="radio"]').length];
+  assert.deepEqual(drawn(), [100, 100]);
+  for (const more of content.querySelectorAll<HTMLElement>('[role="button"]')) await click(more);
+  assert.deepEqual(drawn(), [150, 150]);
+  await put(one<HTMLInputElement>(content, 'input[type="search"]'), "item 14");
+  assert.deepEqual(drawn(), [150, 11]);
+});
+
+test("a template of a hundred rows has nothing more to show", async () => {
+  const rows = Array.from({ length: 100 }, (_, i) => ({ name: `row ${i}` }));
+  const content = await drawTree(["list"], [{ id: "list", component: "List", children: { componentId: "row", path: "/rows" } }, text("row", { "@path": "name" })], { rows });
+  assert.deepEqual([texts(content, "li").length, content.querySelectorAll('[role="status"], [role="button"]').length], [100, 0]);
 });
 
 test("a Card is a box around its child", async () => {

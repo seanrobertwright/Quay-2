@@ -2,7 +2,7 @@ import type { Ref } from "react";
 import { createComponentImplementation } from "@a2ui/react";
 import { ListApi } from "@a2ui/web_core/catalogs/basic/v1";
 import { ItemList } from "../../../parts/ItemList.tsx";
-import { useChildren, type BuildChild } from "../useChildren.ts";
+import { useChildren, type BuildChild } from "../children.tsx";
 
 interface ListViewProps {
   ids: unknown;

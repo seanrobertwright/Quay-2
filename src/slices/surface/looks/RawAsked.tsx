@@ -5,7 +5,7 @@ import type { SurfaceRecord } from "../surfaceTypes.ts";
 
 const SurfaceContent = lazy(async () => ({ default: (await loadA2ui()).SurfaceContent }));
 
-/** A raw surface as it was, with every control in it disabled and its links as text. */
+/** A raw surface as it was, with every form control in it disabled and its links as text. */
 export const RawAsked = ({ record }: { record: SurfaceRecord }) => (
   <fieldset disabled className="min-w-0 opacity-70">
     <LinksContext.Provider value={null}>
