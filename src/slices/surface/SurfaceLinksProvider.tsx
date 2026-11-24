@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { FrameNotice } from "./FrameNotice.tsx";
 import { LinksContext, type SurfaceLinks } from "./links.ts";
 import { surfaceEffects } from "./surfaceEffects.ts";
 
@@ -54,11 +55,7 @@ export const SurfaceLinksProvider = ({ terminalId, children }: SurfaceLinksProvi
   return (
     <LinksContext.Provider value={links}>
       {children}
-      {notice !== null && (
-        <p role="alert" className="border-t border-[#da3633]/40 bg-[#da3633]/10 px-3 py-1.5 text-[11px] wrap-anywhere text-[#ff7b72]">
-          {notice}
-        </p>
-      )}
+      {notice !== null && <FrameNotice>{notice}</FrameNotice>}
       {count > 0 && (
         <p
           id={footId}

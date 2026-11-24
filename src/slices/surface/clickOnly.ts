@@ -1,7 +1,8 @@
 // An effect a surface may cause runs only inside a click on the control that causes it.
+import type { SurfaceEffects } from "./links.ts";
 
 /** The effects a surface may cause so far. */
-export type Effect = "openUrl" | "showFile";
+export type Effect = keyof SurfaceEffects;
 
 /** The effect the click being handled allows, until it has run. */
 let allowed: Effect | null = null;

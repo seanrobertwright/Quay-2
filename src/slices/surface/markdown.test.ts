@@ -22,13 +22,15 @@ beforeEach(() => {
     return null;
   });
 });
-afterEach(async () => {
+/** Takes what is drawn off the page. */
+async function undraw(): Promise<void> {
   if (!mounted) return;
   const { root, container } = mounted;
   await act(async () => root.unmount());
   container.remove();
   mounted = null;
-});
+}
+afterEach(undraw);
 
 /** Lets what is under way finish: promises, the A2UI module's import and what they draw. */
 const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
@@ -150,9 +152,7 @@ test("plain text a typed tool puts in a Text is shown as it is written", async (
     assert.equal(content.textContent, text);
     assert.equal(content.querySelectorAll("p").length, 1, text);
     assert.equal(content.querySelectorAll("h3, ul, ol, pre, code, strong, em, table, blockquote, hr, br, button").length, 0, text);
-    await act(async () => mounted!.root.unmount());
-    mounted!.container.remove();
-    mounted = null;
+    await undraw();
   }
 });
 
@@ -258,9 +258,7 @@ test("a hostile link is text, however its address is spelled and whatever form t
       const elements = [...content.querySelectorAll("*")];
       const bad = elements.filter((el) => !/^(a2ui-react-.*|div|p|em|strong|code|s|br|h3)$/i.test(el.tagName) || el.getAttributeNames().some((name) => name !== "class"));
       if (bad.length > 0 || content.querySelector("[role]")) drawn.push(form(address));
-      await act(async () => mounted!.root.unmount());
-      mounted!.container.remove();
-      mounted = null;
+      await undraw();
     }
   }
   // A line break ends a reference, so these two lead to a local file named `java`, and the rest is text.
@@ -291,9 +289,7 @@ test("raw HTML is shown as text", async () => {
       );
       assert.equal(bad.length, 0, `${text}: ${bad.map((el) => el.tagName).join()}`);
       assert.ok(content.textContent?.includes(html.replace("&lt;", "<").slice(0, 6).split("&")[0]), text);
-      await act(async () => mounted!.root.unmount());
-      mounted!.container.remove();
-      mounted = null;
+      await undraw();
     }
   }
   assert.deepEqual(calls, []);
@@ -514,19 +510,16 @@ test("inside a Button only inline formatting is drawn, and no link", async () =>
 test("a text nested too deep or too long to draw at once is shown whole, as it is written", async () => {
   const deep = `${">".repeat(150)} end`;
   assert.equal((await drawText(deep)).textContent, deep);
-  await act(async () => mounted!.root.unmount());
-  mounted!.container.remove();
+  await undraw();
   const long = `**bold** ${"x".repeat(20_000)}`;
   const content = await drawText(long);
   assert.equal(content.textContent, long);
   assert.equal(content.querySelectorAll("strong").length, 0);
-  await act(async () => mounted!.root.unmount());
-  mounted!.container.remove();
+  await undraw();
   // The limit counts characters, which some alphabets spell with two units each
   const atLimit = await drawText(`**b**${"😀".repeat(19_995)}`);
   assert.equal(atLimit.querySelectorAll("strong").length, 1);
-  await act(async () => mounted!.root.unmount());
-  mounted!.container.remove();
+  await undraw();
   const emphasis = await drawText(`${"*a ".repeat(100)}end${" a*".repeat(100)}`);
   assert.equal(emphasis.textContent, `${"a ".repeat(100)}end${" a".repeat(100)}`);
 });

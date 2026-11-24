@@ -1,11 +1,11 @@
 import { useContext } from "react";
 import { z } from "zod";
 import { createComponentImplementation } from "@a2ui/react";
-import { DynamicNumberSchema, DynamicStringSchema } from "@a2ui/web_core/v1_0";
+import { DynamicStringSchema } from "@a2ui/web_core/v1_0";
 import { duringClick } from "../../clickOnly.ts";
 import { LinksContext } from "../../links.ts";
 import { InsideButton } from "../insideButton.ts";
-import { lineOf } from "../line.ts";
+import { FILE_FIELDS, namedFile } from "../namedFile.ts";
 import { FileLabel, PointedLink } from "./PointedLink.tsx";
 
 /** Quay's own component: a link to a file. */
@@ -13,8 +13,7 @@ const FileLinkApi = {
   name: "FileLink",
   schema: z
     .object({
-      path: DynamicStringSchema.describe("REF:#/$defs/DynamicString|The file, absolute or relative to the terminal's working directory."),
-      line: DynamicNumberSchema.describe("REF:#/$defs/DynamicNumber|A line of the file.").optional(),
+      ...FILE_FIELDS,
       label: DynamicStringSchema.describe("REF:#/$defs/DynamicString|What the link reads. The path when left out.").optional(),
     })
     .strict(),
@@ -40,5 +39,5 @@ const FileLinkView = ({ path, line, label }: FileLinkViewProps) => {
 
 /** A link that shows a file at the operator's click. The path is judged then. */
 export const FileLink = createComponentImplementation(FileLinkApi, ({ props }) => (
-  <FileLinkView path={typeof props.path === "string" ? props.path : ""} line={lineOf(props.line)} label={props.label} />
+  <FileLinkView {...namedFile(props)} label={props.label} />
 ));

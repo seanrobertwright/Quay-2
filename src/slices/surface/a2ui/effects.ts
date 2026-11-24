@@ -2,11 +2,11 @@
 // as a value or inside a check too, so each one needs the click that its Button allows it.
 import { z } from "zod";
 import { OpenUrlApi } from "@a2ui/web_core/catalogs/basic/v1";
-import { createFunctionImplementation, DynamicNumberSchema, DynamicStringSchema } from "@a2ui/web_core/v1_0";
+import { createFunctionImplementation } from "@a2ui/web_core/v1_0";
 import type { Effect } from "../clickOnly.ts";
 import type { SurfaceEffects } from "../links.ts";
 import type { EngineSurface } from "./engine.ts";
-import { lineOf } from "./line.ts";
+import { FILE_FIELDS, namedFile } from "./namedFile.ts";
 
 const given = new WeakMap<object, SurfaceEffects>();
 
@@ -29,24 +29,24 @@ const ShowFileApi = {
   allowedCallers: "rendererOnly",
   requiresUserActivation: true,
   description: "Shows a file in its folder, or its changes when it has uncommitted ones.",
-  schema: z
-    .object({
-      path: DynamicStringSchema.describe("REF:#/$defs/DynamicString|The file, absolute or relative to the terminal's working directory."),
-      line: DynamicNumberSchema.describe("REF:#/$defs/DynamicNumber|A line of the file.").optional(),
-    })
-    .strict(),
+  schema: z.object(FILE_FIELDS).strict(),
 } as const;
 
-const showFile = createFunctionImplementation(ShowFileApi, ({ path, line }, { surface }) =>
-  effectsIn(surface).showFile(typeof path === "string" ? path : "", lineOf(line)),
-);
+const showFile = createFunctionImplementation(ShowFileApi, (args, { surface }) => {
+  const { path, line } = namedFile(args);
+  effectsIn(surface).showFile(path, line);
+});
 
-export const EFFECTS = [openUrl, showFile];
+const BY_NAME = { openUrl, showFile } satisfies Record<Effect, unknown>;
+
+export const EFFECTS = Object.values(BY_NAME);
+
+const isEffect = (name: unknown): name is Effect => EFFECTS.some((effect) => effect.name === name);
 
 /** The effect a Button's `action` is a call of, or null when it is none. */
 export function effectOf(action: unknown): Effect | null {
   if (typeof action !== "object" || action === null || !("functionCall" in action)) return null;
   const call = action.functionCall;
   const name = typeof call === "object" && call !== null && "@call" in call ? call["@call"] : null;
-  return name === "openUrl" || name === "showFile" ? name : null;
+  return isEffect(name) ? name : null;
 }
