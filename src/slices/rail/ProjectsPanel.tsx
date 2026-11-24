@@ -2,6 +2,7 @@ import { Fragment, useState, useId, type MouseEvent, type KeyboardEvent } from "
 import type { PermissionMode, TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
+import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { TerminalRow } from "./TerminalRow.tsx";
 import { LaneView, PipelineSection, type ProjectsPipeline } from "./TicketPipeline.tsx";
 
@@ -57,6 +58,8 @@ interface ProjectsPanelProps {
   onRelaunchTerminal?: (id: string) => void;
   /** Switches a terminal between Skip and Ask, from the mode it is in now. */
   onToggleTerminalAsk?: (id: string, currentMode: PermissionMode) => void;
+  /** Opens a terminal's agent surface, from its chip on the terminal's row. */
+  onOpenSurface?: (key: SurfaceKey) => void;
   /** The ticket pipeline: a lane on each terminal row that holds a ticket, and the lists under the terminals. */
   pipeline?: ProjectsPipeline | null;
 }
@@ -89,6 +92,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
   onRenameTerminal,
   onRelaunchTerminal,
   onToggleTerminalAsk,
+  onOpenSurface,
   onOpenSettings,
   onOpenSwarm,
   onOpenNewWorktree,
@@ -174,6 +178,7 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
         onRename={onRenameTerminal}
         onToggleAsk={onToggleTerminalAsk}
         onRelaunch={onRelaunchTerminal}
+        onOpenSurface={onOpenSurface}
       />
       {pipeline && <LaneFor terminal={term} isActive={term.id === activeTerminalId} onSelect={() => onSelectTerminal(term.id)} pipeline={pipeline} />}
     </Fragment>

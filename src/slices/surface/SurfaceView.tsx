@@ -1,9 +1,10 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { lookOf } from "./looks/index.ts";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
+import { isLive } from "./surfaceAttention.ts";
 import { answerSurface, loadA2ui } from "./surfaceHost.ts";
 import type { SurfaceAction, SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
@@ -62,16 +63,36 @@ const SettledSurface = ({ record, terminal }: SurfaceProps) => {
   );
 };
 
-/** The Surface view: a terminal's companion surfaces, oldest first. */
-export const SurfaceView = ({ terminal, surfaces }: { terminal: TerminalInfo; surfaces: readonly SurfaceRecord[] }) => (
-  <div className="flex flex-col gap-2 p-2">
-    {surfaces.map((record) => {
-      const key = `${record.terminal_id} ${record.id} ${record.revision}`;
-      return record.answer === null || record.answer === undefined ? (
-        <LiveSurface key={key} record={record} terminal={terminal} />
-      ) : (
-        <SettledSurface key={key} record={record} terminal={terminal} />
-      );
-    })}
-  </div>
-);
+/** The surface a request asked to show. Each request has a `seq` of its own. */
+export interface SurfaceFocus {
+  surfaceId: string;
+  seq: number;
+}
+
+interface SurfaceViewProps {
+  terminal: TerminalInfo;
+  surfaces: readonly SurfaceRecord[];
+  focus?: SurfaceFocus | null;
+}
+
+/** The Surface view: a terminal's companion surfaces, oldest first. The one `focus` names is brought into view. */
+export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewProps) => {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!focus) return;
+    const regions = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-surface]") ?? [])];
+    regions.find((region) => region.dataset.surface === focus.surfaceId)?.scrollIntoView?.({ block: "start" });
+  }, [focus]);
+  return (
+    <div ref={listRef} className="flex flex-col gap-2 p-2">
+      {surfaces.map((record) => {
+        const key = `${record.terminal_id} ${record.id} ${record.revision}`;
+        return isLive(record) ? (
+          <LiveSurface key={key} record={record} terminal={terminal} />
+        ) : (
+          <SettledSurface key={key} record={record} terminal={terminal} />
+        );
+      })}
+    </div>
+  );
+};
