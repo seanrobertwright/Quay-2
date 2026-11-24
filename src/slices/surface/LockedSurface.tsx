@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
 import type { TerminalInfo } from "../terminal/types.ts";
+import { FoldButton } from "./FoldButton.tsx";
 import { lockedState } from "./lockedState.ts";
 import { lookOf } from "./looks/index.ts";
 import { NotSent } from "./NotSent.tsx";
@@ -18,16 +18,9 @@ const Folded = ({ children }: { children: ReactNode }) => {
   const [shown, setShown] = useState(false);
   return (
     <div className="min-w-0">
-      <button
-        type="button"
-        aria-expanded={shown}
-        aria-controls={shown ? id : undefined}
-        onClick={() => setShown(!shown)}
-        className="flex min-h-6 items-center gap-1 text-[11px] text-[#58a6ff] hover:underline"
-      >
-        <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${shown ? "rotate-90" : ""}`} />
+      <FoldButton folds={id} shown={shown} onToggle={() => setShown(!shown)} className="min-h-6 text-[#58a6ff] hover:underline">
         What was asked
-      </button>
+      </FoldButton>
       {shown && (
         <div id={id} className="mt-1.5">
           {children}
@@ -42,7 +35,7 @@ interface LockedSurfaceProps {
   terminal: TerminalInfo;
 }
 
-/** A surface that is over, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
+/** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
 export const LockedSurface = ({ record, terminal }: LockedSurfaceProps) => {
   const { kind, KindIcon, asksFor, Settled, Asked, typedIn } = lookOf(record.tool);
   const { reason, Icon, tone, at } = lockedState(record);

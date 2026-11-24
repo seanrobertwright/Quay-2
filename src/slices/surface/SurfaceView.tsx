@@ -5,6 +5,7 @@ import { lookOf } from "./looks/index.ts";
 import { QueueLine } from "./QueueLine.tsx";
 import { SurfaceBoundary } from "./SurfaceBoundary.tsx";
 import { SurfaceFrame } from "./SurfaceFrame.tsx";
+import { surfaceKey } from "./surfaceAttention.ts";
 import { answerSurface, loadA2ui, useSurfacesRead } from "./surfaceHost.ts";
 import { isLive, type SurfaceAction, type SurfaceRecord } from "./surfaceTypes.ts";
 import { typedTool } from "./typed/index.ts";
@@ -72,7 +73,7 @@ interface SurfaceViewProps {
 
 /**
  * The Surface view: a terminal's companion surfaces, oldest first. Of those that ask one is open and
- * the rest are lines, and those that are over are folded beneath. The one `focus` names is brought into
+ * the rest are lines, and the locked ones are folded beneath. The one `focus` names is brought into
  * view.
  */
 export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewProps) => {
@@ -92,21 +93,23 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
     clicked.current = record.id;
     queue.choose(record);
   };
-  const keptFocus = useKeptFocus(terminal.id, () => {
+  const keptFocus = useKeptFocus(terminal.id, (left) => {
     const list = listRef.current;
-    const next = queue.open && regionOf(queue.open.id);
-    (next ?? list?.querySelector<HTMLElement>("[data-earlier]") ?? list)?.focus();
+    // What was in Earlier is off the page by now, with no more of Earlier around it than left with it
+    const wasLocked = left.closest("[data-locked], [data-earlier]") !== null;
+    const next = queue.open && !wasLocked ? regionOf(queue.open.id) : null;
+    (next ?? list?.querySelector<HTMLElement>("[data-earlier] button") ?? list)?.focus();
   });
   useEffect(() => {
     if (!focus) return;
     regionOf(focus.surfaceId)?.scrollIntoView?.({ block: "start" });
   }, [focus]);
   return (
-    <div ref={listRef} tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2 focus:outline-none">
+    <div ref={listRef} tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2">
       {queue.waiting === MOST_WAITING && <p className="px-1 text-[11px] text-[#8b949e]">{MOST_WAITING} questions waiting, the most one terminal may have.</p>}
       {surfaces.filter(isLive).map((record) => {
         // Not by revision: why an answer to an older one was not taken is said over the newer one
-        const key = `${record.terminal_id} ${record.id}`;
+        const key = surfaceKey(record);
         if (!record.asks || record === queue.open) return <LiveSurface key={key} record={record} terminal={terminal} />;
         return <QueueLine key={key} record={record} terminal={terminal} onOpen={() => open(record)} />;
       })}

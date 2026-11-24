@@ -303,6 +303,12 @@ test("an action Quay has no way to send is refused in words", async () => {
 
   assert.equal(regions(container)[0].querySelector('[role="alert"]')?.textContent, "Not sent: Quay cannot send an answer to this kind of surface.");
   assert.equal(called("surface_answer").length, 0);
+
+  // A terminal may use an id again, for another surface
+  await act(async () => emitEvent("surface-changed", { ...list[0], order: asked.order + 1, change: asked.change + 1 }));
+  await settle();
+  assert.equal(regions(container).length, 1);
+  assert.equal(regions(container)[0].querySelectorAll('[role="alert"]').length, 0, "it is not said of the next one of that id");
 });
 
 test("a reload draws the question again", async () => {

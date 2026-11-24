@@ -8,15 +8,7 @@ import { questionsIn } from "../typed/ask.ts";
 import { AskLayout } from "./AskLayout.tsx";
 import { AskAsked, askTypedIn } from "./AskAsked.tsx";
 import { askAnswerInLine, AskSettled } from "./AskSettled.tsx";
-
-/** A text the operator typed in one part of a surface. */
-export interface TypedText {
-  /** The part's name. */
-  part: string;
-  /** What the part answers. */
-  question: string;
-  text: string;
-}
+import type { TypedText } from "./typedText.ts";
 
 export interface Look {
   /** What kind of surface it is, as its label says it. */

@@ -14,18 +14,18 @@ export interface FocusHandlers {
 const isDisabled = (element: HTMLElement) => element.matches(":disabled");
 
 /**
- * Calls `moveOn` after a draw that took the element that had the focus away, while the focus has gone
- * nowhere else since. The handlers are for what the elements are in. Nothing is moved when another
+ * Calls `moveOn` with the element that had the focus after a draw that took it away, while the focus has
+ * gone nowhere else since. The handlers are for what the elements are in. Nothing is moved when another
  * terminal's surfaces were drawn instead.
  */
-export function useKeptFocus(terminalId: string, moveOn: () => void): FocusHandlers {
+export function useKeptFocus(terminalId: string, moveOn: (left: HTMLElement) => void): FocusHandlers {
   const focused = useRef<Focused | null>(null);
   useEffect(() => {
     const had = focused.current;
     if (!had || (had.terminalId === terminalId && had.element.isConnected)) return;
     focused.current = null;
     const isNowhere = document.activeElement === null || document.activeElement === document.body;
-    if (had.terminalId === terminalId && isNowhere) moveOn();
+    if (had.terminalId === terminalId && isNowhere) moveOn(had.element);
   });
   return {
     onFocus: ({ target }) => {

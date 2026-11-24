@@ -1,7 +1,7 @@
 import type { SurfaceComponent } from "../surfaceTypes.ts";
 import { ANSWERS, CONTEXT_PART, questionsIn } from "../typed/ask.ts";
 import type { DataValues } from "../differences.ts";
-import type { TypedText } from "./index.ts";
+import type { TypedText } from "./typedText.ts";
 
 interface Option {
   label: string;

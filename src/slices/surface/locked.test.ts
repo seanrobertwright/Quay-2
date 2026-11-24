@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// Surfaces that are over (#720), in the companion's Surface view with only Tauri's `invoke` faked: where
+// Locked surfaces (#720), in the companion's Surface view with only Tauri's `invoke` faked: where
 // they fold, what a line and an opened one say, and what was typed and not sent.
 import { emitEvent } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
@@ -240,12 +240,12 @@ test("what was typed up to the exit is kept, also what had not been sent to Rust
   assert.equal(earlier(), undefined);
 });
 
-test("a surface that asked for nothing is stopped, and no text of an agent's is read as anything but text", async () => {
+test("a surface that asked for nothing ended as its terminal exited, and no text of an agent's is read as anything but text", async () => {
   const hostile = '<img src="https://a.example/x.png" onerror="alert(1)"> [a](javascript:alert(1))';
   const record = await acceptedAsk("ask_1", { context: hostile, questions: [question(hostile, "<b>Yes</b>", "No")] }, "t1", 1);
   const section = await open("ask_1", ended({ ...record, asks: false }));
   assert.equal(bandOf(section)[0], "Stopped: the terminal exited.");
-  assert.ok(lineOf("ask_1").textContent?.startsWith("Stopped: "));
+  assert.ok(lineOf("ask_1").textContent?.startsWith("Ended: "));
   await click(button("What was asked"));
   assert.ok(section.textContent?.includes("<b>Yes</b>") && section.textContent.includes(hostile));
   assert.equal(section.querySelectorAll("img, a, b, script, iframe, [onerror]").length, 0);
@@ -378,11 +378,16 @@ test("with no question left the focus goes to Earlier, and with nothing left to 
   assert.ok(document.activeElement === element.firstElementChild, focused());
 });
 
-test("the one open question takes the focus from a locked one that leaves", async () => {
-  await open("ask_1", ended(await asked(1)), await asked(2));
+test("a locked one that leaves gives the focus to Earlier, and the last one to the view, though a question waits", async () => {
+  await open("ask_1", ended(await asked(1)), ended(await asked(2)), await asked(3));
   await act(async () => region("ask_1").querySelector<HTMLButtonElement>("header button")!.focus());
   await removed("ask_1");
-  assert.equal(focused(), "the frame of ask_2");
+  assert.equal(focused(), "Earlier (1)");
+
+  const view = earlier()!.closest('[tabindex="-1"]');
+  await act(async () => button("Dismiss all").focus());
+  await removed("ask_2");
+  assert.ok(view !== null && document.activeElement === view, focused());
 });
 
 test("the focus is not taken by another terminal's questions", async () => {

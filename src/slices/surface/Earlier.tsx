@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
 import type { TerminalInfo } from "../terminal/types.ts";
+import { FoldButton } from "./FoldButton.tsx";
 import { LockedSurface } from "./LockedSurface.tsx";
 import { lockedState } from "./lockedState.ts";
 import { lookOf } from "./looks/index.ts";
@@ -92,19 +92,11 @@ export const Earlier = ({ terminal, locked }: EarlierProps) => {
   const [open, setOpen] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   return (
-    <div className="border-t border-[#30363d] pt-1">
+    <div data-earlier className="border-t border-[#30363d] pt-1">
       <div className="flex items-center">
-        <button
-          type="button"
-          data-earlier
-          aria-expanded={shown}
-          aria-controls={shown ? listId : undefined}
-          onClick={() => setShown(!shown)}
-          className="flex min-h-7 flex-1 items-center gap-1 px-1 text-left text-[11px] text-[#8b949e] hover:text-white"
-        >
-          <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 ${shown ? "rotate-90" : ""}`} />
+        <FoldButton folds={listId} shown={shown} onToggle={() => setShown(!shown)} className="min-h-7 flex-1 px-1 text-left text-[#8b949e] hover:text-white">
           {`Earlier (${locked.length})`}
-        </button>
+        </FoldButton>
         {shown && <DismissAll terminal={terminal} locked={locked} onRefusal={setRefusal} />}
       </div>
       {refusal && (

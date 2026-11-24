@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { TypedText } from "./looks/index.ts";
+import type { TypedText } from "./looks/typedText.ts";
 
 /** What the operator had typed in a surface that ended before they sent it. `texts` holds one at least. */
 export const NotSent = ({ texts }: { texts: readonly TypedText[] }) => {
