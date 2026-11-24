@@ -995,6 +995,20 @@ impl PtyManager {
         moved
     }
 
+    /// Whether `terminal_id`'s CLI has shaken hands with Quay's MCP server since its current
+    /// launch, whose process has not exited.
+    pub fn handshake_seen(&self, terminal_id: &str) -> bool {
+        self.plugin_watches.lock().get(terminal_id).is_some_and(PluginWatch::handshake_seen)
+    }
+
+    /// Records that `terminal_id`'s CLI has shaken hands with Quay's MCP server, in the terminal's
+    /// current launch. A terminal with none, or whose process has exited, records nothing.
+    pub fn record_handshake(&self, terminal_id: &str) {
+        if let Some(watch) = self.plugin_watches.lock().get_mut(terminal_id) {
+            watch.shake_hands();
+        }
+    }
+
     /// Hides the plugin hint for the rest of the terminal's current launch, and returns
     /// the terminal's status, which stays as it was.
     pub fn dismiss_plugin_hint(&self, terminal_id: &str) -> Option<TerminalStatusPayload> {
@@ -1029,15 +1043,16 @@ impl PtyManager {
     }
 
     /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
-    /// `launch` is still current, and tells the status watcher, so held messages fail rather
-    /// than wait. An earlier launch that a relaunch ended, or a closed terminal, changes
-    /// nothing. Returns whether the terminal moved.
+    /// `launch` is still current, clears its handshake with Quay's MCP server, and tells the
+    /// status watcher, so held messages fail rather than wait. An earlier launch that a relaunch
+    /// ended, or a closed terminal, changes nothing. Returns whether the terminal moved.
     pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
         {
             let mut watches = self.plugin_watches.lock();
-            if launch.current_in(&mut watches).is_none() {
+            let Some(watch) = launch.current_in(&mut watches) else {
                 return false;
-            }
+            };
+            watch.exit();
             let mut info_map = self.terminals_info.lock();
             let Some(info) = info_map.get_mut(&launch.terminal_id) else {
                 return false;
