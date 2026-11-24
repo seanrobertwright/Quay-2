@@ -12,7 +12,7 @@ import { mount } from "./fixtures/surfaceFixtures.ts";
 import { buttonOf, click, describedBy, drawTree, leavePage, put, startPage, TERMINAL } from "./fixtures/catalogFixtures.ts";
 
 const { SurfaceView } = await import("./SurfaceView.tsx");
-const { useTerminalFocusRequests } = await import("../terminal/useTerminalFocusRequests.ts");
+const { useTerminalSelectionRequests } = await import("../terminal/useTerminalSelectionRequests.ts");
 
 let copied: string[];
 let copy: (text: string) => Promise<void>;
@@ -194,7 +194,7 @@ const TERMINALS = [
 let shown: string[];
 /** The window's part in it: what selects a terminal. */
 const Window = ({ terminals }: { terminals: readonly TerminalInfo[] }) => {
-  useTerminalFocusRequests(terminals, (id) => void shown.push(id));
+  useTerminalSelectionRequests(terminals, (id) => void shown.push(id));
   return null;
 };
 

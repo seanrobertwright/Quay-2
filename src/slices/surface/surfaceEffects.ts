@@ -2,11 +2,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { requestFileDiff, type FileDiffRequest } from "../git/fileDiffRequest.ts";
-import { requestTerminalFocus } from "../terminal/terminalFocusRequest.ts";
+import { requestTerminalSelection } from "../terminal/terminalSelectionRequest.ts";
 import { spendClick } from "./clickOnly.ts";
-import { shownAddress } from "./imageTarget.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
+import { shownText } from "./shownText.ts";
 
 /** How Rust showed a file. Mirrors `Shown`. */
 type Shown = { kind: "revealed" } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
@@ -36,7 +36,7 @@ async function show(terminalId: string, path: string, line: number | null): Prom
 
 function focus(terminalId: string, target: string): string | null {
   if (target === "") return "Not shown: no terminal is named.";
-  const outcome = requestTerminalFocus({ fromTerminalId: terminalId, target });
+  const outcome = requestTerminalSelection({ fromTerminalId: terminalId, target });
   switch (outcome?.kind) {
     case undefined:
       return "Not shown: Quay could not be asked to show a terminal.";
@@ -45,9 +45,9 @@ function focus(terminalId: string, target: string): string | null {
     case "asker_gone":
       return "Not shown: Quay no longer has this terminal.";
     case "none":
-      return `Not shown: this project has no terminal "${shownAddress(target)}".`;
+      return `Not shown: this project has no terminal "${shownText(target)}".`;
     case "ambiguous":
-      return `Not shown: ${outcome.count} terminals of this project are named "${shownAddress(target)}".`;
+      return `Not shown: ${outcome.count} terminals of this project are named "${shownText(target)}".`;
   }
 }
 
