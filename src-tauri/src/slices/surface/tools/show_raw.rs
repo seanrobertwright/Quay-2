@@ -8,6 +8,14 @@ use super::super::store::{CommitRefused, Creation, SurfaceKey};
 use super::super::wait::Wait;
 use super::{dismissed_result, text_result, SurfaceTools, Verdict};
 
+/// What a call does once it is accepted.
+enum Next {
+    /// It waits for the answer to the surface it created.
+    Waits,
+    /// It returns this result at once.
+    Returns(Value),
+}
+
 impl SurfaceTools {
     /// Shows the surface that `terminal_id`'s call creates, if it creates one, and waits for its answer if
     /// it asks for one. `found` is what is wrong with the call so far.
@@ -31,13 +39,13 @@ impl SurfaceTools {
                 return dismissed_result();
             }
             if self.0.store.is_shown_already(&key, creation) {
+                self.0.store.accepted(terminal_id, TOOL);
                 return shown_result();
             }
             if self.0.store.rejoin(terminal_id, creation).is_none() {
                 match self.check_raw(&key, creation, call, found).await {
-                    Err(result) => return result,
-                    Ok(asks) if !asks => return shown_result(),
-                    Ok(_) => {}
+                    Ok(Next::Waits) => {}
+                    Ok(Next::Returns(result)) | Err(result) => return result,
                 }
             }
         }
@@ -45,15 +53,14 @@ impl SurfaceTools {
     }
 
     /// Commits and draws the surface `key` that `call` creates, once neither Rust nor the webview has
-    /// found anything wrong with the call. Returns whether it asks. The error is the result its agent
-    /// gets, which a call that creates nothing always has.
+    /// found anything wrong with the call. The error is the result its agent gets when nothing was changed.
     async fn check_raw(
         &self,
         key: &SurfaceKey,
         creation: Creation<'_>,
         call: &RawCall,
         found: Rejection,
-    ) -> Result<bool, Value> {
+    ) -> Result<Next, Value> {
         let terminal_id = &key.terminal_id;
         let mut rejection = found;
         call.check_surfaces(&mut rejection, |id| self.0.store.held(&SurfaceKey::new(terminal_id, id), creation));
@@ -80,7 +87,7 @@ impl SurfaceTools {
         let Some(accepted) = accepted else {
             // Nothing is wrong with it, and it creates nothing: its messages are deletes
             self.0.store.accepted(terminal_id, TOOL);
-            return Err(text_result(json!({ "deleted": true })));
+            return Ok(Next::Returns(text_result(json!({ "deleted": true }))));
         };
         let record = self.0.store.commit(key, creation, accepted).map_err(|refused| match refused {
             CommitRefused::TerminalOver => QuayFailed::TerminalOver.result(),
@@ -92,7 +99,7 @@ impl SurfaceTools {
             }
         })?;
         self.show(&record);
-        Ok(record.asks)
+        Ok(if record.asks { Next::Waits } else { Next::Returns(shown_result()) })
     }
 }
 

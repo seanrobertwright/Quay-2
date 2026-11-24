@@ -22,20 +22,14 @@ impl SurfaceStore {
     }
 
     /// Whether the surface `key` is one that the same call created, which asks for nothing and has not
-    /// ended. The call is then accepted, which ends the row of rejected calls of its tool.
+    /// ended.
     pub fn is_shown_already(&self, key: &SurfaceKey, creation: Creation) -> bool {
         let mut inner = self.0.lock();
-        let Some(terminal) = inner.terminals.get_mut(&key.terminal_id) else {
-            return false;
-        };
-        let shown = terminal.find(&key.id).is_some_and(|surface| {
+        let surface = inner.terminals.get_mut(&key.terminal_id).and_then(|terminal| terminal.find(&key.id));
+        surface.is_some_and(|surface| {
             surface.tool == creation.tool
                 && surface.arguments == *creation.arguments
                 && matches!(surface.phase, Phase::NotAsking)
-        });
-        if shown {
-            terminal.rejected.remove(creation.tool);
-        }
-        shown
+        })
     }
 }

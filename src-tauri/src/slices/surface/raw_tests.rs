@@ -373,11 +373,15 @@ async fn the_same_creating_call_again_of_a_surface_that_asks_for_nothing_changes
     let (seam, mut webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
     created(&seam, &mut webview, &cli, "plan", "strip", false).await;
+    for _ in 0..2 {
+        assert_eq!(told(cli.call("quay_surface", json!({ "messages": 1 }))).await.1, NEXT);
+    }
 
     let again = cli.call("quay_surface", plan("plan", "strip"));
     assert_eq!(again.answer().await, json!({ "shown": true }));
     assert!(webview.no_check().await && webview.nothing_shown().await);
     assert_eq!(seam.surfaces.surfaces().len(), 1);
+    assert_eq!(told(cli.call("quay_surface", json!({ "messages": 1 }))).await.1, NEXT, "an accepted call resets the count");
 }
 
 #[tokio::test]
