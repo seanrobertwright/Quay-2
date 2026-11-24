@@ -138,19 +138,19 @@ async fn an_answer_makes_room_and_ten_answered_all_stay() {
 }
 
 #[tokio::test]
-async fn the_answered_past_ten_leave_oldest_first_for_the_next() {
+async fn the_answered_past_ten_leave_as_they_are_answered_and_what_comes_next_takes_none() {
     let (seam, mut webview) = start(Timing::default()).await;
     asked_and_answered(&seam, &mut webview, 1..=9).await;
     let _waiting = four_asked(&seam, &mut webview).await;
     for n in 10..=13 {
         settle(&seam, &mut webview, n).await;
     }
-
-    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
-
     for id in ["ask_1", "ask_2", "ask_3"] {
         assert_eq!(webview.next_removed().await, SurfaceKey::new("term-a", id));
     }
+
+    let _next = seam.asked(&mut webview, "term-a", "Next?").await;
+
     assert!(webview.none_removed());
     assert_eq!(
         ids(&seam, "term-a"),

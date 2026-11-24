@@ -95,6 +95,8 @@ pub enum QuayFailed {
     NoVerdict,
     /// Quay's own expansion of a typed call failed the engine's check.
     Expansion,
+    /// The call's terminal exited, was relaunched or closed.
+    TerminalOver,
 }
 
 impl QuayFailed {
@@ -102,6 +104,7 @@ impl QuayFailed {
         let next = match self {
             Self::NoVerdict => "Send the same call once more.",
             Self::Expansion => "Say it in the terminal instead.",
+            Self::TerminalOver => "Its terminal has exited.",
         };
         error_result(format!("Quay could not show this; your call was not at fault. Nothing was shown. {next}"))
     }

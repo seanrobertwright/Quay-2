@@ -74,7 +74,9 @@ export interface SurfaceRecord extends SurfaceKey {
   answer: unknown;
   /** When the answer was sent, in milliseconds since the epoch, or null while there is none. */
   answered_at: number | null;
+  /** When its terminal exited before it was settled, in milliseconds since the epoch, or null. */
+  ended_at: number | null;
 }
 
-/** A live surface has had no answer. */
-export const isLive = ({ answer }: SurfaceRecord): boolean => answer === null || answer === undefined;
+/** A live surface has had no answer, and its terminal has not exited. One that is not live is locked. */
+export const isLive = ({ answer, ended_at }: SurfaceRecord): boolean => (answer ?? null) === null && ended_at === null;

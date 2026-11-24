@@ -9,7 +9,7 @@ use super::test_seam::{answer_to, start, CapturedLog, FakeWebview, Seam};
 use super::timing::Timing;
 use super::typing::NotTyped;
 use super::unsent::UnsentRefused;
-use crate::slices::pty::models::ClaudeStatus;
+use crate::slices::pty::models::{ClaudeStatus, RunKind};
 
 fn ask_1() -> SurfaceKey {
     SurfaceKey::new("term-a", "ask_1")
@@ -205,4 +205,23 @@ async fn it_is_neither_logged_nor_part_of_the_surface_that_is_sent_around() {
     assert_eq!(held(&seam), [one("term-a", "ask_1", "half a secret")]);
     assert!(!log.text().contains("secret"));
     assert!(!json!(seam.surfaces.surfaces()).to_string().contains("secret"));
+}
+
+#[tokio::test]
+async fn it_stays_on_a_question_that_ended_with_what_was_typed_up_to_then() {
+    let (seam, _webview) = with_question().await;
+    save(&seam, &ask_1(), (1, 1), "half a").unwrap();
+    let launch = seam.open_terminal("term-c", RunKind::Claude, ClaudeStatus::Idle);
+    assert!(seam.pty_manager.exit_launch(&launch, Some(0)));
+    assert_eq!(held(&seam), [one("term-a", "ask_1", "half a")], "another terminal's exit is not its own");
+
+    seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
+
+    assert_eq!(held(&seam), [one("term-a", "ask_1", "half a")]);
+    // What the page had not sent yet
+    save(&seam, &ask_1(), (1, 2), "half a thought").unwrap();
+    assert_eq!(held(&seam), [one("term-a", "ask_1", "half a thought")]);
+
+    seam.surfaces.dismiss_locked("term-a", &["ask_1".to_string()]);
+    assert!(held(&seam).is_empty());
 }

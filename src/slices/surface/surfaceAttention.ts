@@ -36,6 +36,9 @@ export const useAskingSurfacesOf = (terminalId: string): readonly SurfaceRecord[
 /** What of an asking surface an update of its content leaves as it is. */
 export type AskingRecord = Readonly<Pick<SurfaceRecord, "terminal_id" | "id" | "order" | "tool">>;
 
+/** A key of `record` among every asking of every surface. */
+export const surfaceKey = ({ terminal_id, id, order }: AskingRecord): string => JSON.stringify([terminal_id, id, order]);
+
 let lastRead: ReturnType<typeof surfacesByTerminal> | null = null;
 let lastAsking: readonly AskingRecord[] = [];
 
