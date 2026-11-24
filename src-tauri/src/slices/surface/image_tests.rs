@@ -210,7 +210,7 @@ async fn a_path_that_leads_to_no_file_of_this_computer_is_refused() {
 fn junction(link: &std::path::Path, target: &std::path::Path) {
     #[cfg(windows)]
     let made = {
-        let mut mklink = std::process::Command::new("cmd");
+        let mut mklink = crate::spawn::hidden_command("cmd");
         mklink.args(["/C", "mklink", "/J"]).arg(link).arg(target).output().unwrap().status.success()
     };
     #[cfg(unix)]
