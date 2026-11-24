@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { cliName } from "./cliName.ts";
+import { SurfaceLinksProvider } from "./SurfaceLinksProvider.tsx";
 
 interface SurfaceFrameProps {
   /** The surface's id, which tests and scripts find it by. */
@@ -34,10 +35,12 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, refusal, chil
       <span className="shrink-0 text-[#8b949e]">{cliName(terminal.run_kind)}</span>
     </header>
     {band}
-    {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside. */}
-    <div data-surface-content className="relative isolate overflow-hidden p-3 text-xs text-[#c9d1d9] contain-paint">
-      {children}
-    </div>
+    <SurfaceLinksProvider>
+      {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside. */}
+      <div data-surface-content className="relative isolate overflow-hidden p-3 text-xs text-[#c9d1d9] contain-paint">
+        {children}
+      </div>
+    </SurfaceLinksProvider>
     {refusal && (
       <p role="alert" className="border-t border-[#da3633]/40 bg-[#da3633]/10 px-3 py-1.5 text-[11px] wrap-anywhere text-[#ff7b72]">
         {refusal}
