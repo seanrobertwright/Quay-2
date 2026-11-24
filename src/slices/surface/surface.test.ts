@@ -352,6 +352,19 @@ test("a surface that left while the list was read is not drawn", async () => {
   );
 });
 
+test("an action Quay has no way to send is refused in words", async () => {
+  const asked = await accepted("ask_1");
+  // What holds Send is the ask's own look, so nothing holds it here
+  for (const component of asked.state.createSurface.components) delete component["@checks"];
+  list = [{ ...asked, tool: "quay_dance" }];
+  const container = await open();
+  await act(async () => button(container, "Send").click());
+  await settle();
+
+  assert.equal(regions(container)[0].querySelector('[role="alert"]')?.textContent, "Not sent: Quay cannot send an answer to this kind of surface.");
+  assert.equal(called("surface_answer").length, 0);
+});
+
 test("a reload draws the question again", async () => {
   const asked = await accepted("ask_1");
   list = [asked];

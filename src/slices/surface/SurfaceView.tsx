@@ -22,7 +22,10 @@ const LiveSurface = ({ record, terminal }: SurfaceProps) => {
   const onAction = useCallback(
     async (action: SurfaceAction) => {
       const typed = typedTool(record.tool);
-      if (!typed) return;
+      if (!typed) {
+        setRefusal("Not sent: Quay cannot send an answer to this kind of surface.");
+        return;
+      }
       setRefusal(null);
       try {
         await answerSurface(record, typed.collapse(action));
