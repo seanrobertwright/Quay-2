@@ -1,14 +1,18 @@
 //! `quay_ask`: what its call may hold.
 
+use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
+use super::arguments::Arguments;
 use super::rejection::Rejection;
 
 pub const TOOL: &str = "quay_ask";
 
+pub(super) const CONTEXT_LIMIT: usize = 600;
+pub(super) const QUESTION_COUNT: RangeInclusive<usize> = 1..=4;
 pub(super) const QUESTION_LIMIT: usize = 200;
 pub(super) const LABEL_LIMIT: usize = 60;
 pub(super) const DESCRIPTION_LIMIT: usize = 120;
@@ -17,13 +21,19 @@ pub(super) const OPTION_COUNT: RangeInclusive<usize> = 2..=6;
 /// A checked `quay_ask` call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ask {
+    /// Markdown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
     pub questions: Vec<Question>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Question {
     pub question: String,
+    /// None for a free-text question.
     pub options: Vec<AskOption>,
+    /// Whether more than one option may be chosen. It means nothing to a free-text question.
+    pub multiple: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -35,113 +45,87 @@ pub struct AskOption {
 }
 
 impl Ask {
-    /// The call `arguments` hold, or the first thing wrong with them.
+    /// The call `arguments` hold, or everything wrong with them.
     pub fn parse(arguments: &Value) -> Result<Self, Rejection> {
-        let call = object(arguments, "", "A call", &["questions"])?;
-        let questions = call
-            .get("questions")
-            .and_then(Value::as_array)
-            .ok_or_else(|| Rejection::invalid("/questions", "quay_ask needs a list of questions."))?;
-        if questions.len() != 1 {
-            let message = format!("A call takes one question; this one has {}.", questions.len());
-            return Err(Rejection::invalid("/questions", message));
+        let mut args = Arguments::new(TOOL, "tab");
+        let ask = Self::read(&mut args, arguments);
+        args.finish(ask)
+    }
+
+    fn read(args: &mut Arguments, arguments: &Value) -> Self {
+        let mut ask = Self { context: None, questions: Vec::new() };
+        let Some(call) = args.object(arguments, "", "A call", &["context", "questions"]) else {
+            return ask;
+        };
+        ask.context = args.optional_text(call, "context", "", "The context", CONTEXT_LIMIT);
+        let Some(questions) = call.get("questions").and_then(Value::as_array) else {
+            args.invalid("/questions", "quay_ask needs a list of questions.");
+            return ask;
+        };
+        args.count(questions, QUESTION_COUNT, "/questions", "A call takes one to four questions");
+        for (i, value) in questions.iter().enumerate() {
+            ask.questions.extend(Question::read(args, value, &format!("/questions/{i}")));
         }
-        let questions = questions
-            .iter()
-            .enumerate()
-            .map(|(i, question)| Question::parse(question, &format!("/questions/{i}")))
-            .collect::<Result<_, _>>()?;
-        Ok(Self { questions })
+        ask
     }
 }
 
 impl Question {
-    fn parse(value: &Value, path: &str) -> Result<Self, Rejection> {
-        let fields = object(value, path, "A question", &["question", "options"])?;
-        let question = text(fields, "question", path, "A question", QUESTION_LIMIT)?;
-        let path = format!("{path}/options");
-        let values = fields
-            .get("options")
-            .and_then(Value::as_array)
-            .ok_or_else(|| Rejection::invalid(path.as_str(), "A question needs a list of options."))?;
-        if !OPTION_COUNT.contains(&values.len()) {
-            let message = format!("A question has two to six options; this one has {}.", values.len());
-            return Err(Rejection::invalid(path, message));
-        }
-        let mut options: Vec<AskOption> = Vec::with_capacity(values.len());
-        for (i, value) in values.iter().enumerate() {
-            let path = format!("{path}/{i}");
-            let option = AskOption::parse(value, &path)?;
-            if let Some(first) = options.iter().position(|earlier| earlier.label == option.label) {
-                let message = format!(
-                    "Two options in one question cannot share a label. \"{}\" is also option {}.",
-                    option.label,
-                    first + 1
-                );
-                return Err(Rejection::invalid(format!("{path}/label"), message));
-            }
-            if option.recommended && options.iter().any(|earlier| earlier.recommended) {
-                let message = "A question has at most one recommended option.";
-                return Err(Rejection::invalid(format!("{path}/recommended"), message));
-            }
-            options.push(option);
-        }
-        Ok(Self { question, options })
+    fn read(args: &mut Arguments, value: &Value, path: &str) -> Option<Self> {
+        let fields = args.object(value, path, "A question", &["question", "options", "multiple"])?;
+        let question = args.text(fields, "question", path, "A question", QUESTION_LIMIT);
+        let options = match fields.get("options") {
+            None => Vec::new(),
+            Some(options) => AskOption::read_list(args, options, &format!("{path}/options")),
+        };
+        let multiple = args.flag(fields, "multiple", path);
+        Some(Self { question, options, multiple })
     }
 }
 
 impl AskOption {
-    fn parse(value: &Value, path: &str) -> Result<Self, Rejection> {
-        let fields = object(value, path, "An option", &["label", "description", "recommended"])?;
-        let label = text(fields, "label", path, "An option label", LABEL_LIMIT)?;
-        let description = match fields.get("description") {
-            None => None,
-            Some(Value::String(description)) => {
-                let path = format!("{path}/description");
-                Some(within(description, path, "An option description", DESCRIPTION_LIMIT)?)
-            }
-            Some(_) => {
-                return Err(Rejection::invalid(format!("{path}/description"), "An option description is text."));
-            }
+    fn read_list(args: &mut Arguments, value: &Value, path: &str) -> Vec<Self> {
+        let Some(values) = value.as_array() else {
+            args.invalid(path, "A question's options are a list.");
+            return Vec::new();
         };
-        let recommended = match fields.get("recommended") {
-            None => false,
-            Some(Value::Bool(recommended)) => *recommended,
-            Some(_) => {
-                return Err(Rejection::invalid(format!("{path}/recommended"), "recommended is true or false."));
+        args.count(values, OPTION_COUNT, path, "A question has two to six options");
+        let mut options = Vec::with_capacity(values.len());
+        // Where each label was first
+        let mut first_at: HashMap<String, usize> = HashMap::new();
+        let mut recommended = false;
+        for (i, value) in values.iter().enumerate() {
+            let path = format!("{path}/{i}");
+            let Some(option) = Self::read(args, value, &path) else {
+                continue;
+            };
+            // A label that is missing is an error of its own
+            if !option.label.is_empty() {
+                let first = *first_at.entry(option.label.clone()).or_insert(i);
+                if first != i {
+                    let message = format!(
+                        "Two options in one question cannot share a label. \"{}\" is also option {}.",
+                        option.label,
+                        first + 1
+                    );
+                    args.invalid(format!("{path}/label"), message);
+                }
             }
-        };
-        Ok(Self { label, description, recommended })
-    }
-}
-
-/// `value` as an object with no field outside `fields`.
-fn object<'a>(value: &'a Value, path: &str, what: &str, fields: &[&str]) -> Result<&'a Map<String, Value>, Rejection> {
-    let map = value.as_object().ok_or_else(|| Rejection::invalid(path, format!("{what} is an object.")))?;
-    match map.keys().find(|key| !fields.contains(&key.as_str())) {
-        None => Ok(map),
-        Some(key) => {
-            let path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
-            Err(Rejection::invalid(path, format!("quay_ask has no field \"{key}\" here.")))
+            if option.recommended && recommended {
+                args.invalid(format!("{path}/recommended"), "A question has at most one recommended option.");
+            }
+            recommended |= option.recommended;
+            options.push(option);
         }
+        options
     }
-}
 
-/// The text in `field`, which may be neither missing nor blank.
-fn text(fields: &Map<String, Value>, field: &str, path: &str, what: &str, limit: usize) -> Result<String, Rejection> {
-    let path = format!("{path}/{field}");
-    match fields.get(field).and_then(Value::as_str).filter(|text| !text.trim().is_empty()) {
-        Some(text) => within(text, path, what, limit),
-        None => Err(Rejection::invalid(path, format!("{what} needs some text."))),
+    fn read(args: &mut Arguments, value: &Value, path: &str) -> Option<Self> {
+        let fields = args.object(value, path, "An option", &["label", "description", "recommended"])?;
+        Some(Self {
+            label: args.text(fields, "label", path, "An option label", LABEL_LIMIT),
+            description: args.optional_text(fields, "description", path, "An option description", DESCRIPTION_LIMIT),
+            recommended: args.flag(fields, "recommended", path),
+        })
     }
-}
-
-/// `text` when it is at most `limit` characters.
-fn within(text: &str, path: String, what: &str, limit: usize) -> Result<String, Rejection> {
-    let length = text.chars().count();
-    if length > limit {
-        let message = format!("{what} is at most {limit} characters; this one is {length}.");
-        return Err(Rejection::invalid(path, message));
-    }
-    Ok(text.to_string())
 }

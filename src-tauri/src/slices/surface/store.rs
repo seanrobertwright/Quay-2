@@ -11,6 +11,7 @@ use serde_json::Value;
 use tokio::sync::oneshot;
 
 use super::check::Accepted;
+use crate::dates::now_ms;
 
 /// The most surfaces a terminal keeps: the spec's four live and ten locked, not told apart yet.
 pub const MOST_KEPT: usize = 14;
@@ -46,6 +47,8 @@ pub struct SurfaceRecord {
     pub asks: bool,
     /// The answer, once there is one.
     pub answer: Option<Value>,
+    /// When the answer was sent, in milliseconds since the epoch.
+    pub answered_at: Option<i64>,
 }
 
 /// Why an answer was not taken. The surface is as it was.
@@ -82,7 +85,8 @@ enum Phase {
     NotAsking,
     /// It has no answer yet. `waiter` is the open call, if there is one.
     Asking { waiter: Option<oneshot::Sender<Value>> },
-    Settled { answer: Value },
+    /// `at` is when, in milliseconds since the epoch.
+    Settled { answer: Value, at: i64 },
 }
 
 struct Surface {
@@ -102,6 +106,10 @@ impl Surface {
     }
 
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
+        let (answer, answered_at) = match &self.phase {
+            Phase::Settled { answer, at } => (Some(answer.clone()), Some(*at)),
+            Phase::NotAsking | Phase::Asking { .. } => (None, None),
+        };
         SurfaceRecord {
             terminal_id: terminal_id.to_string(),
             id: self.id.clone(),
@@ -111,18 +119,19 @@ impl Surface {
             order: self.order,
             change: self.change,
             asks: !matches!(self.phase, Phase::NotAsking),
-            answer: match &self.phase {
-                Phase::Settled { answer } => Some(answer.clone()),
-                Phase::NotAsking | Phase::Asking { .. } => None,
-            },
+            answer,
+            answered_at,
         }
     }
 }
 
-/// One terminal's surfaces, in the order they were committed, and how many asks have been named.
+/// One terminal's surfaces, in the order they were committed, how many asks have been named, and its
+/// rejected calls.
 #[derive(Default)]
 struct Terminal {
     asks: u64,
+    /// By tool, how many of its calls have been rejected since one was accepted.
+    rejected: HashMap<String, u32>,
     surfaces: Vec<Surface>,
 }
 
@@ -162,6 +171,16 @@ impl SurfaceStore {
         }
     }
 
+    /// Counts a rejected call of `tool`, and says how many of the terminal's are now in a row. A call
+    /// that is accepted ends the row.
+    pub fn rejected(&self, terminal_id: &str, tool: &str) -> u32 {
+        let mut inner = self.0.lock();
+        let terminal = inner.terminals.entry(terminal_id.to_string()).or_default();
+        let run = terminal.rejected.entry(tool.to_string()).or_default();
+        *run = run.saturating_add(1);
+        *run
+    }
+
     /// Adds the surface `key` as the webview accepted it. A terminal that has `MOST_KEPT` loses its
     /// oldest one that no call waits on: an answer to it would be refused, or it has or wants none.
     pub fn commit(&self, key: &SurfaceKey, tool: &str, accepted: Accepted) -> Result<Committed, CommitRefused> {
@@ -196,6 +215,7 @@ impl SurfaceStore {
         };
         let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
+        terminal.rejected.remove(tool);
         Ok(Committed { record, wait, left })
     }
 
@@ -220,7 +240,7 @@ impl SurfaceStore {
         let waiter = waiter.take().ok_or(AnswerRefused::CallEnded)?;
         // Fails when the call was dropped with its connection
         waiter.send(answer.clone()).map_err(|_| AnswerRefused::CallEnded)?;
-        surface.phase = Phase::Settled { answer };
+        surface.phase = Phase::Settled { answer, at: now_ms() };
         surface.change = change;
         Ok(surface.record(&key.terminal_id))
     }

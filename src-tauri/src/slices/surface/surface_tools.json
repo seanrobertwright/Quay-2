@@ -1,14 +1,18 @@
 [
   {
     "name": "quay_ask",
-    "description": "Ask the operator one question beside this terminal, when you need a decision or an answer before you go on. The call stays open for the answer, up to 100 seconds, and returns {\"answers\": [{\"question\", \"chosen\", \"text\"}]}: the label the operator picked in a list, which is empty when they only wrote, and what they wrote, left out when they wrote nothing. Nothing is picked for them, and the question has a text box of its own, so add no option for \"other\".",
+    "description": "Ask the operator one to four questions beside this terminal, when you need a decision or an answer before you go on. The call stays open for the answer, up to 100 seconds, and returns {\"answers\": [{\"question\", \"chosen\", \"text\"}]}, one for each question in order: the labels the operator picked, an empty list when they picked none, and what they wrote, left out when they wrote nothing. Nothing is picked for them, and every question has a text box of its own, so add no option for \"other\".",
     "inputSchema": {
       "type": "object",
       "properties": {
+        "context": {
+          "type": "string",
+          "description": "Why you ask. Markdown, at most 600 characters."
+        },
         "questions": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 1,
+          "maxItems": 4,
           "items": {
             "type": "object",
             "properties": {
@@ -20,7 +24,7 @@
                 "type": "array",
                 "minItems": 2,
                 "maxItems": 6,
-                "description": "Two to six options, of which the operator picks one.",
+                "description": "Two to six options, of which the operator picks one. Left out, they answer in their own words.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -31,9 +35,13 @@
                   "required": ["label"],
                   "additionalProperties": false
                 }
+              },
+              "multiple": {
+                "type": "boolean",
+                "description": "True if the operator may pick several options, or none."
               }
             },
-            "required": ["question", "options"],
+            "required": ["question"],
             "additionalProperties": false
           }
         }

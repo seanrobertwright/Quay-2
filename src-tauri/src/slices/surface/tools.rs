@@ -76,7 +76,7 @@ impl SurfaceTools {
             return None;
         }
         Some(match Ask::parse(arguments) {
-            Err(rejection) => rejection.typed_result(),
+            Err(rejection) => self.reject(terminal_id, ask::TOOL, &rejection),
             Ok(ask) => self.show_ask(terminal_id, &ask).await,
         })
     }
@@ -150,9 +150,14 @@ impl SurfaceTools {
             }
             CommitRefused::Full => {
                 let message = format!("This terminal has {MOST_KEPT} questions open, the most allowed. Wait for an answer.");
-                Rejection::invalid("", message).typed_result()
+                self.reject(terminal_id, tool, &Rejection::invalid("", message))
             }
         })
+    }
+
+    /// The result of `terminal_id`'s call of `tool` that `rejection` rejects. The window is told nothing.
+    fn reject(&self, terminal_id: &str, tool: &str, rejection: &Rejection) -> Value {
+        rejection.result(tool, self.0.store.rejected(terminal_id, tool))
     }
 
     fn show(&self, record: &SurfaceRecord) {
