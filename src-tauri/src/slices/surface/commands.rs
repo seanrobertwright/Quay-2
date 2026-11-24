@@ -4,7 +4,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use super::check::{CheckRequest, Verdict};
-use super::store::{AnswerRefused, SurfaceRecord};
+use super::store::{AnswerRefused, SurfaceKey, SurfaceRecord};
 use super::tools::{SurfaceTools, Webview};
 
 /// Quay's window, reached through Tauri's events.
@@ -53,7 +53,7 @@ pub async fn surface_answer(
     answer: Value,
     surfaces: State<'_, SurfaceTools>,
 ) -> Result<(), String> {
-    surfaces.answer(&terminal_id, &id, revision, answer).map_err(|refused| refusal(refused).to_string())
+    surfaces.answer(&SurfaceKey::new(terminal_id, id), revision, answer).map_err(|refused| refusal(refused).to_string())
 }
 
 fn refusal(refused: AnswerRefused) -> &'static str {

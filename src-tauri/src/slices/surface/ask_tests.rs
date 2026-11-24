@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::check::Verdict;
-use super::store::AnswerRefused;
+use super::store::{AnswerRefused, SurfaceKey};
 use super::test_seam::{accepted, start, start_with, CapturedLog, A_WHILE};
 use super::timing::Timing;
 
@@ -82,7 +82,7 @@ async fn an_answer_inside_the_wait_is_the_calls_result() {
     assert_eq!((shown.revision, shown.asks, shown.answer), (1, true, None));
     assert_eq!(shown.state, json!({ "version": "1.0", "createSurface": { "surfaceId": "ask_1" } }));
     assert!(call.is_open(), "the call waits for its answer");
-    seam.surfaces.answer("term-a", "ask_1", 1, answer()).unwrap();
+    seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()).unwrap();
 
     assert_eq!(call.answer().await, answer());
     let settled = webview.next_shown().await;
@@ -184,7 +184,7 @@ async fn a_webview_that_loads_again_is_given_the_surface() {
     let shown = webview.next_shown().await;
 
     assert_eq!(seam.surfaces.surfaces(), vec![shown]);
-    seam.surfaces.answer("term-a", "ask_1", 1, answer()).unwrap();
+    seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()).unwrap();
 
     assert_eq!(call.answer().await, answer(), "the call that was open throughout returns the answer");
     assert_eq!(seam.surfaces.surfaces()[0].answer, Some(answer()));
@@ -200,7 +200,7 @@ async fn a_wait_ends_at_its_limit_and_the_question_stays_up() {
     let no_answer = json!({ "surface_id": "ask_1", "state": "no_answer_yet", "next": "End your turn now." });
     assert_eq!(call.answer().await, no_answer);
     assert_eq!(seam.surfaces.surfaces(), vec![shown]);
-    assert_eq!(seam.surfaces.answer("term-a", "ask_1", 1, answer()), Err(AnswerRefused::CallEnded));
+    assert_eq!(seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()), Err(AnswerRefused::CallEnded));
     assert_eq!(seam.surfaces.surfaces()[0].answer, None, "an answer that reaches nobody settles nothing");
 }
 
@@ -214,7 +214,7 @@ async fn an_answer_to_a_call_whose_connection_closed_is_refused() {
     call.hang_up();
     tokio::time::sleep(A_WHILE).await;
 
-    assert_eq!(seam.surfaces.answer("term-a", "ask_1", 1, answer()), Err(AnswerRefused::CallEnded));
+    assert_eq!(seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()), Err(AnswerRefused::CallEnded));
     assert_eq!(seam.surfaces.surfaces()[0].answer, None);
 }
 
@@ -225,12 +225,12 @@ async fn a_surface_takes_one_answer_to_the_revision_on_screen() {
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     webview.next_shown().await;
 
-    let answer_to = |revision| seam.surfaces.answer("term-a", "ask_1", revision, answer());
+    let answer_to = |revision| seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), revision, answer());
     assert_eq!(answer_to(2), Err(AnswerRefused::OlderRevision));
     assert_eq!(answer_to(1), Ok(()));
     assert_eq!(answer_to(1), Err(AnswerRefused::AlreadyAnswered));
     assert_eq!(call.answer().await, answer());
-    assert_eq!(seam.surfaces.answer("term-a", "ask_9", 1, answer()), Err(AnswerRefused::NoSuchSurface));
+    assert_eq!(seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_9"), 1, answer()), Err(AnswerRefused::NoSuchSurface));
 }
 
 #[tokio::test]
@@ -250,7 +250,7 @@ async fn another_terminals_token_reaches_nothing_of_this_terminals() {
     seam.surfaces.verdict(webview.next_check().await.call, accepted(true));
     webview.next_shown().await;
 
-    assert_eq!(seam.surfaces.answer("term-b", "ask_1", 1, answer()), Err(AnswerRefused::NoSuchSurface));
+    assert_eq!(seam.surfaces.answer(&SurfaceKey::new("term-b", "ask_1"), 1, answer()), Err(AnswerRefused::NoSuchSurface));
     let call_b = seam.cli("term-b").call("quay_ask", question());
     let check_b = webview.next_check().await;
     assert_eq!(check_b.surface_id, "ask_1", "each terminal counts its own");
@@ -258,10 +258,10 @@ async fn another_terminals_token_reaches_nothing_of_this_terminals() {
     assert_eq!(webview.next_shown().await.terminal_id, "term-b");
 
     let answer_b = json!({ "answers": [{ "question": "B", "chosen": [], "text": "b" }] });
-    seam.surfaces.answer("term-b", "ask_1", 1, answer_b.clone()).unwrap();
+    seam.surfaces.answer(&SurfaceKey::new("term-b", "ask_1"), 1, answer_b.clone()).unwrap();
     assert_eq!(call_b.answer().await, answer_b);
     assert!(call_a.is_open(), "an answer to one terminal's question is not the other's");
-    seam.surfaces.answer("term-a", "ask_1", 1, answer()).unwrap();
+    seam.surfaces.answer(&SurfaceKey::new("term-a", "ask_1"), 1, answer()).unwrap();
     assert_eq!(call_a.answer().await, answer());
 }
 

@@ -12,6 +12,19 @@ use tokio::sync::oneshot;
 
 use super::check::Accepted;
 
+/// Which surface: its id is one among its terminal's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SurfaceKey {
+    pub terminal_id: String,
+    pub id: String,
+}
+
+impl SurfaceKey {
+    pub fn new(terminal_id: impl Into<String>, id: impl Into<String>) -> Self {
+        Self { terminal_id: terminal_id.into(), id: id.into() }
+    }
+}
+
 /// A surface as the webview draws it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SurfaceRecord {
@@ -111,42 +124,36 @@ pub struct SurfaceStore(Arc<Mutex<Inner>>);
 
 impl SurfaceStore {
     /// A name for `terminal_id`'s next ask: `ask_1` and on, counted per terminal, never one in use.
-    pub fn name_ask(&self, terminal_id: &str) -> String {
+    pub fn name_ask(&self, terminal_id: &str) -> SurfaceKey {
         let mut inner = self.0.lock();
         let terminal = inner.terminals.entry(terminal_id.to_string()).or_default();
         loop {
             terminal.asks += 1;
             let id = format!("ask_{}", terminal.asks);
             if terminal.find(&id).is_none() {
-                return id;
+                return SurfaceKey::new(terminal_id, id);
             }
         }
     }
 
-    /// Adds the surface `id` as the webview accepted it. With it, the call's wait when the surface
+    /// Adds the surface `key` as the webview accepted it. With it, the call's wait when the surface
     /// asks for something. `None` when the terminal has a surface of that id.
-    pub fn commit(
-        &self,
-        terminal_id: &str,
-        id: &str,
-        tool: &str,
-        accepted: Accepted,
-    ) -> Option<(SurfaceRecord, Option<Wait>)> {
+    pub fn commit(&self, key: &SurfaceKey, tool: &str, accepted: Accepted) -> Option<(SurfaceRecord, Option<Wait>)> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
-        let terminal = inner.terminals.entry(terminal_id.to_string()).or_default();
-        if terminal.find(id).is_some() {
+        let terminal = inner.terminals.entry(key.terminal_id.clone()).or_default();
+        if terminal.find(&key.id).is_some() {
             return None;
         }
         let (phase, wait) = if accepted.asks {
             let (tx, rx) = oneshot::channel();
-            let wait = Wait { store: self.clone(), terminal_id: terminal_id.to_string(), id: id.to_string(), rx };
+            let wait = Wait { store: self.clone(), key: key.clone(), rx };
             (Phase::Asking { waiter: Some(tx) }, Some(wait))
         } else {
             (Phase::NotAsking, None)
         };
         let surface = Surface {
-            id: id.to_string(),
+            id: key.id.clone(),
             tool: tool.to_string(),
             state: accepted.state,
             revision: 1,
@@ -154,26 +161,20 @@ impl SurfaceStore {
             change,
             phase,
         };
-        let record = surface.record(terminal_id);
+        let record = surface.record(&key.terminal_id);
         terminal.surfaces.push(surface);
         Some((record, wait))
     }
 
     /// The operator's answer to `revision` of a surface. The first one returned through an open call
     /// settles it.
-    pub fn answer(
-        &self,
-        terminal_id: &str,
-        id: &str,
-        revision: u64,
-        answer: Value,
-    ) -> Result<SurfaceRecord, AnswerRefused> {
+    pub fn answer(&self, key: &SurfaceKey, revision: u64, answer: Value) -> Result<SurfaceRecord, AnswerRefused> {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let surface = inner
             .terminals
-            .get_mut(terminal_id)
-            .and_then(|terminal| terminal.find(id))
+            .get_mut(&key.terminal_id)
+            .and_then(|terminal| terminal.find(&key.id))
             .ok_or(AnswerRefused::NoSuchSurface)?;
         let waiter = match &mut surface.phase {
             Phase::NotAsking => return Err(AnswerRefused::NoSuchSurface),
@@ -188,7 +189,7 @@ impl SurfaceStore {
         waiter.send(answer.clone()).map_err(|_| AnswerRefused::CallEnded)?;
         surface.phase = Phase::Settled { answer };
         surface.change = change;
-        Ok(surface.record(terminal_id))
+        Ok(surface.record(&key.terminal_id))
     }
 
     /// Every surface, in no order.
@@ -202,9 +203,9 @@ impl SurfaceStore {
     }
 
     /// Ends the wait on a surface that is not settled. The surface stays up.
-    fn end_wait(&self, terminal_id: &str, id: &str) {
+    fn end_wait(&self, key: &SurfaceKey) {
         let mut inner = self.0.lock();
-        let surface = inner.terminals.get_mut(terminal_id).and_then(|terminal| terminal.find(id));
+        let surface = inner.terminals.get_mut(&key.terminal_id).and_then(|terminal| terminal.find(&key.id));
         if let Some(Phase::Asking { waiter }) = surface.map(|surface| &mut surface.phase) {
             *waiter = None;
         }
@@ -214,8 +215,7 @@ impl SurfaceStore {
 /// An open call's wait for its surface's answer. It holds no lock.
 pub struct Wait {
     store: SurfaceStore,
-    terminal_id: String,
-    id: String,
+    key: SurfaceKey,
     rx: oneshot::Receiver<Value>,
 }
 
@@ -225,7 +225,7 @@ impl Wait {
         match tokio::time::timeout(limit, &mut self.rx).await {
             Ok(answer) => answer.ok(),
             Err(_) => {
-                self.store.end_wait(&self.terminal_id, &self.id);
+                self.store.end_wait(&self.key);
                 // An answer that settled the surface as the wait ran out was sent under the lock
                 self.rx.try_recv().ok()
             }

@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use super::ask::{self, Ask};
 use super::check::{CheckRequest, Checks, Verdict};
 use super::rejection::QuayFailed;
-use super::store::{AnswerRefused, SurfaceRecord, SurfaceStore, Wait};
+use super::store::{AnswerRefused, SurfaceKey, SurfaceRecord, SurfaceStore, Wait};
 use super::timing::Timing;
 
 /// The window that checks and draws surfaces.
@@ -80,14 +80,14 @@ impl SurfaceTools {
     }
 
     async fn show_ask(&self, terminal_id: &str, ask: &Ask) -> Value {
-        let (id, wait) = {
+        let (key, wait) = {
             let queue = self.queue(terminal_id);
             let _one_at_a_time = queue.lock().await;
-            let id = self.0.store.name_ask(terminal_id);
-            match self.check_and_commit(terminal_id, &id, ask::TOOL, json!(ask)).await {
+            let key = self.0.store.name_ask(terminal_id);
+            match self.check_and_commit(&key, ask::TOOL, json!(ask)).await {
                 Ok((record, wait)) => {
                     self.show(&record);
-                    (id, wait)
+                    (key, wait)
                 }
                 Err(failed) => return failed.result(),
             }
@@ -97,7 +97,7 @@ impl SurfaceTools {
         };
         match wait.answer(self.0.timing.wait).await {
             Some(answer) => text_result(answer),
-            None => text_result(json!({ "surface_id": id, "state": "no_answer_yet", "next": "End your turn now." })),
+            None => text_result(json!({ "surface_id": key.id, "state": "no_answer_yet", "next": "End your turn now." })),
         }
     }
 
@@ -109,11 +109,11 @@ impl SurfaceTools {
     /// verdict that came too late.
     async fn check_and_commit(
         &self,
-        terminal_id: &str,
-        id: &str,
+        key: &SurfaceKey,
         tool: &str,
         arguments: Value,
     ) -> Result<(SurfaceRecord, Option<Wait>), QuayFailed> {
+        let SurfaceKey { terminal_id, id } = key;
         let send = |request: &CheckRequest| {
             // One sent before the window is named is handed over when it has loaded
             if let Some(webview) = self.0.webview.get() {
@@ -131,7 +131,7 @@ impl SurfaceTools {
             }
             Some(Verdict::Accepted(accepted)) => accepted,
         };
-        self.0.store.commit(terminal_id, id, tool, accepted).ok_or_else(|| {
+        self.0.store.commit(key, tool, accepted).ok_or_else(|| {
             tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
             QuayFailed::Expansion
         })
@@ -159,8 +159,8 @@ impl SurfaceTools {
     }
 
     /// The operator's answer, as the result its agent is to get.
-    pub fn answer(&self, terminal_id: &str, id: &str, revision: u64, answer: Value) -> Result<(), AnswerRefused> {
-        let record = self.0.store.answer(terminal_id, id, revision, answer)?;
+    pub fn answer(&self, key: &SurfaceKey, revision: u64, answer: Value) -> Result<(), AnswerRefused> {
+        let record = self.0.store.answer(key, revision, answer)?;
         self.show(&record);
         Ok(())
     }
@@ -170,7 +170,7 @@ fn text_result(body: Value) -> Value {
     json!({ "content": [{ "type": "text", "text": body.to_string() }] })
 }
 
-/// The surface tools, beside the seven of `mcp_tools.json`.
+/// The surface tools, listed after those of `mcp_tools.json`.
 const TOOL_LIST: &str = include_str!("surface_tools.json");
 
 /// `TOOL_LIST`, parsed once.

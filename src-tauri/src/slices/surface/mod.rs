@@ -18,5 +18,5 @@ mod test_seam;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
-pub use store::{AnswerRefused, SurfaceRecord};
+pub use store::{AnswerRefused, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
