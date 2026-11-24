@@ -4,7 +4,6 @@ import type { CreateSurface, SurfaceAction, SurfaceComponent } from "../surfaceT
 
 /** A checked `quay_ask` call. Mirrors `Ask`. */
 export interface AskArguments {
-  /** Markdown. */
   context?: string;
   questions: {
     question: string;

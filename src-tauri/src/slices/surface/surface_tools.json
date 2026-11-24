@@ -7,7 +7,7 @@
       "properties": {
         "context": {
           "type": "string",
-          "description": "Why you ask. Markdown, at most 600 characters."
+          "description": "Why you ask, in at most 600 characters."
         },
         "questions": {
           "type": "array",
@@ -24,7 +24,7 @@
                 "type": "array",
                 "minItems": 2,
                 "maxItems": 6,
-                "description": "Two to six options, of which the operator picks one. Left out, they answer in their own words.",
+                "description": "Two to six options. Left out, the operator answers in their own words.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -38,7 +38,7 @@
               },
               "multiple": {
                 "type": "boolean",
-                "description": "True if the operator may pick several options, or none."
+                "description": "True if the operator may pick several options, or send with none picked. Otherwise they pick one, or write instead."
               }
             },
             "required": ["question"],
