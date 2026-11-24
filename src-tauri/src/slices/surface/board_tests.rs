@@ -267,6 +267,21 @@ async fn the_settled_boards_past_ten_leave_and_count_as_deleted() {
 }
 
 #[tokio::test]
+async fn a_settled_board_that_is_sent_again_leaves_after_those_that_settled_before_that() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    let settled = |n: usize| json!({ "title": "One", "id": format!("run_{n}"), "status": "done" });
+    for n in 1..=10 {
+        show(&seam, &mut webview, &cli, settled(n)).await;
+    }
+    show(&seam, &mut webview, &cli, settled(1)).await;
+    assert!(webview.none_removed());
+    show(&seam, &mut webview, &cli, settled(11)).await;
+    assert_eq!(webview.next_removed().await, key("term-a", "run_2"));
+    assert!(webview.none_removed());
+}
+
+#[tokio::test]
 async fn an_exit_stops_a_running_board_and_leaves_a_settled_one_as_it_was() {
     let (seam, mut webview) = start(Timing::default()).await;
     let launch = seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Idle);
@@ -322,6 +337,19 @@ async fn a_hundred_calls_at_once_are_all_answered_and_the_last_one_taken_stays()
     let boards = seam.surfaces.surfaces();
     assert_eq!((boards.len(), boards[0].revision), (1, 100));
     assert_eq!(board_of(&boards[0])["title"], last.as_str());
+}
+
+#[tokio::test]
+async fn progress_past_its_total_or_below_none_is_shown_as_it_was_sent() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    for done in [json!(8), json!(-1)] {
+        let call = cli.call("quay_board", json!({ "title": "One", "progress": { "done": done, "total": 7 } }));
+        let check = webview.next_check().await;
+        assert_eq!(check.arguments["progress"], json!({ "done": done, "total": 7 }));
+        seam.surfaces.verdict(check.call, accepted(false));
+        assert_eq!(call.answer().await, json!({ "shown": true }));
+    }
 }
 
 /// The errors a call of these arguments is rejected with, each its path and message.
@@ -388,7 +416,7 @@ async fn a_call_over_a_limit_is_rejected_by_name_and_one_at_every_limit_is_shown
 async fn a_call_that_is_no_board_is_rejected_field_by_field() {
     let (seam, _webview) = start(Timing::default()).await;
     let cli = seam.cli("term-a");
-    let progress = "The progress is done and total, two numbers: total above 0, and done from 0 to total.";
+    let progress = "The progress is done and total, two numbers, total above 0.";
     let state = "A step state is one of pending, active, done, failed.";
     let of = |field: &str, value: Value| {
         let mut board = json!({ "title": "One" });
@@ -412,8 +440,6 @@ async fn a_call_that_is_no_board_is_rejected_field_by_field() {
         (of("progress", json!(3)), "/progress", "The progress is an object."),
         (of("progress", json!({ "done": 3 })), "/progress", progress),
         (of("progress", json!({ "done": "3", "total": 7 })), "/progress", progress),
-        (of("progress", json!({ "done": -1, "total": 7 })), "/progress", progress),
-        (of("progress", json!({ "done": 8, "total": 7 })), "/progress", progress),
         (of("progress", json!({ "done": 0, "total": 0 })), "/progress", progress),
     ];
     for (arguments, path, message) in cases {

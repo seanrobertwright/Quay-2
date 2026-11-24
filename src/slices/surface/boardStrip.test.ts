@@ -87,6 +87,13 @@ test("what is counted drives the bar, and stands for the steps where there are n
   assert.ok(!line(container, "neither")!.textContent!.includes(" of "));
 });
 
+test("more than all that is counted fills the bar, and less than none leaves it empty", async () => {
+  list = [board("past", { progress: { done: 9, total: 7 } }), board("below", { progress: { done: -1, total: 7 } })];
+  const container = await mount(page(strip()));
+  const drawn = (id: string) => [line(container, id)!.querySelector<HTMLElement>("[data-bar]")?.style.width, line(container, id)!.textContent!.match(/-?\d of \d/)?.[0]];
+  assert.deepEqual([drawn("past"), drawn("below")], [["100%", "7 of 7"], ["0%", "0 of 7"]]);
+});
+
 test("opened, a board drops over the terminal in its frame, with its steps, amount and stats, and folds again", async () => {
   list = [board("board", { steps: SEVEN, progress: { done: 1, total: 4 }, stats: [{ label: "passed", value: "186" }] }, { title: "Migrating" })];
   const container = await mount(page(strip()));

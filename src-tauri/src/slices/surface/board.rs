@@ -52,7 +52,7 @@ pub enum StepState {
     Failed,
 }
 
-/// Work that is counted. `total` is above 0, and `done` is from 0 to it.
+/// Work that is counted. `total` is above 0. `done` is as its agent sent it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Progress {
     pub done: Number,
@@ -130,13 +130,12 @@ impl Progress {
     fn read(args: &mut Arguments, value: &Value, path: &str) -> Option<Self> {
         let fields = args.object(value, path, "The progress", &["done", "total"])?;
         let number = |field| fields.get(field).and_then(Value::as_number);
-        let in_range = |done: f64, total: f64| total > 0.0 && (0.0..=total).contains(&done);
         match (number("done"), number("total")) {
-            (Some(done), Some(total)) if done.as_f64().zip(total.as_f64()).is_some_and(|(d, t)| in_range(d, t)) => {
+            (Some(done), Some(total)) if total.as_f64().is_some_and(|total| total > 0.0) => {
                 Some(Self { done: done.clone(), total: total.clone() })
             }
             _ => {
-                args.invalid(path, "The progress is done and total, two numbers: total above 0, and done from 0 to total.");
+                args.invalid(path, "The progress is done and total, two numbers, total above 0.");
                 None
             }
         }
