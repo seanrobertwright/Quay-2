@@ -142,6 +142,7 @@ mod windows {
 }
 
 /// A folder something is mounted on, and whether that is a disk of this computer.
+#[cfg(any(not(windows), test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Mount {
     pub point: String,
