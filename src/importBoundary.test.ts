@@ -20,6 +20,7 @@ const A2UI_PACKAGE = "Only the A2UI module (src/slices/surface/a2ui) may import 
 const CARD_TO_A2UI = "Quay's cards may not import the A2UI module: no agent content reaches a path that acts.";
 const A2UI_TO_CARD = "The A2UI module may not import the card shell: no agent surface may carry the Quay mark.";
 const PARTS_TO_A2UI = "The parts are under the A2UI module's components and Quay's cards, and may import neither.";
+const UNREADABLE = "An import names one module, as plain text, so that lint can hold it to the boundary between agent surfaces and Quay's cards.";
 
 test("only the A2UI module may import @a2ui", async () => {
   const source = 'import { A2uiSurface } from "@a2ui/react/v1_0";\nexport const surface = A2uiSurface;\n';
@@ -61,7 +62,7 @@ test("the parts import neither the A2UI module nor the cards", async () => {
   }
 });
 
-test("every way to import a module is held to the boundary", async () => {
+test("a static import, a re-export, import(), an import type, import = require() and require() are each held to the boundary", async () => {
   for (const source of [
     'import "@a2ui/web_core";\n',
     'import type { Surface } from "@a2ui/web_core";\nexport type Held = Surface;\n',
@@ -75,6 +76,23 @@ test("every way to import a module is held to the boundary", async () => {
   ]) {
     assert.deepEqual(await problems("src/slices/companion/ActivityView.tsx", source), [A2UI_PACKAGE], source);
   }
+});
+
+test("no code imports by a name or a pattern that lint can't hold to the boundary", async () => {
+  for (const path of ["src/slices/companion/ActivityView.tsx", "src/slices/cards/PermissionCard.tsx", "src/slices/parts/Button.tsx", "src/slices/surface/a2ui/engine.ts"]) {
+    for (const source of [
+      'export const modules = import.meta.glob("../surface/a2ui/*.ts");\n',
+      'export const modules = import.meta.glob(["../surface/**/*.ts", "!../cards/**"], { eager: true });\n',
+      'export const load = () => import("@a2ui/" + "web_core");\n',
+      "export const load = (name: string) => import(`@a2ui/${name}`);\n",
+      "export const load = (name: string) => import(name);\n",
+      "export const load = (name: string) => require(name);\n",
+    ]) {
+      const found = await problems(path, source);
+      assert.ok(found.includes(UNREADABLE), `${path}: ${source}`);
+    }
+  }
+  assert.deepEqual(await problems("src/slices/companion/Companion.tsx", 'export const here = import.meta.url;\nexport const load = () => import("./ActivityView.tsx");\n'), []);
 });
 
 test("other code may import the A2UI module and the cards, and text that names a module imports nothing", async () => {
