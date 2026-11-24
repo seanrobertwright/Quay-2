@@ -106,20 +106,23 @@ async fn take(line: Line, route: &Route, calls: &OpenCalls, out: &Out) {
             {
                 calls.cancel(&cancelled);
             }
-            if !calls.start(id.clone(), forward(quay.clone(), id.clone(), line.into(), out.clone())) {
+            // A CLI takes this code as the sign to start with `initialize` instead. Quay's own sign,
+            // a 400 with an empty body, has no form on stdio
+            let failed = if method == "server/discover" { rpc::METHOD_NOT_FOUND } else { rpc::RELAY_FAILED };
+            if !calls.start(id.clone(), forward(quay.clone(), id.clone(), failed, line.into(), out.clone())) {
                 refuse(rpc::RELAY_FAILED, TOO_MANY).await;
             }
         }
     }
 }
 
-/// Posts the message `line` to Quay, and writes the reply if it is request `id`. Whatever
-/// comes back for a notification is dropped.
-async fn forward(quay: Quay, id: Option<Id>, line: Bytes, out: Out) {
+/// Posts the message `line` to Quay. If it is request `id`, writes Quay's reply, or an error
+/// with the code `failed` when there is none. Whatever comes back for a notification is dropped.
+async fn forward(quay: Quay, id: Option<Id>, failed: i32, line: Bytes, out: Out) {
     let answer = quay.post(line).await;
     let Some(id) = id else { return };
     let reply = answer
         .and_then(|body| rpc::reply_line(&id, &body).ok_or_else(|| NO_REPLY.to_string()))
-        .unwrap_or_else(|why| rpc::error(Some(&id), rpc::RELAY_FAILED, &why));
+        .unwrap_or_else(|why| rpc::error(Some(&id), failed, &why));
     out.send(reply).await;
 }

@@ -109,22 +109,50 @@ fn a_token_that_could_split_the_request_is_refused_and_not_repeated() {
     assert!(quay.stays_unused());
 }
 
-/// A request the listener answers with `status`, `headers` and `body`, and the message of the
+/// A request for `method` that the listener answers with `status`, `headers` and `body`, and the
 /// error the CLI gets for it.
-fn error_for(status: &str, headers: &str, body: &str) -> String {
+fn error_of(method: &str, status: &str, headers: &str, body: &str) -> serde_json::Value {
     let quay = Listener::start();
     let mut relay = Relay::start(&quay.url(), TOKEN);
-    relay.send(r#"{"jsonrpc":"2.0","id":"x1","method":"tools/list"}"#);
-    quay.next().respond(status, headers, body);
+    let line = format!(r#"{{"jsonrpc":"2.0","id":"x1","method":"{method}"}}"#);
+    relay.send(&line);
+    let request = quay.next();
+    assert_eq!(request.body, line);
+    request.respond(status, headers, body);
     let reply = relay.next();
     assert_eq!(reply["jsonrpc"], "2.0");
     assert_eq!(reply["id"], "x1");
-    assert_eq!(reply["error"]["code"], -32000);
     assert!(quay.stays_unused());
     let (stdout, stderr) = relay.finish();
     assert!(stdout.is_empty(), "{stdout:?}");
     assert!(!stderr.contains(TOKEN), "{stderr}");
-    reply["error"]["message"].as_str().unwrap().to_string()
+    reply["error"].clone()
+}
+
+/// The message of the relay's own error for a `tools/list` answered so.
+fn error_for(status: &str, headers: &str, body: &str) -> String {
+    let error = error_of("tools/list", status, headers, body);
+    assert_eq!(error["code"], -32000);
+    error["message"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn a_probe_quay_has_no_reply_for_tells_the_cli_to_fall_back_to_the_handshake() {
+    let http_400 = "Quay's MCP server answered HTTP 400.";
+    let no_reply = "Quay's MCP server sent no reply to this request.";
+    for (status, body, message) in
+        [("400 Bad Request", "", http_400), ("400 Bad Request", "no", http_400), ("200 OK", "", no_reply), ("200 OK", "<html>", no_reply)]
+    {
+        assert_eq!(
+            error_of("server/discover", status, "", body),
+            json!({ "code": -32601, "message": message }),
+            "{status} {body}"
+        );
+    }
+    // Quay's own answer to it passes through, and the same 400 to another request is a failure
+    let own = r#"{"jsonrpc":"2.0","id":"x1","error":{"code":-32004,"message":"m"}}"#;
+    assert_eq!(error_of("server/discover", "200 OK", "", own)["code"], -32004);
+    assert_eq!(error_for("400 Bad Request", "", ""), http_400);
 }
 
 #[test]
