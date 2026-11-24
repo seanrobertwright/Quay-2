@@ -105,6 +105,7 @@ export interface ArchonChatMessage {
 }
 
 export interface ArchonPendingApproval {
+  /** The gate's own words, or empty when its request carried none. */
   prompt: string;
   node_id?: string | null;
   requested_ms?: number | null;

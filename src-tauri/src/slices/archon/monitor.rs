@@ -383,9 +383,7 @@ pub fn build_run_detail(
                 ));
             }
             "approval_requested" => {
-                let prompt = str_at(data, "message")
-                    .unwrap_or("Approval requested")
-                    .to_string();
+                let prompt = str_at(data, "message").unwrap_or_default().to_string();
                 pending = Some(ArchonPendingApproval {
                     prompt: prompt.clone(),
                     node_id: step.clone(),
@@ -394,7 +392,7 @@ pub fn build_run_detail(
                 logs.push(entry(
                     "approval",
                     "Approval requested".into(),
-                    Some(clip(&prompt, MAX_DETAIL_CHARS)),
+                    (!prompt.is_empty()).then(|| clip(&prompt, MAX_DETAIL_CHARS)),
                     Some("running"),
                     None,
                 ));
@@ -765,6 +763,17 @@ mod tests {
         ));
         let r = build_run_detail(&detail("running", answered, None), None, false);
         assert!(r.pending_approval.is_none());
+    }
+
+    #[test]
+    fn an_approval_request_without_a_message_has_an_empty_prompt() {
+        for data in [json!({}), json!({ "message": "" })] {
+            let asked = vec![ev(1, "approval_requested", Some("gate"), data)];
+            let r = build_run_detail(&detail("paused", asked, None), None, false);
+            assert_eq!(r.pending_approval.map(|p| p.prompt).as_deref(), Some(""));
+            assert_eq!(r.logs[0].label, "Approval requested");
+            assert_eq!(r.logs[0].detail, None);
+        }
     }
 
     #[test]
