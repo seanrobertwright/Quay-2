@@ -6,6 +6,7 @@ use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
+use super::handshake::Handshake;
 use super::models::{
     ClaudeStatus, PermissionMode, PersistedTerminalSession, RunKind, SpawnTerminalRequest,
     TerminalInfo, TerminalLink, TerminalOutputPayload, TerminalStatusPayload,
@@ -39,13 +40,15 @@ type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
 pub enum LaunchEvent {
     /// The terminal is listed, with this launch's process started in it.
     Listed(LaunchRef),
+    /// The launch's CLI has shaken hands with Quay's MCP server, for the first time.
+    ShookHands(LaunchRef),
     /// The launch is over: its process exited, or a later launch has begun.
     Over(LaunchRef),
     /// The terminal with this id closed.
     Closed(String),
 }
 
-/// What the launch watcher runs.
+/// What a launch watcher runs.
 type LaunchWatcher = Arc<dyn Fn(LaunchEvent) + Send + Sync>;
 
 /// A free loopback port for a launch's CLI to serve its events on, for a CLI that serves
@@ -300,7 +303,7 @@ pub struct PtyManager {
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     server_watcher: Arc<Mutex<Option<ServerWatcher>>>,
-    launch_watcher: Arc<Mutex<Option<LaunchWatcher>>>,
+    launch_watchers: Arc<Mutex<Vec<LaunchWatcher>>>,
     turn_watchers: Arc<Mutex<Vec<TurnWatcher>>>,
     input_watcher: Arc<Mutex<Option<InputWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
@@ -318,7 +321,7 @@ impl PtyManager {
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
             server_watcher: Arc::new(Mutex::new(None)),
-            launch_watcher: Arc::new(Mutex::new(None)),
+            launch_watchers: Arc::new(Mutex::new(Vec::new())),
             turn_watchers: Arc::new(Mutex::new(Vec::new())),
             input_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
@@ -671,7 +674,7 @@ impl PtyManager {
             info_map.remove(terminal_id).is_some()
         };
         self.dormant_buffers.lock().remove(terminal_id);
-        self.notify_launch_watcher(LaunchEvent::Closed(terminal_id.to_string()));
+        self.notify_launch_watchers(LaunchEvent::Closed(terminal_id.to_string()));
 
         // 4. Clean up disk files
         remove_saved_output(terminal_id);
@@ -724,16 +727,16 @@ impl PtyManager {
     }
 
     /// Runs `watcher` with what becomes of each terminal's launches, on the thread that did it and
-    /// with no lock of this manager held. So an event can come after a later one of its terminal:
-    /// `launch_running` says what holds now.
-    pub fn set_launch_watcher(&self, watcher: impl Fn(LaunchEvent) + Send + Sync + 'static) {
-        *self.launch_watcher.lock() = Some(Arc::new(watcher));
+    /// with no lock of this manager held, after the watchers added before it. So an event can come
+    /// after a later one of its terminal: `launch_running` says what holds now.
+    pub fn add_launch_watcher(&self, watcher: impl Fn(LaunchEvent) + Send + Sync + 'static) {
+        self.launch_watchers.lock().push(Arc::new(watcher));
     }
 
-    fn notify_launch_watcher(&self, event: LaunchEvent) {
-        let watcher = self.launch_watcher.lock().clone();
-        if let Some(watcher) = watcher {
-            watcher(event);
+    fn notify_launch_watchers(&self, event: LaunchEvent) {
+        let watchers = self.launch_watchers.lock().clone();
+        for watcher in watchers {
+            watcher(event.clone());
         }
     }
 
@@ -848,7 +851,7 @@ impl PtyManager {
         let before = self.plugin_watches.lock().insert(terminal_id.to_string(), watch);
         if let Some(before) = before {
             let over = LaunchRef { terminal_id: terminal_id.to_string(), launch: before.launch() };
-            self.notify_launch_watcher(LaunchEvent::Over(over));
+            self.notify_launch_watchers(LaunchEvent::Over(over));
         }
         launch
     }
@@ -919,7 +922,7 @@ impl PtyManager {
         }
         self.terminals_info.lock().insert(info.id.clone(), info.clone());
         drop(watches);
-        self.notify_launch_watcher(LaunchEvent::Listed(launch.clone()));
+        self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
         info
     }
 
@@ -958,7 +961,7 @@ impl PtyManager {
         info_map.insert(info.id.clone(), info.clone());
         drop(info_map);
         drop(watches);
-        self.notify_launch_watcher(LaunchEvent::Listed(launch.clone()));
+        self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
         Ok(info)
     }
 
@@ -1113,11 +1116,21 @@ impl PtyManager {
         self.plugin_watches.lock().get(terminal_id).is_some_and(PluginWatch::handshake_seen)
     }
 
+    /// How `terminal_id`'s current launch stands with Quay's MCP server at `now`, or `None` when it
+    /// has no launch or its process has exited.
+    pub fn handshake(&self, terminal_id: &str, now: Instant) -> Option<Handshake> {
+        self.plugin_watches.lock().get(terminal_id).and_then(|watch| watch.handshake(now))
+    }
+
     /// Records that `launch`'s CLI has shaken hands with Quay's MCP server, while `launch` is still
-    /// current and its process has not exited.
+    /// current and its process has not exited. The first time, it tells the launch watchers.
     pub fn record_handshake(&self, launch: &LaunchRef) {
-        if let Some(watch) = launch.current_in(&mut self.plugin_watches.lock()) {
-            watch.shake_hands();
+        let first = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches).is_some_and(PluginWatch::shake_hands)
+        };
+        if first {
+            self.notify_launch_watchers(LaunchEvent::ShookHands(launch.clone()));
         }
     }
 
@@ -1162,7 +1175,7 @@ impl PtyManager {
 
     /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
     /// `launch` is still current, clears its handshake with Quay's MCP server, and tells the launch
-    /// watcher, and the status watcher, so held messages fail rather than wait. An earlier launch that
+    /// watchers, and the status watcher, so held messages fail rather than wait. An earlier launch that
     /// a relaunch ended, or a closed terminal, changes nothing. Returns whether the terminal moved.
     pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
         {
@@ -1178,7 +1191,7 @@ impl PtyManager {
             info.claude_status = ClaudeStatus::Exited;
             info.exit_code = exit_code;
         }
-        self.notify_launch_watcher(LaunchEvent::Over(launch.clone()));
+        self.notify_launch_watchers(LaunchEvent::Over(launch.clone()));
         self.save_sessions_to_disk();
         self.notify_status_watcher(&launch.terminal_id);
         true
@@ -2437,13 +2450,13 @@ mod tests {
     }
 
     #[test]
-    fn the_launch_watcher_hears_each_launch_listed_and_over_and_the_close() {
+    fn a_launch_watcher_hears_each_launch_listed_and_over_and_the_close() {
         let manager = PtyManager::new();
         let first = launched(&manager, "term-launches", RunKind::Codex);
         let info = manager.get_info("term-launches").unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = seen.clone();
-        manager.set_launch_watcher(move |event| log.lock().push(event));
+        manager.add_launch_watcher(move |event| log.lock().push(event));
 
         assert!(!manager.exit_launch(&LaunchRef { launch: 0, ..first.clone() }, None));
         let second = manager.begin_launch("term-launches", RunKind::Codex);

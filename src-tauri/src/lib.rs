@@ -58,6 +58,7 @@ use slices::praxis::host::{
     praxis_host_graph_submit, praxis_host_graph_withdraw, praxis_host_graphs_list, praxis_host_run, praxis_host_runs, praxis_host_status, praxis_host_template_preview, praxis_host_terminal_argv, praxis_host_trigger_check, praxis_host_trigger_disable, praxis_host_trigger_fires, praxis_host_trigger_retire, praxis_host_trigger_revision, praxis_host_trigger_revisions, praxis_host_trigger_show, praxis_host_trigger_submit, praxis_host_trigger_withdraw, praxis_host_triggers_list, praxis_host_event_sources_list, praxis_host_workflow_show, praxis_host_workflows_list,
     PraxisCli,
 };
+use slices::pty::handshake::{report_handshakes, terminal_handshake};
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,
@@ -148,6 +149,9 @@ pub fn run() {
             a2a_router_updates
                 .set_trail_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
+            // Tell the window of each terminal's handshake with the MCP server (#733)
+            report_handshakes(&pty_manager_clone, webview::WebviewEvents::to_app(app_handle.clone()));
+
             // Forward Machina changes as events and connect it to the terminals; this
             // also starts queued work orders that are ready.
             let machina_events = app_handle.clone();
@@ -212,6 +216,7 @@ pub fn run() {
             save_terminal_screens,
             dismiss_plugin_hint,
             get_pig_tested_version,
+            terminal_handshake,
             list_projects,
             add_project,
             remove_project,
