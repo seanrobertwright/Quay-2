@@ -50,7 +50,7 @@ export const RunView = ({ source, now, onChanged, onOpenLens, onOpenInBrowser }:
       {row.decision === null ? (
         <p className="text-[#8b949e]">Nothing waits on you.</p>
       ) : (
-        <RunDecisionCard source={source} decision={row.decision} busy={busy} act={act} onOpenLens={onOpenLens} onOpenInBrowser={onOpenInBrowser} />
+        <RunDecisionCard decision={row.decision} busy={busy} act={act} onOpenLens={onOpenLens} onOpenInBrowser={onOpenInBrowser} />
       )}
       {problem && (
         <p role="alert" className="text-[#ff7b72] break-words">
