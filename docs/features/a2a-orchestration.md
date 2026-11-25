@@ -8,7 +8,7 @@ The A2A bus lets the agents in Quay's terminals message each other. Quay's bridg
 
 A **peer** is an agent terminal on the bus. Every peer can be sent a message. What it can do back depends on its level:
 
-| Level | Sends messages (`quay_*` tools) | Answers a sender who waits | Shows Working and Idle | CLIs |
+| Level | Sends messages | Answers a sender who waits | Shows Working and Idle | CLIs |
 | :--- | :--- | :--- | :--- | :--- |
 | **full peer** | Yes | Yes | Yes | Claude Code, Codex, OpenCode, PiG |
 | **responder** | No | Yes | Yes | Antigravity |
@@ -23,7 +23,7 @@ How each full peer gets the tools:
 - **OpenCode** gets the server through `OPENCODE_CONFIG_CONTENT`, and Quay reads its turns from the server its TUI runs.
 - **PiG** loads Quay's PiG extension, `quay-pig-bridge.exe`, which ships beside Quay. The extension registers the server for that session and reports each turn's start and end, with its answer. A PiG terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from the extension in the 30 seconds after its first output. Once the extension reports, it is a full peer again.
 
-Antigravity, the responder, has no `quay_*` tools, so it never starts a conversation. Quay reads its status and its answers from the OSC 7501 sequences it prints. See [Antigravity on the A2A bus](./agent-support.md#antigravity-on-the-a2a-bus). The [CLI flags reference](../reference/cli-flags.md) lists each CLI's launch wiring.
+Antigravity, the responder, has none of the messaging tools, so it never starts a conversation. Once you [connect it](../guide/surfaces.md#connect-antigravity), it has the [surface tools](#the-surface-tools). Quay reads its status and its answers from the OSC 7501 sequences it prints. See [Antigravity on the A2A bus](./agent-support.md#antigravity-on-the-a2a-bus). The [CLI flags reference](../reference/cli-flags.md) lists each CLI's launch wiring.
 
 ---
 
@@ -99,7 +99,7 @@ A peer's message arrives in its target's terminal as `[Peer agent (<sender>)]: <
 
 ## The MCP Tools
 
-Quay's MCP server, `quay-a2a`, serves the tools below to every full peer, at the `QUAY_MCP_URL` each peer terminal gets. Each call must carry the terminal's bearer token; a call without a live terminal's token is rejected, and the tools below are refused to a terminal of any CLI that is not a full peer. `pnpm docs:build` checks this reference against the server's tool list, so a tool or parameter that is added, renamed or removed fails the docs build until this page matches.
+Quay's MCP server, `quay-a2a`, serves the tools below and the [surface tools](#the-surface-tools), at the `QUAY_MCP_URL` each peer terminal gets. Each call must carry the terminal's bearer token; a call without a live terminal's token is rejected. A full peer has every tool. A terminal of any other CLI has the surface tools only: it isn't listed the tools below, and is refused them. `pnpm docs:build` checks this reference against the server's tool lists, so a tool or parameter that is added, renamed or removed fails the docs build until this page matches.
 
 ### `quay_list_agents`
 
@@ -206,6 +206,95 @@ Submits the work on a work order to the gate. The gate commits the worktree, che
 - **Parameters**:
   - `work_order_id` (string, required): The work order's id, such as `WO-3`.
 - **Response**: text saying the gate attempt started, or that the work order is on hold and why.
+
+---
+
+## The Surface Tools
+
+With these an agent shows you a [surface](../guide/surfaces.md) and gets your answer. `quay_ask`, `quay_review` and a `quay_surface` call whose surface has a button for the agent wait up to 100 seconds for it. A call that gets none in that time returns `no_answer_yet`, and the answer is typed into the terminal when it comes.
+
+`a[].b` below is field `b` of each entry of the list `a`, and `a.b` is field `b` of the object `a`. Such a field is **required** when its entry or object needs it. The server's own schema, which the agent is given, states the limits of the fields. A call that is over one is rejected, never cut short.
+
+### `quay_ask`
+
+Asks you one to four questions in the companion's Surface view.
+
+- **Parameters**:
+  - `context` (string, optional): Why the agent asks, in Markdown.
+  - `questions` (array of objects, required): The questions, in order.
+  - `questions[].question` (string, required): The question, in plain text.
+  - `questions[].options` (array of objects, optional): What you may pick. Without it, you answer in your own words.
+  - `questions[].options[].label` (string, required): What the option reads. Two options of one question can't share a label.
+  - `questions[].options[].description` (string, optional): A line under the label.
+  - `questions[].options[].recommended` (boolean, optional): Marks the option as the agent's pick, on one option of a question at most. It picks nothing.
+  - `questions[].multiple` (boolean, optional): With `true`, you may pick several options, or none.
+- **Response**: `{"answers": [{"question", "chosen", "text"}]}`, one entry for each question, in order. `chosen` is a list of labels. `text` is left out when you wrote nothing.
+
+### `quay_review`
+
+Shows you a text in a stage tab, to decide on.
+
+- **Parameters**:
+  - `title` (string, required): The tab's label, in plain text.
+  - `body` (string, required): The text, in Markdown.
+  - `items` (array of objects, optional): What you keep or drop one by one. All start kept.
+  - `items[].title` (string, required): What the item reads. Two items can't share a title.
+  - `items[].detail` (string, optional): More on it, in plain text.
+  - `items[].file` (string, optional): A path to show, which may end in `:line`.
+- **Response**: `{"title", "verdict", "dropped", "comment"}`. `verdict` is `approved`, `changes_requested` or `rejected`. `dropped` is the list of the titles you dropped. `comment` is left out when you wrote none.
+
+### `quay_board`
+
+Shows you how a run stands, as a line on the terminal's pane. Each call replaces the whole board.
+
+- **Parameters**:
+  - `title` (string, required): What is running, in plain text.
+  - `steps` (array of objects, optional): The steps, in order.
+  - `steps[].label` (string, required): What the step is.
+  - `steps[].state` (string, required): `pending`, `active`, `done` or `failed`.
+  - `steps[].note` (string, optional): More on it.
+  - `progress` (object, optional): What is counted. It fills the bar in place of the steps.
+  - `progress.done` (number, required): How much is done.
+  - `progress.total` (number, required): Of how much, more than 0.
+  - `stats` (array of objects, optional): Figures to show.
+  - `stats[].label` (string, required): What the figure is.
+  - `stats[].value` (string, required): The figure.
+  - `status` (string, optional, default: `running`): `running`, `done` or `failed`. The last two stop the clock, and `running` after that starts it afresh.
+  - `id` (string, optional, default: `board`): Which of the terminal's boards. The same id keeps its board and clock.
+- **Response**: `{"shown": true}` at once, or `{"dismissed": true}` once you have dismissed that board, until the terminal exits.
+
+### `quay_surface`
+
+Shows you what the other tools can't: a [raw surface](../guide/surfaces.md#a-raw-surface).
+
+- **Parameters**:
+  - `messages` (array of objects, required): A2UI 1.0 messages that create, update or delete surfaces. A call creates one surface at most. A delete takes back a surface of any of these tools.
+  - `place` (string, optional): `companion`, `tab` or `strip`. A call that creates a surface needs it, and it stays the surface's place.
+  - `title` (string, optional): The surface's title, in plain text. A call that creates a surface needs it, and it stays the surface's title.
+- **Response**: the A2UI `action` message of the button you pressed; `{"shown": true}` at once when no button of the surface has an action for the agent; or `{"deleted": true}` for a call that only deletes.
+
+### `quay_surface_guide`
+
+Returns how to write a `quay_surface` call: the rules, every component and function of Quay's catalog, and examples.
+
+- **Parameters**: none.
+- **Response**: the guide as text.
+
+### `quay_surface_read`
+
+Reads where one of the terminal's own surfaces stands, for an answer the agent didn't get.
+
+- **Parameters**:
+  - `surface_id` (string, required): The surface's id, such as `ask_1`.
+- **Response**: `{"surface_id", "state", "result"}`. `state` is `shown`, `no_answer_yet`, `answered`, `dismissed`, `withdrawn` or `ended`. `result` is there only when it is `answered`.
+
+### What Else a Surface Tool Returns
+
+- **No answer yet**: `{"surface_id", "state": "no_answer_yet", "next"}`, where `next` tells the agent to end its turn.
+- **Taken back, or the terminal exited, during the wait**: `{"surface_id", "state"}`, with `withdrawn` or `ended`.
+- **Dismissed**: `{"dismissed": true}`.
+- **Rejected**: an error result, `{"errors": [{"code", "surfaceId", "path", "message"}], "next"}`, where `path` points into the call and `surfaceId` is left out of an error that is about no surface. Nothing of the call was done. From the third rejection in a row of one tool, `next` tells the agent to stop guessing.
+- **Quay couldn't show it**: an error result in words, which says that the call wasn't at fault.
 
 ---
 

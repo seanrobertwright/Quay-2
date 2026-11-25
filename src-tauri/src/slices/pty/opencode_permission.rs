@@ -27,9 +27,6 @@ pub struct Surroundings<'a> {
 /// Configuration that can't be read might deny any of them, so then there are none, and the log says
 /// why. An organization's configuration that OpenCode fetches is not looked at.
 pub fn not_denied(tools: &'static [&'static str], at: &Surroundings) -> Vec<&'static str> {
-    if tools.is_empty() {
-        return Vec::new();
-    }
     let configs = match operators_configs(at) {
         Ok(configs) => configs,
         Err(e) => {

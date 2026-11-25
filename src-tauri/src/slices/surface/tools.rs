@@ -533,7 +533,8 @@ fn dismissed_result() -> Value {
     text_result(json!({ "dismissed": true }))
 }
 
-/// The surface tools, listed after those of `mcp_tools.json`.
+/// The surface tools, listed after those of `mcp_tools.json`. `pnpm docs:build` checks the A2A page's
+/// tool reference against this file too.
 const TOOL_LIST: &str = include_str!("surface_tools.json");
 
 /// `TOOL_LIST`, parsed once.

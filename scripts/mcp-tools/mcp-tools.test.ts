@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { REFERENCE_PAGE, TOOL_LIST, parseToolList, parseToolReference, referenceProblems } from './mcp-tools.ts';
+import { REFERENCE_PAGE, TOOL_LISTS, parseToolList, parseToolReference, referenceProblems } from './mcp-tools.ts';
 
 const toolList = JSON.stringify([
   {
@@ -55,6 +55,53 @@ test('the tool list gives each tool its parameters, with type and whether it is 
       ],
     },
     { name: 'list', parameters: [] },
+  ]);
+});
+
+test('what an object or a list of them holds is named by its path, and a list of words is a string', () => {
+  const nested = JSON.stringify([
+    {
+      name: 'ask',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          questions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                text: { type: 'string' },
+                options: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' } } } },
+              },
+              required: ['text'],
+            },
+          },
+          progress: { type: 'object', properties: { done: { type: 'number' } }, required: ['done'] },
+          messages: { type: 'array', items: { type: 'object' } },
+          place: { enum: ['companion', 'tab'] },
+        },
+        required: ['questions'],
+      },
+    },
+  ]);
+  const tools = parseToolList(nested);
+  assert.deepEqual(tools[0].parameters, [
+    { name: 'questions', type: 'array of objects', required: true },
+    { name: 'questions[].text', type: 'string', required: true },
+    { name: 'questions[].options', type: 'array of objects', required: false },
+    { name: 'questions[].options[].label', type: 'string', required: false },
+    { name: 'progress', type: 'object', required: false },
+    { name: 'progress.done', type: 'number', required: true },
+    { name: 'messages', type: 'array of objects', required: false },
+    { name: 'place', type: 'string', required: false },
+  ]);
+
+  const lines = tools[0].parameters.map(({ name, type, required }) => `  - \`${name}\` (${type}, ${required ? 'required' : 'optional'}): Said.`);
+  const reference = ['### `ask`', '', '- **Parameters**:', ...lines].join('\n');
+  assert.deepEqual(referenceProblems(tools, parseToolReference(reference)), []);
+  assert.deepEqual(referenceProblems(tools, parseToolReference(reference.replace('questions[].text', 'questions[].question'))), [
+    '`ask`: parameter `questions[].text` is missing from the reference',
+    "`ask`: parameter `questions[].question` is not in the tool's schema",
   ]);
 });
 
@@ -151,7 +198,9 @@ test('a second Parameters line in one section is a problem', () => {
 });
 
 test('the A2A page documents every tool Quay\'s MCP server lists, parameter for parameter', async () => {
-  const tools = parseToolList(await readFile(TOOL_LIST, 'utf8'));
+  const lists = await Promise.all(TOOL_LISTS.map((file) => readFile(file, 'utf8')));
+  const tools = lists.flatMap(parseToolList);
+  assert.ok(['quay_list_agents', 'quay_ask'].every((name) => tools.some((tool) => tool.name === name)), 'both lists');
   const reference = parseToolReference(await readFile(REFERENCE_PAGE, 'utf8'));
   assert.deepEqual(referenceProblems(tools, reference), []);
 });

@@ -1,7 +1,7 @@
 // Fails when the A2A page's tool reference disagrees with the tools Quay's MCP server lists.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { REFERENCE_PAGE, TOOL_LIST, parseToolList, parseToolReference, referenceProblems } from './mcp-tools.ts';
+import { REFERENCE_PAGE, TOOL_LISTS, parseToolList, parseToolReference, referenceProblems } from './mcp-tools.ts';
 
 if (process.argv.length > 2) {
   console.error(`Unknown argument: ${process.argv.slice(2).join(' ')}. Usage: node scripts/mcp-tools/check.ts`);
@@ -18,13 +18,13 @@ async function load<T>(file: URL, read: (text: string) => T): Promise<T> {
   }
 }
 
-const tools = await load(TOOL_LIST, parseToolList);
+const tools = (await Promise.all(TOOL_LISTS.map((list) => load(list, parseToolList)))).flat();
 const reference = await load(REFERENCE_PAGE, parseToolReference);
 const problems = referenceProblems(tools, reference);
 
 if (problems.length > 0) {
   console.error(
-    `The tool reference in ${fileURLToPath(REFERENCE_PAGE)} disagrees with ${fileURLToPath(TOOL_LIST)}:\n` +
+    `The tool reference in ${fileURLToPath(REFERENCE_PAGE)} disagrees with ${TOOL_LISTS.map((list) => fileURLToPath(list)).join(' and ')}:\n` +
       problems.map((problem) => `  ${problem}`).join('\n'),
   );
   process.exit(1);
