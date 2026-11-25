@@ -182,7 +182,7 @@ test("a row has a chip for each live surface, an icon and a word, and a click op
   assert.equal(selected, 0);
 });
 
-test("past three the rest fold into one chip, which opens the oldest of them", async () => {
+test("past three, where all ask, the rest fold into one chip, which opens the oldest of them", async () => {
   const container = await mountMarks();
   for (const id of ["a", "b", "c"]) await arrives(surface(id));
   assert.deepEqual(chips(container).map((chip) => chip.textContent), ["Question", "Question", "Question"]);
@@ -191,6 +191,86 @@ test("past three the rest fold into one chip, which opens the oldest of them", a
   assert.equal(chips(container)[3].getAttribute("aria-label"), "+2 more surfaces from fix-75");
   await act(async () => chips(container)[3].click());
   assert.deepEqual(openedSurfaces, [{ terminal_id: "t1", id: "d" }]);
+});
+
+test("past three, those that ask have chips before older ones that ask nothing, which fold", async () => {
+  const container = await mountMarks();
+  for (const id of ["a", "b", "c"]) await arrives(surface(id, { tool: "quay_board", asks: false }));
+  await arrives(surface("d"));
+  await arrives(surface("e", { tool: "quay_review" }));
+  assert.deepEqual(names(chips(container)), [
+    ["Question", "Question, surface 1 of 5 from fix-75, waiting on you"],
+    ["Review", "Review, surface 2 of 5 from fix-75, waiting on you"],
+    ["Board", "Board, surface 3 of 5 from fix-75"],
+    ["+2", "+2 more surfaces from fix-75"],
+  ]);
+  assert.deepEqual(chips(container).map((chip) => chip.querySelector("[data-waiting-dot]") !== null), [true, true, false, false]);
+
+  for (const chip of chips(container)) await act(async () => chip.click());
+  assert.deepEqual(openedSurfaces.map(({ id }) => id), ["d", "e", "a", "b"]);
+  assert.equal(selected, 0);
+});
+
+test("where more than three ask, the fold opens the oldest of those in it, before an older one that asks nothing", async () => {
+  const container = await mountMarks();
+  await arrives(surface("a", { tool: "quay_board", asks: false }));
+  for (const id of ["b", "c", "d", "e", "f"]) await arrives(surface(id));
+  assert.deepEqual(chips(container).map((chip) => chip.textContent), ["Question", "Question", "Question", "+3"]);
+  for (const chip of chips(container)) await act(async () => chip.click());
+  assert.deepEqual(openedSurfaces.map(({ id }) => id), ["b", "c", "d", "e"]);
+});
+
+test("where nothing folds, chips are oldest first, one that asks among them", async () => {
+  const container = await mountMarks();
+  await arrives(surface("a", { tool: "quay_board", asks: false }));
+  await arrives(surface("b"));
+  await arrives(surface("c", { tool: "quay_surface", asks: false }));
+  assert.deepEqual(names(chips(container)), [
+    ["Board", "Board, surface 1 of 3 from fix-75"],
+    ["Question", "Question, surface 2 of 3 from fix-75, waiting on you"],
+    ["Surface", "Surface, surface 3 of 3 from fix-75"],
+  ]);
+});
+
+test("past three, where none asks, chips are oldest first, also once the one that asked is answered", async () => {
+  const container = await mountMarks();
+  await arrives(surface("a", { tool: "quay_board", asks: false }));
+  const ask = surface("b");
+  await arrives(ask);
+  await arrives(surface("c", { tool: "quay_surface", asks: false }));
+  await arrives(surface("d", { tool: "quay_review", asks: false }));
+  await arrives(surface("e", { tool: "quay_board", asks: false }));
+  await answered(ask);
+  assert.deepEqual(chips(container).map((chip) => chip.textContent), ["Board", "Surface", "Review", "+1"]);
+  await act(async () => chips(container)[3].click());
+  assert.deepEqual(openedSurfaces, [{ terminal_id: "t1", id: "e" }]);
+});
+
+test("a chip that folds with the focus hands it to the fold chip", async () => {
+  const container = await mountMarks();
+  for (const id of ["a", "b", "c"]) await arrives(surface(id, { tool: "quay_board", asks: false }));
+  await act(async () => chips(container)[2].focus());
+  await arrives(surface("d"));
+  assert.deepEqual(chips(container).map((chip) => chip.textContent), ["Question", "Board", "Board", "+1"]);
+  assert.equal(document.activeElement?.getAttribute("aria-label"), "+1 more surface from fix-75");
+});
+
+test("a chip whose surface settles with the focus hands it to the last chip", async () => {
+  const container = await mountMarks();
+  const ask = surface("a");
+  await arrives(ask);
+  for (const id of ["b", "c", "d"]) await arrives(surface(id, { tool: "quay_board", asks: false }));
+  await act(async () => chips(container)[0].focus());
+  await answered(ask);
+  assert.equal(document.activeElement?.getAttribute("aria-label"), "Board, surface 3 of 3 from fix-75");
+});
+
+test("a chip that keeps a place past three keeps the focus", async () => {
+  const container = await mountMarks();
+  for (const id of ["b", "c", "d"]) await arrives(surface(id, { tool: "quay_board", asks: false }));
+  await act(async () => chips(container)[0].focus());
+  await arrives(surface("e"));
+  assert.equal(document.activeElement?.getAttribute("aria-label"), "Board, surface 2 of 4 from fix-75");
 });
 
 test("a question puts an amber dot on the row's CLI icon and keeps the status text; a surface that asks nothing puts none", async () => {
