@@ -18,8 +18,8 @@ pub async fn a2a_send_prompt(
 }
 
 /// Shows `msg` in the trail and, when it has just been typed into its target, raises its
-/// toast. A queued message raises its toast later, when it is typed in. The router runs
-/// it for every trail change (see `A2ARouter::set_trail_listener`).
+/// toast, unless it answers a surface. A queued message raises its toast later, when it is
+/// typed in. The router runs it for every trail change (see `A2ARouter::set_trail_listener`).
 pub fn emit_message(webview: &WebviewEvents, msg: &A2AMessage) {
     webview.emit("a2a-message-updated", msg);
     if msg.status == A2AMessageStatus::Dispatched {

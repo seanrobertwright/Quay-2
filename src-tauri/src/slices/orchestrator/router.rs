@@ -508,8 +508,8 @@ impl A2ARouter {
         self.deliver(message, text, pty_manager)
     }
 
-    /// `dispatch` to `launch`'s terminal, for that launch alone: no later one gets the message, held or
-    /// not. `launch_over` is to be told when it is over.
+    /// `dispatch` of the operator's answer to a surface of `launch`'s terminal, for that launch alone: no
+    /// later one gets it, held or not. `launch_over` is to be told when it is over.
     pub fn dispatch_to_launch(
         &self,
         request: A2ADispatchRequest,
@@ -517,7 +517,8 @@ impl A2ARouter {
         pty_manager: &PtyManager,
     ) -> Result<A2AMessage, String> {
         let (target_id, target) = checked_target(&request, Some(pty_manager))?;
-        let (message, text) = self.prepare(request, target_id, target, Some(pty_manager));
+        let (mut message, text) = self.prepare(request, target_id, target, Some(pty_manager));
+        message.surface_answer = true;
         let sent = self.deliver_to(message, text, Some(launch.clone()), Some(pty_manager))?;
         // One that was over before the message was held was told of too early to fail it
         if !pty_manager.launch_running(&launch) {
@@ -642,6 +643,7 @@ impl A2ARouter {
             content: request.prompt,
             as_user,
             broadcast: false,
+            surface_answer: false,
             waited: false,
             timestamp: now,
             delivered_at: None,
@@ -918,6 +920,7 @@ impl A2ARouter {
                 content: text.to_string(),
                 as_user: false,
                 broadcast: true,
+                surface_answer: false,
                 waited: false,
                 timestamp: now,
                 delivered_at: None,

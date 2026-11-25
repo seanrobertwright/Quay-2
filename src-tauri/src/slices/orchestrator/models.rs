@@ -32,6 +32,10 @@ pub struct A2AMessage {
     /// Whether this is one peer's notice from a broadcast, rather than a message sent to it.
     #[serde(default)]
     pub broadcast: bool,
+    /// Whether this is the operator's answer to an agent's surface, typed in because no call waited
+    /// for it. The operator has just given it, so it raises no toast.
+    #[serde(default)]
+    pub surface_answer: bool,
     /// Whether someone waited on this message's reply, so the trail labels the peer's
     /// response a Reply rather than an Answer: a `wait_for_reply` send, or Mission Control's
     /// dispatch, which the operator waits on in the trail. A wait on a peer that can't reply,
