@@ -660,6 +660,7 @@ mod tests {
             content: "FREEZE".to_string(),
             as_user: false,
             broadcast: true,
+            surface_answer: false,
             waited: false,
             timestamp: 0,
             delivered_at: None,

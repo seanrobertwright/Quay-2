@@ -218,6 +218,6 @@ the Quay mark and is never a surface.
 _Avoid_: modal, dialog, surface
 
 **Quay mark**:
-The accent edge and glow and the QUAY badge on a Quay card. In a lens the badge stands alone. No agent
-surface can have it.
+The accent edge and glow and the QUAY badge on a Quay card. In a lens the badge stands alone. Quay never
+draws it on an agent surface, which can only show a picture of it inside its frame.
 _Avoid_: brand, highlight

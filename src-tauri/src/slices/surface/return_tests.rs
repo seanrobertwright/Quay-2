@@ -390,6 +390,7 @@ async fn of_two_answers_at_once_exactly_one_settles_the_question() {
     let settled = answer_at_once(&seam);
     assert_eq!(seam.surfaces.surfaces()[0].answer, Some(settled.clone()));
     assert_eq!(seam.typed("term-a"), format!("[Quay surface \"{BASE}\" (ask_1)]: {settled}\r"), "typed once");
+    assert_eq!(seam.surface_answers(), [true], "the trail knows it for an answer, which raises no toast");
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useCallback } from "react";
+import { type FC, useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   ArrowRight,
@@ -8,9 +8,9 @@ import {
   ExternalLink,
   Megaphone,
 } from "lucide-react";
-import { TerminalInfo } from "../terminal/types";
-import { AgentIcon } from "../terminal/AgentIcons";
-import type { TrailStatus } from "./trailEntry";
+import type { TerminalInfo } from "../terminal/types.ts";
+import { AgentIcon } from "../terminal/AgentIcons.tsx";
+import type { TrailStatus } from "./trailEntry.ts";
 
 export interface A2ADispatchPayload {
   id: string;
@@ -21,6 +21,7 @@ export interface A2ADispatchPayload {
   content: string;
   as_user?: boolean;
   broadcast?: boolean;
+  surface_answer?: boolean;
   timestamp: number;
   status: TrailStatus;
   response?: string | null;
@@ -74,6 +75,8 @@ export const A2AToast: FC<A2AToastProps> = ({ terminals, onSelectTerminal }) => 
         const payload = event.payload;
         // Broadcasts are handled by the dedicated "a2a-toast" listener below
         if (payload.broadcast) return;
+        // The operator has just given it, and the toast would cover the next question
+        if (payload.surface_answer) return;
 
         const fromInfo = resolveTerminalInfo(payload.from_name || payload.from_terminal);
         const toInfo = resolveTerminalInfo(payload.to_name || payload.to_terminal);

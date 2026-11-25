@@ -192,6 +192,11 @@ impl Seam {
         self.a2a_router.get_messages().iter().filter(|message| failed(message)).count()
     }
 
+    /// Whether each message of the trail, newest first, is an operator's answer to a surface.
+    pub fn surface_answers(&self) -> Vec<bool> {
+        self.a2a_router.get_messages().iter().map(|message| message.surface_answer).collect()
+    }
+
     /// Everything typed into `terminal_id` so far.
     pub fn typed(&self, terminal_id: &str) -> String {
         self.pty_manager.test_input(terminal_id).concat()

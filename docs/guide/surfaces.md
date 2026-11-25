@@ -82,9 +82,9 @@ Quay draws a **frame** around every surface. What the agent wrote is clipped to 
 
 Quay asks for decisions too, on its own cards: a permission request in the Activity view, and each decision in the Run view. These are **Quay cards**, never surfaces, and they carry the **Quay mark**: an edge and glow in your accent colour, and a **QUAY** badge in the card's title line. In a lens, the badge stands alone.
 
-No agent surface can have the mark. Quay's lint keeps the module that holds Quay's catalog, whose components draw a surface's content, from importing the code that draws cards, and nothing in the catalog draws the mark. An agent can write the word QUAY, as it can write any other text, but it stays inside a frame that names the agent's terminal. Keyboard focus also rings a control in the accent colour, in a surface as anywhere else in Quay, so look for the badge.
+Quay never draws the mark on an agent surface. Quay's lint keeps the module that holds Quay's catalog, whose components draw a surface's content, from importing the code that draws cards, and nothing in the catalog draws the mark. An agent can write the word QUAY, as it can write any other text, and it can show a picture of a Quay card, with the mark in the picture. Both stay inside a frame that names the agent's terminal. Keyboard focus also rings a control in the accent colour, in a surface as anywhere else in Quay. So look for the badge, and for where it is: **what is inside a frame is the agent's.** A button there only sends your answer to that agent or does what [its click may do](#what-a-surface-may-do). It can't approve a permission request.
 
-**What the mark proves.** Quay drew the card, and no agent surface looks like it.
+**What the mark proves.** On a card outside any frame, that Quay drew the card.
 
 **What it doesn't prove.** That the CLI itself raised the permission request. The processes in a terminal hold that terminal's token, so an agent can post a request in its own terminal's name. The answer goes back to whoever posted it, so the agent gains no approval, with one exception: **Allow for session** then covers that tool for that terminal. A request in another terminal's name is refused.
 
