@@ -4,6 +4,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use super::check::{CheckRequest, Verdict};
+use super::daily_record::{Fired, FiredFunction};
 use super::store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};
 use super::tools::{SurfaceTools, Webview};
 use super::typing::NotTyped;
@@ -133,6 +134,22 @@ pub async fn surface_move(
         };
         why.to_string()
     })
+}
+
+/// Records that the operator's click fired a function of a surface, such as opening a link in it. `target` has
+/// nothing in it that the operator typed, and `target_typed` is whether what it fired at has.
+#[tauri::command]
+pub async fn surface_function_fired(
+    terminal_id: String,
+    id: String,
+    function: FiredFunction,
+    target: Option<String>,
+    target_typed: bool,
+    surfaces: State<'_, SurfaceTools>,
+) -> Result<(), String> {
+    let fired = Fired::of(function, target.as_deref(), target_typed);
+    surfaces.function_fired(&SurfaceKey::new(terminal_id, id), fired);
+    Ok(())
 }
 
 fn refusal(refused: AnswerRefused) -> &'static str {

@@ -99,7 +99,7 @@ for (const inline of [false, true]) {
       const container = document.createElement("div");
       const root = createRoot(container);
       const started = performance.now();
-      await act(async () => root.render(createElement(SurfaceLinksProvider, { terminalId: "t1", children: draw(text, inline) })));
+      await act(async () => root.render(createElement(SurfaceLinksProvider, { terminalId: "t1", id: "ask_1", children: draw(text, inline) })));
       const ms = performance.now() - started;
       if (ms > slowest.ms) slowest = { name, ms };
       const depth = depthOf(container);

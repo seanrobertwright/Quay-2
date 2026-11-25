@@ -8,6 +8,11 @@ use super::store::{Standing, SurfaceKey, SurfaceStore};
 
 pub const TOOL: &str = "quay_surface_read";
 
+/// The id that a call with these `arguments` asks for, if they have one.
+pub fn named(arguments: &Value) -> Option<&str> {
+    arguments["surface_id"].as_str().filter(|id| !id.is_empty())
+}
+
 /// What `terminal_id`'s call asks for.
 pub fn read(store: &SurfaceStore, terminal_id: &str, arguments: &Value) -> Result<Value, Rejection> {
     let id = surface_id(arguments)?;

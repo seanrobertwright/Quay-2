@@ -14,8 +14,10 @@ use super::board_run::BoardRun;
 use super::calls::{Handed, OpenCalls};
 use super::carried::Carried;
 use super::check::Accepted;
+use super::daily_record::{About, DailyRecord, Event, Fired, Given, Refusal};
 use super::past_limit::{within_limits, PastLimit};
 use super::place::{Place, MOST_LIVE};
+use super::rejection::Rejection;
 use super::typed_line::typed_line;
 use super::typing::NotTyped;
 use super::unsent::{Page, Unsent, UnsentRefused, UnsentSave};
@@ -380,6 +382,16 @@ impl Surface {
         })
     }
 
+    /// That `answer` answered it, as the surface record has it.
+    fn answered(&self, answer: &Value) -> Event {
+        Event::Answered(Given::of(&self.tool, &self.arguments, answer))
+    }
+
+    /// It, as the surface record names it, for a call of `tool` or what became of it.
+    fn about(&self, terminal_id: &str, tool: &str) -> About {
+        About::surface(terminal_id, &self.id, tool, &self.title, self.place)
+    }
+
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
         let (mut answer, mut answered_at, mut ended_at, mut withdrawn_at) = (None, None, None, None);
         match &self.phase {
@@ -433,6 +445,20 @@ impl Left {
     }
 }
 
+/// Where what becomes of a terminal's surfaces is handed over to the surface record.
+#[derive(Default)]
+struct Recorder {
+    terminal_id: String,
+    daily_record: DailyRecord,
+}
+
+impl Recorder {
+    /// Says that `event` has become of `surface`, which is the terminal's.
+    fn happened(&self, surface: &Surface, event: Event) {
+        self.daily_record.happened(surface.about(&self.terminal_id, &surface.tool), event);
+    }
+}
+
 /// A terminal that has been listed and not closed: its surfaces, in the order they were committed,
 /// where those that have left stand, the ids the operator dismissed, how many of its surfaces Quay has
 /// named, its rejected calls, and its calls that have not returned.
@@ -452,6 +478,7 @@ struct Terminal {
     /// The ids of the surfaces of its launch that the operator dismissed. Each took a click of theirs.
     dismissed: HashSet<String>,
     calls: OpenCalls,
+    recorder: Recorder,
 }
 
 impl Terminal {
@@ -492,6 +519,7 @@ impl Terminal {
                 return left;
             };
             let surface = self.surfaces.remove(first);
+            self.recorder.happened(&surface, Event::Deleted);
             left.push(SurfaceKey::new(terminal_id, &surface.id));
             self.left.add(surface.id, surface.phase.standing());
         }
@@ -501,6 +529,7 @@ impl Terminal {
     /// unless it was an earlier launch's.
     fn remove_dismissed(&mut self, at: usize) {
         let surface = self.surfaces.remove(at);
+        self.recorder.happened(&surface, Event::Dismissed);
         if !surface.launch_over {
             self.dismissed.insert(surface.id.clone());
         }
@@ -526,6 +555,7 @@ impl Terminal {
             surface.launch_over = true;
             if !surface.is_locked() {
                 surface.end(next_change());
+                self.recorder.happened(surface, Event::Ended);
                 ended.push(surface.record(terminal_id));
             }
         }
@@ -539,6 +569,8 @@ struct Inner {
     last_call: u64,
     last_page: u64,
     terminals: HashMap<String, Terminal>,
+    /// What becomes of the surfaces is handed over to it under the lock, so it has it in order.
+    daily_record: DailyRecord,
 }
 
 impl Inner {
@@ -563,11 +595,20 @@ impl Inner {
 pub struct SurfaceStore(Arc<Mutex<Inner>>);
 
 impl SurfaceStore {
+    /// A store that hands what becomes of its surfaces to `daily_record`.
+    pub fn recorded(daily_record: DailyRecord) -> Self {
+        Self(Arc::new(Mutex::new(Inner { daily_record, ..Inner::default() })))
+    }
+
     /// Says that `terminal_id` is listed with its launch `launch` running, from which on its calls are
     /// taken. An earlier launch than the terminal's latest changes nothing.
     pub fn launched(&self, terminal_id: &str, launch: u64) {
         let mut inner = self.0.lock();
-        let terminal = inner.terminals.entry(terminal_id.to_string()).or_default();
+        let Inner { terminals, daily_record, .. } = &mut *inner;
+        let terminal = terminals.entry(terminal_id.to_string()).or_insert_with(|| {
+            let recorder = Recorder { terminal_id: terminal_id.to_string(), daily_record: daily_record.clone() };
+            Terminal { recorder, ..Terminal::default() }
+        });
         if launch > terminal.launch {
             terminal.launch = launch;
             terminal.running = true;
@@ -591,7 +632,13 @@ impl SurfaceStore {
 
     /// Forgets `terminal_id`, which has closed, with all it had. Returns its surfaces.
     pub fn close(&self, terminal_id: &str) -> Vec<SurfaceKey> {
-        let closed = self.0.lock().terminals.remove(terminal_id).unwrap_or_default();
+        let mut inner = self.0.lock();
+        let closed = inner.terminals.remove(terminal_id).unwrap_or_default();
+        for surface in closed.surfaces.iter().filter(|surface| !surface.is_locked()) {
+            closed.recorder.happened(surface, Event::Ended);
+        }
+        inner.daily_record.closed(terminal_id);
+        drop(inner);
         closed.surfaces.into_iter().map(|surface| SurfaceKey::new(terminal_id, surface.id)).collect()
     }
 
@@ -669,16 +716,36 @@ impl SurfaceStore {
         Some(SurfaceKey::new(terminal_id, &surface.id))
     }
 
-    /// Counts a rejected call of `tool`, and says how many of the terminal's are now in a row. A call
-    /// that is accepted ends the row, and so does an exit. Nothing is counted while no launch runs.
-    pub fn rejected(&self, terminal_id: &str, tool: &str) -> u32 {
+    /// Counts and records a call of `tool` that `rejection` rejects, and says how many of the terminal's are
+    /// now in a row. A call that is accepted ends the row, and so does an exit. Nothing is counted while no
+    /// launch runs. `id` is the surface the call is about, when that is known.
+    pub fn rejected(&self, terminal_id: &str, tool: &str, id: Option<&str>, rejection: &Rejection) -> u32 {
         let mut inner = self.0.lock();
-        let Some(terminal) = inner.terminals.get_mut(terminal_id).filter(|terminal| terminal.running) else {
-            return 1;
+        let Inner { terminals, daily_record, .. } = &mut *inner;
+        let mut terminal = terminals.get_mut(terminal_id);
+        let there = id.and_then(|id| terminal.as_mut()?.find(id));
+        let about = match there {
+            Some(surface) => surface.about(terminal_id, tool),
+            None => About::call(terminal_id, tool, id),
         };
-        let run = terminal.rejected.entry(tool.to_string()).or_default();
-        *run = run.saturating_add(1);
-        *run
+        let run = terminal.filter(|terminal| terminal.running).map_or(1, |terminal| {
+            let run = terminal.rejected.entry(tool.to_string()).or_default();
+            *run = run.saturating_add(1);
+            *run
+        });
+        daily_record.happened(about, Event::Rejected(Refusal::of(rejection, run)));
+        run
+    }
+
+    /// Records what the operator's click fired in the surface `key`, if its terminal has it.
+    pub fn fired(&self, key: &SurfaceKey, fired: Fired) {
+        let mut inner = self.0.lock();
+        let Some(Terminal { surfaces, recorder, .. }) = inner.terminals.get_mut(&key.terminal_id) else {
+            return;
+        };
+        if let Some(surface) = surfaces.iter().find(|surface| surface.id == key.id) {
+            recorder.happened(surface, Event::Fired(fired));
+        }
     }
 
     /// Ends `tool`'s row of rejected calls, for a call that is accepted and shows nothing.
@@ -714,6 +781,7 @@ impl SurfaceStore {
         terminal.has_room(creation.place)?;
         let surface = Surface::created(&key.id, Content { creation, accepted, change });
         let record = surface.record(&key.terminal_id);
+        terminal.recorder.happened(&surface, Event::Shown);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
         Ok(record)
@@ -758,11 +826,16 @@ impl SurfaceStore {
         }
         let record = surface.record(&key.terminal_id);
         match (at, same.is_some()) {
-            (Some(at), true) => terminal.surfaces[at] = surface,
+            (Some(at), true) => {
+                terminal.recorder.happened(&surface, Event::Updated);
+                terminal.surfaces[at] = surface;
+            }
             (at, _) => {
                 if let Some(at) = at {
-                    terminal.surfaces.remove(at);
+                    let there = terminal.surfaces.remove(at);
+                    terminal.recorder.happened(&there, Event::Deleted);
                 }
+                terminal.recorder.happened(&surface, Event::Shown);
                 terminal.surfaces.push(surface);
             }
         }
@@ -776,7 +849,7 @@ impl SurfaceStore {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.get_mut(&key.terminal_id).ok_or(AnswerRefused::NoSuchSurface)?;
-        let Terminal { surfaces, calls, launch, .. } = terminal;
+        let Terminal { surfaces, calls, launch, recorder, .. } = terminal;
         let surface = surfaces.iter_mut().find(|surface| surface.id == key.id).ok_or(AnswerRefused::NoSuchSurface)?;
         let waiters = match &surface.phase {
             Phase::NotAsking => return Err(AnswerRefused::NoSuchSurface),
@@ -790,6 +863,7 @@ impl SurfaceStore {
         }
         let line = typed_line(&surface.title, &surface.id, &answer);
         if calls.hand(waiters, &answer, &line) {
+            recorder.happened(surface, surface.answered(&answer));
             surface.settle(answer, change);
             let record = surface.record(&key.terminal_id);
             let left = terminal.drop_past_most_locked(&key.terminal_id);
@@ -844,11 +918,13 @@ impl SurfaceStore {
         let mut inner = self.0.lock();
         let change = inner.next_change();
         let terminal = inner.terminals.get_mut(&key.terminal_id)?;
-        let surface = terminal.find(&key.id)?;
+        let Terminal { surfaces, recorder, .. } = &mut *terminal;
+        let surface = surfaces.iter_mut().find(|surface| surface.id == key.id)?;
         let Phase::Typing { answer } = &mut surface.phase else {
             return None;
         };
         let answer = answer.take();
+        recorder.happened(surface, surface.answered(&answer));
         surface.settle(answer, change);
         let record = surface.record(&key.terminal_id);
         Some(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id) })

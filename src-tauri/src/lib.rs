@@ -68,8 +68,8 @@ use slices::redirection_guard::{
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::surface::{
-    surface_answer, surface_checks, surface_dismiss, surface_dismiss_locked, surface_image, surface_list,
-    surface_move, surface_open_page, surface_save_unsent, surface_show_file, surface_verdict, AppWebview, SurfaceTools,
+    surface_answer, surface_checks, surface_dismiss, surface_dismiss_locked, surface_function_fired, surface_image,
+    surface_list, surface_move, surface_open_page, surface_save_unsent, surface_show_file, surface_verdict, AppWebview, SurfaceTools,
 };
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
@@ -91,6 +91,7 @@ pub fn run() {
     let machina_manager = MachinaManager::new();
     let surfaces = SurfaceTools::new();
     slices::orchestrator::connect_surfaces(&surfaces, &pty_manager, &a2a_router);
+    surfaces.keep_record(slices::surface::record_folder(), std::sync::Arc::new(dates::now_ms));
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();
@@ -100,6 +101,7 @@ pub fn run() {
     let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
     let surfaces_clone = surfaces.clone();
+    let exiting_surfaces = surfaces.clone();
 
     // A terminal whose status moved off the bridge's event route (it left Starting, went
     // Unknown, its OSC 7501 output moved it, or it closed) may stop holding its messages: type
@@ -341,6 +343,7 @@ pub fn run() {
             surface_checks,
             surface_dismiss,
             surface_dismiss_locked,
+            surface_function_fired,
             surface_image,
             surface_list,
             surface_move,
@@ -439,6 +442,7 @@ pub fn run() {
             // Terminals still running when Quay closes come back showing their last screen
             if let tauri::RunEvent::Exit = event {
                 exiting_terminals.save_all_screens();
+                exiting_surfaces.finish_record();
                 // A pref changed in the last 500 ms is written now rather than lost.
                 if let Err(e) = topos_settings.flush() {
                     tracing::warn!("{}", e);

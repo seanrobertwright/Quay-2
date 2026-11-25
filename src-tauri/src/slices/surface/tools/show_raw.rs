@@ -104,7 +104,7 @@ impl SurfaceTools {
             Some(Verdict::Surfaces { surfaces }) => surfaces,
         };
         if !rejection.is_empty() {
-            return Err(self.reject(terminal_id, TOOL, &rejection));
+            return Err(self.reject(terminal_id, TOOL, call.names().first().copied(), &rejection));
         }
         self.commit_raw(terminal_id, creation, call, surfaces)
     }
@@ -124,7 +124,7 @@ impl SurfaceTools {
         });
         let changes: Vec<_> = changes.collect();
         let changed = self.0.store.commit_raw(terminal_id, creation, changes).map_err(|refused| {
-            let reject = |error: CallError| self.reject(terminal_id, TOOL, &Rejection::of(error));
+            let reject = |error: CallError| self.reject(terminal_id, TOOL, None, &Rejection::of(error));
             match refused {
                 RawRefused::TerminalOver => QuayFailed::TerminalOver.result(),
                 RawRefused::Dismissed => dismissed_result(),

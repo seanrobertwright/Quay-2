@@ -1,6 +1,7 @@
 //! Quay's error log (#496). A packaged Windows app has no console, so everything the app
 //! says through `tracing` goes to a daily rolling file under `<Quay data folder>\logs`, and a
-//! panic is written to a separate `crash.log` before the process aborts.
+//! panic is written to a separate `crash.log` before the process aborts. The surface record, which the
+//! surface slice writes, has a folder of its own beside the logs.
 //!
 //! The panic hook writes `crash.log` itself, on the panicking thread, and does not go through
 //! the non-blocking `tracing` queue: the release profile sets `panic = "abort"`, and an abort

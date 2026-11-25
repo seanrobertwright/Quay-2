@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
@@ -7,6 +7,7 @@ import type { CreateSurface, SentAction, SurfaceRecord } from "../surfaceTypes.t
 import { followUnsent, unsentIn } from "../unsent.ts";
 import { actionMessage } from "./actionMessage.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
+import { UntypedContext, untypedIn, type Untyped } from "./untyped.ts";
 
 type OnAction = (action: SentAction) => Promise<void>;
 
@@ -92,12 +93,15 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
   }, [live, onAction]);
   const [images] = useState(() => surfaceImages(record));
   useEffect(() => followUnsent(record, live.data), [record, live]);
+  const untyped = useCallback<Untyped>((at, written) => untypedIn(live.record.state, live.data.get("/"), at, written), [live]);
   const { components } = record.state.createSurface;
   const value = useMemo(() => (layout ? { Layout: layout, components, data: live.data } : null), [layout, components, live]);
   return (
     <LayoutContext.Provider value={value}>
       <ImagesContext.Provider value={images}>
-        <A2uiSurface key={live.from} surface={live.surface} />
+        <UntypedContext.Provider value={untyped}>
+          <A2uiSurface key={live.from} surface={live.surface} />
+        </UntypedContext.Provider>
       </ImagesContext.Provider>
     </LayoutContext.Provider>
   );

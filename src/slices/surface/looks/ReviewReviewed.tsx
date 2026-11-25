@@ -5,7 +5,7 @@ import type { SurfaceComponent } from "../surfaceTypes.ts";
 import { bodyIn, COMMENT, COMMENT_LABEL, COMMENT_PART, commentOf, itemsIn } from "../typed/review.ts";
 import type { TypedText } from "./typedText.ts";
 
-const Markdown = lazy(async () => ({ default: (await loadA2ui()).Markdown }));
+const WrittenMarkdown = lazy(async () => ({ default: (await loadA2ui()).WrittenMarkdown }));
 
 /** The comment typed in a review, of what is unsent in it. */
 export function reviewTypedIn(_components: readonly SurfaceComponent[], unsent: DataValues): TypedText[] {
@@ -20,7 +20,7 @@ export const ReviewReviewed = ({ components }: { components: readonly SurfaceCom
     <div className="flex min-w-0 flex-col gap-4 wrap-anywhere">
       <div className="flex max-w-[72ch] min-w-0 flex-col gap-2 text-[13px] leading-[21px] whitespace-pre-wrap">
         <Suspense fallback={<p className="text-[#8b949e]">Loading…</p>}>
-          <Markdown text={bodyIn(components)} inline={false} />
+          <WrittenMarkdown text={bodyIn(components)} />
         </Suspense>
       </div>
       {items.length > 0 && (

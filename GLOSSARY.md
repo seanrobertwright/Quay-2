@@ -199,6 +199,11 @@ companion are in, and the menu on the stage tab bar that the active project's lo
 tabs are in once their tabs are left.
 _Avoid_: history, archive
 
+**Surface record**:
+The daily file of what was shown, answered and fired in agent surfaces, without its content. It is in
+the `surfaces` folder beside the logs.
+_Avoid_: surface log, history, audit trail
+
 **Relay**:
 The stdio program that connects a CLI with only static configuration to Quay's MCP server.
 _Avoid_: proxy, bridge (the event bridge is another thing)

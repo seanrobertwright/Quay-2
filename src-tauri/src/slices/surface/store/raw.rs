@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use super::super::calls::OpenCalls;
 use super::super::carried::{Carried, DataPath};
 use super::super::check::Accepted;
+use super::super::daily_record::Event;
 use super::super::past_limit::{within_limits, PastLimit};
 use super::super::place::{Place, MOST_LIVE};
 use super::super::raw::TOOL;
@@ -136,6 +137,11 @@ impl Surface {
         Some(WaitOver::of(&self.id, waiters, "shown"))
     }
 
+    /// What its agent's delete of it is in the surface record.
+    fn event_of_delete(&self) -> Event {
+        if matches!(self.phase, Phase::Asking { .. }) { Event::Withdrawn } else { Event::Deleted }
+    }
+
     /// Leaves of what is unsent what its latest revision keeps.
     fn carry_unsent(&mut self) {
         let Some(mut unsent) = self.unsent.take() else {
@@ -205,6 +211,7 @@ impl Terminal {
     fn delete(&mut self, id: &str, change: u64) -> Option<Deleted> {
         let at = self.surfaces.iter().position(|surface| surface.id == id)?;
         let surface = &mut self.surfaces[at];
+        self.recorder.happened(surface, surface.event_of_delete());
         if let Phase::Asking { waiters } = &mut surface.phase {
             let waiters = std::mem::take(waiters);
             surface.phase = Phase::Withdrawn { at: now_ms() };
@@ -219,8 +226,11 @@ impl Terminal {
     /// Changes its surface `id` to what a call that sets the data paths `sets` made of it. Returns the waits
     /// that are over by it.
     fn update(&mut self, id: &str, content: Content, sets: &[DataPath]) -> Option<WaitOver> {
-        let Terminal { surfaces, calls, .. } = self;
-        surfaces.iter_mut().find(|surface| surface.id == id)?.update(content, sets, calls)
+        let Terminal { surfaces, calls, recorder, .. } = self;
+        let surface = surfaces.iter_mut().find(|surface| surface.id == id)?;
+        let over = surface.update(content, sets, calls);
+        recorder.happened(surface, Event::Updated);
+        over
     }
 
     /// Puts in what a call creates as its surface `id`, in place of the one of that id. Returns the waits
@@ -228,10 +238,13 @@ impl Terminal {
     fn create(&mut self, id: &str, content: Content) -> Option<WaitOver> {
         let mut surface = Surface::created(id, content);
         let Some(at) = self.surfaces.iter().position(|there| there.id == id) else {
+            self.recorder.happened(&surface, Event::Shown);
             self.surfaces.push(surface);
             return None;
         };
         let there = self.surfaces.remove(at);
+        self.recorder.happened(&there, there.event_of_delete());
+        self.recorder.happened(&surface, Event::Shown);
         // An answer the operator gives to what it replaces is one to an older revision
         surface.revision = there.revision + 1;
         surface.carried = Carried::new(surface.revision);

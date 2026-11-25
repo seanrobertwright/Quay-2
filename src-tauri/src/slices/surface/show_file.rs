@@ -8,6 +8,7 @@ use tauri::State;
 
 use super::disk::ThisComputer;
 use super::local_path::{named, resolve, Named, Refused, STYLE};
+use super::plain_line::plain_line;
 use crate::slices::git::file_change::{file_change, ChangeSide, FileChange};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::workspace::WorkspaceManager;
@@ -53,12 +54,12 @@ pub fn show_file(
     }
     match reveal(path) {
         Ok(()) => Ok(Shown::Revealed),
-        Err(error) => Err(format!("Not opened: the file manager could not show {} ({error}).", quoted(&written))),
+        Err(error) => Err(format!("Not opened: the file manager could not show {} ({error}).", plain_line(&written, MOST_QUOTED))),
     }
 }
 
 fn refusal(refused: Refused, written: &str) -> String {
-    let path = quoted(written);
+    let path = plain_line(written, MOST_QUOTED);
     match refused {
         Refused::NotAPath if path.is_empty() => "Not opened: the link names no file.".to_string(),
         Refused::NotAPath => format!("Not opened: {path} is not a path Quay can open."),
@@ -66,17 +67,6 @@ fn refusal(refused: Refused, written: &str) -> String {
         Refused::Missing => format!("Not opened: there is no {path}."),
         Refused::Unreadable => format!("Not opened: Quay could not read where {path} leads."),
     }
-}
-
-/// `written`, cut where it is long, with a space for each character that has no look of its own or
-/// turns the text around it.
-fn quoted(written: &str) -> String {
-    let unseen = |c: char| c.is_control() || matches!(c, '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{feff}');
-    let mut shown: String = written.chars().take(MOST_QUOTED).map(|c| if unseen(c) { ' ' } else { c }).collect();
-    if written.chars().nth(MOST_QUOTED).is_some() {
-        shown.push('…');
-    }
-    shown.trim().to_string()
 }
 
 /// Shows a file an agent of `terminal_id` named, at the operator's click on it.

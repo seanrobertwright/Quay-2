@@ -21,6 +21,9 @@ beforeEach(async () => {
   // What loading the page called
   calls.length = 0;
 });
+/** What was called but to record that a function fired, which `fired.test.ts` covers. */
+const caused = () => calls.filter(({ cmd }) => cmd !== "surface_function_fired");
+
 /** Takes what is drawn off the page. */
 async function undraw(): Promise<void> {
   if (!mounted) return;
@@ -208,7 +211,7 @@ test("a web link shows its real host beside it and its full address at the frame
   await act(async () => first.click());
   await act(async () => third.click());
   assert.deepEqual(called(OPEN_URL).map(({ url }) => url), ["https://google.com@evil.example/a?b=c#d", "https://c.example/"]);
-  assert.equal(calls.length, 2);
+  assert.equal(caused().length, 2);
 });
 
 test("the address shown is the one opened, in the letters the network uses", async () => {
@@ -330,7 +333,7 @@ test("a Markdown link to a local path shows the file on a click, in the surface'
     await act(async () => link.click());
     await point(link, "mouseout");
   }
-  assert.deepEqual(calls.map(({ cmd, args }) => [cmd, args]), paths.map((path) => [SHOW_FILE, { terminalId: "t1", path, line: null }]));
+  assert.deepEqual(caused().map(({ cmd, args }) => [cmd, args]), paths.map((path) => [SHOW_FILE, { terminalId: "t1", path, line: null }]));
   assert.equal(notice(), null);
 });
 
@@ -396,7 +399,7 @@ test("a path that is not opened says so at the frame's foot, until the next clic
 
 test("a slower answer to an earlier click does not replace what a later one said", async () => {
   const answers: ((why: string) => void)[] = [];
-  fakeInvoke(() => new Promise((_, reject) => answers.push(reject)));
+  fakeInvoke((cmd) => (cmd === SHOW_FILE ? new Promise((_, reject) => answers.push(reject)) : Promise.resolve(null)));
   const content = await drawText("[a](a.ts) [b](b.ts)");
   for (const link of links(content)) await act(async () => link.click());
   await act(async () => answers[1]("Not opened: there is no b.ts."));
@@ -427,7 +430,7 @@ test("a Button's own action opens an address or shows a file on the click, and o
   assert.deepEqual(called(OPEN_URL).map(({ url }) => url), ["https://a.example/x"]);
   assert.deepEqual(called(SHOW_FILE), [{ terminalId: "t1", path: "src/a.ts", line: 3 }]);
   await act(async () => button(container, "Bad").click());
-  assert.equal(calls.length, 2, "an address of another kind opens nothing");
+  assert.equal(caused().length, 2, "an address of another kind opens nothing");
 });
 
 test("an effect runs nowhere but in a click on its own control, whatever calls it", async () => {
@@ -475,7 +478,7 @@ test("an effect runs nowhere but in a click on its own control, whatever calls i
 test("an effect called after its click, or with no click, throws", async () => {
   const { duringClick, spendClick } = await import("./clickOnly.ts");
   const { surfaceEffects } = await import("./surfaceEffects.ts");
-  const effects = surfaceEffects("t1", () => {});
+  const effects = surfaceEffects({ terminal_id: "t1", id: "ask_1" }, () => {});
   const refused = /runs only on the operator's click/;
 
   assert.throws(() => effects.openUrl("https://a.example"), refused);

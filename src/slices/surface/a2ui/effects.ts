@@ -43,14 +43,25 @@ const refused = <Api extends Parameters<typeof createFunctionImplementation>[0]>
 
 export const EFFECTS = Object.values(APIS).map((api) => refused(api));
 
+/** What each is at, of a call's arguments once they are evaluated. A text that is copied is no target. */
+const TARGETS = {
+  openUrl: ({ url }) => textOf(url),
+  showFile: (args) => namedFile(args).path,
+  focusTerminal: ({ terminal }) => textOf(terminal),
+  copyText: () => null,
+} as const satisfies Record<Effect, (args: JsonObject) => string | null>;
+
+/** What `effect` is at, of `args`, which are evaluated, or null when it has no target. */
+export const targetOf = (effect: Effect, args: JsonObject): string | null => TARGETS[effect](args);
+
 /** What each causes, of a call's arguments once they are evaluated. */
 const CAUSES: Record<Effect, (args: JsonObject, effects: SurfaceEffects) => void> = {
-  openUrl: ({ url }, effects) => effects.openUrl(textOf(url)),
+  openUrl: (args, effects) => effects.openUrl(TARGETS.openUrl(args)),
   showFile: (args, effects) => {
     const { path, line } = namedFile(args);
     effects.showFile(path, line);
   },
-  focusTerminal: ({ terminal }, effects) => effects.focusTerminal(textOf(terminal)),
+  focusTerminal: (args, effects) => effects.focusTerminal(TARGETS.focusTerminal(args)),
   copyText: ({ text }, effects) => effects.copyText(textOf(text)),
 };
 

@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use super::check::Verdict;
 use super::place::Place;
+use super::rejection::Rejection;
 use super::store::{CommitRefused, Creation, OpenedCall, SurfaceKey, SurfaceRecord, SurfaceStore};
 use super::test_seam::{accepted, answer_to, key, question, start, FakeCli, FakeWebview, Seam};
 use super::timing::Timing;
@@ -176,6 +177,11 @@ fn store() -> SurfaceStore {
     store
 }
 
+/// Has a call of `quay_ask` rejected. Returns how many of `terminal_id`'s now are in a row.
+fn rejected(store: &SurfaceStore, terminal_id: &str) -> u32 {
+    store.rejected(terminal_id, "quay_ask", None, &Rejection::default())
+}
+
 /// A new call of `term` that creates the surface `id`.
 fn create(store: &SurfaceStore, id: &str) -> Result<SurfaceRecord, CommitRefused> {
     let call = store.open_call("term", &json!(1)).unwrap().number;
@@ -199,10 +205,10 @@ fn a_later_message_for_a_dismissed_id_finds_it_dismissed_until_the_terminal_exit
         assert!(create(&store, id).is_ok());
         assert!(store.dismiss(&SurfaceKey::new("term", id)).is_ok());
     }
-    store.rejected("term", "quay_ask");
-    store.rejected("term", "quay_ask");
+    rejected(&store, "term");
+    rejected(&store, "term");
     assert_eq!(create(&store, "plan").err(), Some(CommitRefused::Dismissed));
-    assert_eq!(store.rejected("term", "quay_ask"), 1, "it was accepted, which ends the row");
+    assert_eq!(rejected(&store, "term"), 1, "it was accepted, which ends the row");
     assert!(store.list().is_empty());
     assert_eq!(store.name("term", "ask").unwrap().id, "ask_2", "no ask is given a dismissed id");
     store.launched("other", 1);
@@ -227,8 +233,8 @@ async fn a_later_message_for_a_dismissed_id_is_told_so_and_is_not_checked() {
     seam.asked(&mut webview, "term-a", "One?").await;
     seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
     let store = seam.surfaces.store();
-    store.rejected("term-a", "quay_ask");
-    store.rejected("term-a", "quay_ask");
+    rejected(store, "term-a");
+    rejected(store, "term-a");
 
     // `_rx` keeps its wait open
     let OpenedCall { number: call, rx: _rx, .. } = store.open_call("term-a", &json!(2)).unwrap();
@@ -242,7 +248,7 @@ async fn a_later_message_for_a_dismissed_id_is_told_so_and_is_not_checked() {
     let told = json!({ "content": [{ "type": "text", "text": r#"{"dismissed":true}"# }] });
     assert_eq!(reply, Err(told));
     assert!(webview.no_check().await);
-    assert_eq!(store.rejected("term-a", "quay_ask"), 1, "it was accepted, which ends the row");
+    assert_eq!(rejected(store, "term-a"), 1, "it was accepted, which ends the row");
 }
 
 #[test]

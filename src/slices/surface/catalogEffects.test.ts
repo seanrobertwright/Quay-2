@@ -133,7 +133,7 @@ test("a clipboard that cannot be written says so", async () => {
 test("one click allows one effect, and its own only", async () => {
   const { duringClick } = await import("./clickOnly.ts");
   const { surfaceEffects } = await import("./surfaceEffects.ts");
-  const effects = surfaceEffects("t1", () => {});
+  const effects = surfaceEffects({ terminal_id: "t1", id: "plan" }, () => {});
   const refused = /runs only on the operator's click/;
   assert.throws(() => effects.copyText("x"), refused);
   assert.throws(() => effects.focusTerminal("x"), refused);

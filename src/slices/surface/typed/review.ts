@@ -10,6 +10,7 @@ export interface ReviewArguments {
   items?: { title: string; detail?: string; file?: string }[];
 }
 
+/** A verdict. Mirrors `VERDICTS`, which are all the surface record writes. */
 export type ReviewVerdict = "approved" | "changes_requested" | "rejected";
 
 /** The operator's decision, as its agent gets it. */

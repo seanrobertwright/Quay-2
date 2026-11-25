@@ -55,6 +55,20 @@ pub fn day_to_string(day: i64) -> String {
     format!("{:04}-{:02}-{:02}", y, m, d)
 }
 
+/// `YYYY-MM-DDTHH:MM:SS.mmmZ` for a Unix time in milliseconds, in UTC.
+pub fn format_timestamp(ms: i64) -> String {
+    let of_day = ms.rem_euclid(MS_PER_DAY);
+    let seconds = of_day / 1000;
+    format!(
+        "{}T{:02}:{:02}:{:02}.{:03}Z",
+        day_to_string(utc_day(ms)),
+        seconds / 3600,
+        seconds % 3600 / 60,
+        seconds % 60,
+        of_day % 1000
+    )
+}
+
 /// Parses a `YYYY-MM-DD` date into a UTC day number. Rejects out-of-range fields.
 pub fn parse_day(s: &str) -> Option<i64> {
     let b = s.as_bytes();
@@ -167,6 +181,12 @@ mod tests {
         let edt = parse_timestamp_ms("2026-10-17T23:30:00-04:00").unwrap();
         assert_eq!(day_to_string(utc_day(edt)), "2026-10-18");
         assert_eq!(parse_timestamp_ms("2026-10-18").unwrap() % MS_PER_DAY, 0);
+    }
+
+    #[test]
+    fn a_timestamp_is_written_in_utc_to_the_millisecond() {
+        assert_eq!(format_timestamp(1_700_000_000_007), "2023-11-14T22:13:20.007Z");
+        assert_eq!(format_timestamp(-1), "1969-12-31T23:59:59.999Z");
     }
 
     #[test]

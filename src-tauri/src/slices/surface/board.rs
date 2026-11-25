@@ -13,6 +13,11 @@ pub const PLACE: Place = Place::Strip;
 /// The id of the board of a call that names none.
 pub(super) const DEFAULT_ID: &str = "board";
 
+/// The id of the board that a call with these `arguments` is of, whatever is wrong with them.
+pub fn named(arguments: &Value) -> &str {
+    arguments["id"].as_str().unwrap_or(DEFAULT_ID)
+}
+
 pub(super) const TITLE_LIMIT: usize = 80;
 pub(super) const MOST_STEPS: usize = 30;
 pub(super) const STEP_LABEL_LIMIT: usize = 80;

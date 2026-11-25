@@ -4,7 +4,8 @@
 //! the engine (`check`), then committed (`store`), then drawn. `tools` runs those steps and waits for the
 //! answer (`wait`), which is typed into the terminal (`typing`) once no call is open to return it. `read`
 //! tells an agent where a surface stands, `guide` how to write a raw one, and `image` reads the image files
-//! a live surface names. A terminal's surfaces end with its launch, and go when it closes.
+//! a live surface names. A terminal's surfaces end with its launch, and go when it closes. What becomes of
+//! each is kept, without its content, in the surface record (`daily_record`).
 
 mod arguments;
 mod ask;
@@ -14,6 +15,7 @@ mod calls;
 mod carried;
 mod check;
 pub mod commands;
+mod daily_record;
 mod disk;
 mod guide;
 mod image;
@@ -22,6 +24,7 @@ mod local_path;
 pub mod names;
 mod past_limit;
 mod place;
+mod plain_line;
 mod raw;
 mod raw_changes;
 mod read;
@@ -40,6 +43,8 @@ mod wait;
 mod ask_tests;
 #[cfg(test)]
 mod board_tests;
+#[cfg(test)]
+mod daily_record_tests;
 #[cfg(test)]
 mod delete_tests;
 #[cfg(test)]
@@ -83,10 +88,11 @@ mod update_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
+pub use daily_record::record_folder;
 pub use image::*;
 pub use show_file::*;
 pub use store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
 pub use typed_line::is_typed_line;
-pub use typing::{NotTyped, Terminals};
+pub use typing::{NotTyped, TerminalName, Terminals};
 pub use unsent::{Page, UnsentRefused, UnsentSave};

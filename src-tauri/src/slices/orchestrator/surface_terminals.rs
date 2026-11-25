@@ -8,7 +8,7 @@ use crate::slices::pty::manager::{LaunchEvent, TurnEvent};
 use crate::slices::pty::models::RunKind;
 use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::slices::pty::PtyManager;
-use crate::slices::surface::{NotTyped, SurfaceTools, Terminals};
+use crate::slices::surface::{NotTyped, SurfaceTools, TerminalName, Terminals};
 
 /// Connects `surfaces` to the terminals, once.
 pub fn connect_surfaces(surfaces: &SurfaceTools, pty_manager: &PtyManager, a2a_router: &A2ARouter) {
@@ -74,5 +74,10 @@ impl Terminals for Typist {
                 Err(NotTyped::Failed)
             }
         }
+    }
+
+    fn named(&self, terminal_id: &str) -> Option<TerminalName> {
+        let info = self.pty_manager.get_info(terminal_id)?;
+        Some(TerminalName { name: info.name, cli: info.run_kind.as_str() })
     }
 }
