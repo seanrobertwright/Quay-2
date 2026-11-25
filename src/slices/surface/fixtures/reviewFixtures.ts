@@ -1,7 +1,7 @@
 // What the tests of reviews share: a review, and the stage its tab is on, worked as the operator
 // would. The test owns what it mounts.
-import "../../../test-support/dom.ts";
-import { act, createElement, useRef, useState } from "react";
+import "../../../test-support/bundlerImports.ts";
+import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { terminalInfo } from "../../companion/fixtures/companionFixtures.ts";
 import type { TerminalInfo } from "../../terminal/types.ts";
@@ -9,8 +9,7 @@ import type { SurfaceKey, SurfaceRecord } from "../surfaceTypes.ts";
 import type { Mounted } from "./askFixtures.ts";
 import { acceptedSurface, settle, until } from "./fakeRust.ts";
 
-const { StageTabBar } = await import("../../stage/StageTabBar.tsx");
-const { useStageFocus } = await import("../../stage/useStageFocus.ts");
+const { Stage } = await import("../../stage/Stage.tsx");
 const { useSurfaceTabs } = await import("../useSurfaceTabs.tsx");
 
 /** The terminal that asks, unless a test says otherwise. */
@@ -45,7 +44,7 @@ export interface MountedStage extends Mounted {
 
 const noop = () => {};
 
-/** The stage's tab bar and what its tabs show, on `project`, as Quay's window has them. No pane of a terminal is drawn, but for a button where they are. */
+/** The stage on `project` with the surfaces' tabs, as Quay's window has them, but for the terminals' panes: none is drawn, and Launch Terminal is in their place. */
 export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL], project = "E:/alpha"): Promise<MountedStage> {
   let tabs: ReturnType<typeof useSurfaceTabs>;
   let setFront: (id: string | null) => void;
@@ -60,36 +59,36 @@ export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL]
       onFront: setFrontId,
       onSelectTerminal: (terminal) => setActiveProject(terminal.project_path),
     });
-    const stage = useRef<HTMLElement | null>(null);
-    const toolIds = tabs.tools.map(({ id }) => id);
-    const front = frontId !== null && toolIds.includes(frontId) ? frontId : null;
-    useStageFocus(stage, { project: activeProject, toolIds, front, focusTargetId: null });
     setFront = setFrontId;
     setProject = setActiveProject;
-    return createElement(
-      "main",
-      { ref: stage, "data-stage": true },
-      createElement(StageTabBar, {
-        terminals: [],
-        currentTerminalId: "",
-        layout: "single",
-        zoomedFromLayout: null,
-        onSelectTerminal: noop,
-        onNewTerminal: noop,
-        onUnsplit: noop,
-        onSplitHorizontal: noop,
-        onSplitVertical: noop,
-        onSplitGrid: noop,
-        onToggleZoom: noop,
-        tools: tabs.tools,
-        frontToolId: frontId,
-        onSelectTool: tabs.select,
-        onCloseTool: tabs.close,
-        earlierTabs: tabs.earlier,
-      }),
-      tabs.tools.map(({ id, content }) => createElement("div", { key: id, "data-stage-tool-panel": id, hidden: id !== frontId }, content)),
-      createElement("button", { type: "button", "data-launch-terminal": true, inert: front !== null }, "Launch Terminal"),
-    );
+    return createElement(Stage, {
+      terminals: [],
+      activeProject,
+      activeTerminalId: null,
+      primaryTerminalId: null,
+      secondaryTerminalId: null,
+      gridTerminalIds: [null, null, null, null],
+      layout: "single",
+      focusedPane: "primary",
+      splitRatio: 50,
+      zoomedFromLayout: null,
+      onSelectTerminal: noop,
+      onSelectPane: noop,
+      onSwitchPaneTerminal: noop,
+      onSetLayout: noop,
+      onSetSplitRatio: noop,
+      onToggleZoom: noop,
+      onUnsplit: noop,
+      onSplitHorizontal: noop,
+      onSplitVertical: noop,
+      onSplitGrid: noop,
+      onNewTerminal: noop,
+      tools: tabs.tools,
+      frontToolId: frontId,
+      onSelectTool: tabs.select,
+      onCloseTool: tabs.close,
+      earlierTabs: tabs.earlier,
+    });
   };
   const container = document.createElement("div");
   document.body.append(container);
