@@ -12,11 +12,13 @@ interface Pointed {
 interface SurfaceLinksProviderProps {
   /** The terminal whose surface it is. */
   terminalId: string;
+  /** The surface's id among that terminal's. */
+  id: string;
   children: ReactNode;
 }
 
 /** What a frame holds, with the foot that says where its links lead and why a click did nothing. */
-export const SurfaceLinksProvider = ({ terminalId, children }: SurfaceLinksProviderProps) => {
+export const SurfaceLinksProvider = ({ terminalId, id, children }: SurfaceLinksProviderProps) => {
   const footId = useId();
   const [count, setCount] = useState(0);
   const [pointed, setPointed] = useState<{ pointer: Pointed | null; focus: Pointed | null }>({ pointer: null, focus: null });
@@ -31,7 +33,7 @@ export const SurfaceLinksProvider = ({ terminalId, children }: SurfaceLinksProvi
   );
   const links = useMemo<SurfaceLinks>(
     () => ({
-      effects: surfaceEffects(terminalId, (effect) => {
+      effects: surfaceEffects({ terminal_id: terminalId, id }, (effect) => {
         const mine = (latest.current += 1);
         setNotice(null);
         void effect.then((why) => {
@@ -43,13 +45,13 @@ export const SurfaceLinksProvider = ({ terminalId, children }: SurfaceLinksProvi
         setCount((links) => links + 1);
         return () => setCount((links) => links - 1);
       },
-      point: (by, id, address) =>
+      point: (by, link, address) =>
         setPointed((now) => {
-          if (address !== null) return { ...now, [by]: { id, address } };
-          return now[by]?.id === id ? { ...now, [by]: null } : now;
+          if (address !== null) return { ...now, [by]: { id: link, address } };
+          return now[by]?.id === link ? { ...now, [by]: null } : now;
         }),
     }),
-    [terminalId, footId],
+    [terminalId, id, footId],
   );
   const address = (pointed.pointer ?? pointed.focus)?.address;
   return (

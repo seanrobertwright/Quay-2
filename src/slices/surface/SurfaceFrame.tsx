@@ -9,7 +9,7 @@ import type { Dismiss } from "./useDismiss.ts";
 import type { Move } from "./useMove.ts";
 
 interface SurfaceFrameProps {
-  /** The surface's id, which tests and scripts find it by. */
+  /** The surface's id, which it is recorded by, and which tests and scripts find it by. */
   id: string;
   terminal: TerminalInfo;
   /** What kind of surface it is, as its label says it, such as "Question". */
@@ -73,7 +73,7 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, move
       </button>
     </header>
     {band}
-    <SurfaceLinksProvider terminalId={terminal.id}>
+    <SurfaceLinksProvider terminalId={terminal.id} id={id}>
       {/* Paint containment clips the content to this box and holds its fixed and absolute elements inside.
           Neither it nor `overflow-clip` makes a box that scrolls, so in a frame that fills nothing a foot
           sticks to what scrolls around the frame. One that fills scrolls its content, and the size

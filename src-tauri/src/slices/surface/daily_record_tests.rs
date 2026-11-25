@@ -2,11 +2,13 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::daily_record::Function;
+use super::daily_record::{About, DailyRecord, Event, Function};
+use super::place::Place;
 use super::raw_seam::{action, create, created, delete, makes, plan, rejected, says, sent, update};
 use super::test_seam::{accepted, answer_to, key, start, CapturedLog, FakeWebview, OpenCall, Seam};
 use super::timing::Timing;
@@ -486,4 +488,70 @@ async fn a_line_that_cannot_be_written_goes_to_the_error_log_and_the_call_is_as_
     std::fs::remove_file(on.dir.join("surfaces")).unwrap();
     on.seam.asked_as(&mut on.webview, "term-b", json!(2), "Two?").await;
     assert_eq!(on.events(), ["shown ask_1"], "the next one that can be is written");
+}
+
+#[tokio::test]
+async fn nothing_typed_shown_or_said_of_an_error_is_in_the_file_or_the_error_log() {
+    let (log, _guard) = CapturedLog::start();
+    let mut on = Recorded::start().await;
+    let launch = on.seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Working);
+    let cli = on.seam.cli("term-a");
+
+    let mut message = plan("plan", "companion");
+    message["messages"][0]["createSurface"]["components"][0]["text"] = json!("planted-content");
+    message["messages"][0]["createSurface"]["dataModel"] = json!({ "planted-key": "planted-value" });
+    let call = cli.call("quay_surface", message.clone());
+    on.seam.surfaces.verdict(on.webview.next_check().await.call, rejected(json!([{ "code": "X", "path": "/messages/0", "message": "planted-error" }])));
+    call.failure().await;
+    let call = cli.call("quay_surface", message);
+    on.seam.surfaces.verdict(on.webview.next_check().await.call, makes(vec![("plan", says(true, "planted-content"))]));
+    let order = on.webview.next_shown().await.order;
+    let unsent = json!({ "page": 1, "save": 1, "order": order, "revision": 1, "values": { "/note": "planted-unsent" } });
+    on.seam.surfaces.save_unsent(&key("term-a", "plan"), serde_json::from_value(unsent).unwrap()).unwrap();
+    on.seam.surfaces.function_fired(&key("term-a", "plan"), Function::OpenUrl, Some("https://x.example/?q=planted-unsent"));
+    assert!(on.seam.pty_manager.exit_launch(&launch, Some(0)));
+    call.answer().await;
+    on.webview.next_shown().await;
+
+    on.seam.open_terminal("term-a", RunKind::Claude, ClaudeStatus::Working);
+    let call = cli.call("quay_ask", json!({ "context": "planted-context", "questions": [{ "question": "One?" }] }));
+    on.seam.surfaces.verdict(on.webview.next_check().await.call, accepted(true));
+    on.webview.next_shown().await;
+    let answer = json!({ "answers": [{ "question": "One?", "chosen": [], "text": "planted-typed" }] });
+    on.seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer).unwrap();
+    call.answer().await;
+
+    assert_eq!(on.events(), ["rejected none", "shown plan", "function fired plan", "ended plan", "shown ask_1", "answered ask_1"]);
+    assert!(!on.text().contains("planted-"), "{}", on.text());
+    assert!(!log.text().contains("planted-"), "{}", log.text());
+}
+
+#[test]
+fn handing_an_event_over_never_waits_and_one_too_many_is_lost_which_the_error_log_is_told() {
+    let (log, _guard) = CapturedLog::start();
+    let dir = TempDir::new("surface-record");
+    let record = DailyRecord::default();
+    // The thread stalls on its first line, as on a disk that does not answer
+    let (release, stalled) = mpsc::channel::<()>();
+    let named = move |_: &str| {
+        let _ = stalled.recv();
+        None
+    };
+    record.keep(dir.join("surfaces"), Arc::new(|| 0), named);
+    let began = Instant::now();
+    for _ in 0..5000 {
+        record.happened(About::surface("term-a", "plan", "quay_surface", "Plan", Place::Companion), Event::Shown);
+    }
+    assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
+    drop(release);
+    // Room for the request to finish comes as lines are written
+    let file = dir.join("surfaces").join("surfaces.1970-01-01.jsonl");
+    let written = || std::fs::read_to_string(&file).unwrap_or_default().lines().count();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !log.text().contains("were lost") || written() < 1024 {
+        assert!(Instant::now() < deadline, "{} written; {}", written(), log.text());
+        std::thread::sleep(Duration::from_millis(10));
+        record.finish(Duration::from_millis(100));
+    }
+    assert!(written() <= 1025, "{}", written());
 }

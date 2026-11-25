@@ -3,10 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { requestFileDiff, type FileDiffRequest } from "../git/fileDiffRequest.ts";
 import { requestTerminalSelection } from "../terminal/terminalSelectionRequest.ts";
-import { spendClick } from "./clickOnly.ts";
+import { spendClick, type Effect } from "./clickOnly.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
 import { shownText } from "./shownText.ts";
+import type { SurfaceKey } from "./surfaceTypes.ts";
 
 /** How Rust showed a file. Mirrors `Shown`. */
 type Shown = { kind: "revealed" } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
@@ -61,26 +62,39 @@ async function copy(text: string): Promise<string | null> {
   }
 }
 
+/** Tells Rust what a click on `surface` fired, for the surface record. The effect does not wait for it. */
+function record({ terminal_id, id }: SurfaceKey, fired: Effect, target: string | null): void {
+  invoke("surface_function_fired", { terminalId: terminal_id, id, function: fired, target }).catch((error) => {
+    console.error("[surfaces] A function that fired could not be recorded", error);
+  });
+}
+
 /**
- * The effects of `terminalId`'s surfaces. `run` takes each effect, which settles with why it did
- * nothing, or null.
+ * The effects of `surface`. `run` takes each effect, which settles with why it did nothing, or null. Each is
+ * recorded as it fires, whether or not it does something.
  */
-export function surfaceEffects(terminalId: string, run: (effect: Promise<string | null>) => void): SurfaceEffects {
+export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<string | null>) => void): SurfaceEffects {
+  const terminalId = surface.terminal_id;
   return {
     openUrl: (url) => {
       spendClick("openUrl");
+      record(surface, "openUrl", url);
       run(open(url));
     },
     showFile: (path, line) => {
       spendClick("showFile");
+      record(surface, "showFile", path);
       run(show(terminalId, path, line ?? null));
     },
     focusTerminal: (target) => {
       spendClick("focusTerminal");
+      record(surface, "focusTerminal", target);
       run(Promise.resolve(focus(terminalId, target)));
     },
     copyText: (text) => {
       spendClick("copyText");
+      // A text is content, and may be what the operator typed
+      record(surface, "copyText", null);
       run(copy(text));
     },
   };

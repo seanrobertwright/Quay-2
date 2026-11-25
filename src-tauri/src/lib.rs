@@ -91,6 +91,7 @@ pub fn run() {
     let machina_manager = MachinaManager::new();
     let surfaces = SurfaceTools::new();
     slices::orchestrator::connect_surfaces(&surfaces, &pty_manager, &a2a_router);
+    surfaces.keep_record(slices::logging::surface_record_dir(), std::sync::Arc::new(dates::now_ms));
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();
@@ -100,6 +101,7 @@ pub fn run() {
     let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
     let surfaces_clone = surfaces.clone();
+    let exiting_surfaces = surfaces.clone();
 
     // A terminal whose status moved off the bridge's event route (it left Starting, went
     // Unknown, its OSC 7501 output moved it, or it closed) may stop holding its messages: type
@@ -440,6 +442,7 @@ pub fn run() {
             // Terminals still running when Quay closes come back showing their last screen
             if let tauri::RunEvent::Exit = event {
                 exiting_terminals.save_all_screens();
+                exiting_surfaces.finish_record();
                 // A pref changed in the last 500 ms is written now rather than lost.
                 if let Err(e) = topos_settings.flush() {
                     tracing::warn!("{}", e);

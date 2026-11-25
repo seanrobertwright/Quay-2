@@ -22,7 +22,7 @@ export const MarkdownLink = ({ href, children }: { href: string; children?: Reac
   }
   const { address, host } = target;
   return (
-    <PointedLink links={links} address={address} onClick={() => duringClick("openUrl", () => links.effects.openUrl(address))}>
+    <PointedLink links={links} address={address} onClick={() => duringClick("openUrl", () => links.effects.openUrl(href))}>
       <bdi className="underline">{children}</bdi>{" "}
       <bdi className="text-[11px] text-[#8b949e]">
         <ExternalLink aria-hidden="true" className="mr-0.5 inline h-3 w-3" />

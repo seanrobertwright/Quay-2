@@ -221,7 +221,7 @@ export const ProjectPanel = (props: ProjectPanelProps) => {
             <ActionRow label="Token spend" detail={spend} icon={<Coins className="w-4 h-4 text-[#e3b341]" />} onClick={props.onOpenTokenSpend} />
             <ActionRow
               label="Logs folder"
-              detail="Quay's log files and crash.log"
+              detail="Quay's log files and crash.log, beside its record of surfaces"
               icon={<FolderOpen className="w-4 h-4 text-[#8b949e]" />}
               onClick={props.onOpenLogsFolder}
             />
