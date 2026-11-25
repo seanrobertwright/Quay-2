@@ -18,7 +18,7 @@ PowerShell, Custom Command and Archon terminals are not peers. `quay_list_agents
 
 How each full peer gets the tools:
 
-- **Claude Code** gets Quay's MCP server inline through `--mcp-config`. It answers through the [event-bridge plugin](../guide/installation.md#event-bridge-plugin). A Claude Code terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from that plugin. Once the plugin is heard, it is a full peer again.
+- **Claude Code** gets Quay's MCP server inline through `--mcp-config`. It answers through the [event-bridge plugin](../guide/installation.md#event-bridge-plugin). A Claude Code terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from that plugin, and keeps its tools meanwhile. Once the plugin is heard, it is a full peer again.
 - **Codex** gets the server through `-c` overrides and reports each turn end through Quay's turn-end helper. See [Codex on the A2A bus](./agent-support.md#codex-on-the-a2a-bus).
 - **OpenCode** gets the server through `OPENCODE_CONFIG_CONTENT`, and Quay reads its turns from the server its TUI runs.
 - **PiG** loads Quay's PiG extension, `quay-pig-bridge.exe`, which ships beside Quay. The extension registers the server for that session and reports each turn's start and end, with its answer. A PiG terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from the extension in the 30 seconds after its first output. Once the extension reports, it is a full peer again.
@@ -99,7 +99,7 @@ A peer's message arrives in its target's terminal as `[Peer agent (<sender>)]: <
 
 ## The MCP Tools
 
-Quay's MCP server, `quay-a2a`, serves the tools below and the [surface tools](#the-surface-tools), at the `QUAY_MCP_URL` each peer terminal gets. Each call must carry the terminal's bearer token; a call without a live terminal's token is rejected. A full peer has every tool. A terminal of any other CLI has the surface tools only: it isn't listed the tools below, and is refused them. `pnpm docs:build` checks this reference against the server's tool lists, so a tool or parameter that is added, renamed or removed fails the docs build until this page matches.
+Quay's MCP server, `quay-a2a`, serves the tools below and the [surface tools](#the-surface-tools), at the `QUAY_MCP_URL` each peer terminal gets. Each call must carry the terminal's bearer token; a call without a live terminal's token is rejected. A terminal of a full peer's CLI has every tool, also while it counts as a listener. A terminal of any other CLI has the surface tools only: it isn't listed the tools below, and is refused them. `pnpm docs:build` checks this reference against the server's tool lists, so a tool or parameter that is added, renamed or removed fails the docs build until this page matches.
 
 ### `quay_list_agents`
 
@@ -293,7 +293,7 @@ Reads where one of the terminal's own surfaces stands, for an answer the agent d
 - **No answer yet**: `{"surface_id", "state": "no_answer_yet", "next"}`, where `next` tells the agent to end its turn.
 - **Taken back, or the terminal exited, during the wait**: `{"surface_id", "state"}`, with `withdrawn` or `ended`.
 - **Dismissed**: `{"dismissed": true}`.
-- **Rejected**: an error result, `{"errors": [{"code", "surfaceId", "path", "message"}], "next"}`, where `path` points into the call and `surfaceId` is left out of an error that is about no surface. Nothing of the call was done. From the third rejection in a row of one tool, `next` tells the agent to stop guessing.
+- **Rejected**: an error result, `{"errors": [{"code", "surfaceId", "path", "message"}], "more", "next"}`, where `path` points into the call and `surfaceId` is left out of an error that is about no surface. `errors` lists the first 10 errors at most: `more` is the number of the rest, and is left out when there are none. Nothing of the call was done. From the third rejection in a row of one tool, `next` tells the agent to stop guessing.
 - **Quay couldn't show it**: an error result in words, which says that the call wasn't at fault.
 
 ---
