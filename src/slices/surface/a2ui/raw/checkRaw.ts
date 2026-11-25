@@ -5,10 +5,11 @@ import { isObject } from "../../json.ts";
 import type { AcceptedSurface, CheckError, CreateSurface, HeldSurface, SurfacePlace, Verdict } from "../../surfaceTypes.ts";
 import { acceptedSurface, compact } from "../accepted.ts";
 import { CATALOG_ID } from "../catalog.ts";
+import { drawnSize } from "../drawnSize.ts";
 import { engineFor, scratchEngine } from "../engine.ts";
 import { invalid, type Message } from "./callErrors.ts";
 import { engineErrorAt } from "./engineErrors.ts";
-import { postCheck, tooLarge, tooManyImages } from "./postCheck.ts";
+import { drawsTooMuch, postCheck, tooLarge, tooManyImages } from "./postCheck.ts";
 import { prePass } from "./prePass.ts";
 
 /** A raw call. Rust has checked `place`, unless it rejects the call, and that `messages` is a list. One that creates no surface needs no `place`. */
@@ -96,6 +97,9 @@ function whole({ state, messages, toldAt }: Made): AcceptedSurface | CheckError[
     if (state.createSurface.components.length === 0) return [{ ...invalid(toldAt.pointer, "Missing root component: No component has id='root'", toldAt.surfaceId), code: "INTEGRITY_ERROR" }];
     const { surface, dispose } = engineFor(state);
     try {
+      // The engine resolves every row, and counting the images has it do so
+      const drawn = drawsTooMuch(drawnSize(state.createSurface.components, surface.dataModel), toldAt);
+      if (drawn.length > 0) return drawn;
       const accepted = acceptedSurface(surface, state);
       const many = tooManyImages(accepted, toldAt);
       return many.length > 0 ? many : { surface_id: toldAt.surfaceId, ...accepted };
