@@ -55,7 +55,7 @@ test(`each of the worst calls is rejected within ${CHECK_MS} ms`, { timeout: 120
     console.log(`${name}: ${ms.toFixed(0)} ms`);
     assert.ok(bytes < 2 * 1024 * 1024, `${name}: ${bytes} bytes`);
     assert.ok(messages.length > 0, `${name}: accepted`);
-    for (const message of messages) assert.match(message, /^A surface has at most \d+ components (drawn at once|with every row drawn); this one would have (more than )?\d+\.$|^Circular reference /, name);
+    for (const message of messages) assert.match(message, /^A surface has at most \d+ components (drawn at once|with every row drawn); this one would have (more than |at least )?\d+\.$|^Circular reference /, name);
     assert.ok(ms < CHECK_MS, `${name}: ${ms.toFixed(0)} ms`);
   }
 });

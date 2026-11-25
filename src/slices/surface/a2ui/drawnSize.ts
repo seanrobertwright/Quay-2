@@ -33,7 +33,7 @@ const per = (unit: number, count: number): number => Math.floor(count / unit);
 
 /** How many components are drawn. One that takes long to draw counts as more. */
 interface Size {
-  /** At least as many as are drawn at once: when the surface is first drawn, or by one press of what shows more. */
+  /** At least as many as are drawn at once: when the surface is first drawn, by a press of what shows more, or by the pick of a tab. */
   atOnce: number;
   /** With every row. */
   withRows: number;

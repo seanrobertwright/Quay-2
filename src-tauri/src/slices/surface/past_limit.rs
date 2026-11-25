@@ -9,6 +9,12 @@ use super::place::{Place, MOST_LIVE};
 /// The most components a surface may have.
 const MOST_COMPONENTS: usize = 500;
 
+/// The most components a surface may have drawn at once.
+const MOST_AT_ONCE: u32 = 2000;
+
+/// The most components a surface may have with every row drawn. The engine has them all.
+const MOST_WITH_ROWS: u32 = 10_000;
+
 /// The most data a surface's data model may hold, in bytes of JSON.
 const MOST_DATA: usize = 256 * 1024;
 
@@ -22,6 +28,10 @@ pub enum PastLimit {
     Live(Place),
     /// It would have this many components.
     Components(usize),
+    /// It would have this many components drawn at once.
+    AtOnce(u32),
+    /// It would have this many components with every row drawn.
+    WithRows(u32),
     /// Its data model would be this many bytes of JSON.
     Data(usize),
     /// It would have this many images.
@@ -40,6 +50,8 @@ impl PastLimit {
                 );
             }
             Self::Components(has) => (format!("{MOST_COMPONENTS} components"), has.to_string()),
+            Self::AtOnce(has) => (format!("{MOST_AT_ONCE} components drawn at once"), has.to_string()),
+            Self::WithRows(has) => (format!("{MOST_WITH_ROWS} components with every row drawn"), has.to_string()),
             Self::Data(has) => (format!("{} of data", in_kb(MOST_DATA)), in_kb(has)),
             Self::Images(has) => (format!("{MOST_IMAGES} images"), has.to_string()),
         };
@@ -53,7 +65,8 @@ fn in_kb(bytes: usize) -> String {
 }
 
 /// Whether what the webview accepted is no larger than a surface may be. Its components and its images are
-/// at least those it names, whatever the webview counted.
+/// at least those it names, whatever the webview counted. What is drawn of it takes the engine's catalog to
+/// count, so of that the webview's count is all there is.
 pub fn within_limits(accepted: &Accepted) -> Result<(), PastLimit> {
     let surface = &accepted.state["createSurface"];
     let named = surface["components"].as_array().map_or(0, Vec::len);
@@ -65,6 +78,10 @@ pub fn within_limits(accepted: &Accepted) -> Result<(), PastLimit> {
     let images = accepted.image_paths.len().max(accepted.images as usize);
     if components > MOST_COMPONENTS {
         Err(PastLimit::Components(components))
+    } else if accepted.drawn_at_once > MOST_AT_ONCE {
+        Err(PastLimit::AtOnce(accepted.drawn_at_once))
+    } else if accepted.drawn_with_rows > MOST_WITH_ROWS {
+        Err(PastLimit::WithRows(accepted.drawn_with_rows))
     } else if data > MOST_DATA {
         Err(PastLimit::Data(data))
     } else if images > MOST_IMAGES {

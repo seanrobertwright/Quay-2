@@ -65,6 +65,9 @@ export interface Accepted {
   state: CreateSurface;
   asks: boolean;
   components: number;
+  /** How many components are drawn at once, and with every row: `drawnSize` counts them. */
+  drawn_at_once: number;
+  drawn_with_rows: number;
   images: number;
   /** The image files it names, each once, in the order the surface has them. */
   image_paths: string[];

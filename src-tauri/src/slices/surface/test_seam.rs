@@ -350,6 +350,8 @@ pub fn accepted(asks: bool) -> Verdict {
         "state": { "version": "1.0", "createSurface": { "surfaceId": "ask_1" } },
         "asks": asks,
         "components": 6,
+        "drawn_at_once": 6,
+        "drawn_with_rows": 6,
         "images": 0,
     }))
     .unwrap()

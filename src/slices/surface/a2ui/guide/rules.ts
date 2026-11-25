@@ -1,6 +1,7 @@
 // What the guide says besides its generated lines, written by hand: how a call is made, what a surface may
 // be, how the lines are read, and what they leave out.
 import { EFFECTS } from "../effects.ts";
+import { MOST_AT_ONCE, MOST_WITH_ROWS } from "../drawnSize.ts";
 import { inKb, MOST_COMPONENTS, MOST_DATA, MOST_IMAGES } from "../raw/postCheck.ts";
 
 const list = (...rules: string[]): string => rules.map((rule) => `- ${rule}`).join("\n");
@@ -28,6 +29,7 @@ export const SURFACE = list(
   "A property that is not in the component's line is rejected, as is a wrong type: where the line says string, 3 is `\"3\"`. Any component also takes `@accessibility: {label?, description?}`.",
   "Version 1.0 writes `@path`, `@call`, `@checks` and `@accessibility` with the @. A binding is always `@path`. A list template, `updateDataModel` and some lines below have a plain `path`, which is not a binding.",
   `At most ${MOST_COMPONENTS} components, ${MOST_IMAGES} images and ${inKb(MOST_DATA)} of data model. The data model is an object. \`/frame\` in it is Quay's: neither set nor bind it.`,
+  `At most ${MOST_AT_ONCE} components drawn at once, and ${MOST_WITH_ROWS} with every row drawn. A list draws 100 rows at once. What a template draws counts for each row and a component each time it is named, so a list in a list multiplies. Each option, step and tab counts as one, and each 250 characters of text that is bound or drawn more than once as one more.`,
 );
 
 export const UPDATES = list(
@@ -35,7 +37,7 @@ export const UPDATES = list(
   "An update cannot remove a component. Left out of its parent's list it has no parent, and the update is rejected. Delete the surface and create it again in one call.",
   "To add one, send it together with its parent, whose list names it.",
   "To change what is shown, bind it to the data model and send `updateDataModel` with the `path` that changed. With no `path`, or `/`, it replaces the whole model.",
-  "An update keeps what the operator has put in, except at the paths it sets, under them and above them.",
+  "An update keeps what the operator has put in, except at the paths it sets, under them and above them, and where too much would then be drawn.",
   "An update to a surface that was answered opens it again, and the call waits again.",
   "A surface that quay_ask, quay_review or quay_board made takes no update: call its tool again. `deleteSurface` takes back any of them.",
 );

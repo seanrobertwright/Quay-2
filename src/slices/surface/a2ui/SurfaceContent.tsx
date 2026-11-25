@@ -37,7 +37,7 @@ interface Live {
 /** Kept while their records are, so a surface that comes back to the screen is as it was left. */
 const lives = new WeakMap<SurfaceRecord, Live>();
 
-/** Puts what is unsent in `record` in `surface`. */
+/** Puts what is unsent in `record` in `surface`: in a raw one, what there is room for. */
 function putIn({ dataModel }: EngineSurface, record: SurfaceRecord): void {
   const values = unsentIn(record);
   if (record.tool === RAW_TOOL && Object.keys(values).length > 0) dataModel.set("/", dataWith(record.state, values));
@@ -80,7 +80,7 @@ function liveOf(record: SurfaceRecord): Live {
     onAction: noAction,
     onRefused: noRefusal,
   };
-  // The operator can make nothing more of a typed surface than its tool did
+  // No list in a typed surface grows with what the operator puts in it
   if (record.tool === RAW_TOOL) {
     holdToLimit(
       surface,

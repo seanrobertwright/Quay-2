@@ -46,6 +46,10 @@ test("a component that several parents name, many levels deep, counts each time 
   const shared = Array.from({ length: 14 }, (_, i) => holds(i === 0 ? "root" : `c${i}`, ...named(2, `c${i + 1}`)));
   // Two of each at every level: 2^0 + 2^1 + ... + 2^14
   assert.deepEqual(await said([...shared, text("c14", "x")]), [tooMany(32767), tooManyRows(32767)]);
+  // Past what is counted
+  const deepest = Array.from({ length: 40 }, (_, i) => holds(i === 0 ? "root" : `c${i}`, ...named(2, `c${i + 1}`)));
+  const farthest = await said([...deepest, text("c40", "x")]);
+  assert.deepEqual(farthest, [tooMany("at least 1000000000"), tooManyRows("at least 1000000000")]);
   // By two parents, and not twice by one
   const crossed = Array.from({ length: 10 }, (_, i) => [holds(`a${i}`, `a${i + 1}`, `b${i + 1}`), holds(`b${i}`, `a${i + 1}`, `b${i + 1}`)]).flat();
   assert.deepEqual(await said([holds("root", "a0", "b0"), ...crossed, text("a10", "x"), text("b10", "x")]), [tooMany(4095)]);
@@ -110,7 +114,7 @@ test("text counts by its length where it is drawn again and again, or comes from
   // Eleven times 250 characters, and some more
   const big = "Some prose of a common kind. ".repeat(100);
   const twice = (leaf: Component) => [holds("root", "a", "b"), list("a", "leaf", "/rows"), list("b", "leaf", "/rows"), leaf];
-  const said12 = 1 + 2 * (1 + 90 * 12);
+  const all = 1 + 2 * (1 + 90 * 12);
   for (const leaf of [
     text("leaf", big),
     text("leaf", { "@path": "/big" }),
@@ -118,7 +122,7 @@ test("text counts by its length where it is drawn again and again, or comes from
     text("leaf", { "@call": "formatString", args: { value: "${formatString(value:'${/big}')}" } }),
     { id: "leaf", component: "Stat", label: "x", value: { "@path": "/big" } },
   ]) {
-    assert.deepEqual(await said(twice(leaf), { big, rows: rows(90) }), [tooMany(said12)], JSON.stringify(leaf).slice(0, 80));
+    assert.deepEqual(await said(twice(leaf), { big, rows: rows(90) }), [tooMany(all)], JSON.stringify(leaf).slice(0, 80));
   }
   assert.deepEqual(await said(twice(text("leaf", { "@path": "text" })), { rows: rows(88, { text: big }) }), [tooMany(1 + 2 * (1 + 88 * 12 + 25))]);
   // What an action is sent with is not drawn

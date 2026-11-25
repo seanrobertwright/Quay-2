@@ -132,10 +132,14 @@ What you type and haven't sent is kept while you switch terminals, move a raw su
 | Live surfaces of one terminal | 4 in the Surface view, 4 in stage tabs and 4 on its pane |
 | Locked surfaces of one terminal | 10; past that, the one that locked or changed longest ago goes |
 | Components in a surface | 500 |
+| Components drawn at once | 2,000, at first with 100 rows of each list, and by each press of **Show more** |
+| Components with every row drawn | 10,000 |
 | Data in a surface, and what you typed in it and haven't sent | 256 kB each |
 | Images in a surface | 12, each up to 10 MB |
 
-A call past a limit is rejected, never cut short, and the agent is told why. When four questions wait, the Surface view says that it is the most one terminal may have. Moving a raw surface to a stage tab doesn't change which limit it counts against.
+A component is counted each time it is drawn, so a list inside a list counts for each of its rows. An option, a step and a tab count as one each, and so does every 250 characters of a text that comes from the surface's data or is drawn more than once.
+
+A call past a limit is rejected, never cut short, and the agent is told why. What you pick or type in a raw surface can make a list in it longer too. Quay doesn't take it when the surface would then be past what it may have drawn, and says so at the foot of the frame. An agent's update that leaves no room for what you put in drops it, the lists first. When four questions wait, the Surface view says that it is the most one terminal may have. Moving a raw surface to a stage tab doesn't change which limit it counts against.
 
 ---
 

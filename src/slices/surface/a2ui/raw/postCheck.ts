@@ -3,7 +3,7 @@
 import { hasOwn, isObject } from "../../json.ts";
 import type { Accepted, CreateSurface, CheckError, SurfacePlace } from "../../surfaceTypes.ts";
 import { hasEvent } from "../accepted.ts";
-import { MOST_AT_ONCE, MOST_WITH_ROWS, type DrawnSize } from "../drawnSize.ts";
+import { FARTHEST, MOST_AT_ONCE, MOST_WITH_ROWS, type DrawnSize } from "../drawnSize.ts";
 import { EFFECTS } from "../effects.ts";
 import { componentsOf, invalid, type Message, type Pointer } from "./callErrors.ts";
 
@@ -58,11 +58,13 @@ export function tooLarge({ createSurface }: CreateSurface, message: Message): Ch
   ];
 }
 
-/** What of a surface that draws `size`, of which `message` is told, is more than Quay draws, before anything is resolved of it. */
+const toldCount = (count: number): string => (count < FARTHEST ? String(count) : `at least ${FARTHEST}`);
+
+/** What of a surface of this size, of which `message` is told, is more than Quay draws, before anything is resolved of it. */
 export function drawsTooMuch({ atOnce, withRows, stopped }: DrawnSize, message: Message): CheckError[] {
   return [
-    ...(atOnce > MOST_AT_ONCE ? overLimit(message, `${MOST_AT_ONCE} components drawn at once`, String(atOnce)) : []),
-    ...(withRows > MOST_WITH_ROWS ? overLimit(message, `${MOST_WITH_ROWS} components with every row drawn`, stopped ? `more than ${MOST_WITH_ROWS}` : String(withRows)) : []),
+    ...(atOnce > MOST_AT_ONCE ? overLimit(message, `${MOST_AT_ONCE} components drawn at once`, toldCount(atOnce)) : []),
+    ...(withRows > MOST_WITH_ROWS ? overLimit(message, `${MOST_WITH_ROWS} components with every row drawn`, stopped ? `more than ${MOST_WITH_ROWS}` : toldCount(withRows)) : []),
   ];
 }
 

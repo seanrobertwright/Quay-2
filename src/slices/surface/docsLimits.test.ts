@@ -24,6 +24,9 @@ test("the surfaces page states how much a surface and a terminal may have", () =
   states(GUIDE, `| ${live} in the Surface view, ${live} in stage tabs and ${live} on its pane |`);
   states(GUIDE, `| Locked surfaces of one terminal | ${rustConstant("surface/store.rs", "MOST_LOCKED")};`);
   states(GUIDE, `| Components in a surface | ${rustConstant("surface/past_limit.rs", "MOST_COMPONENTS")} |`);
+  const count = (name: string) => rustConstant("surface/past_limit.rs", name).toLocaleString("en-US");
+  states(GUIDE, `| Components drawn at once | ${count("MOST_AT_ONCE")}, `);
+  states(GUIDE, `| Components with every row drawn | ${count("MOST_WITH_ROWS")} |`);
   const data = rustConstant("surface/past_limit.rs", "MOST_DATA");
   assert.equal(rustConstant("surface/unsent.rs", "UNSENT_LIMIT"), data);
   states(GUIDE, `| ${data / 1024} kB each |`);

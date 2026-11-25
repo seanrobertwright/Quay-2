@@ -98,6 +98,10 @@ test("the guide says what agents got wrong and no line tells", () => {
   }
 });
 
+test("the guide says how much may be drawn, as the check holds a call to it", () => {
+  assert.ok(committed.includes("At most 2000 components drawn at once, and 10000 with every row drawn."));
+});
+
 test("the guide is under 6,000 tokens, estimated as four characters each", () => {
   const tokens = [...committed].length / 4;
   assert.ok(tokens < 6000, `${tokens}`);
