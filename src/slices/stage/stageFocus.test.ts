@@ -1,10 +1,11 @@
 /// <reference types="node" />
 // Component tests for the keyboard on the stage (#771): what a stage tab covers is inert, and closing a
 // stage tab leaves the focus on the stage. They render the real stage, with real terminals, into
-// happy-dom, with what App holds of the stage tabs around it, and fake only Tauri's `invoke`.
+// happy-dom, with what App holds of the stage tabs around it, and fake only Tauri's `invoke` and
+// events, and the clock through `mock.timers`.
 import "../../test-support/bundlerImports.ts";
 import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
-import { afterEach, beforeEach, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -36,6 +37,7 @@ let mounted: { root: Root; container: HTMLElement } | null = null;
 let sent: string[] = [];
 
 beforeEach(() => {
+  mock.timers.enable({ apis: ["setTimeout"] });
   sent = [];
   fakeInvoke(async (command) => {
     sent.push(command);
@@ -44,15 +46,27 @@ beforeEach(() => {
 });
 afterEach(() => {
   act(() => dismissShellWarning("disk"));
-  if (!mounted) return;
-  const { root, container } = mounted;
-  act(() => root.unmount());
-  container.remove();
-  mounted = null;
+  if (mounted) {
+    const { root, container } = mounted;
+    act(() => root.unmount());
+    container.remove();
+    mounted = null;
+  }
+  mock.timers.reset();
 });
 
-/** Lets what the stage started, such as a terminal's timed focus, run its course. */
-const settle = () => act(async () => void (await new Promise((done) => setTimeout(done, 600))));
+/** Runs out what the stage has started: what was promised, its frame, and every timer it set, however long, such as a terminal's timed focus. */
+const settle = () =>
+  act(async () => {
+    await new Promise((done) => setImmediate(done));
+    mock.timers.runAll();
+  });
+
+/** Waits, for a bounded number of turns, until `holds`. */
+async function until(holds: () => boolean, what: string): Promise<void> {
+  for (let i = 0; i < 100 && !holds(); i += 1) await settle();
+  assert.ok(holds(), what);
+}
 
 interface Drawn {
   /** Whether an overlay is open over the window. */
@@ -235,7 +249,8 @@ test("a covered terminal is the one that was there, at its size, and still takes
 
   assert.deepEqual([screenOf("a") === planner, screenOf("b") === coder], [true, true], "neither was drawn again");
   assert.equal(container.querySelector<HTMLElement>('[data-pie-terminal="a"]')!.style.cssText, style);
-  assert.equal(container.querySelector('[data-pie-terminal="a"] .xterm-rows')?.textContent?.includes("ready and building"), true);
+  const text = () => container.querySelector('[data-pie-terminal="a"] .xterm-rows')?.textContent ?? "";
+  await until(() => text().includes("ready and building"), "the output was never drawn");
   assert.deepEqual(sent, [], "and no program was told of a new size");
 });
 
