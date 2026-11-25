@@ -6,36 +6,50 @@
 //! (`src-tauri/windows/installer-hooks.nsh`). A renamed relay can be deleted only once the
 //! sessions that run it have ended, so Quay tries again each time it starts.
 
+use std::io;
 use std::path::Path;
 
 use super::commands::RELAY_NAME;
 
 /// Removes the old relays in Quay's own folder, on a thread of its own so that startup does not
-/// wait for the disk. With no thread or no folder to list, they stay until Quay next starts.
+/// wait for the disk. What stops it is logged, and the old relays stay until Quay next starts.
 pub fn sweep_at_startup() {
-    let _ = std::thread::Builder::new().name("relay-leftovers".into()).spawn(|| {
-        if let Some(dir) = std::env::current_exe().ok().as_deref().and_then(Path::parent) {
-            remove_relay_leftovers(dir);
+    let started = std::thread::Builder::new().name("relay-leftovers".into()).spawn(|| {
+        let swept = std::env::current_exe().and_then(|exe| {
+            let dir = exe.parent().ok_or_else(|| io::Error::other(format!("{} has no folder", exe.display())))?;
+            remove_relay_leftovers(dir)
+        });
+        if let Err(e) = swept {
+            tracing::warn!("Could not look for old relays beside Quay: {e}");
         }
     });
+    if let Err(e) = started {
+        tracing::warn!("Could not start looking for old relays beside Quay: {e}");
+    }
 }
 
-/// Removes each file in `dir` whose name starts with `quay-relay.exe.old`. Folders and links stay,
-/// and so does a file that can't be deleted, such as a relay that is still running.
-fn remove_relay_leftovers(dir: &Path) {
+/// Removes each file in `dir` whose name starts with `quay-relay.exe.old`. Folders and links stay.
+/// So does a file that can't be deleted, such as a relay that is still running, with a log line:
+/// Windows refuses both a running relay and a file the operator may not delete with the same error.
+/// Fails if `dir` or one of its entries can't be read.
+fn remove_relay_leftovers(dir: &Path) -> io::Result<()> {
     let prefix = format!("{RELAY_NAME}.exe.old");
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let named = entry.file_name().to_string_lossy().starts_with(&prefix);
-        if named && entry.file_type().is_ok_and(|kind| kind.is_file()) {
-            let _ = std::fs::remove_file(entry.path());
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with(&prefix) && entry.file_type()?.is_file() {
+            if let Err(e) = std::fs::remove_file(entry.path()) {
+                tracing::info!("The old relay {} stays until Quay next starts: {e}", name.to_string_lossy());
+            }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::ErrorKind;
     use crate::test_support::TempDir;
     use crate::test_support::relay::{built_sidecar, Relay};
 
@@ -63,7 +77,7 @@ mod tests {
             std::fs::write(dir.join(name), name).unwrap();
         }
 
-        remove_relay_leftovers(&dir);
+        remove_relay_leftovers(&dir).unwrap();
 
         assert_eq!(
             names_in(&dir),
@@ -79,18 +93,18 @@ mod tests {
         std::fs::write(dir.join("quay-relay.exe.old.1"), "").unwrap();
         let _relay = Relay::start(&running, &[]);
 
-        remove_relay_leftovers(&dir);
+        remove_relay_leftovers(&dir).unwrap();
 
         assert_eq!(names_in(&dir), ["quay-relay.exe.old"]);
     }
 
     #[test]
-    fn a_folder_that_cannot_be_listed_is_left_alone() {
+    fn a_folder_that_cannot_be_listed_is_an_error() {
         let dir = TempDir::new("leftovers");
 
-        remove_relay_leftovers(&dir.join("gone"));
+        let swept = remove_relay_leftovers(&dir.join("gone"));
 
-        assert_eq!(names_in(&dir), [] as [&str; 0]);
+        assert_eq!(swept.map_err(|e| e.kind()), Err(ErrorKind::NotFound));
     }
 
     #[test]
@@ -100,7 +114,7 @@ mod tests {
         std::fs::create_dir(&folder).unwrap();
         std::fs::write(folder.join("quay-relay.exe.old.1"), "").unwrap();
 
-        remove_relay_leftovers(&dir);
+        remove_relay_leftovers(&dir).unwrap();
 
         assert_eq!(names_in(&dir), ["quay-relay.exe.old"]);
         assert_eq!(names_in(&folder), ["quay-relay.exe.old.1"]);
