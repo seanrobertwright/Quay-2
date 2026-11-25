@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // How much a surface may have drawn (#765): what the check that Rust asks for rejects. Each call here is one
 // that a check without the limit would accept in a bounded time. The worst calls are in
-// `drawnWorst.budget.ts`.
+// `drawn.budget.ts`.
 import "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";

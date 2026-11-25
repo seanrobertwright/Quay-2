@@ -20,7 +20,7 @@ const CHECK_MS = 2500;
 /** The budget from a call to the drawn surface, on the test machine. It leaves out the webview's layout. */
 const DRAWN_MS = 4000;
 
-/** How long the worker may be silent, and how much memory it may use. One that has no limit to stop it is past both. */
+/** How long the worker may be silent, and how much memory it may use. A check that nothing stops is past one of them. */
 const SILENT_MS = 10_000;
 const MEMORY_MB = 1024;
 
