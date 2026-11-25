@@ -13,7 +13,7 @@ use super::models::{
 };
 use super::osc7501::{AntigravityTurn, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
-use super::session::{Osc7501Hook, PtySession};
+use super::session::{same_variable, Osc7501Hook, PtySession};
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
@@ -255,31 +255,24 @@ fn relaunch_flags(info: &TerminalInfo) -> Option<String> {
     }
 }
 
-/// Whether `a` and `b` name one environment variable. On Windows a name is read in any case.
-fn same_variable(a: &str, b: &str) -> bool {
-    if cfg!(windows) {
-        a.to_lowercase() == b.to_lowercase()
-    } else {
-        a == b
-    }
+/// `env`, or `None` when there is no variable in it.
+fn non_empty(env: Option<HashMap<String, String>>) -> Option<HashMap<String, String>> {
+    env.filter(|env| !env.is_empty())
 }
 
-/// Adds the workspace's environment variables to a request that holds the terminal's own, which
-/// it returns as they were; `None` when there are none. The terminal's own value stays for a name
-/// both set.
-fn add_workspace_env(
-    request: &mut SpawnTerminalRequest,
-    workspace_env: Option<HashMap<String, String>>,
+/// The environment variables a terminal is launched with, before Quay's: its own, and the
+/// workspace's for the names it doesn't set itself. `None` when there are none.
+fn launch_env(
+    own: Option<&HashMap<String, String>>,
+    workspace: Option<HashMap<String, String>>,
 ) -> Option<HashMap<String, String>> {
-    let own = request.env_vars.take().filter(|env| !env.is_empty());
-    let mut merged = own.clone().unwrap_or_default();
-    for (name, value) in workspace_env.unwrap_or_default() {
+    let mut merged = own.cloned().unwrap_or_default();
+    for (name, value) in workspace.unwrap_or_default() {
         if !merged.keys().any(|set| same_variable(set, &name)) {
             merged.insert(name, value);
         }
     }
-    request.env_vars = Some(merged).filter(|env| !env.is_empty());
-    own
+    non_empty(Some(merged))
 }
 
 /// The spawn request that restarts a terminal from its stored info, with the workspace's
@@ -291,7 +284,7 @@ fn relaunch_request(
     cols: Option<u16>,
     workspace_env: Option<HashMap<String, String>>,
 ) -> SpawnTerminalRequest {
-    let mut request = SpawnTerminalRequest {
+    SpawnTerminalRequest {
         id: Some(info.id.clone()),
         name: Some(info.name.clone()),
         project_path: info.project_path.clone(),
@@ -300,12 +293,10 @@ fn relaunch_request(
         command_text: info.command_text.clone(),
         rows,
         cols,
-        env_vars: info.env_vars.clone(),
+        env_vars: launch_env(info.env_vars.as_ref(), workspace_env),
         custom_flags: relaunch_flags(info),
         initial_prompt: None,
-    };
-    add_workspace_env(&mut request, workspace_env);
-    request
+    }
 }
 
 /// Moves a Starting terminal that has printed to its CLI's status after first output
@@ -420,7 +411,7 @@ impl PtyManager {
     }
 
     /// Opens a terminal from `request`, whose environment variables are the terminal's own, with
-    /// the workspace's added to them (see `add_workspace_env`).
+    /// the workspace's added to them (see `launch_env`).
     pub fn spawn(
         &self,
         mut request: SpawnTerminalRequest,
@@ -429,7 +420,8 @@ impl PtyManager {
         bridge_token: String,
         app_handle: AppHandle,
     ) -> Result<TerminalInfo, String> {
-        let own_env = add_workspace_env(&mut request, workspace_env);
+        let own_env = non_empty(request.env_vars.take());
+        request.env_vars = launch_env(own_env.as_ref(), workspace_env);
         let terminal_id = request
             .id
             .clone()
@@ -1838,19 +1830,17 @@ mod tests {
     }
 
     #[test]
-    fn a_spawn_launches_with_the_workspaces_env_vars_and_keeps_only_the_terminals_own() {
-        let info = test_terminal("term-spawn-env", RunKind::Codex, ClaudeStatus::Exited);
-        let mut request = relaunch_request(&info, None, None, None);
+    fn a_spawn_launches_with_the_terminals_own_env_vars_over_the_workspaces() {
+        let own = non_empty(env(&[("API_KEY", "own")]));
+        assert_eq!(
+            launch_env(own.as_ref(), env(&[("API_KEY", "workspace"), ("NODE_ENV", "dev")])),
+            env(&[("API_KEY", "own"), ("NODE_ENV", "dev")])
+        );
 
-        request.env_vars = env(&[("API_KEY", "own")]);
-        let own = add_workspace_env(&mut request, env(&[("API_KEY", "workspace"), ("NODE_ENV", "dev")]));
-        assert_eq!(own, env(&[("API_KEY", "own")]));
-        assert_eq!(request.env_vars, env(&[("API_KEY", "own"), ("NODE_ENV", "dev")]));
-
-        request.env_vars = env(&[]);
-        let own = add_workspace_env(&mut request, env(&[("NODE_ENV", "dev")]));
-        assert_eq!(own, None, "a request with no variable in it has none of its own");
-        assert_eq!(request.env_vars, env(&[("NODE_ENV", "dev")]));
+        let none = non_empty(env(&[]));
+        assert_eq!(none, None, "a request with no variable in it has none of its own");
+        assert_eq!(launch_env(none.as_ref(), env(&[("NODE_ENV", "dev")])), env(&[("NODE_ENV", "dev")]));
+        assert_eq!(launch_env(None, env(&[])), None);
     }
 
     #[test]
