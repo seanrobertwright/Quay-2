@@ -10,6 +10,7 @@ import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminal
 import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
+import { repaintTerminalScreen, syncTerminalSize } from "./terminalResize";
 
 /**
  * Focuses a terminal unless an overlay is open: these focus calls run on timers and output
@@ -66,7 +67,6 @@ export function useTerminal(
     rows: 0,
     cols: 0,
   });
-  const redrawTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep latest props in refs so the main Terminal instance is never disposed on React re-renders
   const onToggleSearchRef = useRef(onToggleSearch);
@@ -84,45 +84,24 @@ export function useTerminal(
 
   // Fit xterm to its container and only notify Rust ConPTY when (rows, cols) actually changed
   const syncPtySize = useCallback(() => {
-    const container = containerRef.current;
-    const term = termRef.current;
-    const fitAddon = fitAddonRef.current;
-    if (!container || !term || !fitAddon || !isVisibleRef.current) return;
-    if (container.clientWidth <= 0 || container.clientHeight <= 0) return;
-
     try {
-      fitAddon.fit();
-      const rows = term.rows;
-      const cols = term.cols;
-      if (rows <= 0 || cols <= 0) return;
-
-      if (
-        rows !== lastPtySizeRef.current.rows ||
-        cols !== lastPtySizeRef.current.cols
-      ) {
-        const isInitial = lastPtySizeRef.current.cols === 0;
-        lastPtySizeRef.current = { rows, cols };
-        fittedTerminalDimensions.set(terminalId, { rows, cols });
-        globalTerminalCols = cols;
-        globalTerminalRows = rows;
-        invoke("resize_pty", {
-          terminalId,
-          rows,
-          cols,
-        }).catch(console.error);
-
-        // When resizing an existing interactive terminal, notify Claude Code/Ink TUI
-        // to cleanly redraw with form-feed Ctrl+L (\x0c) so ConPTY buffer reflow doesn't corrupt lines
-        if (!isInitial) {
-          if (redrawTimerRef.current !== null) {
-            clearTimeout(redrawTimerRef.current);
-          }
-          redrawTimerRef.current = setTimeout(() => {
-            redrawTimerRef.current = null;
-            invoke("write_pty", { terminalId, data: "\x0c" }).catch(() => {});
-          }, 60);
+      syncTerminalSize(
+        {
+          container: containerRef.current,
+          term: termRef.current,
+          fitAddon: fitAddonRef.current,
+          isVisible: isVisibleRef.current,
+        },
+        lastPtySizeRef.current,
+        {
+          onSizeChanged: (rows, cols) => {
+            fittedTerminalDimensions.set(terminalId, { rows, cols });
+            globalTerminalCols = cols;
+            globalTerminalRows = rows;
+          },
+          resizePty: (rows, cols) => invoke("resize_pty", { terminalId, rows, cols }),
         }
-      }
+      );
     } catch (err) {
       console.error("Error syncing PTY size:", err);
     }
@@ -313,10 +292,6 @@ export function useTerminal(
     return () => {
       disposed = true;
       clearTimeout(fitTimer);
-      if (redrawTimerRef.current !== null) {
-        clearTimeout(redrawTimerRef.current);
-        redrawTimerRef.current = null;
-      }
       if (resizeRaf !== null) {
         cancelAnimationFrame(resizeRaf);
       }
@@ -466,11 +441,9 @@ export function useTerminal(
   const getTerminal = useCallback(() => termRef.current, []);
 
   const repaintTerminal = useCallback(() => {
-    if (!termRef.current) return;
-    try {
-      termRef.current.clear();
-      invoke("write_pty", { terminalId, data: "\x0c" }).catch(console.error);
-    } catch (_) {}
+    repaintTerminalScreen(termRef.current, (data) =>
+      invoke("write_pty", { terminalId, data })
+    );
   }, [terminalId]);
 
   return {
