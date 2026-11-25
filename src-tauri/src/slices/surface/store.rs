@@ -14,6 +14,7 @@ use super::board_run::BoardRun;
 use super::calls::{Handed, OpenCalls};
 use super::carried::Carried;
 use super::check::Accepted;
+use super::daily_record::{About, DailyRecord, Event, Given};
 use super::past_limit::{within_limits, PastLimit};
 use super::place::{Place, MOST_LIVE};
 use super::typed_line::typed_line;
@@ -380,6 +381,16 @@ impl Surface {
         })
     }
 
+    /// That `answer` answered it, as the daily record has it.
+    fn answered(&self, answer: &Value) -> Event {
+        Event::Answered(Given::of(&self.tool, &self.arguments, answer))
+    }
+
+    /// It, as the daily record names it.
+    fn about(&self, terminal_id: &str) -> About {
+        About::surface(terminal_id, &self.id, &self.tool, &self.title, self.place)
+    }
+
     fn record(&self, terminal_id: &str) -> SurfaceRecord {
         let (mut answer, mut answered_at, mut ended_at, mut withdrawn_at) = (None, None, None, None);
         match &self.phase {
@@ -479,9 +490,9 @@ impl Terminal {
         if self.live_in(place, |_| true) < MOST_LIVE { Ok(()) } else { Err(PastLimit::Live(place)) }
     }
 
-    /// Takes the locked surfaces past `MOST_LOCKED` out, the one whose last change is the oldest first.
-    /// `terminal_id` is its own id.
-    fn drop_past_most_locked(&mut self, terminal_id: &str) -> Vec<SurfaceKey> {
+    /// Takes the locked surfaces past `MOST_LOCKED` out, the one whose last change is the oldest first, which
+    /// `record` is told. `terminal_id` is its own id.
+    fn drop_past_most_locked(&mut self, terminal_id: &str, record: &DailyRecord) -> Vec<SurfaceKey> {
         let mut left = Vec::new();
         loop {
             let locked = || self.surfaces.iter().enumerate().filter(|(_, surface)| surface.is_locked());
@@ -492,15 +503,17 @@ impl Terminal {
                 return left;
             };
             let surface = self.surfaces.remove(first);
+            record.happened(surface.about(terminal_id), Event::Deleted);
             left.push(SurfaceKey::new(terminal_id, &surface.id));
             self.left.add(surface.id, surface.phase.standing());
         }
     }
 
-    /// Takes out the surface at `at`, which the operator dismissed. Its agent cannot use the id again,
-    /// unless it was an earlier launch's.
-    fn remove_dismissed(&mut self, at: usize) {
+    /// Takes out the surface at `at`, which the operator dismissed, as `record` is told. Its agent cannot use
+    /// the id again, unless it was an earlier launch's. `terminal_id` is its own id.
+    fn remove_dismissed(&mut self, terminal_id: &str, at: usize, record: &DailyRecord) {
         let surface = self.surfaces.remove(at);
+        record.happened(surface.about(terminal_id), Event::Dismissed);
         if !surface.launch_over {
             self.dismissed.insert(surface.id.clone());
         }
@@ -514,8 +527,13 @@ impl Terminal {
 
     /// Ends its launch, and what its agent had: each surface that is not locked, its calls, where the
     /// surfaces that have left stand, the dismissed ids, and what was counted of it. Returns the
-    /// surfaces that ended.
-    fn end_launch(&mut self, terminal_id: &str, mut next_change: impl FnMut() -> u64) -> Vec<SurfaceRecord> {
+    /// surfaces that ended, of which `record` is told.
+    fn end_launch(
+        &mut self,
+        terminal_id: &str,
+        record: &DailyRecord,
+        mut next_change: impl FnMut() -> u64,
+    ) -> Vec<SurfaceRecord> {
         self.running = false;
         self.calls.forget_all();
         self.rejected.clear();
@@ -526,6 +544,7 @@ impl Terminal {
             surface.launch_over = true;
             if !surface.is_locked() {
                 surface.end(next_change());
+                record.happened(surface.about(terminal_id), Event::Ended);
                 ended.push(surface.record(terminal_id));
             }
         }
@@ -559,10 +578,16 @@ impl Inner {
     }
 }
 
+/// Its state, and where what becomes of the surfaces is recorded.
 #[derive(Clone, Default)]
-pub struct SurfaceStore(Arc<Mutex<Inner>>);
+pub struct SurfaceStore(Arc<Mutex<Inner>>, DailyRecord);
 
 impl SurfaceStore {
+    /// A store that hands what becomes of its surfaces to `record`.
+    pub fn recorded(record: DailyRecord) -> Self {
+        Self(Arc::default(), record)
+    }
+
     /// Says that `terminal_id` is listed with its launch `launch` running, from which on its calls are
     /// taken. An earlier launch than the terminal's latest changes nothing.
     pub fn launched(&self, terminal_id: &str, launch: u64) {
@@ -582,16 +607,22 @@ impl SurfaceStore {
         let Some(terminal) = terminals.get_mut(terminal_id).filter(|t| t.running && t.launch == launch) else {
             return Default::default();
         };
-        let ended = terminal.end_launch(terminal_id, || {
+        let ended = terminal.end_launch(terminal_id, &self.1, || {
             *last_change += 1;
             *last_change
         });
-        (ended, terminal.drop_past_most_locked(terminal_id))
+        (ended, terminal.drop_past_most_locked(terminal_id, &self.1))
     }
 
     /// Forgets `terminal_id`, which has closed, with all it had. Returns its surfaces.
     pub fn close(&self, terminal_id: &str) -> Vec<SurfaceKey> {
-        let closed = self.0.lock().terminals.remove(terminal_id).unwrap_or_default();
+        let mut inner = self.0.lock();
+        let closed = inner.terminals.remove(terminal_id).unwrap_or_default();
+        for surface in closed.surfaces.iter().filter(|surface| !surface.is_locked()) {
+            self.1.happened(surface.about(terminal_id), Event::Ended);
+        }
+        self.1.closed(terminal_id);
+        drop(inner);
         closed.surfaces.into_iter().map(|surface| SurfaceKey::new(terminal_id, surface.id)).collect()
     }
 
@@ -714,6 +745,7 @@ impl SurfaceStore {
         terminal.has_room(creation.place)?;
         let surface = Surface::created(&key.id, Content { creation, accepted, change });
         let record = surface.record(&key.terminal_id);
+        self.1.happened(surface.about(&key.terminal_id), Event::Shown);
         terminal.surfaces.push(surface);
         terminal.rejected.remove(creation.tool);
         Ok(record)
@@ -757,17 +789,23 @@ impl SurfaceStore {
             surface.shown_at = same.shown_at;
         }
         let record = surface.record(&key.terminal_id);
+        let about = surface.about(&key.terminal_id);
         match (at, same.is_some()) {
-            (Some(at), true) => terminal.surfaces[at] = surface,
+            (Some(at), true) => {
+                self.1.happened(about, Event::Updated);
+                terminal.surfaces[at] = surface;
+            }
             (at, _) => {
                 if let Some(at) = at {
-                    terminal.surfaces.remove(at);
+                    let there = terminal.surfaces.remove(at);
+                    self.1.happened(there.about(&key.terminal_id), Event::Deleted);
                 }
+                self.1.happened(about, Event::Shown);
                 terminal.surfaces.push(surface);
             }
         }
         terminal.rejected.remove(creation.tool);
-        Ok(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
+        Ok(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id, &self.1) })
     }
 
     /// The operator's answer to `revision` of a surface, which takes one. It goes back through the open
@@ -790,9 +828,10 @@ impl SurfaceStore {
         }
         let line = typed_line(&surface.title, &surface.id, &answer);
         if calls.hand(waiters, &answer, &line) {
+            self.1.happened(surface.about(&key.terminal_id), surface.answered(&answer));
             surface.settle(answer, change);
             let record = surface.record(&key.terminal_id);
-            let left = terminal.drop_past_most_locked(&key.terminal_id);
+            let left = terminal.drop_past_most_locked(&key.terminal_id, &self.1);
             return Ok(Answered::Returned(Changed { record, left }));
         }
         surface.phase = Phase::Typing { answer };
@@ -819,7 +858,7 @@ impl SurfaceStore {
                 (!calls.hand(waiters, &result, &line)).then_some(ToType { launch: *launch, line })
             }
         };
-        terminal.remove_dismissed(at);
+        terminal.remove_dismissed(&key.terminal_id, at, &self.1);
         Ok(Some(Dismissed { line }))
     }
 
@@ -834,7 +873,7 @@ impl SurfaceStore {
         let is_to_leave = |surface: &Surface| surface.is_locked() && ids.contains(&surface.id);
         while let Some(at) = terminal.surfaces.iter().position(is_to_leave) {
             left.push(SurfaceKey::new(terminal_id, &terminal.surfaces[at].id));
-            terminal.remove_dismissed(at);
+            terminal.remove_dismissed(terminal_id, at, &self.1);
         }
         left
     }
@@ -849,9 +888,10 @@ impl SurfaceStore {
             return None;
         };
         let answer = answer.take();
+        self.1.happened(surface.about(&key.terminal_id), surface.answered(&answer));
         surface.settle(answer, change);
         let record = surface.record(&key.terminal_id);
-        Some(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id) })
+        Some(Changed { record, left: terminal.drop_past_most_locked(&key.terminal_id, &self.1) })
     }
 
     /// Opens a surface again whose answer could not be typed in, unless it has left or ended meanwhile.

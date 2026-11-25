@@ -9,10 +9,21 @@ pub enum NotTyped {
     Failed,
 }
 
+/// What a terminal is called.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalName {
+    pub name: String,
+    /// Its CLI, as Quay spells its kind.
+    pub cli: &'static str,
+}
+
 /// The terminals answers are typed into.
 pub trait Terminals: Send + Sync {
     /// Types `line` into `terminal_id` as the operator's message: at once, or held until the
     /// terminal's turn ends where Quay sees turns end. It is for the launch `launch`, and no later one
     /// gets it, whether it was held or not. Blocks while it types.
     fn type_in(&self, terminal_id: &str, launch: u64, line: &str) -> Result<(), NotTyped>;
+
+    /// What `terminal_id` is called now. `None` when it has closed.
+    fn named(&self, terminal_id: &str) -> Option<TerminalName>;
 }

@@ -14,6 +14,7 @@ mod calls;
 mod carried;
 mod check;
 pub mod commands;
+mod daily_record;
 mod disk;
 mod image;
 mod image_file;
@@ -21,6 +22,7 @@ mod local_path;
 pub mod names;
 mod past_limit;
 mod place;
+mod plain_line;
 mod raw;
 mod raw_changes;
 mod read;
@@ -39,6 +41,8 @@ mod wait;
 mod ask_tests;
 #[cfg(test)]
 mod board_tests;
+#[cfg(test)]
+mod daily_record_tests;
 #[cfg(test)]
 mod delete_tests;
 #[cfg(test)]
@@ -85,5 +89,5 @@ pub use show_file::*;
 pub use store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};
 pub use tools::{SurfaceTools, Webview};
 pub use typed_line::is_typed_line;
-pub use typing::{NotTyped, Terminals};
+pub use typing::{NotTyped, TerminalName, Terminals};
 pub use unsent::{Page, UnsentRefused, UnsentSave};

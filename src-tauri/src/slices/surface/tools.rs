@@ -1,7 +1,9 @@
 //! The surface tools: a call's checks, its commit, its wait and its result.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, Weak};
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use serde_json::{json, Value};
@@ -9,6 +11,7 @@ use serde_json::{json, Value};
 use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
+use super::daily_record::{Clock, DailyRecord};
 use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
@@ -26,6 +29,9 @@ use super::wait::Wait;
 
 mod show_raw;
 
+/// How long the surface record may take to be finished, which Quay's exit waits for.
+const RECORD_LIMIT: Duration = Duration::from_secs(1);
+
 /// The window that checks and draws surfaces.
 pub trait Webview: Send + Sync {
     fn check(&self, request: &CheckRequest);
@@ -39,6 +45,7 @@ struct Inner {
     offered: bool,
     timing: Timing,
     store: SurfaceStore,
+    record: DailyRecord,
     checks: Checks,
     /// One lock per terminal, held while a call of it is checked and committed and never while one
     /// waits for its answer. It lives as long as a call holds it or is queued for it.
@@ -74,10 +81,12 @@ impl SurfaceTools {
     }
 
     pub(crate) fn with(offered: bool, timing: Timing) -> Self {
+        let record = DailyRecord::default();
         Self(Arc::new(Inner {
             offered,
             timing,
-            store: SurfaceStore::default(),
+            store: SurfaceStore::recorded(record.clone()),
+            record,
             checks: Checks::default(),
             queues: Mutex::default(),
             webview: OnceLock::new(),
@@ -97,6 +106,18 @@ impl SurfaceTools {
         if self.0.terminals.set(Box::new(terminals)).is_err() {
             tracing::error!("The surfaces' terminals were set twice; the first stay");
         }
+    }
+
+    /// Keeps the surface record in `folder`, by `clock`, once.
+    pub fn keep_record(&self, folder: PathBuf, clock: Clock) {
+        // The record's thread must not keep the surfaces alive, which would keep it running
+        let surfaces = Arc::downgrade(&self.0);
+        self.0.record.keep(folder, clock, move |terminal_id| surfaces.upgrade()?.terminals.get()?.named(terminal_id));
+    }
+
+    /// Waits until the surface record has what has happened so far, for `RECORD_LIMIT` at the most.
+    pub fn finish_record(&self) {
+        self.0.record.finish(RECORD_LIMIT);
     }
 
     pub(super) fn store(&self) -> &SurfaceStore {
