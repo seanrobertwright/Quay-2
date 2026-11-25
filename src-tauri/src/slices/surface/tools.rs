@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
-use super::daily_record::{Clock, DailyRecord};
+use super::daily_record::{About, Clock, DailyRecord, Event, Fired, Function, Refusal};
 use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
@@ -374,7 +374,10 @@ impl SurfaceTools {
 
     /// The result of `terminal_id`'s call of `tool` that `rejection` rejects. The window is told nothing.
     fn reject(&self, terminal_id: &str, tool: &str, rejection: &Rejection) -> Value {
-        rejection.result(tool, self.0.store.rejected(terminal_id, tool))
+        let run = self.0.store.rejected(terminal_id, tool);
+        let id = rejection.errors().iter().find_map(|error| error.surface_id.as_deref());
+        self.0.record.happened(About::call(terminal_id, tool, id), Event::Rejected(Refusal::of(rejection, run)));
+        rejection.result(tool, run)
     }
 
     fn show(&self, record: &SurfaceRecord) {
@@ -492,6 +495,16 @@ impl SurfaceTools {
         let moved = self.0.store.move_surface(key, as_tab)?;
         self.show(&moved);
         Ok(moved)
+    }
+
+    /// Records that the operator's click fired `function` of a surface, at `target`.
+    pub fn function_fired(&self, key: &SurfaceKey, function: Function, target: Option<&str>) {
+        let Some(record) = self.0.store.record(key) else {
+            return;
+        };
+        let SurfaceRecord { terminal_id, id, tool, title, place, state, .. } = &record;
+        let about = About::surface(terminal_id, id, tool, title, *place);
+        self.0.record.happened(about, Event::Fired(Fired::of(function, target, state)));
     }
 
     /// `type_in`, for a surface that has no way back: a failure is only logged, and

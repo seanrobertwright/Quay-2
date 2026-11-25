@@ -17,10 +17,14 @@ use super::place::Place;
 use super::plain_line::plain_line;
 use super::typing::TerminalName;
 
+mod fired;
 mod given;
+mod refusal;
 mod writer;
 
+pub use fired::{Fired, Function};
 pub use given::Given;
+pub use refusal::Refusal;
 
 /// How many events may wait to be written. One past them is lost, which the error log is told.
 const MOST_QUEUED: usize = 1024;
@@ -43,16 +47,20 @@ pub enum Event {
     Deleted,
     Withdrawn,
     Ended,
+    #[serde(rename = "function fired")]
+    Fired(Fired),
+    Rejected(Refusal),
 }
 
-/// What an event is about.
+/// What an event is about. A call that was rejected may be about no surface, and one it would have made has
+/// no title or place yet.
 #[derive(Debug)]
 pub struct About {
     terminal_id: String,
     tool: String,
-    surface_id: String,
-    title: String,
-    place: Place,
+    surface_id: Option<String>,
+    title: Option<String>,
+    place: Option<Place>,
 }
 
 impl About {
@@ -61,9 +69,20 @@ impl About {
         Self {
             terminal_id: terminal_id.to_string(),
             tool: tool.to_string(),
-            surface_id: plain_line(id, MOST_NAMED),
-            title: plain_line(title, MOST_NAMED),
-            place,
+            surface_id: Some(plain_line(id, MOST_NAMED)),
+            title: Some(plain_line(title, MOST_NAMED)),
+            place: Some(place),
+        }
+    }
+
+    /// A call of `tool` by `terminal_id`, about the surface `id` when it is known.
+    pub fn call(terminal_id: &str, tool: &str, id: Option<&str>) -> Self {
+        Self {
+            terminal_id: terminal_id.to_string(),
+            tool: tool.to_string(),
+            surface_id: id.map(|id| plain_line(id, MOST_NAMED)),
+            title: None,
+            place: None,
         }
     }
 }
@@ -105,6 +124,7 @@ impl DailyRecord {
     ) {
         let (sender, messages) = sync_channel(MOST_QUEUED);
         let lost = Arc::new(AtomicU64::new(0));
+        let now = clock();
         if self.0.set(Queue { sender, clock, lost: lost.clone() }).is_err() {
             tracing::error!("The surface record was started twice; the first stays");
             return;
@@ -112,7 +132,7 @@ impl DailyRecord {
         let writer = writer::Writer::new(folder, Box::new(named), lost);
         // What the thread logs goes where this one's does
         let log = tracing::dispatcher::get_default(Clone::clone);
-        let run = move || tracing::dispatcher::with_default(&log, || writer.run(&messages));
+        let run = move || tracing::dispatcher::with_default(&log, || writer.run(&messages, now));
         if let Err(e) = std::thread::Builder::new().name("surface-record".into()).spawn(run) {
             tracing::error!("The surface record could not be started: {e}");
         }

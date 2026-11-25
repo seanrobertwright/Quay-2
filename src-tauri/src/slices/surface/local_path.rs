@@ -238,7 +238,7 @@ fn parse_file_address(rest: &str, style: Style) -> Result<Parsed, Refused> {
 }
 
 /// `text` with its percent escapes read, or `None` when they do not spell text.
-fn percent_decoded(text: &str) -> Option<String> {
+pub(super) fn percent_decoded(text: &str) -> Option<String> {
     let mut bytes = Vec::with_capacity(text.len());
     let mut rest = text.bytes();
     while let Some(byte) = rest.next() {

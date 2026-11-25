@@ -84,6 +84,7 @@ mod update_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
+pub use daily_record::Function;
 pub use image::*;
 pub use show_file::*;
 pub use store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};

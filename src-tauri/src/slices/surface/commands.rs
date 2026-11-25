@@ -4,6 +4,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use super::check::{CheckRequest, Verdict};
+use super::daily_record::Function;
 use super::store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};
 use super::tools::{SurfaceTools, Webview};
 use super::typing::NotTyped;
@@ -133,6 +134,19 @@ pub async fn surface_move(
         };
         why.to_string()
     })
+}
+
+/// Records that the operator's click fired a function of a surface, such as opening a link in it.
+#[tauri::command]
+pub async fn surface_function_fired(
+    terminal_id: String,
+    id: String,
+    function: Function,
+    target: Option<String>,
+    surfaces: State<'_, SurfaceTools>,
+) -> Result<(), String> {
+    surfaces.function_fired(&SurfaceKey::new(terminal_id, id), function, target.as_deref());
+    Ok(())
 }
 
 fn refusal(refused: AnswerRefused) -> &'static str {

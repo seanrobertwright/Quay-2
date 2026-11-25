@@ -71,6 +71,16 @@ impl Rejection {
         self.errors.is_empty()
     }
 
+    /// The errors it lists.
+    pub fn errors(&self) -> &[CallError] {
+        &self.errors
+    }
+
+    /// How many there are after those.
+    pub fn more(&self) -> usize {
+        self.more
+    }
+
     /// The result of the call of `tool` that this rejects, the `run`th rejected in a row.
     pub fn result(&self, tool: &str, run: u32) -> Value {
         let mut body = json!({ "errors": self.errors, "next": next(tool, run) });
