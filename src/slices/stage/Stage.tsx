@@ -302,7 +302,7 @@ export const Stage: FC<StageProps> = ({
 
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
-      <main ref={stageRef} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+      <main ref={stageRef} data-stage className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
         {(tools.length > 0 || earlierTabs) && (
           <StageTabBar
             terminals={[]}
@@ -376,7 +376,7 @@ export const Stage: FC<StageProps> = ({
   };
 
   return (
-    <main ref={stageRef} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+    <main ref={stageRef} data-stage className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
       <StageTabBar
         terminals={visibleTerminals}
         currentTerminalId={focusedTerminal.id}

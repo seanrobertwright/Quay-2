@@ -798,13 +798,14 @@ export function App() {
     view: CompanionViewId;
     entryId?: string;
     surfaceId?: string;
+    moved?: boolean;
     pullRequest?: PullRequestAsk;
   } | null>(null);
   useEffect(() => {
     if (!pendingView || pendingView.terminalId !== activeTerminalId) return;
-    const { terminalId, view, entryId, surfaceId, pullRequest } = pendingView;
+    const { terminalId, view, entryId, surfaceId, moved, pullRequest } = pendingView;
     setPendingView(null);
-    setCompanionRequest((prev) => ({ terminalId, view, entryId, surfaceId, pullRequest, seq: (prev?.seq ?? 0) + 1 }));
+    setCompanionRequest((prev) => ({ terminalId, view, entryId, surfaceId, moved, pullRequest, seq: (prev?.seq ?? 0) + 1 }));
   }, [pendingView, activeTerminalId]);
 
   // The Projects panel's ticket pipeline (#651). A ticket picked with no terminal, or a lane's
@@ -867,7 +868,7 @@ export function App() {
     },
   });
   // A terminal row's chip and its pane title's button open one of the terminal's surfaces.
-  const openSurface = ({ terminal_id, id }: SurfaceKey) => {
+  const openSurface = ({ terminal_id, id }: SurfaceKey, moved = false) => {
     if (surfaceTabs.open({ terminal_id, id })) {
       // A lens lies over the stage, and over the tab with it
       companionLens.dismiss();
@@ -880,12 +881,12 @@ export function App() {
       return;
     }
     if (terminal_id !== activeTerminalId) showTerminal(terminal_id);
-    setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id });
+    setPendingView({ terminalId: terminal_id, view: "surface", surfaceId: id, moved });
   };
   // A surface that its own frame moved is brought into view where it went.
   const openSurfaceRef = useRef(openSurface);
   openSurfaceRef.current = openSurface;
-  useEffect(() => onSurfaceRequest((key) => openSurfaceRef.current(key)), []);
+  useEffect(() => onSurfaceRequest((key) => openSurfaceRef.current(key, true)), []);
   // A Waiting on you row selects its terminal; a permission request opens in Activity to answer, and
   // an asking surface in the Surface view or its stage tab.
   const openWaiting = (item: AttentionItem) => {

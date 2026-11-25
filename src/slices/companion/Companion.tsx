@@ -286,6 +286,8 @@ export interface CompanionShowRequest {
   entryId?: string;
   /** The surface to show, such as the one a terminal row's chip names. */
   surfaceId?: string;
+  /** Whether that surface is asked for as the operator has moved it to the companion. */
+  moved?: boolean;
   /** What to ask of the pull request view, such as a pie stroke's Checks, Comment or confirm step. */
   pullRequest?: PullRequestAsk;
   seq: number;
@@ -471,8 +473,8 @@ export const Companion = ({
         if (inspector) setOverInspector(showRequest.view);
       }
       if (showRequest.entryId) setFocus({ terminalId: showRequest.terminalId, entryId: showRequest.entryId, seq: showRequest.seq });
-      const { terminalId, surfaceId, seq } = showRequest;
-      setSurfaceFocus(surfaceId ? { terminalId, surfaceId, seq } : null);
+      const { terminalId, surfaceId, moved, seq } = showRequest;
+      setSurfaceFocus(surfaceId ? { terminalId, surfaceId, moved, seq } : null);
       if (ticket && isAsk) setClosedTicketSeq(ticket.seq);
       if (showRequest.pullRequest) setPrAsk({ ...showRequest.pullRequest, terminalId: showRequest.terminalId, seq: showRequest.seq });
     }
