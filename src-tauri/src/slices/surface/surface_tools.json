@@ -1,13 +1,13 @@
 [
   {
     "name": "quay_ask",
-    "description": "Ask the operator one to four questions beside this terminal, when you need a decision or an answer before you go on. The call stays open for the answer, up to 100 seconds, and returns {\"answers\": [{\"question\", \"chosen\", \"text\"}]}, one for each question in order: the labels the operator picked, an empty list when they picked none, and what they wrote, left out when they wrote nothing. Nothing is picked for them, and every question has a text box of its own, so add no option for \"other\".",
+    "description": "Ask the operator one to four questions beside this terminal, when you need a decision or an answer before you go on. The call waits for it, up to 100 seconds, and returns {\"answers\": [{\"question\", \"chosen\", \"text\"}]}, one for each question in order: the labels picked, an empty list for none, and what they wrote, left out when empty. Nothing is picked for them, and every question has a text box, so add no option for \"other\".",
     "inputSchema": {
       "type": "object",
       "properties": {
         "context": {
           "type": "string",
-          "description": "Why you ask, as Markdown, in at most 600 characters."
+          "description": "Why you ask: Markdown, at most 600 characters."
         },
         "questions": {
           "type": "array",
@@ -24,7 +24,7 @@
                 "type": "array",
                 "minItems": 2,
                 "maxItems": 6,
-                "description": "Two to six options. Left out, the operator answers in their own words.",
+                "description": "Two to six. Left out, the operator answers in their own words.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -38,7 +38,7 @@
               },
               "multiple": {
                 "type": "boolean",
-                "description": "True if the operator may pick several options, or send with none picked. Otherwise they pick one, or write instead."
+                "description": "True to let them pick several, or send with none. Otherwise they pick one or write."
               }
             },
             "required": ["question"],
@@ -52,7 +52,7 @@
   },
   {
     "name": "quay_review",
-    "description": "Show the operator a plan, results or findings to decide on, in a tab of their own, when they should read before you go on. They keep or drop each item, may comment, and approve, request changes or reject. The call stays open for the verdict, up to 100 seconds, and returns {\"title\", \"verdict\", \"dropped\", \"comment\"}: verdict is approved, changes_requested or rejected, dropped the titles of the items to leave out, and comment is left out when empty.",
+    "description": "Show the operator a plan, results or findings in a tab, to read and decide on before you go on. They keep or drop each item, may comment, and approve, request changes or reject. The call waits for the verdict, up to 100 seconds, and returns {\"title\", \"verdict\", \"dropped\", \"comment\"}: verdict is approved, changes_requested or rejected, dropped the titles to leave out, and comment is left out when empty.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -61,7 +61,7 @@
         "items": {
           "type": "array",
           "maxItems": 30,
-          "description": "What can be kept or dropped one by one. All start kept.",
+          "description": "Kept or dropped one by one. All start kept.",
           "items": {
             "type": "object",
             "properties": {
@@ -80,7 +80,7 @@
   },
   {
     "name": "quay_board",
-    "description": "Show the operator how a long run stands, as a live line on this terminal's pane that opens into steps, progress and stats. Each call replaces the whole board, so send all of it each time. Returns {\"shown\": true} at once and sends nothing back. {\"dismissed\": true} means the operator closed this board: stop updating it, and use a new id for a later run.",
+    "description": "Show the operator how a long run stands, as a live line on this terminal's pane that opens into steps, progress and stats. Each call replaces the whole board, so send all of it. Returns {\"shown\": true} at once, and no answer. {\"dismissed\": true} means the operator closed it: stop updating it, and use a new id for a later run.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -101,7 +101,7 @@
         },
         "progress": {
           "type": "object",
-          "description": "For work that is counted. It drives the bar, which the steps do otherwise.",
+          "description": "For counted work. Drives the bar in place of the steps.",
           "properties": { "done": { "type": "number" }, "total": { "type": "number", "description": "Above 0." } },
           "required": ["done", "total"],
           "additionalProperties": false
@@ -122,9 +122,9 @@
         "status": {
           "type": "string",
           "enum": ["running", "done", "failed"],
-          "description": "Left out, running. done and failed stop the clock; running after that starts a fresh one."
+          "description": "Left out, running. done and failed stop the clock; running after that starts it afresh."
         },
-        "id": { "type": "string", "description": "At most 40 characters. The same id is the same board, and its clock goes on. Left out, board." }
+        "id": { "type": "string", "description": "At most 40 characters. The same id keeps its board and clock. Left out, board." }
       },
       "required": ["title"],
       "additionalProperties": false
@@ -132,11 +132,11 @@
   },
   {
     "name": "quay_surface",
-    "description": "Show the operator what no other tool can, as A2UI 1.0 messages you write. quay_surface_guide says how. One createSurface a call, each surface whole after it. deleteSurface takes back any of your surfaces. A call that makes or updates one with an action to you waits for it, up to 100 seconds, and returns the A2UI action message, else {\"shown\": true}.",
+    "description": "Show the operator what no other tool can, as A2UI 1.0 messages. quay_surface_guide says how. One createSurface a call, each surface whole after it. deleteSurface takes back any of your surfaces. A call that makes or updates one with an action to you waits for it, up to 100 seconds, and returns the A2UI action message, else {\"shown\": true}.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "messages": { "type": "array", "items": { "type": "object" } },
+        "messages": { "type": "array", "minItems": 1, "items": { "type": "object" } },
         "place": {
           "enum": ["companion", "tab", "strip"],
           "description": "To create. companion: narrow, for an answer. tab: full width, for long content. strip: compact, for status, with no action to you."
@@ -148,8 +148,13 @@
     }
   },
   {
+    "name": "quay_surface_guide",
+    "description": "How to write quay_surface calls: the rules, every component and function, and examples. Read it before your first, and when one is rejected.",
+    "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+  },
+  {
     "name": "quay_surface_read",
-    "description": "Read where one of your surfaces stands, for an answer you did not get. Do not wait with it: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered, dismissed, withdrawn when you deleted it unanswered, or ended when the terminal exited first, and result is there only when answered.",
+    "description": "Read where one of your surfaces stands, for an answer you did not get. Do not poll: the answer is typed into this terminal. Returns {\"surface_id\", \"state\", \"result\"}: state is shown, no_answer_yet, answered, dismissed, withdrawn when you deleted it unanswered, or ended when the terminal exited first, with result only when answered.",
     "inputSchema": {
       "type": "object",
       "properties": {

@@ -7,13 +7,13 @@ import { EFFECTS } from "../effects.ts";
 import { componentsOf, invalid, type Message, type Pointer } from "./callErrors.ts";
 
 /** Mirrors `MOST_COMPONENTS`, which Rust holds every surface to. */
-const MOST_COMPONENTS = 500;
+export const MOST_COMPONENTS = 500;
 
 /** Mirrors `MOST_DATA`, which Rust holds every surface to, in bytes of JSON. */
-const MOST_DATA = 256 * 1024;
+export const MOST_DATA = 256 * 1024;
 
 /** Mirrors `MOST_IMAGES`, which Rust holds every surface to. */
-const MOST_IMAGES = 12;
+export const MOST_IMAGES = 12;
 
 const effects: ReadonlySet<unknown> = new Set(EFFECTS.map(({ name }) => name));
 
@@ -42,13 +42,15 @@ export function postCheck(message: Message, place: SurfacePlace): CheckError[] {
   });
 }
 
+/** `size`, in bytes, as kB rounded up. */
+export const inKb = (size: number): string => `${Math.ceil(size / 1024)} kB`;
+
 const overLimit = ({ pointer, surfaceId }: Message, limit: string, has: string) => [invalid(pointer, `A surface has at most ${limit}; this one would have ${has}.`, surfaceId)];
 
 /** What of `state`, of which `message` is told, is more than Quay takes, before anything is resolved of it. */
 export function tooLarge({ createSurface }: CreateSurface, message: Message): CheckError[] {
   const { length } = createSurface.components;
   const bytes = new TextEncoder().encode(JSON.stringify(createSurface.dataModel)).length;
-  const inKb = (size: number) => `${Math.ceil(size / 1024)} kB`;
   return [
     ...(length > MOST_COMPONENTS ? overLimit(message, `${MOST_COMPONENTS} components`, String(length)) : []),
     ...(bytes > MOST_DATA ? overLimit(message, `${inKb(MOST_DATA)} of data`, inKb(bytes)) : []),

@@ -1,0 +1,108 @@
+/// <reference types="node" />
+// The guide that quay_surface_guide returns (#728), as it is committed: its lines, its examples and its size.
+import "../../../../test-support/dom.ts";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import type { AcceptedSurface, HeldSurface } from "../../surfaceTypes.ts";
+import type { Call } from "./examples.ts";
+
+const { catalog } = await import("../catalog.ts");
+const { check } = await import("../check.ts");
+const { guide } = await import("./guide.ts");
+
+const committed = readFileSync(new URL("../../../../../src-tauri/src/slices/surface/surface_guide.md", import.meta.url), "utf8");
+
+/** The lines under the heading `heading` that are a signature. */
+function signaturesUnder(heading: string): string[] {
+  const [, section = ""] = committed.split(`\n## ${heading}\n`);
+  return section.split("\n## ")[0].split("\n").filter((line) => /^@?\w+\(/.test(line));
+}
+
+const namesOf = (lines: readonly string[]) => lines.map((line) => line.slice(0, line.indexOf("(")));
+
+test("the guide has one line for each component and function of the catalog, and no other", () => {
+  assert.deepEqual(namesOf(signaturesUnder("Components")).sort(), [...catalog.components.keys()].sort());
+  assert.deepEqual(namesOf(signaturesUnder("Functions")).sort(), ["@index", ...catalog.functions.keys()].sort());
+});
+
+test("a line gives each property or argument with its type, whether it may be left out, its allowed values and its default", () => {
+  const lines = [...signaturesUnder("Components"), ...signaturesUnder("Functions")];
+  for (const line of [
+    "Text(text: string~, variant?: caption|body = body, weight?: number)",
+    "Row(children: children, justify?: center|end|spaceAround|spaceBetween|spaceEvenly|start|stretch = start, align?: start|center|end|stretch = stretch, weight?: number) A layout component that arranges its children horizontally.",
+    "Tabs(tabs: {title: string~, child: id}[1+], weight?: number)",
+    "Button(@checks?: check[], child: id, variant?: default|primary|borderless = default, action: action, weight?: number)",
+    "Slider(@checks?: check[], label?: string~, min?: number = 0, max: number, value: number~, steps?: integer >= 1, weight?: number)",
+    "ChoicePicker(@checks?: check[], label?: string~, variant?: multipleSelection|mutuallyExclusive = mutuallyExclusive, options: {label: string~, value: string, description?: string, recommended?: boolean}[], value: string[]~, displayStyle?: checkbox|chips = checkbox, filterable?: boolean = false, weight?: number) A component that allows selecting one or more options from a list.",
+    "Steps(steps: {label: string, state: pending|active|done|failed, note?: string}[]|binding)",
+    "Progress(done: number~, total: number~, label?: string~)",
+    "and(values: boolean~[2+]): boolean. Performs a logical AND operation on a list of boolean values.",
+    "length(value: string~, min?: integer >= 0, max?: integer >= 0): validationResult. Checks string length constraints.",
+    "showFile(path: string~, line?: number~): void. Shows a file in its folder, or its changes when it has uncommitted ones.",
+    "@index(offset?: number~): number.",
+  ]) {
+    const [name] = line.split("(");
+    assert.equal(lines.find((one) => one.startsWith(`${name}(`)), line);
+  }
+});
+
+test("the committed guide is the one the catalog gives now", () => {
+  assert.ok(committed === guide(), "It is stale. Run pnpm surface:guide and commit what it writes.");
+});
+
+/** The calls the guide gives as examples, in its order. */
+const examples = [...committed.matchAll(/```json\n([\s\S]*?)```/g)].map(([, json]) => JSON.parse(json) as Call);
+
+/** The surfaces that the check accepts of `call`, which creates `surfaceId` and updates those that are `held`. */
+function accepted(call: Call, surfaceId: string, held: HeldSurface[] = []): AcceptedSurface[] {
+  const verdict = check({ call: 1, tool: "quay_surface", surface_id: surfaceId, arguments: call, held });
+  if (!("surfaces" in verdict)) assert.fail(`${JSON.stringify(verdict)} on ${JSON.stringify(call)}`);
+  return verdict.surfaces;
+}
+
+test("each example is accepted by the check that a call of it is held to, made after the ones before it", () => {
+  assert.equal(examples.length, 5);
+  const [form, report, status, update, replace] = examples;
+  const importing = accepted(status, "import");
+  const held: HeldSurface = { state: importing[0].state, place: "strip" };
+  const made = [accepted(form, "release"), accepted(report, "report"), importing, accepted(update, "", [held]), accepted(replace, "import")];
+  assert.deepEqual(
+    made.map((surfaces) => surfaces.map(({ surface_id, asks }) => [surface_id, asks])),
+    [[["release", true]], [["report", false]], [["import", false]], [["import", false]], [["import", false]]],
+  );
+});
+
+test("the examples show every place and every message", () => {
+  assert.deepEqual(examples.map(({ place }) => place), ["companion", "tab", "strip", undefined, "strip"]);
+  const keys = new Set(examples.flatMap(({ messages }) => messages.flatMap((message) => Object.keys(message))));
+  assert.deepEqual([...keys].sort(), ["createSurface", "deleteSurface", "updateComponents", "updateDataModel", "version"]);
+});
+
+test("the guide says what agents got wrong and no line tells", () => {
+  for (const rule of [
+    "An update cannot remove a component.",
+    "Delete the surface and create it again in one call.",
+    "An update carries whole components",
+    // What the round trips saw: an empty list of messages, and the same question again after the wait
+    "never left empty",
+    "end your turn. Do not call again or ask in other words: the same creating call only waits again",
+    "A binding is always `@path`",
+    "with no digit first: `step_2`, not `step-2`",
+    "At most one `createSurface` a call.",
+    "of the whole surface after every call",
+    '{"errors": [{"code", "surfaceId", "path", "message"}], "next"}',
+    "A call that creates needs a `place` and a `title`",
+  ]) {
+    assert.ok(committed.includes(rule), rule);
+  }
+});
+
+test("the guide is under 6,000 tokens, estimated as four characters each", () => {
+  const tokens = [...committed].length / 4;
+  assert.ok(tokens < 6000, `${tokens}`);
+});
+
+test("the guide is the same text on every system", () => {
+  assert.ok(!committed.includes("\r"));
+});

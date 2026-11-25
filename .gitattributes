@@ -1,1 +1,2 @@
 src-tauri/vendor/aiws/** -text
+src-tauri/src/slices/surface/surface_guide.md text eol=lf
