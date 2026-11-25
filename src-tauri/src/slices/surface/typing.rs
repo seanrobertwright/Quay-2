@@ -1,4 +1,5 @@
-//! Where the operator's answer is typed: the terminals, as the surfaces know them.
+//! The terminals, as the surfaces know them: where the operator's answer is typed, and what the surface record
+//! calls them.
 
 /// Why an answer could not be typed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,7 +10,7 @@ pub enum NotTyped {
     Failed,
 }
 
-/// What a terminal is called.
+/// What a terminal is called in the surface record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalName {
     pub name: String,
@@ -17,7 +18,7 @@ pub struct TerminalName {
     pub cli: &'static str,
 }
 
-/// The terminals answers are typed into.
+/// The terminals, which answers are typed into and the surface record names.
 pub trait Terminals: Send + Sync {
     /// Types `line` into `terminal_id` as the operator's message: at once, or held until the
     /// terminal's turn ends where Quay sees turns end. It is for the launch `launch`, and no later one

@@ -8,7 +8,7 @@ use super::super::plain_line::plain_line;
 use super::super::{ask, raw, review};
 use super::MOST_NAMED;
 
-/// A review's verdicts.
+/// A review's verdicts. Mirrors the front end's `ReviewVerdict`.
 const VERDICTS: [&str; 3] = ["approved", "changes_requested", "rejected"];
 
 /// What was picked. What an answer does not have, or has otherwise than Quay makes it, is left out.

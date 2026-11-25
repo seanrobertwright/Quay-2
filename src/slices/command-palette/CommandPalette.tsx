@@ -583,7 +583,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-open-logs-folder",
         category: "Tools & Actions",
         title: "Open logs folder",
-        subtitle: "Show Quay's logs folder in the file manager, beside its record of surfaces",
+        subtitle: "Show Quay's logs folder in the file manager, beside the surface record",
         icon: <FolderOpen className="w-4 h-4 text-[#8b949e]" />,
         action: () => onOpenLogsFolder(),
       });
