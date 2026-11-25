@@ -10,6 +10,9 @@
 
 !include "LogicLib.nsh"
 
+; How the name of an old relay starts; Quay's sweep at startup looks for the same start.
+!define QUAY_OLD_RELAY "quay-relay.exe.old"
+
 ; Deletes the old relays, or asks Windows to delete at its next start the ones it can't. Windows
 ; takes that only from an elevated installer, and Quay's asks for no elevation, so a relay that is
 ; still running usually stays for Quay to delete. The operator is not asked to restart Windows for it.
@@ -20,7 +23,7 @@
     StrCpy $R8 1
   ${EndIf}
 
-  Delete /REBOOTOK "$INSTDIR\quay-relay.exe.old*"
+  Delete /REBOOTOK "$INSTDIR\${QUAY_OLD_RELAY}*"
 
   ${If} $R8 = 0
     SetRebootFlag false
@@ -32,14 +35,14 @@
 ; Renames the relay to the first of `quay-relay.exe.old`, `quay-relay.exe.old.1` and so on that is
 ; free or can be freed, and puts a copy back in its place, for the installer to replace. The copy is
 ; there because the operator can still cancel the installer: the template asks to close a running
-; Quay after this hook. If the rename fails, the relay stays as it was and the installer does what it
-; does without the hook.
+; Quay after this hook. If the copy fails, the relay gets its own name back, so after a failed rename
+; or copy the relay is as it was and the installer does what it does without the hook.
 !macro NSIS_HOOK_PREINSTALL
   Push $R8
   Push $R9
 
   ${If} ${FileExists} "$INSTDIR\quay-relay.exe"
-    StrCpy $R8 "$INSTDIR\quay-relay.exe.old"
+    StrCpy $R8 "$INSTDIR\${QUAY_OLD_RELAY}"
     StrCpy $R9 0
     Delete "$R8"
     ${While} ${FileExists} "$R8"
@@ -47,7 +50,7 @@
         ${Break}
       ${EndIf}
       IntOp $R9 $R9 + 1
-      StrCpy $R8 "$INSTDIR\quay-relay.exe.old.$R9"
+      StrCpy $R8 "$INSTDIR\${QUAY_OLD_RELAY}.$R9"
       Delete "$R8"
     ${EndWhile}
 
@@ -55,7 +58,10 @@
     ; Fails if the name is taken after all
     Rename "$INSTDIR\quay-relay.exe" "$R8"
     ${IfNot} ${Errors}
-      System::Call 'kernel32::CopyFileW(w "$R8", w "$INSTDIR\quay-relay.exe", i 1)'
+      System::Call 'kernel32::CopyFileW(w "$R8", w "$INSTDIR\quay-relay.exe", i 1) i .R9'
+      ${If} $R9 = 0
+        Rename "$R8" "$INSTDIR\quay-relay.exe"
+      ${EndIf}
     ${EndIf}
   ${EndIf}
 
