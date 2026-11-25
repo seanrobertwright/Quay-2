@@ -20,16 +20,11 @@ pub async fn spawn_terminal(
     request.id = Some(terminal_id.clone());
 
     // Inherit workspace environment variables and custom flags
+    let mut workspace_env = None;
     if let Some((proj_env, proj_flags)) =
         workspace_manager.get_project_settings(&request.project_path)
     {
-        if request.env_vars.is_none() && !proj_env.is_empty() {
-            request.env_vars = Some(proj_env);
-        } else if let Some(ref mut envs) = request.env_vars {
-            for (k, v) in proj_env {
-                envs.entry(k).or_insert(v);
-            }
-        }
+        workspace_env = Some(proj_env);
 
         if request.custom_flags.is_none() && proj_flags.is_some() {
             request.custom_flags = proj_flags;
@@ -39,7 +34,7 @@ pub async fn spawn_terminal(
     let port = bridge_state.port();
     let token = bridge_state.token_for(&terminal_id);
 
-    pty_manager.spawn(request, port, token, app_handle)
+    pty_manager.spawn(request, workspace_env, port, token, app_handle)
 }
 
 #[tauri::command]
@@ -149,19 +144,19 @@ pub async fn relaunch_terminal(
     // plugin already said so with `session.ended`; a Codex terminal reports no session end.
     a2a_router.forget_turns(&terminal_id);
 
-    // Relaunch re-reads workspace env vars so a restarted terminal matches a fresh spawn.
-    // Its launch flags come from the stored terminal info, so they are not re-merged here.
-    let env_vars = pty_manager
+    // Relaunch re-reads workspace env vars, which `PtyManager::relaunch` adds to the terminal's
+    // own, so a restarted terminal matches a fresh spawn. Its launch flags come from the stored
+    // terminal info, so they are not re-merged here.
+    let workspace_env = pty_manager
         .get_info(&terminal_id)
         .and_then(|info| workspace_manager.get_project_settings(&info.project_path))
-        .map(|(env, _flags)| env)
-        .filter(|env| !env.is_empty());
+        .map(|(env, _flags)| env);
 
     let port = bridge_state.port();
     let token = bridge_state.token_for(&terminal_id);
     // The pane's fitted size; a zero dimension falls back to the session default.
     let rows = rows.filter(|&n| n > 0);
     let cols = cols.filter(|&n| n > 0);
-    pty_manager.relaunch(&terminal_id, rows, cols, port, token, env_vars, app_handle)
+    pty_manager.relaunch(&terminal_id, rows, cols, port, token, workspace_env, app_handle)
 }
 
