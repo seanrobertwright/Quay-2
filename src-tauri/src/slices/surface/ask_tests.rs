@@ -45,7 +45,8 @@ fn answer() -> Value {
 async fn the_surface_tools_are_listed_after_the_seven() {
     let (seam, _webview) = start(Timing::default()).await;
 
-    let surface_tools = ["quay_ask", "quay_review", "quay_board", "quay_surface", "quay_surface_read"];
+    let surface_tools =
+        ["quay_ask", "quay_review", "quay_board", "quay_surface", "quay_surface_guide", "quay_surface_read"];
     assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &surface_tools].concat());
 }
 

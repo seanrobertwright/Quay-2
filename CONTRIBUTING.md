@@ -108,6 +108,8 @@ pnpm tsc --noEmit
 pnpm build
 ```
 
+`build` first runs `pnpm surface:guide`, which rewrites `src-tauri/src/slices/surface/surface_guide.md`, the text `quay_surface_guide` returns, when what it generates has changed. After changing the surface catalog or `src/slices/surface/a2ui/guide/`, run either one and commit the file: `pnpm test` fails while it is stale.
+
 ### 3. Rust Backend Checks & Tests
 ```powershell
 cargo check --manifest-path src-tauri/Cargo.toml

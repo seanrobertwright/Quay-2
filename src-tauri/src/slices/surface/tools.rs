@@ -12,6 +12,7 @@ use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
 use super::daily_record::{Clock, DailyRecord, Fired};
+use super::guide;
 use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
@@ -196,6 +197,7 @@ impl SurfaceTools {
                 Err(rejection) => self.reject(terminal_id, raw::TOOL, None, &rejection),
                 Ok((call, found)) => self.show_raw(terminal_id, request, arguments, &call, found).await,
             }),
+            guide::TOOL => Some(verbatim_result(guide::GUIDE)),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Err(rejection) => self.reject(terminal_id, read::TOOL, read::named(arguments), &rejection),
                 Ok(body) => {
@@ -524,8 +526,14 @@ impl SurfaceTools {
 const NO_ANSWER_NEXT: &str = "End your turn now. The answer will be typed into this terminal. \
      quay_surface_read with this id returns it too.";
 
+/// The result whose text is `body` as JSON.
 fn text_result(body: Value) -> Value {
-    json!({ "content": [{ "type": "text", "text": body.to_string() }] })
+    verbatim_result(&body.to_string())
+}
+
+/// The result whose text is `text` as it is.
+fn verbatim_result(text: &str) -> Value {
+    json!({ "content": [{ "type": "text", "text": text }] })
 }
 
 /// What a message for a dismissed id is told.

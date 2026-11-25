@@ -3,9 +3,9 @@
 //! An agent's call is checked here (`ask`, `review`, `board`, `raw`), then by the webview on a scratch copy of
 //! the engine (`check`), then committed (`store`), then drawn. `tools` runs those steps and waits for the
 //! answer (`wait`), which is typed into the terminal (`typing`) once no call is open to return it. `read`
-//! tells an agent where a surface stands, and `image` reads the image files a live surface names. A
-//! terminal's surfaces end with its launch, and go when it closes. What becomes of each is kept, without its
-//! content, in the surface record (`daily_record`).
+//! tells an agent where a surface stands, `guide` how to write a raw one, and `image` reads the image files
+//! a live surface names. A terminal's surfaces end with its launch, and go when it closes. What becomes of
+//! each is kept, without its content, in the surface record (`daily_record`).
 
 mod arguments;
 mod ask;
@@ -17,6 +17,7 @@ mod check;
 pub mod commands;
 mod daily_record;
 mod disk;
+mod guide;
 mod image;
 mod image_file;
 mod local_path;
@@ -48,6 +49,8 @@ mod daily_record_tests;
 mod delete_tests;
 #[cfg(test)]
 mod disk_tests;
+#[cfg(test)]
+mod guide_tests;
 #[cfg(test)]
 mod image_file_tests;
 #[cfg(test)]

@@ -96,6 +96,18 @@ async fn a_terminal_without_the_bus_tools_still_has_the_surface_tools() {
 }
 
 #[tokio::test]
+async fn the_guide_is_returned_to_every_terminal() {
+    for run_kind in ALL_RUN_KINDS {
+        let bridge = TestBridge::start_with(run_kind, true).await;
+
+        let guide = result(&bridge, "tools/call", json!({ "name": "quay_surface_guide" })).await;
+
+        let text = guide["content"][0]["text"].as_str().unwrap_or_else(|| panic!("{run_kind:?}: {guide}"));
+        assert!(guide["isError"].is_null() && text.starts_with("# Raw surfaces"), "{run_kind:?}: {text}");
+    }
+}
+
+#[tokio::test]
 async fn a_claude_terminal_whose_plugin_is_silent_keeps_the_bus_tools() {
     let bridge = TestBridge::start_with(RunKind::Claude, false).await;
     bridge.pty_manager.update_status("term-mcp", ClaudeStatus::Unknown);
