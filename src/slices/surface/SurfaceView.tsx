@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { isOnStage } from "../stage/stageElements.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { Earlier } from "./Earlier.tsx";
 import { LiveSurface } from "./LiveSurface.tsx";
@@ -14,6 +15,8 @@ const MOST_WAITING = 4;
 /** The surface a request asked to show. Each request has a `seq` of its own. */
 export interface SurfaceFocus {
   surfaceId: string;
+  /** Whether the operator sent it here from its stage tab. */
+  moved?: boolean;
   seq: number;
 }
 
@@ -55,8 +58,11 @@ export const SurfaceView = ({ terminal, surfaces, focus = null }: SurfaceViewPro
     if (!focus) return;
     const region = regionOf(focus.surfaceId);
     region?.scrollIntoView?.({ block: "start" });
-    // What asked for it may have left the screen with the focus, as the tab it was sent back from has
-    if (document.activeElement === null || document.activeElement === document.body) region?.focus({ preventScroll: true });
+    // What asked for it may have left the screen with the focus, or a tab it was sent back from may have left
+    // the focus on the stage.
+    const active = document.activeElement;
+    const isNowhere = active === null || active === document.body;
+    if (isNowhere || (focus.moved && isOnStage(active))) region?.focus({ preventScroll: true });
   }, [focus]);
   return (
     <div ref={listRef} data-surface-view tabIndex={-1} {...keptFocus} className="flex flex-col gap-2 p-2">

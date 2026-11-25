@@ -7,8 +7,10 @@ import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
+import { STAGE_MARK } from "./stageElements.ts";
 import { StageTabBar } from "./StageTabBar";
 import type { StageTool } from "./stageTools.ts";
+import { useStageFocus } from "./useStageFocus.ts";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
 
@@ -91,6 +93,7 @@ export const Stage: FC<StageProps> = ({
   onCloseTool,
   earlierTabs,
 }) => {
+  const stageRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -98,13 +101,35 @@ export const Stage: FC<StageProps> = ({
   const visibleTerminals = terminals.filter((t) => isSamePath(t.project_path, activeProject));
   const activeTerminal =
     visibleTerminals.find((t) => t.id === activeTerminalId) || visibleTerminals[0];
+  // The tab bar's current terminal: the focused pane's, or the active one in a single pane or when that pane shows none.
+  let focusedTerminal = activeTerminal;
+  if (layout === "split-horizontal" || layout === "split-vertical") {
+    const targetId = focusedPane === "secondary" ? secondaryTerminalId : primaryTerminalId;
+    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
+  } else if (layout === "grid" && focusedPane.startsWith("grid-")) {
+    const idx = parseInt(focusedPane.replace("grid-", ""), 10);
+    const targetId = gridTerminalIds[idx];
+    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
+  }
+
+  const singleTerminalId = singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
+  // The terminals the panes show, in the panes' order.
+  const paneTerminalIds = (
+    layout === "grid" ? gridTerminalIds : layout === "single" ? [singleTerminalId] : [primaryTerminalId, secondaryTerminalId]
+  ).filter((id) => visibleTerminals.some((t) => t.id === id));
   // How many panes show a terminal, which the pane header menu's Close pane needs.
-  const paneTerminalIds =
-    layout === "grid" ? gridTerminalIds : layout === "single" ? [activeTerminalId] : [primaryTerminalId, secondaryTerminalId];
-  const paneCount = paneTerminalIds.filter((id) => visibleTerminals.some((t) => t.id === id)).length;
+  const paneCount = paneTerminalIds.length;
+  // Where a stage tab that closes leaves the focus: the focused terminal, or the first pane's when no pane shows it.
+  const focusTargetId = paneTerminalIds.find((id) => id === focusedTerminal.id) ?? paneTerminalIds[0] ?? null;
+
+  // The stage tab in front of the panes. What it covers is inert, so that neither Tab nor a terminal that
+  // would focus itself reaches it: drawn still, at its own size.
+  const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
+  const covered = front !== null;
 
   // Every terminal of every project, hidden unless its project is active. Both returns render
-  // them in the same keyed viewport, so a project with no terminals never remounts them.
+  // them in the same element of the same keyed viewport, so a project with no terminals never
+  // remounts them.
   const terminalViews = terminals.map((term) => {
     const isProjectActive = isSamePath(term.project_path, activeProject);
     let isVisible = false;
@@ -120,9 +145,7 @@ export const Stage: FC<StageProps> = ({
       showPaneHeader = false;
       paneStyle = { display: "none" };
     } else if (layout === "single") {
-      isVisible =
-        term.id ===
-        singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
+      isVisible = term.id === singleTerminalId;
       isFocused = isVisible;
       // The pane header carries the terminal's state and Skip/Ask pill in every layout.
       showPaneHeader = true;
@@ -269,6 +292,13 @@ export const Stage: FC<StageProps> = ({
     );
   });
 
+  useStageFocus(stageRef, { project: activeProject, toolIds: tools.map(({ id }) => id), front, focusTargetId });
+  const panes = (
+    <div key="stage-panes" className="contents" inert={covered}>
+      {terminalViews}
+    </div>
+  );
+
   // Each open tool, drawn over the panes while its tab is in front and hidden, still mounted, otherwise.
   const toolLayers = tools.map((tool) => (
     <div
@@ -280,12 +310,11 @@ export const Stage: FC<StageProps> = ({
       {tool.content}
     </div>
   ));
-  const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
   const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool, earlierTabs };
 
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
-      <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+      <main ref={stageRef} {...STAGE_MARK} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
         {(tools.length > 0 || earlierTabs) && (
           <StageTabBar
             terminals={[]}
@@ -305,27 +334,16 @@ export const Stage: FC<StageProps> = ({
         {/* A shell-wide warning shows with no terminal open too, such as one raised at startup */}
         <ShellWarningBanner />
         <div className="flex-1 min-h-0 relative flex flex-col">
-          <Placeholder onNewTerminal={onNewTerminal} />
+          <div className="contents" inert={covered}>
+            <Placeholder onNewTerminal={onNewTerminal} />
+          </div>
           {toolLayers}
         </div>
         <div key="stage-viewport" className="hidden" aria-hidden="true">
-          {terminalViews}
-          {/* A second child keeps the panes nested as they are in the stage viewport below;
-              as the only child they would sit one level higher and React would remount them. */}
-          {null}
+          {panes}
         </div>
       </main>
     );
-  }
-
-  let focusedTerminal = activeTerminal;
-  if (layout === "split-horizontal" || layout === "split-vertical") {
-    const targetId = focusedPane === "secondary" ? secondaryTerminalId : primaryTerminalId;
-    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
-  } else if (layout === "grid" && focusedPane.startsWith("grid-")) {
-    const idx = parseInt(focusedPane.replace("grid-", ""), 10);
-    const targetId = gridTerminalIds[idx];
-    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
   }
 
   // Draggable Divider mouse down handler
@@ -360,7 +378,7 @@ export const Stage: FC<StageProps> = ({
   };
 
   return (
-    <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+    <main ref={stageRef} {...STAGE_MARK} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
       <StageTabBar
         terminals={visibleTerminals}
         currentTerminalId={focusedTerminal.id}
@@ -386,14 +404,14 @@ export const Stage: FC<StageProps> = ({
         className="flex-1 relative overflow-hidden bg-[#0d1117] p-1.5"
       >
         {/* Render all terminals so switching projects/worktrees never destroys xterm buffers */}
-        {terminalViews}
+        {panes}
 
         {toolLayers}
 
         {/* Draggable Divider for split-horizontal */}
         {layout === "split-horizontal" && (
           // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow)
-          <div role="separator" tabIndex={0}
+          <div role="separator" tabIndex={0} inert={covered}
             aria-orientation="vertical"
             aria-label="Resize split panes"
             aria-valuenow={Math.round(splitRatio)}
@@ -433,7 +451,7 @@ export const Stage: FC<StageProps> = ({
         {/* Draggable Divider for split-vertical */}
         {layout === "split-vertical" && (
           // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow)
-          <div role="separator" tabIndex={0}
+          <div role="separator" tabIndex={0} inert={covered}
             aria-orientation="horizontal"
             aria-label="Resize split panes"
             aria-valuenow={Math.round(splitRatio)}
@@ -488,6 +506,7 @@ export const Stage: FC<StageProps> = ({
               <button
                 key={`empty-grid-${slotIdx}`}
                 type="button"
+                inert={covered}
                 style={{ ...slotPos, position: "absolute" }}
                 onClick={onNewTerminal}
                 className="border border-dashed border-[#30363d] rounded-md bg-[#161b22]/40 hover:bg-[#161b22]/70 flex flex-col items-center justify-center cursor-pointer transition-colors text-[#8b949e] hover:text-[#58a6ff] gap-2 select-none group"

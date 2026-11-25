@@ -187,12 +187,13 @@ export const TerminalView: FC<TerminalViewProps> = ({
     [terminalId, repaintTerminal, startRename]
   );
 
-  // Hotkey listener for Ctrl+F when pane is focused
+  // Hotkey listener for Ctrl+F when pane is focused. A stage tab over the pane makes it inert.
   useEffect(() => {
     if (!isVisible || !isFocused) return;
 
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.ctrlKey && e.key.toLowerCase() === "f") {
+        if (containerRef.current?.closest("[inert]")) return;
         e.preventDefault();
         e.stopPropagation();
         setIsSearchOpen((prev) => !prev);
@@ -201,7 +202,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isVisible, isFocused]);
+  }, [isVisible, isFocused, containerRef]);
 
   const renderIcon = () => {
     return <AgentIcon kind={terminal?.run_kind} className="w-3.5 h-3.5 shrink-0" />;

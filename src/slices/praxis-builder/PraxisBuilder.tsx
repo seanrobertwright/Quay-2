@@ -809,12 +809,10 @@ export const PraxisBuilder: FC<PraxisBuilderProps> = ({
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount]);
 
-  // Focus moves into the builder when it opens and back to where it was when it hides.
+  // Focus moves into the builder when it opens. When it hides, the stage whose tab it is in takes what
+  // focus was lost with it (useStageFocus.ts).
   useEffect(() => {
-    if (!isOpen) return;
-    const previous = focusedElement();
-    builderRef.current?.focus();
-    return () => previous?.focus();
+    if (isOpen) builderRef.current?.focus();
   }, [isOpen]);
 
   // The conflict prompt takes focus on Cancel, the choice that changes nothing, and gives

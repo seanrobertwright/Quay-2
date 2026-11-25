@@ -7,6 +7,10 @@ import type { StageToolTab } from "./stageTools.ts";
 /** The stage tab bar's height, in CSS px. */
 export const STAGE_TAB_BAR_HEIGHT = 34;
 
+/** The tab in `stage`'s tab bar that is current, if one is. */
+export const frontTabOf = (stage: Element): HTMLElement | null =>
+  stage.querySelector<HTMLElement>('[aria-label="Stage tabs"] [aria-current="true"]');
+
 interface StageTabBarProps {
   /** The active project's terminals, in Projects panel order. */
   terminals: TerminalInfo[];

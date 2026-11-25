@@ -66,7 +66,7 @@ function showInCompanion(id: string): void {
 
 /** Selects `terminal` in the companion, whose last request was for the surface `id`. */
 const selectInCompanion = (terminal: TerminalInfo, id: string) =>
-  companion!.root.render(companionAsked(terminal, { terminalId: "t1", view: "surface", surfaceId: id, seq }));
+  companion!.root.render(companionAsked(terminal, { terminalId: "t1", view: "surface", surfaceId: id, moved: true, seq }));
 
 /** Loads the page with the companion and the stage on it, on the Surface view, where a request to show a surface shows it where it is drawn. */
 async function load(): Promise<void> {
@@ -119,6 +119,47 @@ test("the move icon opens a raw companion surface as a tab and back, with what w
   const [sent] = called("surface_answer") as { revision: number; answer: { action: { context: object } } }[];
   assert.deepEqual([sent.revision, sent.answer.action.context], [1, { name: "Ada L" }]);
   assert.equal(called("surface_dismiss").length, 0);
+});
+
+/** Moves the surface back to the companion, which is asked to show it once its tab has gone, as in Quay's window. `between` runs between the two. */
+async function sendBack(between: () => void): Promise<void> {
+  stopRequests();
+  let asked = "";
+  stopRequests = onSurfaceRequest(({ id }) => (asked = id));
+  await moveTo(inTab(), BACK);
+  assert.equal(asked, "plan");
+  between();
+  await act(async () => showInCompanion(asked));
+  await settle();
+}
+
+test("the focus goes back with it from the stage, which has taken it as the tab left", async () => {
+  list = [await plan({ as_tab: true })];
+  await load();
+  await openTab(stage!.container, "Migration plan");
+  let onStage = false;
+  await sendBack(() => (onStage = document.activeElement?.textContent === "Launch Terminal"));
+  assert.equal(onStage, true);
+  assert.equal(inCompanion()!.contains(document.activeElement), true);
+});
+
+test("the focus stays where the operator has taken it while the surface went back", async () => {
+  list = [await plan({ as_tab: true })];
+  await load();
+  await openTab(stage!.container, "Migration plan");
+  const elsewhere = companion!.container.querySelector("button")!;
+  await sendBack(() => elsewhere.focus());
+  assert.equal(document.activeElement === elsewhere, true);
+});
+
+test("a surface that is asked for, and was not moved, leaves the focus on the stage", async () => {
+  list = [await plan()];
+  await load();
+  const launch = findButton(stage!.container, "Launch Terminal")!;
+  launch.focus();
+  await act(async () => companion!.root.render(companionAsked(TERMINAL, { terminalId: "t1", view: "surface", surfaceId: "plan", seq: (seq += 1) })));
+  await settle();
+  assert.equal(document.activeElement === launch, true);
 });
 
 test("what was typed is sent before it moves, and a reload draws it where it was moved to with that", async () => {

@@ -12,17 +12,22 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { Window } from "happy-dom";
 
+/** The module at `url`, a file of TypeScript, as a load hook returns it: compiled, with `options` over those every module is compiled with. */
+export function compiled(url: string, options: ts.CompilerOptions): { format: "module"; source: string; shortCircuit: true } {
+  const fileName = fileURLToPath(url);
+  const { outputText } = ts.transpileModule(readFileSync(fileName, "utf8"), {
+    fileName,
+    compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, ...options },
+  });
+  return { format: "module", source: outputText, shortCircuit: true };
+}
+
 registerHooks({
   load(url, context, nextLoad) {
     // A stylesheet a component imports, such as React Flow's, styles nothing a test reads.
     if (url.startsWith("file:") && url.endsWith(".css")) return { format: "module", source: "", shortCircuit: true };
     if (!url.startsWith("file:") || !url.endsWith(".tsx")) return nextLoad(url, context);
-    const source = readFileSync(fileURLToPath(url), "utf8");
-    const { outputText } = ts.transpileModule(source, {
-      fileName: fileURLToPath(url),
-      compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: true },
-    });
-    return { format: "module", source: outputText, shortCircuit: true };
+    return compiled(url, { verbatimModuleSyntax: true });
   },
 });
 
