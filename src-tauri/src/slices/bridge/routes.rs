@@ -17,7 +17,7 @@ use super::pending::{PendingAnswer, PermissionResolved, ResolvedSink, PERMISSION
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::mcp::McpContext;
-use crate::slices::orchestrator::router::strip_peer_prefix;
+use crate::slices::orchestrator::router::{strip_peer_prefix, CompletedTurn};
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
@@ -164,8 +164,8 @@ fn is_subagent_turn(envelope: &Envelope) -> bool {
     envelope.event_type.starts_with("turn.") && envelope.data.get("agentId").is_some()
 }
 
-/// The prompts a turn reports it started with, in its `inputMessages`, as Codex's turn-end
-/// helper sends them. `None` when the event carries no such list.
+/// The prompts a turn reports, in its `inputMessages`, as Codex's turn-end helper sends them.
+/// `None` when the event carries no such list.
 fn turn_inputs(envelope: &Envelope) -> Option<Vec<String>> {
     envelope.data.get("inputMessages")?.as_array().map(|inputs| {
         inputs
@@ -173,6 +173,17 @@ fn turn_inputs(envelope: &Envelope) -> Option<Vec<String>> {
             .filter_map(|input| input.as_str().map(str::to_string))
             .collect()
     })
+}
+
+/// When the turn an event is of began, in Unix milliseconds, by its `turnId`, as Codex's turn-end
+/// helper sends it: a version 7 UUID, whose first 48 bits are that time. `None` when the event
+/// carries no such id.
+fn turn_began(envelope: &Envelope) -> Option<i64> {
+    let id = uuid::Uuid::parse_str(envelope.data.get("turnId")?.as_str()?).ok()?;
+    if id.get_version_num() != 7 {
+        return None;
+    }
+    i64::try_from(id.as_u128() >> 80).ok()
 }
 
 /// The kind of notification an `attention.notification` reports, in its `notificationType`,
@@ -199,12 +210,16 @@ pub async fn handle_events(
 /// A2A state, and sends it and the status to the frontend. The event-bridge plugin's
 /// events come through `handle_events`; Quay makes the ones for an OpenCode terminal
 /// itself (see `opencode`). Typing a held message runs on a blocking thread, so this
-/// never blocks.
+/// never blocks. A turn that began before its terminal's current launch did changes nothing.
 pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
     ctx.bridge_state.pair_tool_call(&mut envelope);
     let tag = envelope.tag.clone();
     ctx.bridge_state.record_envelope(envelope.clone());
 
+    let began = turn_began(&envelope);
+    if tag.as_ref().zip(began).is_some_and(|(id, began)| ctx.pty_manager.launch_began_after(id, began)) {
+        return;
+    }
     let mut status = None;
     let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
     if let Some(terminal_id) = own_terminal {
@@ -239,13 +254,8 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
                     .unwrap_or("Turn completed")
                     .to_string();
                 // The router tells the trail listener about the entry it completes
-                let inputs = turn_inputs(&envelope);
-                ctx.a2a_router.turn_completed(
-                    terminal_id,
-                    answer,
-                    inputs.as_deref(),
-                    &ctx.pty_manager,
-                );
+                let turn = CompletedTurn { answer, inputs: turn_inputs(&envelope), began };
+                ctx.a2a_router.turn_completed(terminal_id, turn, &ctx.pty_manager);
             }
             "tool.started" => {
                 let tool = envelope
@@ -267,9 +277,13 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
         }
     }
 
-    // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
+    // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on. A
+    // turn that its terminal's own output still shows running has no status of its own to send: that
+    // output will show it over, and Working sent after the turn's end would read as a turn begun.
+    let still_running = envelope.event_type == "turn.completed"
+        && own_terminal.is_some_and(|id| ctx.pty_manager.turn_running(id, began));
     ctx.webview.emit("bridge-event", envelope);
-    if let Some(status) = status {
+    if let Some(status) = status.filter(|_| !still_running) {
         // A turn that ended lets the terminal's next held message in, and a session that
         // ended fails the rest. Typing blocks for the submit delay, so it runs off the
         // event route.
@@ -279,7 +293,8 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
             let terminal_id = status.terminal_id.clone();
             tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
         }
-        ctx.webview.emit("terminal-status", status);
+        ctx.pty_manager
+            .send_status(&status.terminal_id, |status| ctx.webview.emit("terminal-status", status));
     }
 }
 

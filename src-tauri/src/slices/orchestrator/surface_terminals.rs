@@ -15,6 +15,7 @@ pub fn connect_surfaces(surfaces: &SurfaceTools, pty_manager: &PtyManager, a2a_r
     surfaces.set_terminals(Typist { pty_manager: pty_manager.clone(), a2a_router: a2a_router.clone() });
     let ending = surfaces.clone();
     pty_manager.add_turn_watcher(move |terminal_id, event| {
+        // Not one that stopped, as Codex's output shows: the agent may still wait on its call
         if event == TurnEvent::Ended {
             ending.turn_ended(terminal_id);
         }
@@ -37,8 +38,8 @@ pub fn connect_surfaces(surfaces: &SurfaceTools, pty_manager: &PtyManager, a2a_r
         }
         LaunchEvent::Closed(terminal_id) => followed.terminal_closed(&terminal_id),
     });
-    // A lone Escape interrupts Codex, which reports neither that nor its turn's end. It is heard before
-    // the key goes in, so no answer goes to a call that the key has just interrupted.
+    // A lone Escape interrupts Codex, whose turn-end helper does not report such a turn. It is heard
+    // before the key goes in, so no answer goes to a call that the key has just interrupted.
     let (interrupted, terminals) = (surfaces.clone(), pty_manager.clone());
     pty_manager.set_input_watcher(move |terminal_id, data| {
         let is_codex = || terminals.get_info(terminal_id).is_some_and(|info| info.run_kind == RunKind::Codex);

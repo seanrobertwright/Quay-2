@@ -132,7 +132,7 @@ async fn a_cli_that_connects_at_its_first_prompt_has_the_grace_from_then_too() {
     assert_eq!(told(terminals, GRACE), Some(Handshake { seen: false, grace_left_ms: 0, prompted_grace_left_ms: None }));
 
     let sent = listen(terminals);
-    let report = |status, starts_turn| TurnReport { status: Some(status), starts_turn, answer: None, ends_turn: false };
+    let report = |status, starts_turn| TurnReport { status: Some(status), starts_turn, ..TurnReport::default() };
     terminals.apply_turn_report(&launch, &report(ClaudeStatus::Waiting, true));
     terminals.apply_turn_report(&launch, &report(ClaudeStatus::Idle, false));
     assert_eq!(told(terminals, GRACE).unwrap().prompted_grace_left_ms, None, "a sign-in as it starts is no prompt");
