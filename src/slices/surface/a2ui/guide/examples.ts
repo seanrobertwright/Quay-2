@@ -1,22 +1,28 @@
 // The guide's worked examples: calls of quay_surface, each made after the ones before it.
+import type { JsonObject } from "../../json.ts";
 import type { SurfacePlace } from "../../surfaceTypes.ts";
 
-type Json = Record<string, unknown>;
+/** A call's arguments. */
+export interface Call {
+  place?: SurfacePlace;
+  title?: string;
+  messages: JsonObject[];
+}
 
 interface Example {
   /** What it shows. */
   heading: string;
-  call: { place?: SurfacePlace; title?: string; messages: Json[] };
+  call: Call;
 }
 
 const at = (path: string) => ({ "@path": path });
 
-const text = (id: string, said: unknown, more: Json = {}): Json => ({ id, component: "Text", text: said, ...more });
+const text = (id: string, said: unknown, more: JsonObject = {}): JsonObject => ({ id, component: "Text", text: said, ...more });
 
 /** A check that the text at `path` is there. */
 const needed = (path: string, message: string) => ({ "@checks": [{ condition: { "@call": "required", args: { value: at(path) } }, message }] });
 
-const message = (key: string, body: Json): Json => ({ version: "1.0", [key]: body });
+const message = (key: string, body: JsonObject): JsonObject => ({ version: "1.0", [key]: body });
 
 const ASK: Example = {
   heading: "A form that waits for the operator. The Button has the check too, or it would send an empty branch.",
@@ -149,13 +155,13 @@ const REPLACE: Example = {
 export const EXAMPLES: readonly Example[] = [ASK, REPORT, STRIP, UPDATE, REPLACE];
 
 /** A message, with each of its components on a line of its own. */
-function messageJson(written: Json): string {
-  const components = Object.values(written).flatMap((body) => (body as { components?: Json[] }).components ?? []);
+function messageJson(written: JsonObject): string {
+  const components = Object.values(written).flatMap((body) => (body as { components?: JsonObject[] }).components ?? []);
   return components.map((component) => JSON.stringify(component)).reduce((json, one) => json.replace(one, () => `\n${one}`), JSON.stringify(written));
 }
 
 /** A call as its agent writes it. */
-export function callJson({ messages, ...named }: Example["call"]): string {
+export function callJson({ messages, ...named }: Call): string {
   const fields = Object.entries(named).map(([key, value]) => `${JSON.stringify(key)}:${JSON.stringify(value)},`);
   return `{${fields.join("")}"messages":[\n${messages.map(messageJson).join(",\n")}]}`;
 }

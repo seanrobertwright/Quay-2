@@ -42,13 +42,15 @@ export function postCheck(message: Message, place: SurfacePlace): CheckError[] {
   });
 }
 
+/** `size`, in bytes, as kB rounded up. */
+export const inKb = (size: number): string => `${Math.ceil(size / 1024)} kB`;
+
 const overLimit = ({ pointer, surfaceId }: Message, limit: string, has: string) => [invalid(pointer, `A surface has at most ${limit}; this one would have ${has}.`, surfaceId)];
 
 /** What of `state`, of which `message` is told, is more than Quay takes, before anything is resolved of it. */
 export function tooLarge({ createSurface }: CreateSurface, message: Message): CheckError[] {
   const { length } = createSurface.components;
   const bytes = new TextEncoder().encode(JSON.stringify(createSurface.dataModel)).length;
-  const inKb = (size: number) => `${Math.ceil(size / 1024)} kB`;
   return [
     ...(length > MOST_COMPONENTS ? overLimit(message, `${MOST_COMPONENTS} components`, String(length)) : []),
     ...(bytes > MOST_DATA ? overLimit(message, `${inKb(MOST_DATA)} of data`, inKb(bytes)) : []),

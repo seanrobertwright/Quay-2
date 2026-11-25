@@ -6,7 +6,6 @@ use serde_json::{json, Value};
 
 use super::ask::{CONTEXT_LIMIT, DESCRIPTION_LIMIT, LABEL_LIMIT, OPTION_COUNT, QUESTION_COUNT, QUESTION_LIMIT};
 use super::check::Verdict;
-use super::names::SURFACE_TOOLS;
 use super::store::{AnswerRefused, SurfaceKey};
 use super::test_seam::{accepted, start, start_with, CapturedLog, OpenCall, Seam};
 use super::timing::{Timing, WAIT};
@@ -46,7 +45,9 @@ fn answer() -> Value {
 async fn the_surface_tools_are_listed_after_the_seven() {
     let (seam, _webview) = start(Timing::default()).await;
 
-    assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &SURFACE_TOOLS].concat());
+    let surface_tools =
+        ["quay_ask", "quay_review", "quay_board", "quay_surface", "quay_surface_guide", "quay_surface_read"];
+    assert_eq!(seam.cli("term-a").tools().await, [&SEVEN[..], &surface_tools].concat());
 }
 
 #[tokio::test]

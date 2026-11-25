@@ -1,6 +1,7 @@
-// What the guide says that no schema does: how a call is made, what a surface may be, and what Quay does of
-// its own. The components' and functions' properties are in their generated lines, and are not listed here.
-import { MOST_COMPONENTS, MOST_DATA, MOST_IMAGES } from "../raw/postCheck.ts";
+// What the guide says besides its generated lines, written by hand: how a call is made, what a surface may
+// be, how the lines are read, and what they leave out.
+import { EFFECTS } from "../effects.ts";
+import { inKb, MOST_COMPONENTS, MOST_DATA, MOST_IMAGES } from "../raw/postCheck.ts";
 
 const list = (...rules: string[]): string => rules.map((rule) => `- ${rule}`).join("\n");
 
@@ -16,7 +17,7 @@ export const CALL = list(
   "You choose the `surfaceId`. Ids are your terminal's own, and surfaces that quay_ask, quay_review and quay_board make have theirs among them.",
   "Leave out `catalogId`: Quay fills it in. `theme` and `sendDataModel` are rejected.",
   'The call returns `{"shown": true}` at once when no Button of the surface has an action to you, and `{"deleted": true}` when it only deletes. Otherwise it waits up to 100 seconds and returns `{"version": "1.0", "action": {"name", "surfaceId", "sourceComponentId", "timestamp", "context"}}`.',
-  'On `"state": "no_answer_yet"` end your turn. Do not call again or ask in other words: that is rejected, or is one more surface for the operator. The answer is typed into this terminal, and quay_surface_read returns it too.',
+  'On `"state": "no_answer_yet"` end your turn. Do not call again or ask in other words: the same creating call only waits again, and other words are rejected or make one more surface. The answer is typed into this terminal, and quay_surface_read returns it too.',
   'On `{"dismissed": true}` the operator closed the surface. Stop updating it.',
 );
 
@@ -25,8 +26,8 @@ export const SURFACE = list(
   'Exactly one has the id "root". Every other is a child of one that is there, every id that is named is there, and nothing is its own ancestor. This holds of the whole surface after every call, though not between its messages.',
   "A component's id is letters, digits and underscores, with no digit first: `step_2`, not `step-2`.",
   "A property that is not in the component's line is rejected, as is a wrong type: where the line says string, 3 is `\"3\"`. Any component also takes `@accessibility: {label?, description?}`.",
-  "Version 1.0 writes `@path`, `@call`, `@checks` and `@accessibility` with the @. Only a list template and `updateDataModel` have a bare `path`.",
-  `At most ${MOST_COMPONENTS} components, ${MOST_IMAGES} images and ${MOST_DATA / 1024} kB of data model. The data model is an object. \`/frame\` in it is Quay's: neither set nor bind it.`,
+  "Version 1.0 writes `@path`, `@call`, `@checks` and `@accessibility` with the @. A binding is always `@path`. A list template, `updateDataModel` and some lines below have a plain `path`, which is not a binding.",
+  `At most ${MOST_COMPONENTS} components, ${MOST_IMAGES} images and ${inKb(MOST_DATA)} of data model. The data model is an object. \`/frame\` in it is Quay's: neither set nor bind it.`,
 );
 
 export const UPDATES = list(
@@ -63,7 +64,7 @@ export const NOTES = list(
   "Image's `url` is the path of a PNG, JPEG, GIF or WebP file on this computer, up to 10 MB. Nothing is loaded from the network.",
   "A path is absolute or relative to this terminal's working directory, and never a network path.",
   "`weight` is the share of a Row's or Column's room. For a component without it, put it in a Column that has one.",
-  "openUrl, showFile, focusTerminal and copyText run only as a Button's action, on the operator's click. openUrl takes http and https. focusTerminal takes the id or exact name of a terminal of this project.",
+  `These run only as a Button's action, on the operator's click: ${EFFECTS.map(({ name }) => name).join(", ")}. openUrl takes http and https. focusTerminal takes the id or exact name of a terminal of this project.`,
   "formatString fills in `${/a/b}`, `${name}` in a template, and calls: `${formatNumber(value:${/n}, decimals:1)}`. `\\${` is a plain `${`.",
   "formatDate takes patterns such as `yyyy-MM-dd HH:mm` and `MMM d, h:mm a`. length and numeric need `min`, `max` or both. regex takes no lookbehind, backreference or named group.",
   "@index works in a template only, and counts from 0.",

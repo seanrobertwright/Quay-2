@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 
 use super::arguments::spelled;
+use super::image_file::MOST_BYTES;
 use super::names::SURFACE_TOOLS;
 use super::place::MOST_LIVE;
 use super::raw::{RawCall, TITLE_LIMIT};
@@ -18,11 +19,10 @@ async fn guide(cli: &FakeCli) -> String {
     result["content"][0]["text"].as_str().unwrap().to_string()
 }
 
-/// The surface tools `term-a` is listed.
+/// The tools `term-a` is listed.
 async fn listed(seam: &Seam) -> Vec<Value> {
     let list = seam.cli("term-a").post("tools/list", json!({})).result().await;
-    let tools = list["tools"].as_array().unwrap().iter();
-    tools.filter(|tool| SURFACE_TOOLS.contains(&tool["name"].as_str().unwrap())).cloned().collect()
+    list["tools"].as_array().unwrap().clone()
 }
 
 #[tokio::test]
@@ -56,17 +56,18 @@ async fn the_guide_waits_neither_for_a_check_nor_for_an_answer_of_its_terminal()
 async fn all_six_tools_are_listed_and_each_says_when_to_use_it() {
     let (seam, _webview) = start(Timing::default()).await;
     let tools = listed(&seam).await;
-    let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
-    assert_eq!(names, SURFACE_TOOLS);
     let uses = [
-        "when you need a decision or an answer before you go on",
-        "to read and decide on before you go on",
-        "how a long run stands",
-        "what no other tool can",
-        "before your first",
-        "for an answer you did not get",
+        ("quay_ask", "when you need a decision or an answer before you go on"),
+        ("quay_review", "to read and decide on before you go on"),
+        ("quay_board", "how a long run stands"),
+        ("quay_surface", "what no other tool can"),
+        ("quay_surface_guide", "before your first"),
+        ("quay_surface_read", "for an answer you did not get"),
     ];
-    for (tool, use_) in tools.iter().zip(uses) {
+    assert_eq!(SURFACE_TOOLS, uses.map(|(name, _)| name));
+    let last = &tools[tools.len() - uses.len()..];
+    for (tool, (name, use_)) in last.iter().zip(uses) {
+        assert_eq!(tool["name"], name);
         let description = tool["description"].as_str().unwrap();
         assert!(description.contains(use_), "{use_:?} in {description:?}");
     }
@@ -95,6 +96,7 @@ async fn the_guide_states_the_limits_rust_holds_a_call_to() {
         format!("at most {TITLE_LIMIT} characters"),
         format!("{} live surfaces in each place", spelled(MOST_LIVE)),
         format!("up to {} seconds", WAIT.as_secs()),
+        format!("up to {} MB", MOST_BYTES / (1024 * 1024)),
     ] {
         assert!(guide.contains(&limit), "{limit}");
     }
