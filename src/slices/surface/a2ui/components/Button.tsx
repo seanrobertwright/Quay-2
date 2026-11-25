@@ -6,9 +6,10 @@ import { Button as PlainButton } from "../../../parts/Button.tsx";
 import { duringClick } from "../../clickOnly.ts";
 import { LinksContext } from "../../links.ts";
 import { webTarget } from "../../linkTarget.ts";
-import { cause, effectCallOf, type EffectCall } from "../effects.ts";
+import { cause, effectCallOf, targetOf, type EffectCall } from "../effects.ts";
 import { AloneInButton, InsideButton } from "../insideButton.ts";
 import { textOf } from "../textOf.ts";
+import { useUntyped } from "../untyped.ts";
 import { useArguments } from "../useArguments.ts";
 import { usePointed } from "../usePointed.ts";
 
@@ -62,8 +63,13 @@ const EffectButton = ({ variant, valid, call: { effect, args: written }, context
   const args = useArguments(context.dataContext, written);
   const address = effect === "openUrl" ? (webTarget(textOf(args.url))?.address ?? null) : null;
   const pointed = usePointed(links, address);
+  const untyped = useUntyped(context);
+  const untypedTarget = () => {
+    const its = untyped(written);
+    return its && targetOf(effect, its);
+  };
   const click = () => {
-    if (valid && links) duringClick(effect, () => cause(effect, args, links.effects));
+    if (valid && links) duringClick(effect, () => cause(effect, args, links.effects), untypedTarget);
   };
   return (
     <PlainButton ref={buttonRef} variant={variant} disabled={!valid} onClick={click} {...pointed}>

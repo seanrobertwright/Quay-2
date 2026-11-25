@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { requestFileDiff, type FileDiffRequest } from "../git/fileDiffRequest.ts";
 import { requestTerminalSelection } from "../terminal/terminalSelectionRequest.ts";
-import { spendClick, type Effect } from "./clickOnly.ts";
+import { spendClick, type Effect, type UntypedTarget } from "./clickOnly.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
 import { shownText } from "./shownText.ts";
@@ -62,11 +62,24 @@ async function copy(text: string): Promise<string | null> {
   }
 }
 
-/** Tells Rust what a click on `surface` fired, for the surface record. The effect does not wait for it. */
-function record({ terminal_id, id }: SurfaceKey, fired: Effect, target: string | null): void {
-  invoke("surface_function_fired", { terminalId: terminal_id, id, function: fired, target }).catch((error) => {
-    console.error("[surfaces] A function that fired could not be recorded", error);
-  });
+const notRecorded = (error: unknown) => console.error("[surfaces] A function that fired could not be recorded", error);
+
+/** Uses up the click on `surface` that allows `effect`, and tells Rust of it for the surface record. The effect does not wait for that. */
+function spend({ terminal_id, id }: SurfaceKey, effect: Effect, target: string | null): void {
+  const untyped = spendClick(effect);
+  // A text that is copied is content, so it has no target
+  const kept = target === null ? null : tried(untyped);
+  invoke("surface_function_fired", { terminalId: terminal_id, id, function: effect, target: kept, targetTyped: kept !== target }).catch(notRecorded);
+}
+
+/** What `untyped` works out. Where it fails the effect runs all the same. */
+function tried(untyped: UntypedTarget): string | null {
+  try {
+    return untyped();
+  } catch (error) {
+    notRecorded(error);
+    return null;
+  }
 }
 
 /**
@@ -77,24 +90,19 @@ export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<string
   const terminalId = surface.terminal_id;
   return {
     openUrl: (url) => {
-      spendClick("openUrl");
-      record(surface, "openUrl", url);
+      spend(surface, "openUrl", url);
       run(open(url));
     },
     showFile: (path, line) => {
-      spendClick("showFile");
-      record(surface, "showFile", path);
+      spend(surface, "showFile", path);
       run(show(terminalId, path, line ?? null));
     },
     focusTerminal: (target) => {
-      spendClick("focusTerminal");
-      record(surface, "focusTerminal", target);
+      spend(surface, "focusTerminal", target);
       run(Promise.resolve(focus(terminalId, target)));
     },
     copyText: (text) => {
-      spendClick("copyText");
-      // A text is content, and may be what the operator typed
-      record(surface, "copyText", null);
+      spend(surface, "copyText", null);
       run(copy(text));
     },
   };

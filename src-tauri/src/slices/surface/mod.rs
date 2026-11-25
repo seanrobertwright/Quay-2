@@ -5,7 +5,7 @@
 //! answer (`wait`), which is typed into the terminal (`typing`) once no call is open to return it. `read`
 //! tells an agent where a surface stands, and `image` reads the image files a live surface names. A
 //! terminal's surfaces end with its launch, and go when it closes. What becomes of each is kept, without its
-//! content, in a daily file (`daily_record`).
+//! content, in the surface record (`daily_record`).
 
 mod arguments;
 mod ask;
@@ -85,7 +85,7 @@ mod update_tests;
 
 pub use check::{CheckRequest, Verdict};
 pub use commands::*;
-pub use daily_record::Function;
+pub use daily_record::record_folder;
 pub use image::*;
 pub use show_file::*;
 pub use store::{AnswerRefused, BeingSent, MoveRefused, SurfaceKey, SurfaceRecord};

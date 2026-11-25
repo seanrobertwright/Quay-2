@@ -32,11 +32,6 @@ pub fn logs_dir() -> PathBuf {
     storage_dir().join("logs")
 }
 
-/// Where Quay writes the surface record: `surfaces`, beside the logs.
-pub fn surface_record_dir() -> PathBuf {
-    storage_dir().join("surfaces")
-}
-
 /// The daily rolling writer for `dir`, wrapped in a background thread so logging never waits
 /// on the disk. The appender removes the oldest `quay.*.log` files beyond `LOG_FILES_KEPT`
 /// and leaves other files alone.

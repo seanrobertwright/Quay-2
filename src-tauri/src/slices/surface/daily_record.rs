@@ -2,27 +2,28 @@
 //! without its content. What an event holds is all that reaches the file, so no typed text, message's
 //! content, error's message or unsent answer is ever handed over.
 //!
-//! An event is queued where it happens, also under the store's lock, so the file has them in that order.
-//! A thread of its own writes them, so no call waits for the disk.
+//! The store queues each event under its lock, as it happens, so the file has them in that order. A thread
+//! of the record's own writes them, so no call waits for the disk.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
 use super::place::Place;
 use super::plain_line::plain_line;
 use super::typing::TerminalName;
+use crate::slices::workspace::manager::storage_dir;
 
 mod fired;
 mod given;
 mod refusal;
 mod writer;
 
-pub use fired::{Fired, Function};
+pub use fired::{Fired, FiredFunction};
 pub use given::Given;
 pub use refusal::Refusal;
 
@@ -31,6 +32,14 @@ const MOST_QUEUED: usize = 1024;
 
 /// The most characters of a title, an id or another name.
 const MOST_NAMED: usize = 200;
+
+/// How long a request to finish that finds no room waits until it is made again.
+const ASK_AGAIN: Duration = Duration::from_millis(5);
+
+/// The folder Quay keeps the record in: `surfaces`, beside the logs.
+pub fn record_folder() -> PathBuf {
+    storage_dir().join("surfaces")
+}
 
 /// The time now, in milliseconds since the epoch.
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
@@ -52,8 +61,8 @@ pub enum Event {
     Rejected(Refusal),
 }
 
-/// What an event is about. A call that was rejected may be about no surface, and one it would have made has
-/// no title or place yet.
+/// What an event is about. A call that was rejected may be about no surface that is known, and one that its
+/// terminal does not have has no title or place.
 #[derive(Debug)]
 pub struct About {
     terminal_id: String,
@@ -64,7 +73,7 @@ pub struct About {
 }
 
 impl About {
-    /// The surface `id` of `terminal_id`. What its agent named is bounded, and in one line.
+    /// The surface `id` of `terminal_id`, for an event of `tool`. What its agent named is bounded, and in one line.
     pub fn surface(terminal_id: &str, id: &str, tool: &str, title: &str, place: Place) -> Self {
         Self {
             terminal_id: terminal_id.to_string(),
@@ -75,7 +84,7 @@ impl About {
         }
     }
 
-    /// A call of `tool` by `terminal_id`, about the surface `id` when it is known.
+    /// A call of `tool` by `terminal_id`, about the surface `id` when that is known, which it does not have.
     pub fn call(terminal_id: &str, tool: &str, id: Option<&str>) -> Self {
         Self {
             terminal_id: terminal_id.to_string(),
@@ -157,14 +166,25 @@ impl DailyRecord {
         }
     }
 
-    /// Waits until what has happened so far is written, for `limit` at the most.
+    /// Waits until what has happened so far is written, but for what was lost, for `limit` at the most. The
+    /// error log is told when that was too short.
     pub fn finish(&self, limit: Duration) {
         let Some(queue) = self.0.get() else {
             return;
         };
+        let until = Instant::now() + limit;
         let (written, done) = sync_channel(1);
-        if queue.sender.try_send(Message::Finish(written)).is_ok() {
-            let _ = done.recv_timeout(limit);
+        let mut request = Message::Finish(written);
+        while let Err(refused) = queue.sender.try_send(request) {
+            request = match refused {
+                TrySendError::Full(request) if Instant::now() < until => request,
+                // `done` is told of no more then
+                TrySendError::Full(_) | TrySendError::Disconnected(_) => break,
+            };
+            std::thread::sleep(ASK_AGAIN);
+        }
+        if done.recv_timeout(until.saturating_duration_since(Instant::now())).is_err() {
+            tracing::error!("The surface record could not be finished: its last lines may be lost");
         }
     }
 }

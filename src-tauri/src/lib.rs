@@ -91,7 +91,7 @@ pub fn run() {
     let machina_manager = MachinaManager::new();
     let surfaces = SurfaceTools::new();
     slices::orchestrator::connect_surfaces(&surfaces, &pty_manager, &a2a_router);
-    surfaces.keep_record(slices::logging::surface_record_dir(), std::sync::Arc::new(dates::now_ms));
+    surfaces.keep_record(slices::surface::record_folder(), std::sync::Arc::new(dates::now_ms));
 
     let pty_manager_clone = pty_manager.clone();
     let exiting_terminals = pty_manager.clone();

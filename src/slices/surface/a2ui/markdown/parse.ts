@@ -79,6 +79,10 @@ export function blockTokens(text: string): Token[] | null {
   return withoutFilledCells(tokens).flatMap((token) => (token.type === "inline" ? (token.children ?? []) : token));
 }
 
+/** Whether `text`, read as blocks, has a link to `href`. */
+export const hasLink = (text: string, href: string): boolean =>
+  blockTokens(text)?.some((token) => token.type === "link_open" && token.attrGet("href") === href) ?? false;
+
 /** The tokens of `text` read as inline formatting alone, or null when it is past a bound. */
 export const inlineTokens = (text: string): Token[] | null =>
   isTooLong(text) ? null : parser.parseInline(text, {}).flatMap(({ children }) => children ?? []);

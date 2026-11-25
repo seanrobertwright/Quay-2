@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
-use super::daily_record::{About, Clock, DailyRecord, Event, Fired, Function, Refusal};
+use super::daily_record::{Clock, DailyRecord, Fired};
 use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
@@ -45,7 +45,7 @@ struct Inner {
     offered: bool,
     timing: Timing,
     store: SurfaceStore,
-    record: DailyRecord,
+    daily_record: DailyRecord,
     checks: Checks,
     /// One lock per terminal, held while a call of it is checked and committed and never while one
     /// waits for its answer. It lives as long as a call holds it or is queued for it.
@@ -81,12 +81,12 @@ impl SurfaceTools {
     }
 
     pub(crate) fn with(offered: bool, timing: Timing) -> Self {
-        let record = DailyRecord::default();
+        let daily_record = DailyRecord::default();
         Self(Arc::new(Inner {
             offered,
             timing,
-            store: SurfaceStore::recorded(record.clone()),
-            record,
+            store: SurfaceStore::recorded(daily_record.clone()),
+            daily_record,
             checks: Checks::default(),
             queues: Mutex::default(),
             webview: OnceLock::new(),
@@ -112,12 +112,13 @@ impl SurfaceTools {
     pub fn keep_record(&self, folder: PathBuf, clock: Clock) {
         // The record's thread must not keep the surfaces alive, which would keep it running
         let surfaces = Arc::downgrade(&self.0);
-        self.0.record.keep(folder, clock, move |terminal_id| surfaces.upgrade()?.terminals.get()?.named(terminal_id));
+        self.0.daily_record.keep(folder, clock, move |terminal_id| surfaces.upgrade()?.terminals.get()?.named(terminal_id));
     }
 
-    /// Waits until the surface record has what has happened so far, for `RECORD_LIMIT` at the most.
+    /// Waits until the surface record has what has happened so far, but for what was lost, for `RECORD_LIMIT`
+    /// at the most. The error log is told when that was too short.
     pub fn finish_record(&self) {
-        self.0.record.finish(RECORD_LIMIT);
+        self.0.daily_record.finish(RECORD_LIMIT);
     }
 
     pub(super) fn store(&self) -> &SurfaceStore {
@@ -171,7 +172,7 @@ impl SurfaceTools {
         }
         match tool {
             ask::TOOL => Some(match Ask::parse(arguments) {
-                Err(rejection) => self.reject(terminal_id, ask::TOOL, &rejection),
+                Err(rejection) => self.reject(terminal_id, ask::TOOL, None, &rejection),
                 Ok(ask) => {
                     let title = &ask.questions[0].question;
                     let typed =
@@ -180,7 +181,7 @@ impl SurfaceTools {
                 }
             }),
             review::TOOL => Some(match Review::parse(arguments) {
-                Err(rejection) => self.reject(terminal_id, review::TOOL, &rejection),
+                Err(rejection) => self.reject(terminal_id, review::TOOL, None, &rejection),
                 Ok(review) => {
                     let (named, place, title) = (review::NAMED, review::PLACE, &review.title);
                     let typed = Typed { tool: review::TOOL, named, place, title, checked: json!(review) };
@@ -188,15 +189,15 @@ impl SurfaceTools {
                 }
             }),
             board::TOOL => Some(match Board::parse(arguments) {
-                Err(rejection) => self.reject(terminal_id, board::TOOL, &rejection),
+                Err(rejection) => self.reject(terminal_id, board::TOOL, Some(board::named(arguments)), &rejection),
                 Ok(board) => self.show_board(terminal_id, request, arguments, &board).await,
             }),
             raw::TOOL => Some(match RawCall::parse(arguments) {
-                Err(rejection) => self.reject(terminal_id, raw::TOOL, &rejection),
+                Err(rejection) => self.reject(terminal_id, raw::TOOL, None, &rejection),
                 Ok((call, found)) => self.show_raw(terminal_id, request, arguments, &call, found).await,
             }),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
-                Err(rejection) => self.reject(terminal_id, read::TOOL, &rejection),
+                Err(rejection) => self.reject(terminal_id, read::TOOL, read::named(arguments), &rejection),
                 Ok(body) => {
                     self.0.store.accepted(terminal_id, read::TOOL);
                     text_result(body)
@@ -362,21 +363,23 @@ impl SurfaceTools {
                         "Surface \"{id}\" already exists. Update it, or delete it and create it again."
                     ),
                 };
-                self.reject(terminal_id, tool, &Rejection::of(error))
+                self.reject(terminal_id, tool, Some(id), &Rejection::of(error))
             }
             CommitRefused::IdInUse => {
                 tracing::error!("{terminal_id}: a {tool} call was given the id {id}, which is in use");
                 QuayFailed::Expansion.result()
             }
-            CommitRefused::PastLimit(past) => self.reject(terminal_id, tool, &Rejection::invalid("", past.words())),
+            CommitRefused::PastLimit(past) => {
+                self.reject(terminal_id, tool, Some(id), &Rejection::invalid("", past.words()))
+            }
         }
     }
 
-    /// The result of `terminal_id`'s call of `tool` that `rejection` rejects. The window is told nothing.
-    fn reject(&self, terminal_id: &str, tool: &str, rejection: &Rejection) -> Value {
-        let run = self.0.store.rejected(terminal_id, tool);
-        let id = rejection.errors().iter().find_map(|error| error.surface_id.as_deref());
-        self.0.record.happened(About::call(terminal_id, tool, id), Event::Rejected(Refusal::of(rejection, run)));
+    /// The result of `terminal_id`'s call of `tool` that `rejection` rejects. The window is told nothing. The
+    /// call is recorded as about the surface that an error of it names first, or else about `id`.
+    fn reject(&self, terminal_id: &str, tool: &str, id: Option<&str>, rejection: &Rejection) -> Value {
+        let named = rejection.errors().iter().find_map(|error| error.surface_id.as_deref());
+        let run = self.0.store.rejected(terminal_id, tool, named.or(id), rejection);
         rejection.result(tool, run)
     }
 
@@ -497,14 +500,9 @@ impl SurfaceTools {
         Ok(moved)
     }
 
-    /// Records that the operator's click fired `function` of a surface, at `target`.
-    pub fn function_fired(&self, key: &SurfaceKey, function: Function, target: Option<&str>) {
-        let Some(record) = self.0.store.record(key) else {
-            return;
-        };
-        let SurfaceRecord { terminal_id, id, tool, title, place, state, .. } = &record;
-        let about = About::surface(terminal_id, id, tool, title, *place);
-        self.0.record.happened(about, Event::Fired(Fired::of(function, target, state)));
+    /// Records what the operator's click fired in a surface.
+    pub fn function_fired(&self, key: &SurfaceKey, fired: Fired) {
+        self.0.store.fired(key, fired);
     }
 
     /// `type_in`, for a surface that has no way back: a failure is only logged, and

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use super::super::calls::OpenCalls;
 use super::super::carried::{Carried, DataPath};
 use super::super::check::Accepted;
-use super::super::daily_record::{DailyRecord, Event};
+use super::super::daily_record::Event;
 use super::super::past_limit::{within_limits, PastLimit};
 use super::super::place::{Place, MOST_LIVE};
 use super::super::raw::TOOL;
@@ -137,7 +137,7 @@ impl Surface {
         Some(WaitOver::of(&self.id, waiters, "shown"))
     }
 
-    /// What its agent's delete of it is in the record.
+    /// What its agent's delete of it is in the surface record.
     fn event_of_delete(&self) -> Event {
         if matches!(self.phase, Phase::Asking { .. }) { Event::Withdrawn } else { Event::Deleted }
     }
@@ -207,12 +207,11 @@ impl Terminal {
         self.check_room(changes, creation.place)
     }
 
-    /// Deletes its surface `id`, if it has one, as `record` is told: one that asks is withdrawn, and any other
-    /// leaves. `terminal_id` is its own id.
-    fn delete(&mut self, terminal_id: &str, id: &str, change: u64, record: &DailyRecord) -> Option<Deleted> {
+    /// Deletes its surface `id`, if it has one: one that asks is withdrawn, and any other leaves.
+    fn delete(&mut self, id: &str, change: u64) -> Option<Deleted> {
         let at = self.surfaces.iter().position(|surface| surface.id == id)?;
         let surface = &mut self.surfaces[at];
-        record.happened(surface.about(terminal_id), surface.event_of_delete());
+        self.recorder.happened(surface, surface.event_of_delete());
         if let Phase::Asking { waiters } = &mut surface.phase {
             let waiters = std::mem::take(waiters);
             surface.phase = Phase::Withdrawn { at: now_ms() };
@@ -227,23 +226,25 @@ impl Terminal {
     /// Changes its surface `id` to what a call that sets the data paths `sets` made of it. Returns the waits
     /// that are over by it.
     fn update(&mut self, id: &str, content: Content, sets: &[DataPath]) -> Option<WaitOver> {
-        let Terminal { surfaces, calls, .. } = self;
-        surfaces.iter_mut().find(|surface| surface.id == id)?.update(content, sets, calls)
+        let Terminal { surfaces, calls, recorder, .. } = self;
+        let surface = surfaces.iter_mut().find(|surface| surface.id == id)?;
+        let over = surface.update(content, sets, calls);
+        recorder.happened(surface, Event::Updated);
+        over
     }
 
-    /// Puts in what a call creates as its surface `id`, in place of the one of that id, as `record` is told.
-    /// `terminal_id` is its own id. Returns the waits that are over by it.
-    fn create(&mut self, terminal_id: &str, id: &str, content: Content, record: &DailyRecord) -> Option<WaitOver> {
+    /// Puts in what a call creates as its surface `id`, in place of the one of that id. Returns the waits
+    /// that are over by it.
+    fn create(&mut self, id: &str, content: Content) -> Option<WaitOver> {
         let mut surface = Surface::created(id, content);
-        let about = surface.about(terminal_id);
         let Some(at) = self.surfaces.iter().position(|there| there.id == id) else {
-            record.happened(about, Event::Shown);
+            self.recorder.happened(&surface, Event::Shown);
             self.surfaces.push(surface);
             return None;
         };
         let there = self.surfaces.remove(at);
-        record.happened(there.about(terminal_id), there.event_of_delete());
-        record.happened(about, Event::Shown);
+        self.recorder.happened(&there, there.event_of_delete());
+        self.recorder.happened(&surface, Event::Shown);
         // An answer the operator gives to what it replaces is one to an older revision
         surface.revision = there.revision + 1;
         surface.carried = Carried::new(surface.revision);
@@ -327,16 +328,13 @@ impl SurfaceStore {
             match (effect, accepted) {
                 (Effect::Create { .. }, Some(accepted)) => {
                     shows.push(id);
-                    over.extend(terminal.create(terminal_id, id, Content { creation, accepted, change }, &self.1));
+                    over.extend(terminal.create(id, Content { creation, accepted, change }));
                 }
                 (Effect::Update { sets }, Some(accepted)) => {
                     shows.push(id);
                     over.extend(terminal.update(id, Content { creation, accepted, change }, &sets));
-                    if let Some(surface) = terminal.find(id) {
-                        self.1.happened(surface.about(terminal_id), Event::Updated);
-                    }
                 }
-                _ => match terminal.delete(terminal_id, id, change, &self.1) {
+                _ => match terminal.delete(id, change) {
                     Some(Deleted::Withdrawn(wait)) => {
                         withdrawn.push(id);
                         over.push(wait);
@@ -357,7 +355,7 @@ impl SurfaceStore {
             }
         }
         changed.shows = !shows.is_empty();
-        changed.left.extend(terminal.drop_past_most_locked(terminal_id, &self.1));
+        changed.left.extend(terminal.drop_past_most_locked(terminal_id));
         Ok(changed)
     }
 }

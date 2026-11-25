@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::daily_record::{About, DailyRecord, Event, Function};
+use super::daily_record::{About, DailyRecord, Event, Fired, FiredFunction};
 use super::place::Place;
 use super::raw_seam::{action, create, created, delete, makes, plan, rejected, says, sent, update};
 use super::test_seam::{accepted, answer_to, key, start, CapturedLog, FakeWebview, OpenCall, Seam};
@@ -318,6 +318,54 @@ async fn a_rejected_call_has_each_errors_code_and_path_and_how_many_were_in_a_ro
     assert!(!on.text().contains("planted"), "{}", on.text());
 }
 
+/// Each rejection's surface, as its id, title and place.
+fn refused(on: &Recorded) -> Vec<Value> {
+    let lines = on.lines().into_iter().filter(|line| line["event"] == "rejected");
+    lines.map(|line| json!([line["surface_id"], line["title"], line["place"]])).collect()
+}
+
+#[tokio::test]
+async fn a_rejected_call_for_a_surface_its_terminal_has_is_recorded_with_that_surface() {
+    let mut on = Recorded::start().await;
+    on.create("plan", false).await.answer().await;
+    on.board("Build").await;
+    let cli = on.seam.cli("term-a");
+
+    let error = json!([{ "code": "X", "surfaceId": "plan", "path": "/messages/0", "message": "planted" }]);
+    // The second error names no surface, and the call does
+    for errors in [error, json!([{ "code": "X", "path": "/messages/0", "message": "planted" }])] {
+        let call = cli.call("quay_surface", json!({ "messages": [update("plan")] }));
+        on.seam.surfaces.verdict(on.webview.next_check().await.call, rejected(errors));
+        call.failure().await;
+    }
+    cli.call("quay_board", json!({ "title": "planted ".repeat(40) })).failure().await;
+    let plan = json!(["plan", "Migration plan", "companion"]);
+    assert_eq!(refused(&on), [plan.clone(), plan, json!(["board", "Build", "strip"])]);
+    assert!(!on.text().contains("planted"), "{}", on.text());
+
+    on.seam.cli("term-b").call("quay_surface_read", json!({ "surface_id": "plan" })).failure().await;
+    assert_eq!(refused(&on)[3], json!(["plan", null, null]), "another terminal's is none of its own");
+}
+
+#[tokio::test]
+async fn a_rejected_call_for_a_surface_its_terminal_has_not_is_recorded_with_the_id_alone() {
+    let mut on = Recorded::start().await;
+    let cli = on.seam.cli("term-a");
+    cli.call("quay_surface_read", json!({ "surface_id": "never" })).failure().await;
+    for n in 0..4 {
+        let call = cli.call("quay_board", json!({ "title": "Build", "id": format!("board_{n}") }));
+        on.seam.surfaces.verdict(on.webview.next_check().await.call, accepted(false));
+        call.answer().await;
+        on.webview.next_shown().await;
+    }
+    let call = cli.call("quay_board", json!({ "title": "planted", "id": "fifth" }));
+    on.seam.surfaces.verdict(on.webview.next_check().await.call, accepted(false));
+    call.failure().await;
+    cli.call("quay_surface_read", json!({ "surface_id": 7 })).failure().await;
+    assert_eq!(refused(&on), [json!(["never", null, null]), json!(["fifth", null, null]), json!([null, null, null])]);
+    assert!(!on.text().contains("planted"), "{}", on.text());
+}
+
 #[tokio::test]
 async fn a_call_that_failed_by_quays_own_fault_is_no_rejection() {
     let mut on = Recorded::start().await;
@@ -345,32 +393,25 @@ async fn what_an_agent_named_is_bounded_and_has_no_control_characters() {
     assert!(text.lines().count() == 2 && !text.contains("\\u") && !text.contains("\\n"), "{text}");
 }
 
-/// What the record holds of the functions fired in `term-a`'s surface, whose agent wrote `written`.
-async fn fired(written: &str, fires: &[(Function, Option<&str>)]) -> Vec<Value> {
+/// What the record holds of the functions fired in a surface of `term-a`, each with its target and whether it
+/// fired at another, which was typed.
+async fn fired(fires: &[(FiredFunction, Option<&str>, bool)]) -> Vec<Value> {
     let mut on = Recorded::start().await;
-    let call = on.seam.cli("term-a").call("quay_surface", plan("plan", "companion"));
-    on.seam.surfaces.verdict(on.webview.next_check().await.call, makes(vec![("plan", says(false, written))]));
-    call.answer().await;
-    for (function, target) in fires {
-        on.seam.surfaces.function_fired(&key("term-a", "plan"), *function, *target);
+    on.create("plan", false).await.answer().await;
+    for (function, target, typed) in fires {
+        on.seam.surfaces.function_fired(&key("term-a", "plan"), Fired::of(*function, *target, *typed));
     }
-    assert!(!on.text().contains("planted"), "{}", on.text());
     on.lines().split_off(1)
 }
 
 #[tokio::test]
 async fn a_function_that_fired_has_its_target_but_for_the_text_it_copied() {
-    let written = "See [it](https://Example.com/a?b=c#d), [notes](my%20notes.md), C:\\work\\plan.md and fix-75. planted";
-    let lines = fired(
-        written,
-        &[
-            (Function::OpenUrl, Some("https://Example.com/a?b=c#d")),
-            (Function::ShowFile, Some("C:\\work\\plan.md")),
-            (Function::ShowFile, Some("my notes.md")),
-            (Function::FocusTerminal, Some("fix-75")),
-            (Function::CopyText, Some("planted")),
-        ],
-    )
+    let lines = fired(&[
+        (FiredFunction::OpenUrl, Some("https://Example.com/a?b=c#d"), false),
+        (FiredFunction::ShowFile, Some("C:\\work\\my notes.md"), false),
+        (FiredFunction::FocusTerminal, Some("fix-75"), false),
+        (FiredFunction::CopyText, Some("planted"), false),
+    ])
     .await;
     assert_eq!(
         lines[0],
@@ -380,31 +421,31 @@ async fn a_function_that_fired_has_its_target_but_for_the_text_it_copied() {
             "function": "openUrl", "target": "https://Example.com/a?b=c#d",
         })
     );
-    let held: Vec<_> = lines.iter().map(|line| (line["function"].clone(), line["target"].clone(), line.get("target_cut").is_some())).collect();
-    assert_eq!(held[1], (json!("showFile"), json!("C:\\work\\plan.md"), false));
-    assert_eq!(held[2], (json!("showFile"), json!("my notes.md"), false));
-    assert_eq!(held[3], (json!("focusTerminal"), json!("fix-75"), false));
-    assert_eq!(held[4], (json!("copyText"), Value::Null, false));
+    let held: Vec<_> = lines[1..].iter().map(|line| json!([line["function"], line["target"]])).collect();
+    assert_eq!(
+        held,
+        [json!(["showFile", "C:\\work\\my notes.md"]), json!(["focusTerminal", "fix-75"]), json!(["copyText", null])]
+    );
 }
 
 #[tokio::test]
-async fn a_target_that_holds_what_the_operator_typed_is_cut_where_that_begins() {
-    let lines = fired(
-        "https://example.com/search?q=${/q}",
-        &[(Function::OpenUrl, Some("https://example.com/search?q=planted")), (Function::ShowFile, Some("planted"))],
-    )
+async fn a_function_that_fired_at_what_the_operator_typed_says_so_beside_what_is_left_of_its_target() {
+    let lines = fired(&[
+        (FiredFunction::OpenUrl, Some("https://example.com/search?q="), true),
+        (FiredFunction::ShowFile, Some(""), true),
+        (FiredFunction::FocusTerminal, None, true),
+    ])
     .await;
-    assert_eq!((&lines[0]["target"], &lines[0]["target_cut"]), (&json!("https://example.com/search?q="), &json!(true)));
-    assert_eq!(lines[1]["target_cut"], true);
-    assert!("planted".starts_with(lines[1]["target"].as_str().unwrap_or_default()));
+    let held: Vec<_> = lines.iter().map(|line| json!([line["target"], line["target_typed"]])).collect();
+    assert_eq!(held, [json!(["https://example.com/search?q=", true]), json!([null, true]), json!([null, true])]);
 }
 
 #[tokio::test]
 async fn a_target_is_bounded_and_has_no_control_characters() {
     let long = format!("https://example.com/{}", "a".repeat(3000));
-    let written = format!("a\u{202e}b.md {long}");
-    let lines = fired(&written, &[(Function::OpenUrl, Some(&long)), (Function::ShowFile, Some("a\u{202e}b.md"))]).await;
-    assert_eq!(lines[0]["target"].as_str().unwrap().chars().count(), 2049, "cut, which the last character says");
+    let lines = fired(&[(FiredFunction::OpenUrl, Some(&long), false), (FiredFunction::ShowFile, Some("a\u{202e}b.md"), false)]).await;
+    let target = lines[0]["target"].as_str().unwrap();
+    assert!(target.chars().count() == 2049 && target.ends_with('…'), "{target}");
     assert_eq!(lines[1]["target"], "a b.md");
 }
 
@@ -412,8 +453,9 @@ async fn a_target_is_bounded_and_has_no_control_characters() {
 async fn a_function_of_a_surface_that_terminal_has_not_is_not_recorded() {
     let mut on = Recorded::start().await;
     on.create("plan", false).await.answer().await;
-    on.seam.surfaces.function_fired(&key("term-b", "plan"), Function::OpenUrl, Some("x"));
-    on.seam.surfaces.function_fired(&key("term-a", "never"), Function::OpenUrl, Some("x"));
+    for (terminal_id, id) in [("term-b", "plan"), ("term-a", "never"), ("never", "plan")] {
+        on.seam.surfaces.function_fired(&key(terminal_id, id), Fired::of(FiredFunction::OpenUrl, Some("x"), false));
+    }
     assert_eq!(on.events(), ["shown plan"]);
 }
 
@@ -508,7 +550,7 @@ async fn nothing_typed_shown_or_said_of_an_error_is_in_the_file_or_the_error_log
     let order = on.webview.next_shown().await.order;
     let unsent = json!({ "page": 1, "save": 1, "order": order, "revision": 1, "values": { "/note": "planted-unsent" } });
     on.seam.surfaces.save_unsent(&key("term-a", "plan"), serde_json::from_value(unsent).unwrap()).unwrap();
-    on.seam.surfaces.function_fired(&key("term-a", "plan"), Function::OpenUrl, Some("https://x.example/?q=planted-unsent"));
+    on.seam.surfaces.function_fired(&key("term-a", "plan"), Fired::of(FiredFunction::CopyText, Some("planted-unsent"), false));
     assert!(on.seam.pty_manager.exit_launch(&launch, Some(0)));
     call.answer().await;
     on.webview.next_shown().await;
@@ -521,37 +563,71 @@ async fn nothing_typed_shown_or_said_of_an_error_is_in_the_file_or_the_error_log
     on.seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer).unwrap();
     call.answer().await;
 
-    assert_eq!(on.events(), ["rejected none", "shown plan", "function fired plan", "ended plan", "shown ask_1", "answered ask_1"]);
+    assert_eq!(on.events(), ["rejected plan", "shown plan", "function fired plan", "ended plan", "shown ask_1", "answered ask_1"]);
     assert!(!on.text().contains("planted-"), "{}", on.text());
     assert!(!log.text().contains("planted-"), "{}", log.text());
 }
 
-#[test]
-fn handing_an_event_over_never_waits_and_one_too_many_is_lost_which_the_error_log_is_told() {
-    let (log, _guard) = CapturedLog::start();
-    let dir = TempDir::new("surface-record");
+/// A record in `dir` whose thread stalls on its first line, as on a disk that does not answer, until what is
+/// returned with it is dropped.
+fn stalled(dir: &TempDir) -> (DailyRecord, mpsc::Sender<()>) {
     let record = DailyRecord::default();
-    // The thread stalls on its first line, as on a disk that does not answer
     let (release, stalled) = mpsc::channel::<()>();
     let named = move |_: &str| {
         let _ = stalled.recv();
         None
     };
     record.keep(dir.join("surfaces"), Arc::new(|| 0), named);
-    let began = Instant::now();
+    (record, release)
+}
+
+/// Hands more events over than may wait.
+fn hand_too_many(record: &DailyRecord) {
     for _ in 0..5000 {
         record.happened(About::surface("term-a", "plan", "quay_surface", "Plan", Place::Companion), Event::Shown);
     }
-    assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
-    drop(release);
-    // Room for the request to finish comes as lines are written
+}
+
+fn lines_written(dir: &TempDir) -> usize {
     let file = dir.join("surfaces").join("surfaces.1970-01-01.jsonl");
-    let written = || std::fs::read_to_string(&file).unwrap_or_default().lines().count();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !log.text().contains("were lost") || written() < 1024 {
-        assert!(Instant::now() < deadline, "{} written; {}", written(), log.text());
-        std::thread::sleep(Duration::from_millis(10));
-        record.finish(Duration::from_millis(100));
-    }
-    assert!(written() <= 1025, "{}", written());
+    std::fs::read_to_string(file).unwrap_or_default().lines().count()
+}
+
+#[test]
+fn handing_an_event_over_never_waits_and_one_too_many_is_lost_which_the_error_log_is_told() {
+    let (log, _guard) = CapturedLog::start();
+    let dir = TempDir::new("surface-record");
+    let (record, release) = stalled(&dir);
+    let began = Instant::now();
+    hand_too_many(&record);
+    assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
+
+    // All that waits is written, though the request to finish found no room at first
+    let freed = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        drop(release);
+    });
+    record.finish(Duration::from_secs(20));
+    let written = lines_written(&dir);
+    assert!((1024..=1025).contains(&written), "{written}");
+    assert!(log.text().contains("were lost") && !log.text().contains("not be finished"), "{}", log.text());
+    freed.join().unwrap();
+}
+
+#[test]
+fn finishing_waits_no_longer_than_its_limit_and_the_error_log_is_told_what_it_left() {
+    let (log, _guard) = CapturedLog::start();
+    let dir = TempDir::new("surface-record");
+    let (record, _release) = stalled(&dir);
+    let limit = Duration::from_millis(50);
+    let finish = |told: usize| {
+        let began = Instant::now();
+        record.finish(limit);
+        assert!((limit..Duration::from_secs(5)).contains(&began.elapsed()), "{:?}", began.elapsed());
+        assert_eq!(log.text().matches("The surface record could not be finished").count(), told, "{}", log.text());
+    };
+    record.happened(About::surface("term-a", "plan", "quay_surface", "Plan", Place::Companion), Event::Shown);
+    finish(1);
+    hand_too_many(&record);
+    finish(2);
 }

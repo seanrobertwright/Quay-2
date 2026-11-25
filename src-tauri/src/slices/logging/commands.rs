@@ -2,11 +2,13 @@
 
 use std::path::Path;
 
+use crate::slices::surface::record_folder;
+
 /// Shows the logs folder in the system file manager, with the surface record's folder beside it.
 #[tauri::command]
 pub async fn open_logs_folder() -> Result<(), String> {
     tokio::task::spawn_blocking(|| {
-        show_folder(&super::logs_dir(), &super::surface_record_dir(), |dir| {
+        show_folder(&super::logs_dir(), &record_folder(), |dir| {
             tauri_plugin_opener::reveal_item_in_dir(dir).map_err(|e| e.to_string())
         })
     })
@@ -26,13 +28,13 @@ fn show_folder(logs: &Path, beside: &Path, reveal: impl FnOnce(&Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slices::logging::{logs_dir, surface_record_dir};
+    use crate::slices::logging::logs_dir;
     use crate::test_support::TempDir;
 
     #[test]
     fn the_logs_are_shown_in_the_folder_that_holds_the_surface_record_too() {
-        assert_eq!(logs_dir().parent(), surface_record_dir().parent());
-        assert_eq!(surface_record_dir().file_name().unwrap(), "surfaces");
+        assert_eq!(logs_dir().parent(), record_folder().parent());
+        assert_eq!(record_folder().file_name().unwrap(), "surfaces");
 
         let dir = TempDir::new("logs-folder");
         let (logs, record) = (dir.join("logs"), dir.join("surfaces"));
