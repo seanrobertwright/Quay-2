@@ -22,6 +22,14 @@ fn surface_with(components: usize, data: Value) -> Accepted {
     surface
 }
 
+/// A surface that asks for nothing and has so many components drawn at once, and with every row.
+fn surface_that_draws(at_once: u32, with_rows: u32) -> Accepted {
+    let mut surface = surface(false);
+    surface.drawn_at_once = at_once;
+    surface.drawn_with_rows = with_rows;
+    surface
+}
+
 const NEXT: &str = "Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.";
 
 #[tokio::test]
@@ -229,6 +237,38 @@ async fn a_surface_past_a_size_limit_is_not_committed_whatever_the_webview_says(
         seam.surfaces.verdict(webview.next_check().await.call, makes(vec![(id.as_str(), surface)]));
         assert_eq!(call.answer().await, json!({ "shown": true }));
     }
+}
+
+#[tokio::test]
+async fn a_surface_is_held_to_what_it_may_have_drawn_and_so_is_an_update_which_leaves_it_as_it_was() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    let cases = [
+        (2001, 2001, "A surface has at most 2000 components drawn at once; this one would have 2001."),
+        (102, 10_001, "A surface has at most 10000 components with every row drawn; this one would have 10001."),
+        (2001, 10_001, "A surface has at most 2000 components drawn at once; this one would have 2001."),
+    ];
+    for (at_once, with_rows, message) in cases {
+        let call = cli.call("quay_surface", plan("plan", "companion"));
+        seam.surfaces.verdict(webview.next_check().await.call, makes(vec![("plan", surface_that_draws(at_once, with_rows))]));
+        assert_eq!(told(call).await.0, json!([about_plan("VALIDATION_FAILED", "/messages/0/createSurface", message)]));
+    }
+    assert!(webview.nothing_shown().await);
+    assert!(seam.surfaces.surfaces().is_empty());
+
+    let call = cli.call("quay_surface", plan("plan", "companion"));
+    seam.surfaces.verdict(webview.next_check().await.call, makes(vec![("plan", surface_that_draws(2000, 10_000))]));
+    assert_eq!(call.answer().await, json!({ "shown": true }));
+    let shown = webview.next_shown().await;
+
+    for (at_once, with_rows, message) in cases {
+        let call = cli.call("quay_surface", messages(&[update("plan")]));
+        seam.surfaces.verdict(webview.next_check().await.call, makes(vec![("plan", surface_that_draws(at_once, with_rows))]));
+        assert_eq!(told(call).await.0, json!([about_plan("VALIDATION_FAILED", "/messages/0/updateDataModel", message)]));
+    }
+    assert!(webview.nothing_shown().await);
+    let [held] = &seam.surfaces.surfaces()[..] else { panic!("one surface") };
+    assert_eq!((held.revision, &held.state), (shown.revision, &shown.state));
 }
 
 #[tokio::test]

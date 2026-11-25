@@ -3,6 +3,7 @@ import type { ReactCatalogComponent } from "@a2ui/react";
 import { mapErrorToRendererMessage, MessageProcessor, STRICT_VALIDATION, type ActionListener, type SurfaceModel } from "@a2ui/web_core/v1_0";
 import type { CreateSurface, CheckError } from "../surfaceTypes.ts";
 import { catalog } from "./catalog.ts";
+import { fits } from "./heldToLimit.ts";
 
 /** What an action listener is given. */
 export type A2uiClientAction = Parameters<ActionListener>[0];
@@ -18,8 +19,20 @@ export function engineFor(state: CreateSurface, onAction?: ActionListener) {
   processor.processMessages([structuredClone(state)]);
   const surface: EngineSurface | undefined = processor.model.getSurface(state.createSurface.surfaceId);
   if (!surface) throw new Error(`The engine made no surface "${state.createSurface.surfaceId}".`);
-  const update = ({ version, createSurface: { surfaceId, components, dataModel } }: CreateSurface) =>
-    processor.processMessages(structuredClone([{ version, updateComponents: { surfaceId, components } }, { version, updateDataModel: { surfaceId, value: dataModel } }]));
+  let { components: earlier } = state.createSurface;
+  const update = ({ version, createSurface: { surfaceId, components, dataModel } }: CreateSurface) => {
+    // The engine resolves each component as it replaces it, among earlier ones that are still there and over the
+    // earlier data. Where that may be too much to draw, it has no root to resolve until it has replaced the rest.
+    const before = new Set(earlier.map((component) => JSON.stringify(component)));
+    const inSteps = fits([...earlier, ...components.filter((component) => !before.has(JSON.stringify(component)))], surface.dataModel);
+    if (!inSteps) {
+      surface.componentsModel.removeComponent("root");
+      surface.dataModel.set("/", dataModel);
+    }
+    const ordered = inSteps ? components : [...components].sort((a, b) => Number(a.id === "root") - Number(b.id === "root"));
+    processor.processMessages(structuredClone([{ version, updateComponents: { surfaceId, components: ordered } }, { version, updateDataModel: { surfaceId, value: dataModel } }]));
+    earlier = components;
+  };
   return { surface, update, dispose: () => processor.dispose() };
 }
 

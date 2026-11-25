@@ -2,6 +2,7 @@
 import { hasOwn, isObject } from "../json.ts";
 import type { Accepted, CreateSurface, SurfaceComponent } from "../surfaceTypes.ts";
 import { CATALOG_ID } from "./catalog.ts";
+import { drawnSize, type DrawnSize } from "./drawnSize.ts";
 import type { EngineSurface } from "./engine.ts";
 import { namedImages } from "./images.ts";
 
@@ -19,8 +20,11 @@ export function compact(surface: EngineSurface): CreateSurface {
 /** Whether a component has an action to its surface's agent. */
 export const hasEvent = ({ action }: Record<string, unknown>): boolean => isObject(action) && hasOwn(action, "event");
 
-/** `surface` as it is accepted, whose whole state is `state`. */
-export function acceptedSurface(surface: EngineSurface, state: CreateSurface): Accepted {
+/** What is drawn of `surface`, whose whole state is `state`. */
+export const drawnSizeOf = (surface: EngineSurface, { createSurface }: CreateSurface): DrawnSize => drawnSize(createSurface.components, surface.dataModel);
+
+/** `surface` as it is accepted, whose whole state is `state` and whose size is `size`. */
+export function acceptedSurface(surface: EngineSurface, state: CreateSurface, { atOnce, withRows }: DrawnSize): Accepted {
   const { components } = state.createSurface;
-  return { state, asks: components.some(hasEvent), components: components.length, ...namedImages(surface) };
+  return { state, asks: components.some(hasEvent), components: components.length, drawn_at_once: atOnce, drawn_with_rows: withRows, ...namedImages(surface) };
 }

@@ -81,6 +81,9 @@ pub struct Accepted {
     /// Whether the surface has an action to its agent.
     pub asks: bool,
     pub components: u32,
+    /// How many components are drawn at once, and with every row, as the webview counted them.
+    pub drawn_at_once: u32,
+    pub drawn_with_rows: u32,
     pub images: u32,
     /// The image files it names, each once, in the order the surface has them.
     #[serde(default)]

@@ -1,6 +1,8 @@
 // What the guide says besides its generated lines, written by hand: how a call is made, what a surface may
 // be, how the lines are read, and what they leave out.
+import { PAGE } from "../../../parts/usePaged.tsx";
 import { EFFECTS } from "../effects.ts";
+import { LINK, MOST_AT_ONCE, MOST_WITH_ROWS, NAME, ROW_DATA, STEPS, TEXT, TOKENS, WRITTEN } from "../drawnLimits.ts";
 import { inKb, MOST_COMPONENTS, MOST_DATA, MOST_IMAGES } from "../raw/postCheck.ts";
 
 const list = (...rules: string[]): string => rules.map((rule) => `- ${rule}`).join("\n");
@@ -28,6 +30,8 @@ export const SURFACE = list(
   "A property that is not in the component's line is rejected, as is a wrong type: where the line says string, 3 is `\"3\"`. Any component also takes `@accessibility: {label?, description?}`.",
   "Version 1.0 writes `@path`, `@call`, `@checks` and `@accessibility` with the @. A binding is always `@path`. A list template, `updateDataModel` and some lines below have a plain `path`, which is not a binding.",
   `At most ${MOST_COMPONENTS} components, ${MOST_IMAGES} images and ${inKb(MOST_DATA)} of data model. The data model is an object. \`/frame\` in it is Quay's: neither set nor bind it.`,
+  `At most ${MOST_AT_ONCE} components drawn at once, and ${MOST_WITH_ROWS} with every row drawn. A list draws ${PAGE} rows at once. What a template draws counts for each row and a component each time it is named, so a list in a list multiplies. Each option, step and tab counts as one.`,
+  `A component counts as one more for each ${TEXT} characters of text, ${TOKENS} tokens of Markdown (a link has ${LINK} more than it is written in), ${STEPS} bindings and calls, or ${WRITTEN} characters of JSON, by the one it has most of. Markdown always counts, plain text where it is bound or drawn more than once, JSON where it is drawn more than once. A list counts as one more for each ${ROW_DATA} characters of the data of ${PAGE} rows, and each component under it for each ${NAME} characters of an id or of a list's path.`,
 );
 
 export const UPDATES = list(
@@ -35,7 +39,7 @@ export const UPDATES = list(
   "An update cannot remove a component. Left out of its parent's list it has no parent, and the update is rejected. Delete the surface and create it again in one call.",
   "To add one, send it together with its parent, whose list names it.",
   "To change what is shown, bind it to the data model and send `updateDataModel` with the `path` that changed. With no `path`, or `/`, it replaces the whole model.",
-  "An update keeps what the operator has put in, except at the paths it sets, under them and above them.",
+  "An update keeps what the operator has put in, except at the paths it sets, under them and above them, and where too much would then be drawn.",
   "An update to a surface that was answered opens it again, and the call waits again.",
   "A surface that quay_ask, quay_review or quay_board made takes no update: call its tool again. `deleteSurface` takes back any of them.",
 );
@@ -65,7 +69,7 @@ export const NOTES = list(
   "A path is absolute or relative to this terminal's working directory, and never a network path.",
   "`weight` is the share of a Row's or Column's room. For a component without it, put it in a Column that has one.",
   `These run only as a Button's action, on the operator's click: ${EFFECTS.map(({ name }) => name).join(", ")}. openUrl takes http and https. focusTerminal takes the id or exact name of a terminal of this project.`,
-  "formatString fills in `${/a/b}`, `${name}` in a template, and calls: `${formatNumber(value:${/n}, decimals:1)}`. `\\${` is a plain `${`.",
+  "formatString fills in `${/a/b}`, `${name}` in a template, and calls: `${formatNumber(value:${/n}, decimals:1)}`. `\\${` is a plain `${`. Its `value` is text or bound to text, never a call, and a text it fills in may not lead back to itself.",
   "formatDate takes patterns such as `yyyy-MM-dd HH:mm` and `MMM d, h:mm a`. length and numeric need `min`, `max` or both. regex takes no lookbehind, backreference or named group.",
   "@index works in a template only, and counts from 0.",
   "Quay draws no Modal, Video or AudioPlayer.",

@@ -2,16 +2,26 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "reac
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
+import { RAW_TOOL } from "../rawTool.ts";
 import { sameSurface } from "../surfaceAttention.ts";
 import type { CreateSurface, SentAction, SurfaceRecord } from "../surfaceTypes.ts";
-import { followUnsent, unsentIn } from "../unsent.ts";
+import { followUnsent, leaveOut, unsentIn } from "../unsent.ts";
 import { actionMessage } from "./actionMessage.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
+import { dataWith, holdToLimit } from "./heldToLimit.ts";
 import { UntypedContext, untypedIn, type Untyped } from "./untyped.ts";
 
 type OnAction = (action: SentAction) => Promise<void>;
 
 const noAction: OnAction = async () => {};
+
+type OnRefused = (why: string | null) => void;
+
+const noRefusal: OnRefused = () => {};
+
+const NOT_PUT_IN = "Not put in: the surface would have more components than Quay draws.";
+
+const NOT_PUT_BACK = "Some of what you put in is left out: the surface would have more components than Quay draws.";
 
 /** The engine that draws a surface, with what the operator has put in it so far. */
 interface Live {
@@ -23,14 +33,33 @@ interface Live {
   update: (state: CreateSurface) => void;
   data: SurfaceData;
   onAction: OnAction;
+  onRefused: OnRefused;
+  /** Why something that the operator put in is not in it, or null once something is put in. */
+  refusal: string | null;
 }
 
 /** Kept while their records are, so a surface that comes back to the screen is as it was left. */
 const lives = new WeakMap<SurfaceRecord, Live>();
 
-/** Puts what is unsent in `record` in `surface`. */
-function putIn({ dataModel }: EngineSurface, record: SurfaceRecord): void {
-  for (const [path, value] of Object.entries(unsentIn(record))) dataModel.set(path, value, true);
+/** Puts what is unsent in `record` in `surface`: in a raw one, what there is room for. Returns whether all of it is put in. */
+function putIn({ dataModel }: EngineSurface, record: SurfaceRecord): boolean {
+  const values = unsentIn(record);
+  if (record.tool !== RAW_TOOL) {
+    for (const [path, value] of Object.entries(values)) dataModel.set(path, value, true);
+    return true;
+  }
+  if (Object.keys(values).length === 0) return true;
+  const { data, leftOut } = dataWith(record.state, values);
+  dataModel.set("/", data);
+  leaveOut(record, leftOut);
+  return Object.keys(leftOut).length === 0;
+}
+
+/** Tells the frame of `live` why something is not put in, or that something is put in again. */
+function refuse(live: Live, why: string | null): void {
+  if (why === null && live.refusal === null) return;
+  live.refusal = why;
+  live.onRefused(why);
 }
 
 /** Whether `record` is the surface of `before` with no content made new since, so the engine of `before` can be brought to it. */
@@ -44,7 +73,7 @@ function bring(live: Live, record: SurfaceRecord): void {
   lives.set(record, live);
   if (revision === record.revision) return;
   live.update(record.state);
-  putIn(live.surface, record);
+  if (!putIn(live.surface, record)) refuse(live, NOT_PUT_BACK);
 }
 
 function liveOf(record: SurfaceRecord): Live {
@@ -52,7 +81,7 @@ function liveOf(record: SurfaceRecord): Live {
   if (kept) return kept;
   const { surface, update } = engineFor(record.state, (action) => live.onAction({ name: action.name, context: action.context, message: actionMessage(action) }));
   const { dataModel } = surface;
-  putIn(surface, record);
+  const refusal = putIn(surface, record) ? null : NOT_PUT_BACK;
   const live: Live = {
     record,
     from: record.carried.from,
@@ -67,7 +96,17 @@ function liveOf(record: SurfaceRecord): Live {
       },
     },
     onAction: noAction,
+    onRefused: noRefusal,
+    refusal,
   };
+  // No list in a typed surface grows with what the operator puts in it
+  if (record.tool === RAW_TOOL) {
+    holdToLimit(
+      surface,
+      () => live.record.state.createSurface.components,
+      (refused) => refuse(live, refused ? NOT_PUT_IN : null),
+    );
+  }
   lives.set(record, live);
   return live;
 }
@@ -79,10 +118,12 @@ interface SurfaceContentProps {
   layout: Layout | null;
   /** The operator's action. Until it settles, the button that sent it takes no second click. Left out for a surface that has none. */
   onAction?: OnAction;
+  /** Told why something that the operator put in is not in the surface, and null once something is put in again. */
+  onRefused?: OnRefused;
 }
 
 /** What an agent's surface holds, drawn by Quay's components. */
-export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceContentProps) => {
+export const SurfaceContent = ({ record, layout, onAction = noAction, onRefused = noRefusal }: SurfaceContentProps) => {
   const [live, setLive] = useState(() => liveOf(record));
   if (live.record !== record && !goesOn(live.record, record)) setLive(liveOf(record));
   useLayoutEffect(() => {
@@ -90,7 +131,11 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
   }, [live, record]);
   useEffect(() => {
     live.onAction = onAction;
-  }, [live, onAction]);
+    live.onRefused = onRefused;
+  }, [live, onAction, onRefused]);
+  useEffect(() => {
+    if (live.refusal !== null) onRefused(live.refusal);
+  }, [live, onRefused]);
   const [images] = useState(() => surfaceImages(record));
   useEffect(() => followUnsent(record, live.data), [record, live]);
   const untyped = useCallback<Untyped>((at, written) => untypedIn(live.record.state, live.data.get("/"), at, written), [live]);

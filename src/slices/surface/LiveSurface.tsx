@@ -53,7 +53,7 @@ export const LiveSurface = ({ record, terminal, fills = false, notDismissed = nu
       <SurfaceTitle record={record} />
       <SurfaceBoundary revision={record.revision}>
         <Suspense fallback={<Loading />}>
-          {read ? <SurfaceContent record={record} layout={layout} onAction={onAction} /> : <Loading />}
+          {read ? <SurfaceContent record={record} layout={layout} onAction={onAction} onRefused={setRefusal} /> : <Loading />}
         </Suspense>
       </SurfaceBoundary>
     </SurfaceFrame>

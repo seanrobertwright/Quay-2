@@ -2,7 +2,7 @@
 import type { CheckRequest, Verdict } from "../surfaceTypes.ts";
 import { RAW_TOOL } from "../rawTool.ts";
 import { typedTool } from "../typed/index.ts";
-import { acceptedSurface, compact } from "./accepted.ts";
+import { acceptedSurface, compact, drawnSizeOf } from "./accepted.ts";
 import { CATALOG_ID } from "./catalog.ts";
 import { engineError, engineFor } from "./engine.ts";
 import { checkRaw } from "./raw/checkRaw.ts";
@@ -16,7 +16,8 @@ export function check({ tool, surface_id, arguments: args, held = [] }: CheckReq
     const { version, createSurface } = typed.expand(args, surface_id);
     const scratch = engineFor({ version, createSurface: { ...createSurface, catalogId: CATALOG_ID } });
     try {
-      return acceptedSurface(scratch.surface, compact(scratch.surface));
+      const state = compact(scratch.surface);
+      return acceptedSurface(scratch.surface, state, drawnSizeOf(scratch.surface, state));
     } finally {
       scratch.dispose();
     }

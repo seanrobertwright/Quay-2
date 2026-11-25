@@ -3,7 +3,10 @@
 import { hasOwn, isObject } from "../../json.ts";
 import type { Accepted, CreateSurface, CheckError, SurfacePlace } from "../../surfaceTypes.ts";
 import { hasEvent } from "../accepted.ts";
+import { MOST_AT_ONCE, MOST_WITH_ROWS } from "../drawnLimits.ts";
+import { FARTHEST, isPastAtOnce, isPastWithRows, type DrawnSize } from "../drawnSize.ts";
 import { EFFECTS } from "../effects.ts";
+import { DEEPEST_FILL } from "../workedOut.ts";
 import { componentsOf, invalid, type Message, type Pointer } from "./callErrors.ts";
 
 /** Mirrors `MOST_COMPONENTS`, which Rust holds every surface to. */
@@ -45,7 +48,9 @@ export function postCheck(message: Message, place: SurfacePlace): CheckError[] {
 /** `size`, in bytes, as kB rounded up. */
 export const inKb = (size: number): string => `${Math.ceil(size / 1024)} kB`;
 
-const overLimit = ({ pointer, surfaceId }: Message, limit: string, has: string) => [invalid(pointer, `A surface has at most ${limit}; this one would have ${has}.`, surfaceId)];
+const overLimit = ({ pointer, surfaceId }: Message, limit: string, has: string, also = "") => [
+  invalid(pointer, `A surface has at most ${limit}; this one would have ${has}.${also}`, surfaceId),
+];
 
 /** What of `state`, of which `message` is told, is more than Quay takes, before anything is resolved of it. */
 export function tooLarge({ createSurface }: CreateSurface, message: Message): CheckError[] {
@@ -54,6 +59,24 @@ export function tooLarge({ createSurface }: CreateSurface, message: Message): Ch
   return [
     ...(length > MOST_COMPONENTS ? overLimit(message, `${MOST_COMPONENTS} components`, String(length)) : []),
     ...(bytes > MOST_DATA ? overLimit(message, `${inKb(MOST_DATA)} of data`, inKb(bytes)) : []),
+  ];
+}
+
+const toldCount = (count: number): string => (count < FARTHEST ? String(count) : `at least ${FARTHEST}`);
+
+const UNBOUNDED = `formatString fills in a text that is written out or bound to the data, and that leads neither to itself nor through more than ${DEEPEST_FILL} others.`;
+
+/**
+ * What of a surface of this size, of which `message` is told, is more than Quay draws, before anything is resolved
+ * of it. The engine has refused components that hold each other.
+ */
+export function drawsTooMuch(size: DrawnSize, message: Message): CheckError[] {
+  const { atOnce, withRows, stopped, weighed } = size;
+  if (stopped === "unbounded") return [invalid(message.pointer, UNBOUNDED, message.surfaceId)];
+  const also = weighed.length > 0 ? ` Also counted: ${weighed.join(", ")}. See quay_surface_guide.` : "";
+  return [
+    ...(isPastAtOnce(size) ? overLimit(message, `${MOST_AT_ONCE} components drawn at once`, toldCount(atOnce), also) : []),
+    ...(isPastWithRows(size) ? overLimit(message, `${MOST_WITH_ROWS} components with every row drawn`, stopped ? `more than ${MOST_WITH_ROWS}` : toldCount(withRows), also) : []),
   ];
 }
 
