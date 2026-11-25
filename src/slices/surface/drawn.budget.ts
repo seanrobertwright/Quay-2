@@ -83,6 +83,7 @@ const AT_LIMIT: Record<string, [Component[], object]> = {
   "steps": [[listOf("root", "leaf", "/rows"), { id: "leaf", component: "Steps", steps: { "@path": "/steps" } }], { rows: rows(19), steps: rows(100, { label: "Step", state: "done" }) }],
   "prose": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(18), said: prose.repeat(280) }],
   "dense Markdown": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(13), said: "- a\n".repeat(400) }],
+  "Markdown written out": [[holds("root", times(13, (i) => `t${i}`)), ...times(13, (i) => text(`t${i}`, "- a\n".repeat(400)))], {}],
   "links": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(8), said: "[a](http://b.c) ".repeat(104) }],
   "calls": [[holds("root", times(99, (i) => `t${i}`)), ...times(99, (i) => text(`t${i}`, { "@call": "formatString", args: { value: "${not(value:1)}".repeat(78) } }))], {}],
 };

@@ -79,6 +79,8 @@ export const WORST: Readonly<Record<string, object>> = {
   "a text in the data that fills in itself": of([text("root", fill({ "@path": "/t" }))], { t: fillsIn("t") }),
   "a text in the data that fills in a value of each row": of([listOf("root", "leaf", "/rows"), text("leaf", fill({ "@path": "/t" }))], { rows: objects.slice(0, 10_000), t: "${n}- a\n".repeat(900) }),
   "calls in texts to fill in": of(beside((id) => text(id, fill("${not(value:1)}".repeat(260))))),
+  "long texts of Markdown, each written and drawn once": of(beside((id) => text(id, `${id}\n${dense}`.slice(0, 3000)))),
+  "long texts of Markdown, as many as a request holds": of([holds("root", times(78, (i) => `c${i}`)), ...times(78, (i) => text(`c${i}`, `${i}\n${dense}`.slice(0, 20_000)))]),
   "long texts of Markdown, each named twice": of([holds("root", times(150, (i) => `c${i % 75}`)), ...times(75, (i) => text(`c${i}`, `${i}\n${dense}`.slice(0, 20_000)))]),
   "long texts of Markdown that are filled in, one in each row": of([listOf("root", "leaf", "/rows"), text("leaf", fill("${n}\n${/big}"))], { rows: times(1000, (n) => ({ n })), big: dense.slice(0, 19_000) }),
   "options of pickers": of(beside((id) => ({ id, component: "ChoicePicker", value: [], options: times(100, (i) => ({ label: "", value: `${i}` })) }))),

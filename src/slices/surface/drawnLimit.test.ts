@@ -178,7 +178,7 @@ test("the functions that a component calls count, also where it is drawn once", 
   assert.deepEqual(await said(texts(79)), [tooMany(1 + 99 * (1 + 20), "bindings and calls")]);
 });
 
-test("Markdown counts by its tokens where it is drawn again and again, or comes from the data", async () => {
+test("Markdown counts by its tokens, also where it is written once and drawn once", async () => {
   // 400 items of three tokens each, and the list: 1201 tokens, so 150 components more
   const listed = "- a\n".repeat(400);
   const each = [listOf("root", "leaf", "/rows"), text("leaf", bound("/said"))];
@@ -194,10 +194,17 @@ test("Markdown counts by its tokens where it is drawn again and again, or comes 
   for (const plain of ["```\n" + "a[b] = *c\n".repeat(400) + "```", listed.repeat(20)]) {
     assert.equal(await accepts(each, { rows: rows(14), said: plain }), true);
   }
-  assert.equal(await accepts([holds("root", times(20, (i) => `t${i}`)), ...times(20, (i) => text(`t${i}`, listed.repeat(10)))]), true);
+  // Written out, each once
+  const written = (count: number, one: (i: number) => string) => [holds("root", times(count, (i) => `t${i}`)), ...times(count, (i) => text(`t${i}`, one(i)))];
+  assert.equal(await accepts(written(13, () => listed)), true);
+  assert.deepEqual(await said(written(14, () => listed)), [tooMany(1 + 14 * 151, "Markdown")]);
+  // Past what is read of all of it, each character counts as a token, so a text of 10,000 counts for 1250
+  const long = (i: number) => `**${i}** `.padEnd(10_000, "x");
+  assert.equal(await accepts(written(30, long)), true);
+  assert.deepEqual(await said(written(32, long)), [tooMany(1 + 32 + 2 * 1250, "Markdown")]);
 });
 
-test("text that is written once and drawn once does not count, nor does a list of short texts count for more", async () => {
+test("plain text that is written once and drawn once does not count, nor does a list of short texts count for more", async () => {
   const pages = times(400, (i) => text(`t${i}`, "x".repeat(4000)));
   assert.equal(await accepts([holds("root", pages.map(({ id }) => String(id))), ...pages]), true);
   // A whole data model in one Text, and one shown row by row

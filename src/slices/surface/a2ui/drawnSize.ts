@@ -69,7 +69,7 @@ interface Shape {
   own: OwnList | null;
   /** What its values are worked out from. */
   sources: Sources;
-  /** The text it draws as Markdown, or null if that does not count. */
+  /** The text it draws as Markdown, or null if it draws none. */
   markdown: unknown;
   /** The characters of its own text, and of its JSON, or 0 if they do not count. */
   textLength: number;
@@ -135,7 +135,7 @@ function shapeOf(component: SurfaceComponent, again: boolean): Shape {
     parts: 0,
     own: ownListOf(component),
     sources: sourcesOf([...drawn, ...countedOf(component.action)]),
-    markdown: type === "Text" && (again || !isText(component.text)) ? component.text : null,
+    markdown: type === "Text" ? component.text : null,
     textLength: again ? textIn(drawn) : 0,
     jsonLength: again ? JSON.stringify(component).length : 0,
     nameCost: per(NAME, id.length),
