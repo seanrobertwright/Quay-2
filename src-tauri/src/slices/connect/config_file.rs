@@ -1,9 +1,11 @@
 //! A configuration file that belongs to another program: read once, and replaced only while it
 //! still holds what was read.
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
+
+use crate::atomic_file::create_private;
 
 /// The most of a file that is read. A larger one is refused.
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
@@ -95,19 +97,6 @@ fn bytes_of(path: &Path) -> Result<Option<Vec<u8>>, String> {
         return Err("it is over 4 MB".to_string());
     }
     Ok(Some(bytes))
-}
-
-/// A new, empty file. On Unix only its owner may read it, until it is given other permissions; on
-/// Windows it has the access its folder gives.
-fn create_private(path: &Path) -> std::io::Result<File> {
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options.open(path)
 }
 
 #[cfg(not(windows))]

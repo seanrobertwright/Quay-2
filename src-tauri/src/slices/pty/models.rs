@@ -291,6 +291,11 @@ pub struct TerminalInfo {
     /// Extra CLI flags the terminal was launched with (model, resume, ...); reused on relaunch.
     #[serde(default)]
     pub custom_flags: Option<String>,
+    /// The environment variables the terminal was opened with, without the workspace's; `None`
+    /// when it had none of its own. A relaunch starts from them. They may hold secrets, so they
+    /// are never sent to the frontend.
+    #[serde(skip)]
+    pub env_vars: Option<std::collections::HashMap<String, String>>,
     /// Command line for `Command` terminals; reused on relaunch.
     #[serde(default)]
     pub command_text: Option<String>,
@@ -516,6 +521,9 @@ pub struct PersistedTerminalSession {
     pub command_text: Option<String>,
     #[serde(default)]
     pub custom_flags: Option<String>,
+    /// The terminal's own environment variables (see `TerminalInfo::env_vars`).
+    #[serde(default)]
+    pub env_vars: Option<std::collections::HashMap<String, String>>,
     #[serde(default)]
     pub claude_session_id: Option<String>,
     #[serde(default)]
@@ -543,6 +551,7 @@ pub fn test_terminal(id: &str, run_kind: RunKind, claude_status: ClaudeStatus) -
         current_tool: None,
         custom_name: false,
         custom_flags: None,
+        env_vars: None,
         command_text: None,
         claude_session_id: None,
         created_at: 0,

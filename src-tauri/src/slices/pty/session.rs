@@ -397,20 +397,29 @@ fn terminal_home(request: &SpawnTerminalRequest) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// The value of the environment variable `name` a terminal's process gets: the workspace's
-/// own when it sets one (Windows spells `PATH` as `Path`, so the name is matched in any
-/// case), otherwise Quay's.
+/// Whether `a` and `b` name one environment variable. Windows reads a name in any case (it spells
+/// `PATH` as `Path`); elsewhere two spellings are two variables.
+pub(super) fn same_variable(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.to_lowercase() == b.to_lowercase()
+    } else {
+        a == b
+    }
+}
+
+/// The value the environment variable `name` has for a terminal's process before Quay sets its
+/// own: the request's when it holds one, whether the terminal's own or the workspace's, otherwise
+/// the one in Quay's environment.
 fn terminal_var(request: &SpawnTerminalRequest, name: &str) -> Option<std::ffi::OsString> {
     request
         .env_vars
         .as_ref()
-        .and_then(|envs| envs.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)))
+        .and_then(|envs| envs.iter().find(|(key, _)| same_variable(key, name)))
         .map(|(_, value)| value.into())
         .or_else(|| std::env::var_os(name))
 }
 
-/// The `PATH` a terminal's process gets: the workspace's own when it sets one, otherwise
-/// Quay's.
+/// The `PATH` a terminal's process gets (see `terminal_var`).
 fn terminal_path(request: &SpawnTerminalRequest) -> Option<std::ffi::OsString> {
     terminal_var(request, "PATH")
 }
@@ -657,14 +666,14 @@ pub(crate) fn build_command(
         }
     };
 
-    // Inject workspace / custom environment variables
+    // Inject the terminal's own and the workspace's environment variables
     if let Some(ref envs) = request.env_vars {
         for (k, v) in envs {
             cmd.env(k, v);
         }
     }
 
-    // After the workspace's variables, so none of them can stand in for the terminal's own
+    // After the request's variables, so none of them can stand in for Quay's
     if request.run_kind == RunKind::Claude {
         set_event_bridge_env(&mut cmd, &launch.terminal_id, bridge_port, bridge_token, perm);
     } else {
@@ -689,7 +698,7 @@ pub(crate) fn build_command(
         cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(&mcp_url, workspace.as_deref(), &allowed));
     }
     // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
-    // answer, is unset whether the workspace or Quay's own environment set it
+    // answer, is unset whether the request or Quay's own environment set it
     if request.run_kind.prints_osc7501() {
         cmd.env(osc7501::ENABLE_VAR, "on");
         cmd.env_remove(osc7501::MESSAGES_VAR);
@@ -1694,14 +1703,26 @@ mod tests {
 
     }
 
+    /// How the platform spells the variable `terminal_path` reads.
+    const PATH_NAME: &str = if cfg!(windows) { "Path" } else { "PATH" };
+
     #[test]
     fn opencode_looks_on_the_workspaces_path_when_it_sets_one() {
         let mut request = spawn_request(RunKind::OpenCode);
         request.env_vars = Some(
-            [("Path".to_string(), r"C:\stub-bin".to_string())].into_iter().collect(),
+            [(PATH_NAME.to_string(), r"C:\stub-bin".to_string())].into_iter().collect(),
         );
         assert_eq!(terminal_path(&request), Some(std::ffi::OsString::from(r"C:\stub-bin")));
         request.env_vars = None;
+        assert_eq!(terminal_path(&request), std::env::var_os("PATH"));
+    }
+
+    /// Only on Windows is `Path` the `PATH` the process reads.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_path_spelled_in_another_case_is_not_the_terminals_path() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.env_vars = Some([("Path".to_string(), "/stub-bin".to_string())].into_iter().collect());
         assert_eq!(terminal_path(&request), std::env::var_os("PATH"));
     }
 
@@ -1767,7 +1788,7 @@ mod tests {
             let mut request = spawn_request(RunKind::Pig);
             request.env_vars = Some(
                 [
-                    ("Path".to_string(), self.path().to_string_lossy().to_string()),
+                    (PATH_NAME.to_string(), self.path().to_string_lossy().to_string()),
                     ("USERPROFILE".to_string(), self.home.to_string_lossy().to_string()),
                     ("HOME".to_string(), self.home.to_string_lossy().to_string()),
                 ]

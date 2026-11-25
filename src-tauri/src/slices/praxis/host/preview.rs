@@ -3,7 +3,6 @@
 //! file of its own for the one call and removes that file when the call ends, however it ends.
 //! The host's preview creates nothing, so sending an unsaved draft changes nothing anywhere.
 
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +11,7 @@ use uuid::Uuid;
 
 use super::outcome::{CallOutcome, Verb};
 use super::runner::PraxisCli;
+use crate::atomic_file::create_private;
 use crate::slices::praxis::store::MAX_FILE_BYTES;
 
 /// A draft written to a file no other call shares, removed when this is dropped.
@@ -32,15 +32,8 @@ impl DraftFile {
             return Err(format!("The draft is {} bytes, more than the {MAX_FILE_BYTES} the builder sends.", bytes.len()));
         }
         let path = folder.join(format!("quay-praxis-draft-{}.json", Uuid::new_v4()));
-        let mut options = OpenOptions::new();
-        // `create_new` never writes through a file or link someone else put at the path.
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&path).map_err(|e| format!("Quay couldn't write the draft to {}: {e}", path.display()))?;
+        // Never writes through a file or link someone else put at the path.
+        let mut file = create_private(&path).map_err(|e| format!("Quay couldn't write the draft to {}: {e}", path.display()))?;
         // From here the file exists, so `kept` removes it on every way out.
         let kept = DraftFile { path };
         file.write_all(&bytes).map_err(|e| format!("Quay couldn't write the draft to {}: {e}", kept.path.display()))?;

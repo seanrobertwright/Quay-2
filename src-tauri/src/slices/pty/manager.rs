@@ -13,7 +13,7 @@ use super::models::{
 };
 use super::osc7501::{AntigravityTurn, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
-use super::session::{Osc7501Hook, PtySession};
+use super::session::{same_variable, Osc7501Hook, PtySession};
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
@@ -113,7 +113,7 @@ fn read_session_list(path: &Path) -> Vec<PersistedTerminalSession> {
             return Vec::new();
         }
     };
-    match serde_json::from_slice::<Vec<PersistedTerminalSession>>(&content) {
+    match parse_session_list(&content) {
         Ok(list) => list,
         Err(e) => {
             let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
@@ -132,11 +132,20 @@ fn read_session_list(path: &Path) -> Vec<PersistedTerminalSession> {
     }
 }
 
+/// The session list `content` holds, or where it can't be parsed. The error is logged, so it
+/// quotes nothing of the list, as serde_json's own message would: the terminals' environment
+/// variables may hold secrets.
+fn parse_session_list(content: &[u8]) -> Result<Vec<PersistedTerminalSession>, String> {
+    serde_json::from_slice(content)
+        .map_err(|e| format!("{:?} error at line {} column {}", e.classify(), e.line(), e.column()))
+}
+
 /// Saves the session list to `path` through a temp file and rename, so a crash
-/// mid-save leaves the previous list in place.
+/// mid-save leaves the previous list in place. It is written private, since the terminals'
+/// environment variables may hold secrets.
 fn write_session_list(path: &Path, list: &[PersistedTerminalSession]) -> Result<(), String> {
     let json = serde_json::to_string_pretty(list).map_err(|e| e.to_string())?;
-    crate::atomic_file::write_atomic(path, json.as_bytes())
+    crate::atomic_file::write_atomic_private(path, json.as_bytes())
         .map_err(|e| format!("cannot write {}: {}", path.display(), e))
 }
 
@@ -200,6 +209,7 @@ fn persisted_session(info: &TerminalInfo, now: u64) -> PersistedTerminalSession 
         auto_approved_count: info.auto_approved_count,
         command_text: info.command_text.clone(),
         custom_flags: info.custom_flags.clone(),
+        env_vars: info.env_vars.clone(),
         claude_session_id: info.claude_session_id.clone(),
         last_updated: now,
         created_at: info.created_at,
@@ -225,6 +235,7 @@ fn restored_terminal(item: PersistedTerminalSession, created_at: u64) -> Termina
         current_tool: None,
         custom_name: item.custom_name,
         custom_flags: item.custom_flags,
+        env_vars: item.env_vars,
         command_text: item.command_text,
         claude_session_id: item.claude_session_id,
         created_at,
@@ -244,13 +255,34 @@ fn relaunch_flags(info: &TerminalInfo) -> Option<String> {
     }
 }
 
-/// The spawn request that restarts a terminal from its stored info. It carries no launch
-/// prompt: that was the first turn of the terminal's first run, and is never resent.
+/// `env`, or `None` when there is no variable in it.
+fn non_empty(env: Option<HashMap<String, String>>) -> Option<HashMap<String, String>> {
+    env.filter(|env| !env.is_empty())
+}
+
+/// The environment variables a terminal is launched with, before Quay's: its own, and the
+/// workspace's for the names it doesn't set itself. `None` when there are none.
+fn launch_env(
+    own: Option<&HashMap<String, String>>,
+    workspace: Option<HashMap<String, String>>,
+) -> Option<HashMap<String, String>> {
+    let mut merged = own.cloned().unwrap_or_default();
+    for (name, value) in workspace.unwrap_or_default() {
+        if !merged.keys().any(|set| same_variable(set, &name)) {
+            merged.insert(name, value);
+        }
+    }
+    non_empty(Some(merged))
+}
+
+/// The spawn request that restarts a terminal from its stored info, with the workspace's
+/// environment variables as they are now. It carries no launch prompt: that was the first turn
+/// of the terminal's first run, and is never resent.
 fn relaunch_request(
     info: &TerminalInfo,
     rows: Option<u16>,
     cols: Option<u16>,
-    env_vars: Option<HashMap<String, String>>,
+    workspace_env: Option<HashMap<String, String>>,
 ) -> SpawnTerminalRequest {
     SpawnTerminalRequest {
         id: Some(info.id.clone()),
@@ -261,7 +293,7 @@ fn relaunch_request(
         command_text: info.command_text.clone(),
         rows,
         cols,
-        env_vars,
+        env_vars: launch_env(info.env_vars.as_ref(), workspace_env),
         custom_flags: relaunch_flags(info),
         initial_prompt: None,
     }
@@ -378,13 +410,18 @@ impl PtyManager {
         }
     }
 
+    /// Opens a terminal from `request`, whose environment variables are the terminal's own, with
+    /// the workspace's added to them (see `launch_env`).
     pub fn spawn(
         &self,
-        request: SpawnTerminalRequest,
+        mut request: SpawnTerminalRequest,
+        workspace_env: Option<HashMap<String, String>>,
         bridge_port: u16,
         bridge_token: String,
         app_handle: AppHandle,
     ) -> Result<TerminalInfo, String> {
+        let own_env = non_empty(request.env_vars.take());
+        request.env_vars = launch_env(own_env.as_ref(), workspace_env);
         let terminal_id = request
             .id
             .clone()
@@ -430,6 +467,7 @@ impl PtyManager {
             current_tool: None,
             custom_name: request.name.is_some(),
             custom_flags: request.custom_flags.clone(),
+            env_vars: own_env,
             command_text: request.command_text.clone(),
             claude_session_id: None,
             created_at,
@@ -453,7 +491,7 @@ impl PtyManager {
         cols: Option<u16>,
         bridge_port: u16,
         bridge_token: String,
-        env_vars: Option<HashMap<String, String>>,
+        workspace_env: Option<HashMap<String, String>>,
         app_handle: AppHandle,
     ) -> Result<TerminalInfo, String> {
         let info = {
@@ -479,7 +517,7 @@ impl PtyManager {
             old_session.discard_screen();
         }
 
-        let request = relaunch_request(&info, rows, cols, env_vars);
+        let request = relaunch_request(&info, rows, cols, workspace_env);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, &app_handle);
         let on_exit = self.exit_hook(launch_ref.clone());
@@ -1333,6 +1371,7 @@ mod tests {
             auto_approved_count: 0,
             command_text: None,
             custom_flags: None,
+            env_vars: None,
             claude_session_id: None,
             last_updated: 1,
             created_at: 1,
@@ -1433,6 +1472,7 @@ mod tests {
             current_tool: None,
             custom_name: false,
             custom_flags: None,
+            env_vars: None,
             command_text: None,
             claude_session_id: None,
             created_at: 1000,
@@ -1486,6 +1526,7 @@ mod tests {
             current_tool: None,
             custom_name: true,
             custom_flags: Some("--model gpt-5".to_string()),
+            env_vars: None,
             command_text: None,
             claude_session_id: None,
             created_at: 1000,
@@ -1570,6 +1611,50 @@ mod tests {
         let cmd = crate::slices::pty::session::build_command(&request, &launch, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(args[2..6], ["--model", "opus", "--resume", SESSION_A], "{:?}", args);
+    }
+
+    #[test]
+    fn a_terminals_own_env_vars_survive_the_session_list_and_reach_its_relaunch() {
+        let (_dir, path) = temp_sessions_file();
+        let mut info = test_terminal("term-env-saved", RunKind::Claude, ClaudeStatus::Idle);
+        info.env_vars = env(&[("API_KEY", "own"), ("REGION", "own")]);
+
+        write_session_list(&path, &[persisted_session(&info, 1)]).unwrap();
+        let mut list = read_session_list(&path);
+        let restored = restored_terminal(list.remove(0), 1);
+
+        let request = relaunch_request(&restored, None, None, env(&[("API_KEY", "workspace")]));
+        assert_eq!(request.env_vars, env(&[("API_KEY", "own"), ("REGION", "own")]));
+    }
+
+    #[test]
+    fn a_session_list_saved_before_env_vars_loads_and_relaunches_with_the_workspaces() {
+        let (_dir, path) = temp_sessions_file();
+        std::fs::write(
+            &path,
+            r#"[{"id":"term-old","name":"old","project_path":"E:\\Projects\\Test",
+                "run_kind":"claude","permission_mode":"normal"}]"#,
+        )
+        .unwrap();
+        let mut list = read_session_list(&path);
+        let restored = restored_terminal(list.remove(0), 1);
+
+        assert_eq!(restored.env_vars, None);
+        let request = relaunch_request(&restored, None, None, env(&[("NODE_ENV", "dev")]));
+        assert_eq!(request.env_vars, env(&[("NODE_ENV", "dev")]));
+    }
+
+    #[test]
+    fn what_is_logged_of_an_unparseable_session_list_holds_nothing_from_it() {
+        // The variables aren't a map, and serde_json's own message quotes what they are
+        let content = br#"[{"id":"term-a","name":"a","project_path":"E:\\Projects\\Test",
+            "run_kind":"claude","permission_mode":"normal",
+            "env_vars":"sk-secret"}]"#;
+
+        let why = parse_session_list(content).unwrap_err();
+
+        assert!(!why.contains("sk-secret"), "{why}");
+        assert!(why.contains("line 3"), "{why}");
     }
 
     fn pinned_pull_request_link() -> TerminalLink {
@@ -1704,6 +1789,102 @@ mod tests {
         );
     }
 
+    /// Environment variables as a request or a workspace holds them.
+    fn env(vars: &[(&str, &str)]) -> Option<HashMap<String, String>> {
+        Some(vars.iter().map(|(name, value)| (name.to_string(), value.to_string())).collect())
+    }
+
+    #[test]
+    fn a_relaunch_keeps_the_terminals_own_env_vars() {
+        let mut info = test_terminal("term-own-env", RunKind::Codex, ClaudeStatus::Exited);
+        info.env_vars = env(&[("API_KEY", "own")]);
+
+        let request = relaunch_request(&info, None, None, None);
+
+        assert_eq!(request.env_vars, env(&[("API_KEY", "own")]));
+    }
+
+    #[test]
+    fn a_relaunch_merges_the_workspaces_env_vars_as_they_are_now_under_the_terminals_own() {
+        let mut info = test_terminal("term-merged-env", RunKind::Codex, ClaudeStatus::Exited);
+        info.env_vars = env(&[("API_KEY", "own"), ("REGION", "own")]);
+
+        let first = relaunch_request(&info, None, None, env(&[("API_KEY", "workspace"), ("NODE_ENV", "old")]));
+        assert_eq!(first.env_vars, env(&[("API_KEY", "own"), ("REGION", "own"), ("NODE_ENV", "old")]));
+
+        // The workspace's settings were edited in between
+        let second = relaunch_request(&info, None, None, env(&[("NODE_ENV", "new"), ("DEBUG", "1")]));
+        assert_eq!(
+            second.env_vars,
+            env(&[("API_KEY", "own"), ("REGION", "own"), ("NODE_ENV", "new"), ("DEBUG", "1")])
+        );
+    }
+
+    #[test]
+    fn a_relaunch_without_env_vars_of_its_own_takes_the_workspaces() {
+        let info = test_terminal("term-workspace-env", RunKind::Codex, ClaudeStatus::Exited);
+
+        assert_eq!(relaunch_request(&info, None, None, env(&[("NODE_ENV", "dev")])).env_vars, env(&[("NODE_ENV", "dev")]));
+        assert_eq!(relaunch_request(&info, None, None, None).env_vars, None);
+        assert_eq!(relaunch_request(&info, None, None, env(&[])).env_vars, None);
+    }
+
+    #[test]
+    fn a_spawn_launches_with_the_terminals_own_env_vars_over_the_workspaces() {
+        let own = non_empty(env(&[("API_KEY", "own")]));
+        assert_eq!(
+            launch_env(own.as_ref(), env(&[("API_KEY", "workspace"), ("NODE_ENV", "dev")])),
+            env(&[("API_KEY", "own"), ("NODE_ENV", "dev")])
+        );
+
+        let none = non_empty(env(&[]));
+        assert_eq!(none, None, "a request with no variable in it has none of its own");
+        assert_eq!(launch_env(none.as_ref(), env(&[("NODE_ENV", "dev")])), env(&[("NODE_ENV", "dev")]));
+        assert_eq!(launch_env(None, env(&[])), None);
+    }
+
+    #[test]
+    fn quays_variables_win_over_the_terminals_own_and_the_workspaces_on_relaunch() {
+        let quays = ["QUAY_TERMINAL_ID", "QUAY_A2A_TOKEN", "CLAUDE_EVENTS_TOKEN", "CLAUDE_EVENTS_TAG"];
+        let mut info = test_terminal("term-quay-env", RunKind::Claude, ClaudeStatus::Exited);
+        info.env_vars = env(&[("QUAY_TERMINAL_ID", "own"), ("CLAUDE_EVENTS_TOKEN", "own"), ("API_KEY", "own")]);
+        let workspace = env(&quays.map(|name| (name, "workspace")));
+
+        let request = relaunch_request(&info, None, None, workspace);
+        let launch = LaunchRef { terminal_id: info.id.clone(), launch: 7 };
+        let cmd = crate::slices::pty::session::build_command(&request, &launch, 1234, "tok", None);
+
+        let var = |name: &str| cmd.get_env(name).map(|value| value.to_string_lossy().to_string());
+        assert_eq!(
+            quays.map(|name| var(name).unwrap()),
+            ["term-quay-env", "tok", "tok", "term-quay-env"]
+        );
+        assert_eq!(var("API_KEY").as_deref(), Some("own"));
+    }
+
+    #[test]
+    fn a_terminals_env_vars_are_not_in_what_the_frontend_is_sent() {
+        let mut info = test_terminal("term-env-sent", RunKind::Codex, ClaudeStatus::Idle);
+        info.env_vars = env(&[("API_KEY", "sk-secret")]);
+
+        let sent = serde_json::to_string(&info).unwrap();
+
+        assert!(!sent.contains("env_vars"), "{sent}");
+        assert!(!sent.contains("sk-secret"), "{sent}");
+    }
+
+    /// Windows reads a variable's name in any case, so only one of two spellings can reach the process.
+    #[cfg(windows)]
+    #[test]
+    fn a_terminals_own_env_var_wins_over_the_workspaces_spelled_in_another_case() {
+        let mut info = test_terminal("term-env-case", RunKind::Codex, ClaudeStatus::Exited);
+        info.env_vars = env(&[("Path", "own")]);
+
+        let request = relaunch_request(&info, None, None, env(&[("PATH", "workspace")]));
+
+        assert_eq!(request.env_vars, env(&[("Path", "own")]));
+    }
+
     /// Puts a running terminal of `run_kind` under `id` and starts its first launch,
     /// as `spawn` does, without opening a PTY.
     fn launched(manager: &PtyManager, id: &str, run_kind: RunKind) -> LaunchRef {
@@ -1721,6 +1902,7 @@ mod tests {
             current_tool: None,
             custom_name: false,
             custom_flags: None,
+            env_vars: None,
             command_text: None,
             claude_session_id: None,
             created_at: 1000,
@@ -2580,6 +2762,7 @@ mod tests {
                 current_tool: None,
                 custom_name: false,
                 custom_flags: None,
+                env_vars: None,
                 command_text: None,
                 claude_session_id: None,
                 created_at,
