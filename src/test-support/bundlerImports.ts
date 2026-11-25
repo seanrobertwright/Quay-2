@@ -3,11 +3,9 @@
 // an import of another module of Quay's without its extension, an import of a type without the `type`
 // keyword, and xterm, whose ES modules its package.json names only in a field that Node doesn't read.
 // Imported before such a module, as `dom.ts` is. It imports `dom.ts` itself.
-import "./dom.ts";
-import { existsSync, readFileSync } from "node:fs";
+import { compiled } from "./dom.ts";
+import { existsSync } from "node:fs";
 import { registerHooks } from "node:module";
-import { fileURLToPath } from "node:url";
-import ts from "typescript";
 
 const SOURCE = new URL("../", import.meta.url).href;
 const XTERM = /^@xterm\/([\w-]+)$/;
@@ -25,13 +23,8 @@ registerHooks({
   },
   load(url, context, nextLoad) {
     if (!url.startsWith(SOURCE) || !/\.tsx?$/.test(url)) return nextLoad(url, context);
-    const fileName = fileURLToPath(url);
     // Without `verbatimModuleSyntax`, an import that is used only as a type is dropped.
-    const { outputText } = ts.transpileModule(readFileSync(fileName, "utf8"), {
-      fileName,
-      compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-    });
-    return { format: "module", source: outputText, shortCircuit: true };
+    return compiled(url, { verbatimModuleSyntax: false });
   },
 });
 
