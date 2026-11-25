@@ -5,7 +5,7 @@ use crate::slices::pty::session::sidecar_program;
 use crate::slices::sessions::commands::get_home_dir;
 
 /// The program name of the relay, as `bundle.externalBin` in `tauri.conf.json` names it.
-const RELAY_NAME: &str = "quay-relay";
+pub(super) const RELAY_NAME: &str = "quay-relay";
 
 /// What Connect acts on: the operator's Antigravity.
 pub struct Connect {

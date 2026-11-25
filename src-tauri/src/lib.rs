@@ -83,6 +83,8 @@ pub fn run() {
     let _log_guard = slices::logging::init(&slices::logging::logs_dir());
     // After logging starts, so its one line reaches the daily log (#629)
     let redirection_guard = RedirectionGuardState::check_at_startup();
+    #[cfg(windows)]
+    slices::connect::relay_leftovers::sweep_at_startup();
 
     let pty_manager = PtyManager::new();
     let bridge_state = BridgeState::new();
