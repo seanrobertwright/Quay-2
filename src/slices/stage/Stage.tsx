@@ -103,8 +103,14 @@ export const Stage: FC<StageProps> = ({
     layout === "grid" ? gridTerminalIds : layout === "single" ? [activeTerminalId] : [primaryTerminalId, secondaryTerminalId];
   const paneCount = paneTerminalIds.filter((id) => visibleTerminals.some((t) => t.id === id)).length;
 
+  // The stage tab in front of the panes. What it covers is inert, so that neither Tab nor a terminal that
+  // would focus itself reaches it: drawn still, at its own size.
+  const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
+  const covered = front !== null;
+
   // Every terminal of every project, hidden unless its project is active. Both returns render
-  // them in the same keyed viewport, so a project with no terminals never remounts them.
+  // them in the same element of the same keyed viewport, so a project with no terminals never
+  // remounts them.
   const terminalViews = terminals.map((term) => {
     const isProjectActive = isSamePath(term.project_path, activeProject);
     let isVisible = false;
@@ -269,6 +275,12 @@ export const Stage: FC<StageProps> = ({
     );
   });
 
+  const panes = (
+    <div key="stage-panes" className="contents" inert={covered}>
+      {terminalViews}
+    </div>
+  );
+
   // Each open tool, drawn over the panes while its tab is in front and hidden, still mounted, otherwise.
   const toolLayers = tools.map((tool) => (
     <div
@@ -280,7 +292,6 @@ export const Stage: FC<StageProps> = ({
       {tool.content}
     </div>
   ));
-  const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
   const toolTabs = { tools, frontToolId: front, onSelectTool, onCloseTool, earlierTabs };
 
   if (!activeTerminal || visibleTerminals.length === 0) {
@@ -305,14 +316,13 @@ export const Stage: FC<StageProps> = ({
         {/* A shell-wide warning shows with no terminal open too, such as one raised at startup */}
         <ShellWarningBanner />
         <div className="flex-1 min-h-0 relative flex flex-col">
-          <Placeholder onNewTerminal={onNewTerminal} />
+          <div className="contents" inert={covered}>
+            <Placeholder onNewTerminal={onNewTerminal} />
+          </div>
           {toolLayers}
         </div>
         <div key="stage-viewport" className="hidden" aria-hidden="true">
-          {terminalViews}
-          {/* A second child keeps the panes nested as they are in the stage viewport below;
-              as the only child they would sit one level higher and React would remount them. */}
-          {null}
+          {panes}
         </div>
       </main>
     );
@@ -386,14 +396,14 @@ export const Stage: FC<StageProps> = ({
         className="flex-1 relative overflow-hidden bg-[#0d1117] p-1.5"
       >
         {/* Render all terminals so switching projects/worktrees never destroys xterm buffers */}
-        {terminalViews}
+        {panes}
 
         {toolLayers}
 
         {/* Draggable Divider for split-horizontal */}
         {layout === "split-horizontal" && (
           // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow)
-          <div role="separator" tabIndex={0}
+          <div role="separator" tabIndex={0} inert={covered}
             aria-orientation="vertical"
             aria-label="Resize split panes"
             aria-valuenow={Math.round(splitRatio)}
@@ -433,7 +443,7 @@ export const Stage: FC<StageProps> = ({
         {/* Draggable Divider for split-vertical */}
         {layout === "split-vertical" && (
           // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow)
-          <div role="separator" tabIndex={0}
+          <div role="separator" tabIndex={0} inert={covered}
             aria-orientation="horizontal"
             aria-label="Resize split panes"
             aria-valuenow={Math.round(splitRatio)}
@@ -488,6 +498,7 @@ export const Stage: FC<StageProps> = ({
               <button
                 key={`empty-grid-${slotIdx}`}
                 type="button"
+                inert={covered}
                 style={{ ...slotPos, position: "absolute" }}
                 onClick={onNewTerminal}
                 className="border border-dashed border-[#30363d] rounded-md bg-[#161b22]/40 hover:bg-[#161b22]/70 flex flex-col items-center justify-center cursor-pointer transition-colors text-[#8b949e] hover:text-[#58a6ff] gap-2 select-none group"
