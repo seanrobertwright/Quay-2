@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use super::ask::{self, Ask};
 use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
+use super::guide;
 use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
@@ -174,6 +175,7 @@ impl SurfaceTools {
                 Err(rejection) => self.reject(terminal_id, raw::TOOL, &rejection),
                 Ok((call, found)) => self.show_raw(terminal_id, request, arguments, &call, found).await,
             }),
+            guide::TOOL => Some(plain_result(guide::GUIDE)),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Err(rejection) => self.reject(terminal_id, read::TOOL, &rejection),
                 Ok(body) => {
@@ -493,7 +495,11 @@ const NO_ANSWER_NEXT: &str = "End your turn now. The answer will be typed into t
      quay_surface_read with this id returns it too.";
 
 fn text_result(body: Value) -> Value {
-    json!({ "content": [{ "type": "text", "text": body.to_string() }] })
+    plain_result(&body.to_string())
+}
+
+fn plain_result(text: &str) -> Value {
+    json!({ "content": [{ "type": "text", "text": text }] })
 }
 
 /// What a message for a dismissed id is told.

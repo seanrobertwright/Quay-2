@@ -7,13 +7,13 @@ import { EFFECTS } from "../effects.ts";
 import { componentsOf, invalid, type Message, type Pointer } from "./callErrors.ts";
 
 /** Mirrors `MOST_COMPONENTS`, which Rust holds every surface to. */
-const MOST_COMPONENTS = 500;
+export const MOST_COMPONENTS = 500;
 
 /** Mirrors `MOST_DATA`, which Rust holds every surface to, in bytes of JSON. */
-const MOST_DATA = 256 * 1024;
+export const MOST_DATA = 256 * 1024;
 
 /** Mirrors `MOST_IMAGES`, which Rust holds every surface to. */
-const MOST_IMAGES = 12;
+export const MOST_IMAGES = 12;
 
 const effects: ReadonlySet<unknown> = new Set(EFFECTS.map(({ name }) => name));
 

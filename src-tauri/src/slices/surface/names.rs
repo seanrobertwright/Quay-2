@@ -4,7 +4,7 @@
 /// turned on for release builds.
 pub const OFFERED: bool = cfg!(debug_assertions);
 
-/// The six, whether or not this build lists all of them yet.
+/// The six, in the order they are listed.
 pub const SURFACE_TOOLS: [&str; 6] = [
     "quay_ask",
     "quay_review",
