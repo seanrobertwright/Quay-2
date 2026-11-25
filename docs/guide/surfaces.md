@@ -60,7 +60,7 @@ The **×** in a surface's header dismisses it, as closing its stage tab does. An
 - **Companion:** when a question of the selected terminal arrives, the companion shows the **Surface** view. While the Activity or Run view shows a card you haven't decided, it stays there, and **Surface** on the view switch gets an amber dot. Once the last question settles, the companion returns to the view it showed before. Selecting a terminal with a question opens the Surface view, or Activity if a permission request waits too.
 - **Several questions:** the oldest is open and the others are lines with how long each has waited. Click a line to open it.
 - **Stage tab:** a review's tab pulses and never takes the stage by itself.
-- **Projects panel:** the terminal's row has a chip for each live surface, oldest first. Past three, the ones that ask come first, and the rest fold into one chip, such as **+2**, which opens the first of them. An amber dot sits on the CLI's icon while one asks.
+- **Projects panel:** the terminal's row has a chip for each live surface, oldest first. Past three, the ones that ask come first, and those after the third fold into one chip, such as **+2**, which opens the first of them. An amber dot sits on the CLI's icon while one asks.
 - **Pane title:** a button such as **1 question for you** counts the terminal's asking surfaces, reviews included, and opens the oldest.
 - **Agents panel:** an asking surface is a row under **Waiting on you**. It counts on the **Agents** icon, and `Ctrl+Shift+B Q` finds its terminal.
 

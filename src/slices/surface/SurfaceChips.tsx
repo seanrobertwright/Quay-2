@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { WAITING_ON_YOU } from "../../lib/waiting.ts";
 import { lookOf } from "./looks/index.ts";
 import { useAskingSurfacesOf, useLiveSurfacesOf } from "./surfaceAttention.ts";
 import type { SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
+import { useKeptFocus } from "./useKeptFocus.ts";
 
 /** How many of a terminal's surfaces have a chip of their own. The rest fold into one. */
 const CHIPS_SHOWN = 3;
@@ -38,15 +39,18 @@ interface SurfaceChipsProps {
 /**
  * A terminal row's chips: one for each live surface, oldest first, which a click opens. The chip of one
  * that asks has a dot. Where some fold, those that ask come first, and the fold opens the first in it.
+ * A chip that leaves with the focus, as one that folds does, hands it to the last chip, if any is left.
  */
 export const SurfaceChips = ({ terminalId, terminalName, onOpen }: SurfaceChipsProps) => {
   const live = useLiveSurfacesOf(terminalId);
   const asking = useAskingSurfacesOf(terminalId);
+  const root = useRef<HTMLDivElement | null>(null);
+  const keptFocus = useKeptFocus(terminalId, () => root.current?.querySelector<HTMLElement>("button:last-child")?.focus());
   if (live.length === 0) return null;
   const ordered = live.length > CHIPS_SHOWN ? [...asking, ...live.filter((surface) => !asking.includes(surface))] : live;
   const folded = ordered.slice(CHIPS_SHOWN);
   return (
-    <div data-surface-chips className="flex flex-wrap gap-1 pl-4.5">
+    <div ref={root} data-surface-chips {...keptFocus} className="flex flex-wrap gap-1 pl-4.5">
       {ordered.slice(0, CHIPS_SHOWN).map((surface, i) => {
         const { kind, KindIcon } = lookOf(surface.tool);
         const asks = asking.includes(surface);
