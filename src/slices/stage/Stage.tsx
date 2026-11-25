@@ -7,6 +7,7 @@ import type { SurfaceKey } from "../surface/surfaceTypes.ts";
 import { Placeholder } from "./Placeholder";
 import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
+import { STAGE_MARK } from "./stageElements.ts";
 import { StageTabBar } from "./StageTabBar";
 import type { StageTool } from "./stageTools.ts";
 import { useStageFocus } from "./useStageFocus.ts";
@@ -313,7 +314,7 @@ export const Stage: FC<StageProps> = ({
 
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
-      <main ref={stageRef} data-stage className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+      <main ref={stageRef} {...STAGE_MARK} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
         {(tools.length > 0 || earlierTabs) && (
           <StageTabBar
             terminals={[]}
@@ -377,7 +378,7 @@ export const Stage: FC<StageProps> = ({
   };
 
   return (
-    <main ref={stageRef} data-stage className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+    <main ref={stageRef} {...STAGE_MARK} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
       <StageTabBar
         terminals={visibleTerminals}
         currentTerminalId={focusedTerminal.id}

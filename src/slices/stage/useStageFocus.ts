@@ -2,6 +2,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { isOverlayOpen } from "../overlay/useOverlay.ts";
 import { terminalKeysOf } from "../terminal/terminalFocus.ts";
+import { launchTerminalOf } from "./stageElements.ts";
 import { frontTabOf } from "./StageTabBar.tsx";
 
 /** What the stage shows, as far as its focus goes. */
@@ -38,7 +39,7 @@ export function useStageFocus(stage: RefObject<HTMLElement | null>, shown: Shown
     const closed = project === before.project && before.toolIds.some((id) => !toolIds.includes(id));
     if (!(frontChanged || closed) || isOverlayOpen() || !isFocusLost() || !stage.current) return;
     const tab = frontTabOf(stage.current);
-    const content = terminalKeysOf(stage.current, focusTargetId) ?? stage.current.querySelector<HTMLElement>("[data-launch-terminal]");
+    const content = terminalKeysOf(stage.current, focusTargetId) ?? launchTerminalOf(stage.current);
     const target = frontChanged && front === null ? (content ?? tab) : (tab ?? content);
     target?.focus({ preventScroll: true });
   });
