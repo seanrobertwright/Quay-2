@@ -8,7 +8,7 @@ import { createElement } from "react";
 import { Worker } from "node:worker_threads";
 import type { Told } from "./fixtures/drawnWorker.ts";
 import { drawRecord, leavePage, put, startPage, TERMINAL } from "./fixtures/catalogFixtures.ts";
-import { acceptedRaw, button, create, EVENT, text, type Component } from "./fixtures/rawFixtures.ts";
+import { acceptedRaw, button, create, EVENT, holds, listOf, rows, text, times, type Component } from "./fixtures/rawFixtures.ts";
 import { changed, redraw, settle } from "./fixtures/surfaceFixtures.ts";
 import { WORST } from "./fixtures/worstCalls.ts";
 
@@ -60,21 +60,17 @@ test(`each of the worst calls is rejected within ${CHECK_MS} ms`, { timeout: 120
   }
 });
 
-const rows = (count: number, row: unknown = 0): unknown[] => Array.from({ length: count }, () => row);
-const list = (id: string, child: string, path: string): Component => ({ id, component: "Column", children: { componentId: child, path } });
-const holds = (id: string, ...children: string[]): Component => ({ id, component: "Column", children });
-
 /** Containers, one under another, each with the children that `of` makes of the next one. */
-const chain = (name: string, depth: number, of: (next: string) => string[]): Component[] => Array.from({ length: depth }, (_, i) => holds(`${name}${i}`, ...of(`${name}${i + 1}`)));
+const chain = (name: string, depth: number, of: (next: string) => string[]): Component[] => times(depth, (i) => holds(`${name}${i}`, of(`${name}${i + 1}`)));
 
 const prose = "Some prose that says **what** it has to, in words of a common length. ";
 
 /** Surfaces at the limit, each of another kind, with what they draw at once. */
 const AT_LIMIT: Record<string, [Component[], object]> = {
-  "Texts": [[list("root", "row", "/rows"), list("row", "leaf", "/cells"), text("leaf", "x")], { rows: rows(99), cells: rows(19) }],
+  "Texts": [[listOf("root", "row", "/rows"), listOf("row", "leaf", "/cells"), text("leaf", "x")], { rows: rows(99), cells: rows(19) }],
   "forms": [
     [
-      list("root", "row", "/rows"),
+      listOf("root", "row", "/rows"),
       { id: "row", component: "Row", children: ["name", "on", "go"] },
       { id: "name", component: "TextField", label: "Name", value: { "@path": "name" } },
       { id: "on", component: "CheckBox", label: "On", value: { "@path": "on" } },
@@ -82,10 +78,10 @@ const AT_LIMIT: Record<string, [Component[], object]> = {
     ],
     { rows: rows(1980, { name: "a", on: true }) },
   ],
-  "long lists": [[list("root", "row", "/rows"), { id: "row", component: "Row", children: ["a", "b", "c"] }, ...["a", "b", "c"].map((id) => text(id, { "@path": id }))], { rows: rows(2450, { a: "One", b: "Two", c: "Three" }) }],
-  "options": [[list("root", "leaf", "/rows"), { id: "leaf", component: "ChoicePicker", value: [], options: Array.from({ length: 100 }, (_, i) => ({ label: `Option ${i}`, value: `${i}` })) }], { rows: rows(19) }],
-  "steps": [[list("root", "leaf", "/rows"), { id: "leaf", component: "Steps", steps: { "@path": "/steps" } }], { rows: rows(19), steps: rows(100, { label: "Step", state: "done" }) }],
-  "prose": [[list("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(24), said: prose.repeat(280) }],
+  "long lists": [[listOf("root", "row", "/rows"), { id: "row", component: "Row", children: ["a", "b", "c"] }, ...["a", "b", "c"].map((id) => text(id, { "@path": id }))], { rows: rows(2450, { a: "One", b: "Two", c: "Three" }) }],
+  "options": [[listOf("root", "leaf", "/rows"), { id: "leaf", component: "ChoicePicker", value: [], options: times(100, (i) => ({ label: `Option ${i}`, value: `${i}` })) }], { rows: rows(19) }],
+  "steps": [[listOf("root", "leaf", "/rows"), { id: "leaf", component: "Steps", steps: { "@path": "/steps" } }], { rows: rows(19), steps: rows(100, { label: "Step", state: "done" }) }],
+  "prose": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(24), said: prose.repeat(280) }],
 };
 
 test(`a surface at the limit is drawn within ${DRAWN_MS} ms of its call`, { timeout: 120_000 }, async () => {
@@ -128,28 +124,28 @@ test(`what is typed in a surface at the limit is taken in within ${TAKEN_MS} ms`
 /** Updates of a surface that is drawn, each with how many Texts it ends with. A step on the way would draw far more than either end. */
 const UPDATES: Record<string, { from: [Component[], object]; to: [Component[], object]; texts: number }> = {
   "components that would draw too much of the data before them": {
-    from: [[list("root", "leaf", "/rows"), text("leaf", "x")], { rows: rows(45) }],
-    to: [[list("root", "a", "/rows"), list("a", "b", "/rows"), list("b", "leaf", "/rows"), text("leaf", "x")], { rows: rows(3) }],
+    from: [[listOf("root", "leaf", "/rows"), text("leaf", "x")], { rows: rows(45) }],
+    to: [[listOf("root", "a", "/rows"), listOf("a", "b", "/rows"), listOf("b", "leaf", "/rows"), text("leaf", "x")], { rows: rows(3) }],
     texts: 27,
   },
   "lists that would be above others before those are gone": {
     from: [
-      [holds("root", "c1", "c4"), holds("c1", "c2", "c3"), text("c2", "x"), text("c3", "x"), list("c4", "c5", "/rows"), list("c5", "c6", "/rows"), list("c6", "leaf", "/rows"), text("leaf", "x")],
+      [holds("root", ["c1", "c4"]), holds("c1", ["c2", "c3"]), text("c2", "x"), text("c3", "x"), listOf("c4", "c5", "/rows"), listOf("c5", "c6", "/rows"), listOf("c6", "leaf", "/rows"), text("leaf", "x")],
       { rows: rows(7) },
     ],
     to: [
-      [holds("root", "c1", "c5"), list("c1", "c2", "/rows"), list("c2", "c3", "/rows"), list("c3", "c4", "/rows"), text("c4", "x"), list("c5", "c6", "/rows"), list("c6", "leaf", "/rows"), text("leaf", "x")],
+      [holds("root", ["c1", "c5"]), listOf("c1", "c2", "/rows"), listOf("c2", "c3", "/rows"), listOf("c3", "c4", "/rows"), text("c4", "x"), listOf("c5", "c6", "/rows"), listOf("c6", "leaf", "/rows"), text("leaf", "x")],
       { rows: rows(7) },
     ],
     texts: 343 + 49,
   },
   "components that would share others before those share none": {
     from: [
-      [holds("root", "a0", "b0"), ...chain("a", 7, (next) => [next]), ...chain("b", 8, (next) => [next, next]), text("a7", "x"), text("b8", "x")],
+      [holds("root", ["a0", "b0"]), ...chain("a", 7, (next) => [next]), ...chain("b", 8, (next) => [next, next]), text("a7", "x"), text("b8", "x")],
       {},
     ],
     to: [
-      [holds("root", "a0"), ...chain("a", 7, (next) => [next, next]), holds("a7", "b0"), ...chain("b", 8, (next) => [next]), text("b8", "x")],
+      [holds("root", ["a0"]), ...chain("a", 7, (next) => [next, next]), holds("a7", ["b0"]), ...chain("b", 8, (next) => [next]), text("b8", "x")],
       {},
     ],
     texts: 128,

@@ -18,6 +18,17 @@ export const column = (...components: Component[]): Component[] => [{ id: "root"
 
 export const text = (id: string, said: unknown): Component => ({ id, component: "Text", text: said });
 
+/** A container of these children, which may be named more than once. */
+export const holds = (id: string, children: readonly string[]): Component => ({ id, component: "Column", children });
+
+/** A container of one `child` for each item at `path`. */
+export const listOf = (id: string, child: string, path: string, component = "Column"): Component => ({ id, component, children: { componentId: child, path } });
+
+export const times = <T>(count: number, make: (i: number) => T): T[] => Array.from({ length: count }, (_, i) => make(i));
+
+/** `count` items of data, each `row`. */
+export const rows = (count: number, row: unknown = 0): unknown[] => times(count, () => row);
+
 /** A button that asks the agent for something, with the Text that names it. */
 export const button = (id: string, action: unknown, more: Component = {}): Component[] => [
   { id, component: "Button", child: `${id}_label`, action, ...more },

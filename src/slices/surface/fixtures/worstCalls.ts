@@ -1,16 +1,10 @@
 // The worst calls that the size limits allow (#765): those that would draw the most, and those that take the
 // longest to count. A worker checks them (`drawnWorker.ts`), as one that nothing rejects takes all the time and
 // memory there is.
-import { button, create, EVENT, text, type Component } from "./rawFixtures.ts";
+import { button, create, EVENT, holds, listOf, rows, text, times, type Component } from "./rawFixtures.ts";
 
 /** How many bytes of a request, which is at most 2 MB, its messages may take. */
 const REQUEST = 2 * 1024 * 1024 - 1000;
-
-const times = <T>(count: number, make: (i: number) => T): T[] => Array.from({ length: count }, (_, i) => make(i));
-
-const list = (id: string, child: string, path: string): Component => ({ id, component: "Column", children: { componentId: child, path } });
-
-const holds = (id: string, children: string[]): Component => ({ id, component: "Column", children });
 
 const leaf = text("leaf", "x");
 
@@ -27,7 +21,7 @@ const beside = (make: (id: string) => Component, ...rest: Component[]): Componen
 };
 
 /** As many items as the data may hold, and as many that are objects. */
-const items = times(131_000, () => 0);
+const items = rows(131_000);
 const objects = times(32_000, () => ({ n: 0 }));
 
 /** Arrays in arrays. */
@@ -43,31 +37,31 @@ const of = (components: Component[], dataModel: object = {}) => create(component
 
 /** The call of each, whose name says what it is the worst of. */
 export const WORST: Readonly<Record<string, object>> = {
-  "templates in templates over one list": of(nest(49, (id, child) => list(id, child, "/rows")), { rows: items }),
-  "templates in templates over a short list": of(nest(3, (id, child) => list(id, child, "/rows")), { rows: times(200, () => 0) }),
-  "templates in templates of rows in rows": of(nest(15, (id, child) => list(id, child, id === "root" ? "/rows" : ".")), { rows: nestedItems(15, 2) }),
+  "templates in templates over one list": of(nest(49, (id, child) => listOf(id, child, "/rows")), { rows: items }),
+  "templates in templates over a short list": of(nest(3, (id, child) => listOf(id, child, "/rows")), { rows: rows(200) }),
+  "templates in templates of rows in rows": of(nest(15, (id, child) => listOf(id, child, id === "root" ? "/rows" : ".")), { rows: nestedItems(15, 2) }),
   "lists of one long list": of(
-    beside((id) => list(id, "leaf", "/rows"), leaf),
+    beside((id) => listOf(id, "leaf", "/rows"), leaf),
     { rows: items },
   ),
   "lists of one long list, whose rows draw their own data": of(
-    beside((id) => list(id, "leaf", "/rows"), text("leaf", { "@path": "n" })),
+    beside((id) => listOf(id, "leaf", "/rows"), text("leaf", { "@path": "n" })),
     { rows: objects },
   ),
   "lists of one long list, each a page of its data": of(
-    beside((id) => list(id, "row", "/rows"), list("row", "leaf", "/two"), text("leaf", "x")),
+    beside((id) => listOf(id, "row", "/rows"), listOf("row", "leaf", "/two"), text("leaf", "x")),
     { rows: [0], two: times(2, () => "x".repeat(100_000)) },
   ),
-  "a list of its own in each row": of([list("root", "row", "/rows"), holds("row", ["a", "b"]), list("a", "leaf", "/rows"), list("b", "leaf", "n"), leaf], { rows: objects }),
+  "a list of its own in each row": of([listOf("root", "row", "/rows"), holds("row", ["a", "b"]), listOf("a", "leaf", "/rows"), listOf("b", "leaf", "n"), leaf], { rows: objects }),
   "one component named over and over": of([holds("root", times(Math.floor(REQUEST / 7) - 40, () => "leaf")), leaf]),
   "components that share their children": of(nest(48, (id, child) => holds(id, times(Math.floor(REQUEST / 7 / 48) - 20, () => child)))),
   "components that share their children, by twos": of(nest(49, (id, child) => holds(id, [child, child]))),
-  "a long id over many rows": of([holds("root", [long]), list(long, "leaf", "/rows"), leaf], { rows: items }),
-  "a long path to rows that draw their own data": of([list("root", "leaf", `/${longKey}`), text("leaf", { "@path": "n" })], { [longKey]: times(5000, () => ({ n: 0 })) }),
-  "one long text in each row": of([list("root", "leaf", "/rows"), text("leaf", { "@path": "/big" })], { big: dense, rows: times(100, () => 0) }),
-  "one long text filled in, in each row": of([list("root", "leaf", "/rows"), text("leaf", { "@call": "formatString", args: { value: "${/big}" } })], { big: dense, rows: times(100, () => 0) }),
-  "many values filled in, in each row": of([list("root", "leaf", "/rows"), text("leaf", { "@call": "formatString", args: { value: "${n}".repeat(900) } })], { rows: objects }),
-  "many checks in each row": of([list("root", "go", "/rows"), ...button("go", EVENT, { "@checks": times(20_000, () => ({ condition: { "@path": "n" }, message: "" })) })], { rows: objects }),
+  "a long id over many rows": of([holds("root", [long]), listOf(long, "leaf", "/rows"), leaf], { rows: items }),
+  "a long path to rows that draw their own data": of([listOf("root", "leaf", `/${longKey}`), text("leaf", { "@path": "n" })], { [longKey]: times(5000, () => ({ n: 0 })) }),
+  "one long text in each row": of([listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/big" })], { big: dense, rows: rows(100) }),
+  "one long text filled in, in each row": of([listOf("root", "leaf", "/rows"), text("leaf", { "@call": "formatString", args: { value: "${/big}" } })], { big: dense, rows: rows(100) }),
+  "many values filled in, in each row": of([listOf("root", "leaf", "/rows"), text("leaf", { "@call": "formatString", args: { value: "${n}".repeat(900) } })], { rows: objects }),
+  "many checks in each row": of([listOf("root", "go", "/rows"), ...button("go", EVENT, { "@checks": times(20_000, () => ({ condition: { "@path": "n" }, message: "" })) })], { rows: objects }),
   "long texts to fill in": of(
     beside((id) => text(id, { "@call": "formatString", args: { value: "${a/b}${/c}".repeat(350) } })),
     { c: "x".repeat(100_000) },
@@ -78,6 +72,6 @@ export const WORST: Readonly<Record<string, object>> = {
     { steps: times(8000, () => ({ label: "", state: "done" })) },
   ),
   "tabs of one component": of([{ id: "root", component: "Tabs", tabs: times(60_000, () => ({ title: "", child: "leaf" })) }, leaf]),
-  "a template that is its own ancestor": of([list("root", "c1", "/rows"), list("c1", "c2", "/rows"), holds("c2", ["c1", "c1"])], { rows: items }),
+  "a template that is its own ancestor": of([listOf("root", "c1", "/rows"), listOf("c1", "c2", "/rows"), holds("c2", ["c1", "c1"])], { rows: items }),
   "components that hold each other": of([holds("root", ["c1", "c1"]), holds("c1", ["c2", "c2"]), holds("c2", ["c1", "c1"])]),
 };
