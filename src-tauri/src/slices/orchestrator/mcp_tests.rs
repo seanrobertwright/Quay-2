@@ -11,7 +11,6 @@ use crate::slices::bridge::BridgeState;
 use crate::slices::machina::MachinaManager;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
-use crate::slices::surface::timing::Timing;
 use crate::slices::surface::SurfaceTools;
 use crate::test_support::loopback::{post_json, read_reply, Reply};
 use crate::test_support::TempDir;
@@ -33,13 +32,13 @@ impl Drop for TestBridge {
 }
 
 impl TestBridge {
-    /// Its terminal is a Claude one, and it offers no surface tools.
+    /// Its terminal is a Claude one.
     async fn start() -> Self {
-        Self::start_with(RunKind::Claude, false).await
+        Self::start_with(RunKind::Claude).await
     }
 
-    /// Its terminal is `term-mcp`. `offered` is whether it lists and accepts the surface tools.
-    pub(super) async fn start_with(run_kind: RunKind, offered: bool) -> Self {
+    /// Its terminal is `term-mcp`.
+    pub(super) async fn start_with(run_kind: RunKind) -> Self {
         let machina_dir = TempDir::new("mcp-bridge");
         let bridge_state = BridgeState::new();
         let pty_manager = PtyManager::new();
@@ -56,7 +55,7 @@ impl TestBridge {
                 machina_dir.join("state.json"),
                 machina_dir.join("vault"),
             ),
-            surfaces: SurfaceTools::with(offered, Timing::default()),
+            surfaces: SurfaceTools::new(),
             webview: WebviewEvents::to(|_, _| {}),
         });
         let server = tokio::spawn(async move {
@@ -145,5 +144,7 @@ async fn a_cli_that_falls_back_completes_the_handshake_and_lists_quays_tools() {
     assert_eq!(initialized.status, 200);
     assert_eq!(initialized.json()["result"]["protocolVersion"], "2025-11-25");
     assert_eq!(listed.status, 200);
-    assert_eq!(listed.json()["result"]["tools"], *tool_list());
+    let tools = listed.json()["result"]["tools"].clone();
+    let bus_tools = tool_list().as_array().unwrap();
+    assert_eq!(tools.as_array().unwrap()[..bus_tools.len()], bus_tools[..]);
 }

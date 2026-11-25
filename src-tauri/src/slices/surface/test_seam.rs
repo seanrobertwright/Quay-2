@@ -111,14 +111,9 @@ pub struct Seam {
 }
 
 pub async fn start(timing: Timing) -> (Seam, FakeWebview) {
-    start_with(true, timing).await
-}
-
-/// `offered` is whether the build lists and accepts the surface tools.
-pub async fn start_with(offered: bool, timing: Timing) -> (Seam, FakeWebview) {
     keep_errors_logged();
     let dir = TempDir::new("surface-seam");
-    let surfaces = SurfaceTools::with(offered, timing);
+    let surfaces = SurfaceTools::with(timing);
     let (checks_tx, checks) = mpsc::unbounded_channel();
     let (shown_tx, shown) = mpsc::unbounded_channel();
     let (removed_tx, removed) = mpsc::unbounded_channel();

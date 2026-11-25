@@ -31,7 +31,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Where the entry stands, or null before the first read and in a build that offers no surfaces. */
+/** Where the entry stands, or null before the first read. */
 export function useAntigravity(): AntigravityConnection | null {
   return useSyncExternalStore(subscribe, () => connection);
 }
@@ -49,9 +49,9 @@ export function forgetAntigravity(): void {
   changed();
 }
 
-function take(read: AntigravityConnection | null): void {
+function take(read: AntigravityConnection): void {
   connection = read;
-  if (read && read.state !== "missing" && read.state !== "unreadable") {
+  if (read.state !== "missing" && read.state !== "unreadable") {
     window.localStorage.setItem(HAD_ENTRY_KEY, "1");
     noteTerminal = null;
   }
@@ -62,7 +62,7 @@ function take(read: AntigravityConnection | null): void {
 export async function readAntigravity(): Promise<AntigravityConnection | null> {
   const mine = (newest += 1);
   try {
-    const read = await invoke<AntigravityConnection | null>("antigravity_connection");
+    const read = await invoke<AntigravityConnection>("antigravity_connection");
     if (mine === newest) take(read);
     return read;
   } catch (error) {

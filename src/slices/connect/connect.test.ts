@@ -23,7 +23,7 @@ const CHANGED: AntigravityConnection = { ...MISSING, state: "changed", found: '"
 const UNREADABLE: AntigravityConnection = { ...MISSING, state: "unreadable", problem: "it is not JSON: trailing comma at line 1 column 19" };
 
 /** What the file holds, what the commands refuse with, and every command called. */
-let now: AntigravityConnection | null = MISSING;
+let now: AntigravityConnection = MISSING;
 let refusal: string | null = null;
 let calls: { cmd: string; args: Record<string, unknown> }[] = [];
 const written = () => calls.filter((c) => c.cmd !== "antigravity_connection");
@@ -233,15 +233,6 @@ test("a read that started while Connect was writing does not hide what it wrote"
   await act(async () => replies[0](CONNECTED));
 
   assert.equal(button(container, "Remove") !== undefined, true);
-});
-
-test("a build that offers no surfaces has no row and no note", async () => {
-  now = null;
-  const { container } = await render(createElement(AntigravityRow));
-  const note = await render(createElement(ConnectNote, { terminalId: "t", shown: true }));
-  await act(async () => offerConnectAgain());
-
-  assert.equal(container.innerHTML === "" && note.container.innerHTML === "", true);
 });
 
 test("asking for the row opens it and focuses it, once for each time it is asked", async () => {

@@ -75,7 +75,7 @@ interface AntigravityRowProps {
 
 /**
  * The Connect row: whether Antigravity is connected, and, opened in place, its file's path, the exact
- * entry, Connect and Remove. It draws nothing in a build that offers no surfaces.
+ * entry, Connect and Remove. It draws nothing before the entry is first read.
  */
 export const AntigravityRow = ({ openRequest }: AntigravityRowProps) => {
   const connection = useAntigravity();

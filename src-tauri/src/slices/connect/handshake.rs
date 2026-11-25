@@ -8,17 +8,16 @@ use tauri::State;
 
 use crate::slices::pty::handshake::Handshake;
 use crate::slices::pty::manager::{LaunchEvent, PtyManager};
-use crate::slices::surface::names::OFFERED;
 use crate::webview::WebviewEvents;
 
 /// The handshake of a terminal's current launch. Nothing when it has no launch or its process has
-/// exited, and in a build that does not offer the surface tools.
+/// exited.
 #[tauri::command]
 pub async fn terminal_handshake(
     terminal_id: String,
     pty_manager: State<'_, PtyManager>,
 ) -> Result<Option<Handshake>, String> {
-    Ok(if OFFERED { pty_manager.handshake(&terminal_id, Instant::now()) } else { None })
+    Ok(pty_manager.handshake(&terminal_id, Instant::now()))
 }
 
 /// Sends the window `terminal-handshake` with a terminal's id when a launch of it is listed, its CLI is
