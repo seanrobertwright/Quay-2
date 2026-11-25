@@ -17,6 +17,13 @@ function rustConstant(file: string, name: string): number {
   return value.split(" * ").reduce((product, factor) => product * Number(factor.replace(/_/g, "")), 1);
 }
 
+/** The constant `name`, a number, of a TypeScript file of the front end's slices. */
+function pageConstant(file: string, name: string): number {
+  const [, value] = new RegExp(`export const ${name} = ([\\d_]+);`).exec(read(`src/slices/${file}`)) ?? [];
+  assert.ok(value !== undefined, `${name} in ${file}`);
+  return Number(value.replace(/_/g, ""));
+}
+
 const states = (page: string, words: string) => assert.ok(page.includes(words), words);
 
 test("the surfaces page states how much a surface and a terminal may have", () => {
@@ -24,9 +31,12 @@ test("the surfaces page states how much a surface and a terminal may have", () =
   states(GUIDE, `| ${live} in the Surface view, ${live} in stage tabs and ${live} on its pane |`);
   states(GUIDE, `| Locked surfaces of one terminal | ${rustConstant("surface/store.rs", "MOST_LOCKED")};`);
   states(GUIDE, `| Components in a surface | ${rustConstant("surface/past_limit.rs", "MOST_COMPONENTS")} |`);
-  const count = (name: string) => rustConstant("surface/past_limit.rs", name).toLocaleString("en-US");
-  states(GUIDE, `| Components drawn at once | ${count("MOST_AT_ONCE")}, `);
-  states(GUIDE, `| Components with every row drawn | ${count("MOST_WITH_ROWS")} |`);
+  const drawn = (name: string) => pageConstant("surface/a2ui/drawnLimits.ts", name);
+  for (const name of ["MOST_AT_ONCE", "MOST_WITH_ROWS"]) assert.equal(drawn(name), rustConstant("surface/past_limit.rs", name));
+  const page = pageConstant("parts/usePaged.tsx", "PAGE");
+  states(GUIDE, `| Components drawn at once | ${drawn("MOST_AT_ONCE").toLocaleString("en-US")}, at first with ${page} rows of each list, `);
+  states(GUIDE, `| Components with every row drawn | ${drawn("MOST_WITH_ROWS").toLocaleString("en-US")} |`);
+  states(GUIDE, `every ${drawn("TEXT")} characters of a text`);
   const data = rustConstant("surface/past_limit.rs", "MOST_DATA");
   assert.equal(rustConstant("surface/unsent.rs", "UNSENT_LIMIT"), data);
   states(GUIDE, `| ${data / 1024} kB each |`);

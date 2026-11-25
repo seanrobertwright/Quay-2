@@ -23,8 +23,10 @@ test("a template in a template over one short list, three deep, is rejected by h
 
 const named = (count: number, child: string): string[] => times(count, () => child);
 
-const tooMany = (count: number | string) => `A surface has at most 2000 components drawn at once; this one would have ${count}.`;
-const tooManyRows = (count: number | string) => `A surface has at most 10000 components with every row drawn; this one would have ${count}.`;
+/** What the message says of what else is counted. */
+const also = (counted: string): string => (counted === "" ? "" : ` Also counted: ${counted}. See quay_surface_guide.`);
+const tooMany = (count: number | string, counted = "") => `A surface has at most 2000 components drawn at once; this one would have ${count}.${also(counted)}`;
+const tooManyRows = (count: number | string, counted = "") => `A surface has at most 10000 components with every row drawn; this one would have ${count}.${also(counted)}`;
 
 /** What these components are rejected for, over these data. */
 const said = async (components: Component[], dataModel: object = {}) => told(await errorsIn([create(components, { dataModel })])).map(([, , message]) => message);
@@ -98,7 +100,7 @@ test("each option, step and tab that a component draws counts, a hundred options
   }
   const ofRow = each(steps({ "@path": "steps" }));
   // And the data the rows are told apart by: 20 of 1805 characters
-  assert.deepEqual(await said(ofRow, { rows: rows(20, { steps: rows(120, step) }) }), [tooMany(1 + 20 * 102 + 3)]);
+  assert.deepEqual(await said(ofRow, { rows: rows(20, { steps: rows(120, step) }) }), [tooMany(1 + 20 * 102 + 3, "row data")]);
   assert.equal(await accepts(ofRow, { rows: [...rows(19, { steps: rows(120, step) }), {}, { steps: 5 }] }), true);
 });
 
@@ -114,12 +116,85 @@ test("text counts by its length where it is drawn again and again, or comes from
     text("leaf", { "@call": "formatString", args: { value: "${formatString(value:'${/big}')}" } }),
     { id: "leaf", component: "Stat", label: "x", value: { "@path": "/big" } },
   ]) {
-    assert.deepEqual(await said(twice(leaf), { big, rows: rows(90) }), [tooMany(all)], JSON.stringify(leaf).slice(0, 80));
+    assert.deepEqual(await said(twice(leaf), { big, rows: rows(90) }), [tooMany(all, "long texts")], JSON.stringify(leaf).slice(0, 80));
   }
-  assert.deepEqual(await said(twice(text("leaf", { "@path": "text" })), { rows: rows(88, { text: big }) }), [tooMany(1 + 2 * (1 + 88 * 12 + 25))]);
+  assert.deepEqual(await said(twice(text("leaf", { "@path": "text" })), { rows: rows(88, { text: big }) }), [tooMany(1 + 2 * (1 + 88 * 12 + 25), "long texts, row data")]);
   // What an action is sent with is not drawn
   const button: Component[] = [{ id: "leaf", component: "Button", child: "label", action: { event: { name: "go", context: { big: { "@path": "/big" } } } } }, text("label", "x")];
   assert.equal(await accepts([...twice(button[0]), button[1]], { big, rows: rows(90) }), true);
+});
+
+const fill = (value: unknown): object => ({ "@call": "formatString", args: { value } });
+const bound = (path: string): object => ({ "@path": path });
+
+test("a text that is filled in counts by what it takes to fill it in, also when the text is in the data", async () => {
+  const big = "x".repeat(2000);
+  // A thousand times the 2000 characters, and the 7000 of the text itself
+  const template = "${/big}".repeat(1000);
+  const all = 1 + Math.floor((1000 * 2000 + 7000) / 250);
+  const filled = (dataModel: object) => said([text("root", fill(bound("/t")))], { big, ...dataModel });
+  assert.deepEqual(await filled({ t: template }), [tooMany(all, "long texts")]);
+  // A text that ten times fills in one that ten times fills in another: twenty million characters
+  const into = (name: string) => "${formatString(value:${/" + name + "})}";
+  const nested = { t: into("a").repeat(10), a: into("b").repeat(10), b: "${/big}".repeat(100) };
+  assert.deepEqual(await filled(nested), [tooManyRows("more than 10000", "long texts")]);
+  // In each row, by a text of the row and by one that all rows share
+  const ofRow = [listOf("root", "leaf", "/rows"), text("leaf", fill(bound("t")))];
+  assert.deepEqual(await said(ofRow, { rows: rows(99, { t: "${/big}${/big}${/big}" }), big }), [tooMany(1 + 99 * 25, "long texts")]);
+  const shared = [listOf("root", "leaf", "/rows"), text("leaf", fill(bound("/t")))];
+  assert.deepEqual(await said(shared, { rows: rows(60, { n: "y".repeat(3000) }), t: "${n}${n}${n}" }), [tooMany(1 + 60 * 37 + 18, "long texts, row data")]);
+  assert.equal(await accepts(shared, { rows: rows(100, { n: "Ada" }), t: "# ${n}\n\n${n} of ${/rows/0/n}" }), true);
+});
+
+test("a text that fills in itself, or that only another call tells, is refused before it is filled in", async () => {
+  const message = "formatString fills in a text that is written out or bound to the data, and that leads neither to itself nor through more than 20 others.";
+  const itself = "${formatString(value:${/t})}";
+  const chain = Object.fromEntries(times(30, (i) => [`t${i}`, "${formatString(value:${/t" + (i + 1) + "})}"]));
+  const pairs = [
+    [fill(bound("/t")), { t: itself }],
+    [fill(bound("/t")), { t: itself + itself }],
+    [fill("${formatString(value:${/t})}"), { t: "${formatString(value:${/u})}", u: itself }],
+    [fill(bound("/t0")), chain],
+    [fill(fill("${/t}")), { t: "x" }],
+    [fill(bound("/t")), { t: "${formatString(value:${pluralize(value:1, other:'x')})}" }],
+  ] as const;
+  for (const [value, dataModel] of pairs) {
+    assert.deepEqual(told(await errorsIn([create([text("root", value)], { dataModel })])), [["VALIDATION_FAILED", "/messages/0/createSurface", message]], JSON.stringify(value));
+  }
+  // What a button is sent with is filled in by the click, and what it opens when it is drawn
+  const opens = { functionCall: { "@call": "openUrl", args: { url: fill(bound("/t")) } } };
+  for (const action of [{ event: { name: "go", context: { said: fill(bound("/t")) } } }, opens]) {
+    assert.deepEqual(await said([{ id: "root", component: "Button", child: "label", action }, text("label", "x")], { t: itself }), [message]);
+  }
+});
+
+test("the functions that a component calls count, also where it is drawn once", async () => {
+  const texts = (calls: number) => {
+    const all = times(99, (i) => text(`t${i}`, fill("${not(value:1)}".repeat(calls))));
+    return [holds("root", all.map(({ id }) => String(id))), ...all];
+  };
+  // With the call of formatString itself
+  assert.equal(await accepts(texts(78)), true);
+  assert.deepEqual(await said(texts(79)), [tooMany(1 + 99 * (1 + 20), "bindings and calls")]);
+});
+
+test("Markdown counts by its tokens where it is drawn again and again, or comes from the data", async () => {
+  // 400 items of three tokens each, and the list: 1201 tokens, so 150 components more
+  const listed = "- a\n".repeat(400);
+  const each = [listOf("root", "leaf", "/rows"), text("leaf", bound("/said"))];
+  assert.equal(await accepts(each, { rows: rows(13), said: listed }), true);
+  assert.deepEqual(await said(each, { rows: rows(14), said: listed }), [tooMany(1 + 14 * 151, "Markdown")]);
+  // As a text that is written out and drawn twice, and as one that is filled in
+  for (const leaf of [text("leaf", listed), text("leaf", fill("${/half}${/half}"))]) {
+    assert.deepEqual(await said([listOf("root", "leaf", "/rows"), leaf], { rows: rows(14), half: "- a\n".repeat(200) }), [tooMany(1 + 14 * 151, "Markdown")]);
+  }
+  // A link counts for more, and what is drawn as it is written has no tokens but its own
+  const link = "[a](http://b.c) ";
+  assert.deepEqual(await said([text("root", bound("/said"))], { said: link.repeat(1000) }), [tooMany(1 + 2375, "Markdown")]);
+  for (const plain of ["```\n" + "a[b] = *c\n".repeat(400) + "```", listed.repeat(20)]) {
+    assert.equal(await accepts(each, { rows: rows(14), said: plain }), true);
+  }
+  assert.equal(await accepts([holds("root", times(20, (i) => `t${i}`)), ...times(20, (i) => text(`t${i}`, listed.repeat(10)))]), true);
 });
 
 test("text that is written once and drawn once does not count, nor does a list of short texts count for more", async () => {
@@ -136,12 +211,12 @@ test("what the engine names each component by counts, and so do the data that a 
   const id = "x".repeat(5000);
   // Fifty times a hundred characters, for each of the 201 components under it
   const under = [holds("root", [id]), listOf(id, "leaf", "/rows"), text("leaf", "x")];
-  assert.deepEqual(await said(under, { rows: rows(201) }), [tooManyRows(1 + 1 + 201 + 50 * 201)]);
+  assert.deepEqual(await said(under, { rows: rows(201) }), [tooManyRows(1 + 1 + 201 + 50 * 201, "long ids and paths")]);
   const path = "y".repeat(5000);
-  assert.deepEqual(await said([listOf("root", "leaf", `/${path}`), text("leaf", "x")], { [path]: rows(201) }), [tooManyRows(1 + 201 + 50 * 201)]);
+  assert.deepEqual(await said([listOf("root", "leaf", `/${path}`), text("leaf", "x")], { [path]: rows(201) }), [tooManyRows(1 + 201 + 50 * 201, "long ids and paths")]);
   // Two rows of a hundred thousand characters, in each of a hundred lists
   const large = { lists: rows(100), rows: rows(2, "z".repeat(100_000)) };
-  assert.deepEqual(await said([listOf("root", "list", "/lists"), listOf("list", "leaf", "/rows"), text("leaf", "x")], large), [tooMany(1 + 100 * (1 + 2 + 20))]);
+  assert.deepEqual(await said([listOf("root", "list", "/lists"), listOf("list", "leaf", "/rows"), text("leaf", "x")], large), [tooMany(1 + 100 * (1 + 2 + 20), "row data")]);
 });
 
 test("what an update would make of a surface is held to the limit, and a rejected one is told by its name", async () => {

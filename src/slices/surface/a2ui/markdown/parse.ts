@@ -52,7 +52,7 @@ export const imageOf = (token: Token): { src: string; name: string } => ({
 });
 
 /** Whether `text` is over the limit, counted in characters as the limit is. */
-const isTooLong = (text: string) => text.length > MOST_CHARACTERS && [...text].length > MOST_CHARACTERS;
+export const isTooLong = (text: string) => text.length > MOST_CHARACTERS && [...text].length > MOST_CHARACTERS;
 
 /** Whether the last three tokens are a body cell with nothing in it. */
 const endsInEmptyCell = (tokens: readonly Token[]) =>

@@ -33,6 +33,11 @@ const longKey = "x".repeat(200_000);
 /** The longest text that is Markdown, written to make many elements. */
 const dense = "- a\n".repeat(5000);
 
+const fill = (value: unknown): object => ({ "@call": "formatString", args: { value } });
+
+/** A text in the data that fills in the one at `name`, over and over. */
+const fillsIn = (name: string): string => "${formatString(value:${/NAME})}".replace("NAME", name).repeat(300);
+
 const of = (components: Component[], dataModel: object = {}) => create(components, { dataModel });
 
 /** The call of each, whose name says what it is the worst of. */
@@ -59,13 +64,23 @@ export const WORST: Readonly<Record<string, object>> = {
   "a long id over many rows": of([holds("root", [long]), listOf(long, "leaf", "/rows"), leaf], { rows: items }),
   "a long path to rows that draw their own data": of([listOf("root", "leaf", `/${longKey}`), text("leaf", { "@path": "n" })], { [longKey]: times(5000, () => ({ n: 0 })) }),
   "one long text in each row": of([listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/big" })], { big: dense, rows: rows(100) }),
-  "one long text filled in, in each row": of([listOf("root", "leaf", "/rows"), text("leaf", { "@call": "formatString", args: { value: "${/big}" } })], { big: dense, rows: rows(100) }),
-  "many values filled in, in each row": of([listOf("root", "leaf", "/rows"), text("leaf", { "@call": "formatString", args: { value: "${n}".repeat(900) } })], { rows: objects }),
+  "one long text filled in, in each row": of([listOf("root", "leaf", "/rows"), text("leaf", fill("${/big}"))], { big: dense, rows: rows(100) }),
+  "many values filled in, in each row": of([listOf("root", "leaf", "/rows"), text("leaf", fill("${n}".repeat(900)))], { rows: objects }),
   "many checks in each row": of([listOf("root", "go", "/rows"), ...button("go", EVENT, { "@checks": times(20_000, () => ({ condition: { "@path": "n" }, message: "" })) })], { rows: objects }),
   "long texts to fill in": of(
-    beside((id) => text(id, { "@call": "formatString", args: { value: "${a/b}${/c}".repeat(350) } })),
+    beside((id) => text(id, fill("${a/b}${/c}".repeat(350)))),
     { c: "x".repeat(100_000) },
   ),
+  "a text in the data that fills in a long one over and over": of([text("root", fill({ "@path": "/t" }))], { t: "${/big}".repeat(1000), big: "x".repeat(200_000) }),
+  "texts in the data that fill in each other": of(
+    beside((id) => text(id, fill({ "@path": "/t0" }))),
+    { ...Object.fromEntries(times(15, (i) => [`t${i}`, fillsIn(`t${i + 1}`)])), t15: "x" },
+  ),
+  "a text in the data that fills in itself": of([text("root", fill({ "@path": "/t" }))], { t: fillsIn("t") }),
+  "a text in the data that fills in a value of each row": of([listOf("root", "leaf", "/rows"), text("leaf", fill({ "@path": "/t" }))], { rows: objects.slice(0, 10_000), t: "${n}- a\n".repeat(900) }),
+  "calls in texts to fill in": of(beside((id) => text(id, fill("${not(value:1)}".repeat(260))))),
+  "long texts of Markdown, each named twice": of([holds("root", times(150, (i) => `c${i % 75}`)), ...times(75, (i) => text(`c${i}`, `${i}\n${dense}`.slice(0, 20_000)))]),
+  "long texts of Markdown that are filled in, one in each row": of([listOf("root", "leaf", "/rows"), text("leaf", fill("${n}\n${/big}"))], { rows: times(1000, (n) => ({ n })), big: dense.slice(0, 19_000) }),
   "options of pickers": of(beside((id) => ({ id, component: "ChoicePicker", value: [], options: times(100, (i) => ({ label: "", value: `${i}` })) }))),
   "steps of one list": of(
     beside((id) => ({ id, component: "Steps", steps: { "@path": "/steps" } })),

@@ -23,7 +23,8 @@ How to write a call of quay_surface: A2UI 1.0 messages in Quay's own catalog, wh
 - A property that is not in the component's line is rejected, as is a wrong type: where the line says string, 3 is `"3"`. Any component also takes `@accessibility: {label?, description?}`.
 - Version 1.0 writes `@path`, `@call`, `@checks` and `@accessibility` with the @. A binding is always `@path`. A list template, `updateDataModel` and some lines below have a plain `path`, which is not a binding.
 - At most 500 components, 12 images and 256 kB of data model. The data model is an object. `/frame` in it is Quay's: neither set nor bind it.
-- At most 2000 components drawn at once, and 10000 with every row drawn. A list draws 100 rows at once. What a template draws counts for each row and a component each time it is named, so a list in a list multiplies. Each option, step and tab counts as one, and each 250 characters of text that is bound or drawn more than once as one more.
+- At most 2000 components drawn at once, and 10000 with every row drawn. A list draws 100 rows at once. What a template draws counts for each row and a component each time it is named, so a list in a list multiplies. Each option, step and tab counts as one.
+- A component counts as one more for each 250 characters of text, 8 tokens of Markdown (a link has 16 more than it is written in), 4 bindings and calls, or 1000 characters of JSON, by the one it has most of. Text and Markdown count where they are bound or drawn more than once, JSON where it is drawn more than once. A list counts as one more for each 10000 characters of the data of 100 rows, and each component under it for each 100 characters of an id or of a list's path.
 
 ## Updates and deletes
 
@@ -105,7 +106,7 @@ copyText(text: string~): void. Puts a text on the clipboard.
 - A path is absolute or relative to this terminal's working directory, and never a network path.
 - `weight` is the share of a Row's or Column's room. For a component without it, put it in a Column that has one.
 - These run only as a Button's action, on the operator's click: openUrl, showFile, focusTerminal, copyText. openUrl takes http and https. focusTerminal takes the id or exact name of a terminal of this project.
-- formatString fills in `${/a/b}`, `${name}` in a template, and calls: `${formatNumber(value:${/n}, decimals:1)}`. `\${` is a plain `${`.
+- formatString fills in `${/a/b}`, `${name}` in a template, and calls: `${formatNumber(value:${/n}, decimals:1)}`. `\${` is a plain `${`. Its `value` is text or bound to text, never a call, and a text it fills in may not lead back to itself.
 - formatDate takes patterns such as `yyyy-MM-dd HH:mm` and `MMM d, h:mm a`. length and numeric need `min`, `max` or both. regex takes no lookbehind, backreference or named group.
 - @index works in a template only, and counts from 0.
 - Quay draws no Modal, Video or AudioPlayer.

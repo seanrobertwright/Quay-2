@@ -99,7 +99,16 @@ test("the guide says what agents got wrong and no line tells", () => {
 });
 
 test("the guide says how much may be drawn, as the check holds a call to it", () => {
-  assert.ok(committed.includes("At most 2000 components drawn at once, and 10000 with every row drawn."));
+  for (const rule of [
+    "At most 2000 components drawn at once, and 10000 with every row drawn. A list draws 100 rows at once.",
+    "each 250 characters of text, 8 tokens of Markdown (a link has 16 more than it is written in)",
+    "4 bindings and calls, or 1000 characters of JSON",
+    "each 10000 characters of the data of 100 rows",
+    "each 100 characters of an id or of a list's path",
+    "Its `value` is text or bound to text, never a call",
+  ]) {
+    assert.ok(committed.includes(rule), rule);
+  }
 });
 
 test("the guide is under 6,000 tokens, estimated as four characters each", () => {

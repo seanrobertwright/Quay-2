@@ -18,7 +18,7 @@ const { SurfaceView } = await import("./SurfaceView.tsx");
 const CHECK_MS = 2500;
 
 /** The budget from a call to the drawn surface, on the test machine. It leaves out the webview's layout. */
-const DRAWN_MS = 4000;
+const DRAWN_MS = 3000;
 
 /** How long the worker may be silent, and how much memory it may use. A check that nothing stops is past one of them. */
 const SILENT_MS = 10_000;
@@ -55,7 +55,7 @@ test(`each of the worst calls is rejected within ${CHECK_MS} ms`, { timeout: 120
     console.log(`${name}: ${ms.toFixed(0)} ms`);
     assert.ok(bytes < 2 * 1024 * 1024, `${name}: ${bytes} bytes`);
     assert.ok(messages.length > 0, `${name}: accepted`);
-    for (const message of messages) assert.match(message, /^A surface has at most \d+ components (drawn at once|with every row drawn); this one would have (more than |at least )?\d+\.$|^Circular reference /, name);
+    for (const message of messages) assert.match(message, /^A surface has at most \d+ components (drawn at once|with every row drawn); this one would have (more than |at least )?\d+\.( Also counted: [\w, ]+\. See quay_surface_guide\.)?$|^formatString fills in a text |^Circular reference /, name);
     assert.ok(ms < CHECK_MS, `${name}: ${ms.toFixed(0)} ms`);
   }
 });
@@ -81,7 +81,10 @@ const AT_LIMIT: Record<string, [Component[], object]> = {
   "long lists": [[listOf("root", "row", "/rows"), { id: "row", component: "Row", children: ["a", "b", "c"] }, ...["a", "b", "c"].map((id) => text(id, { "@path": id }))], { rows: rows(2450, { a: "One", b: "Two", c: "Three" }) }],
   "options": [[listOf("root", "leaf", "/rows"), { id: "leaf", component: "ChoicePicker", value: [], options: times(100, (i) => ({ label: `Option ${i}`, value: `${i}` })) }], { rows: rows(19) }],
   "steps": [[listOf("root", "leaf", "/rows"), { id: "leaf", component: "Steps", steps: { "@path": "/steps" } }], { rows: rows(19), steps: rows(100, { label: "Step", state: "done" }) }],
-  "prose": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(24), said: prose.repeat(280) }],
+  "prose": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(18), said: prose.repeat(280) }],
+  "dense Markdown": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(13), said: "- a\n".repeat(400) }],
+  "links": [[listOf("root", "leaf", "/rows"), text("leaf", { "@path": "/said" })], { rows: rows(8), said: "[a](http://b.c) ".repeat(104) }],
+  "calls": [[holds("root", times(99, (i) => `t${i}`)), ...times(99, (i) => text(`t${i}`, { "@call": "formatString", args: { value: "${not(value:1)}".repeat(78) } }))], {}],
 };
 
 test(`a surface at the limit is drawn within ${DRAWN_MS} ms of its call`, { timeout: 120_000 }, async () => {

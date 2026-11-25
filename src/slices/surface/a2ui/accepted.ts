@@ -21,7 +21,7 @@ export function compact(surface: EngineSurface): CreateSurface {
 export const hasEvent = ({ action }: Record<string, unknown>): boolean => isObject(action) && hasOwn(action, "event");
 
 /** What is drawn of `surface`, whose whole state is `state`. */
-export const sizeOf = (surface: EngineSurface, { createSurface }: CreateSurface): DrawnSize => drawnSize(createSurface.components, surface.dataModel);
+export const drawnSizeOf = (surface: EngineSurface, { createSurface }: CreateSurface): DrawnSize => drawnSize(createSurface.components, surface.dataModel);
 
 /** `surface` as it is accepted, whose whole state is `state` and whose size is `size`. */
 export function acceptedSurface(surface: EngineSurface, state: CreateSurface, { atOnce, withRows }: DrawnSize): Accepted {

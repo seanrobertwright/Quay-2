@@ -4,12 +4,13 @@
 import "../../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { NodeResolver } from "@a2ui/web_core/v1_0";
+import { DataModel, NodeResolver } from "@a2ui/web_core/v1_0";
 import { drawRecord, leavePage, startPage } from "../fixtures/catalogFixtures.ts";
-import { acceptedRaw, button, create, EVENT, listOf, rows, text, times, verdictOnRaw, type Component } from "../fixtures/rawFixtures.ts";
-import type { Accepted } from "../surfaceTypes.ts";
+import { acceptedRaw, button, create, EVENT, holds, listOf, rows, text, times, verdictOnRaw, type Component } from "../fixtures/rawFixtures.ts";
+import type { Accepted, SurfaceComponent } from "../surfaceTypes.ts";
 
 const { engineFor } = await import("./engine.ts");
+const { drawnSize, isPast } = await import("./drawnSize.ts");
 
 beforeEach(startPage);
 afterEach(leavePage);
@@ -78,4 +79,9 @@ test("of a long list the engine resolves every row, and what is drawn is a page 
   assert.equal(content.querySelectorAll("a2ui-react-text").length, 100);
   // With what shows more
   assert.deepEqual([drawn_at_once, drawn_with_rows], [102, 251]);
+});
+
+test("components that hold each other are past the limit, also where each is counted once", () => {
+  const size = drawnSize([holds("root", ["a"]), holds("a", ["b"]), holds("b", ["a"])] as SurfaceComponent[], new DataModel({}));
+  assert.equal(isPast(size), true);
 });
