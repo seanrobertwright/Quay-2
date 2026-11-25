@@ -1,6 +1,7 @@
 //! Writes that a crash can't leave half done. The bytes go to a uniquely named temp
 //! file beside the target, are flushed to disk, and the temp file is renamed over the
 //! target, so a reader sees either the old file or the new one, never a truncated one.
+//! The new file only its owner may read, which such a write can start from, is here too.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -15,16 +16,20 @@ pub fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
 /// `write_atomic`, for a file that may hold secrets. On Unix only its owner may read it, whatever
 /// the file it replaces allowed; on Windows it has the access its folder gives.
 pub fn write_atomic_private(path: &Path, body: &[u8]) -> std::io::Result<()> {
-    replace(path, body, |tmp| {
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        options.open(tmp)
-    })
+    replace(path, body, create_private)
+}
+
+/// A new, empty file. On Unix only its owner may read it, until it is given other permissions; on
+/// Windows it has the access its folder gives. It never opens a file or link already at `path`.
+pub fn create_private(path: &Path) -> std::io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
 }
 
 /// Replaces `path` with `body` through the temp file `create` makes beside it.
