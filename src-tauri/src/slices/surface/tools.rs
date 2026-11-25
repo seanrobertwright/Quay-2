@@ -155,9 +155,10 @@ impl SurfaceTools {
         self.0.store.cancel_calls(terminal_id, request);
     }
 
-    /// The surface tools `tools/list` answers with.
-    pub fn list(&self) -> &'static [Value] {
-        tool_list()
+    /// The surface tools, which `tools/list` answers with after those of `mcp_tools.json`. Parsed once.
+    pub fn list() -> &'static [Value] {
+        static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
+        TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("surface_tools.json is a JSON list"))
     }
 
     /// Runs `terminal_id`'s call of `tool`, whose JSON-RPC request has the id `request`. `None` when
@@ -533,12 +534,6 @@ fn dismissed_result() -> Value {
     text_result(json!({ "dismissed": true }))
 }
 
-/// The surface tools, listed after those of `mcp_tools.json`. `pnpm docs:build` checks the A2A page's
-/// tool reference against this file too.
+/// What `SurfaceTools::list` gives. `pnpm docs:build` checks the A2A page's tool reference against this
+/// file too.
 const TOOL_LIST: &str = include_str!("surface_tools.json");
-
-/// `TOOL_LIST`, parsed once.
-fn tool_list() -> &'static [Value] {
-    static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
-    TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("surface_tools.json is a JSON list"))
-}
