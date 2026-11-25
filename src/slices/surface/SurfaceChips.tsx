@@ -35,15 +35,19 @@ interface SurfaceChipsProps {
   onOpen: (key: SurfaceKey) => void;
 }
 
-/** A terminal row's chips: one for each live surface, oldest first, which a click opens. The chip of one that asks has a dot. */
+/**
+ * A terminal row's chips: one for each live surface, oldest first, which a click opens. The chip of one
+ * that asks has a dot. Where some fold, those that ask come first, and the fold opens the first in it.
+ */
 export const SurfaceChips = ({ terminalId, terminalName, onOpen }: SurfaceChipsProps) => {
   const live = useLiveSurfacesOf(terminalId);
   const asking = useAskingSurfacesOf(terminalId);
   if (live.length === 0) return null;
-  const folded = live.slice(CHIPS_SHOWN);
+  const ordered = live.length > CHIPS_SHOWN ? [...asking, ...live.filter((surface) => !asking.includes(surface))] : live;
+  const folded = ordered.slice(CHIPS_SHOWN);
   return (
     <div data-surface-chips className="flex flex-wrap gap-1 pl-4.5">
-      {live.slice(0, CHIPS_SHOWN).map((surface, i) => {
+      {ordered.slice(0, CHIPS_SHOWN).map((surface, i) => {
         const { kind, KindIcon } = lookOf(surface.tool);
         const asks = asking.includes(surface);
         const label = `${kind}, surface ${i + 1} of ${live.length} from ${terminalName}`;
