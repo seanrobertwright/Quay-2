@@ -4,11 +4,15 @@
 import "../../test-support/dom.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
 import { Worker } from "node:worker_threads";
 import type { Told } from "./fixtures/drawnWorker.ts";
-import { drawRecord, leavePage, startPage } from "./fixtures/catalogFixtures.ts";
+import { drawRecord, leavePage, put, startPage, TERMINAL } from "./fixtures/catalogFixtures.ts";
 import { acceptedRaw, button, create, EVENT, text, type Component } from "./fixtures/rawFixtures.ts";
+import { changed, redraw, settle } from "./fixtures/surfaceFixtures.ts";
 import { WORST } from "./fixtures/worstCalls.ts";
+
+const { SurfaceView } = await import("./SurfaceView.tsx");
 
 /** The budget to check a call, on the test machine. Rust waits five seconds for a verdict. */
 const CHECK_MS = 2500;
@@ -58,6 +62,11 @@ test(`each of the worst calls is rejected within ${CHECK_MS} ms`, { timeout: 120
 
 const rows = (count: number, row: unknown = 0): unknown[] => Array.from({ length: count }, () => row);
 const list = (id: string, child: string, path: string): Component => ({ id, component: "Column", children: { componentId: child, path } });
+const holds = (id: string, ...children: string[]): Component => ({ id, component: "Column", children });
+
+/** Containers, one under another, each with the children that `of` makes of the next one. */
+const chain = (name: string, depth: number, of: (next: string) => string[]): Component[] => Array.from({ length: depth }, (_, i) => holds(`${name}${i}`, ...of(`${name}${i + 1}`)));
+
 const prose = "Some prose that says **what** it has to, in words of a common length. ";
 
 /** Surfaces at the limit, each of another kind, with what they draw at once. */
@@ -92,3 +101,75 @@ test(`a surface at the limit is drawn within ${DRAWN_MS} ms of its call`, { time
   }
   assert.deepEqual(over, []);
 });
+
+/** The budget to take in what the operator types, and an update, on the test machine. */
+const TAKEN_MS = 2000;
+
+/** How long `act` keeps the processor, in milliseconds: what it waits for is left out. */
+async function busy(act: () => Promise<void>): Promise<number> {
+  const before = process.cpuUsage();
+  await act();
+  const { user, system } = process.cpuUsage(before);
+  return (user + system) / 1000;
+}
+
+test(`what is typed in a surface at the limit is taken in within ${TAKEN_MS} ms`, { timeout: 60_000 }, async () => {
+  const [[rowList, ...components], data] = AT_LIMIT["long lists"];
+  const field: Component = { id: "note", component: "TextField", label: "Note", value: { "@path": "/note" } };
+  await startPage();
+  const root: Component = { id: "root", component: "Column", children: ["note", "all"] };
+  const content = await drawRecord(await acceptedRaw([create([root, field, { ...rowList, id: "all" }, ...components], { dataModel: { ...data, note: "" } })]));
+  const ms = await busy(() => put(content.querySelector<HTMLInputElement>("a2ui-react-textfield input")!, "a"));
+  console.log(`typed: ${ms.toFixed(0)} ms`);
+  await leavePage();
+  assert.ok(ms < TAKEN_MS, `${ms.toFixed(0)} ms`);
+});
+
+/** Updates of a surface that is drawn, each with how many Texts it ends with. A step on the way would draw far more than either end. */
+const UPDATES: Record<string, { from: [Component[], object]; to: [Component[], object]; texts: number }> = {
+  "components that would draw too much of the data before them": {
+    from: [[list("root", "leaf", "/rows"), text("leaf", "x")], { rows: rows(45) }],
+    to: [[list("root", "a", "/rows"), list("a", "b", "/rows"), list("b", "leaf", "/rows"), text("leaf", "x")], { rows: rows(3) }],
+    texts: 27,
+  },
+  "lists that would be above others before those are gone": {
+    from: [
+      [holds("root", "c1", "c4"), holds("c1", "c2", "c3"), text("c2", "x"), text("c3", "x"), list("c4", "c5", "/rows"), list("c5", "c6", "/rows"), list("c6", "leaf", "/rows"), text("leaf", "x")],
+      { rows: rows(7) },
+    ],
+    to: [
+      [holds("root", "c1", "c5"), list("c1", "c2", "/rows"), list("c2", "c3", "/rows"), list("c3", "c4", "/rows"), text("c4", "x"), list("c5", "c6", "/rows"), list("c6", "leaf", "/rows"), text("leaf", "x")],
+      { rows: rows(7) },
+    ],
+    texts: 343 + 49,
+  },
+  "components that would share others before those share none": {
+    from: [
+      [holds("root", "a0", "b0"), ...chain("a", 7, (next) => [next]), ...chain("b", 8, (next) => [next, next]), text("a7", "x"), text("b8", "x")],
+      {},
+    ],
+    to: [
+      [holds("root", "a0"), ...chain("a", 7, (next) => [next, next]), holds("a7", "b0"), ...chain("b", 8, (next) => [next]), text("b8", "x")],
+      {},
+    ],
+    texts: 128,
+  },
+};
+
+for (const [name, { from, to, texts }] of Object.entries(UPDATES)) {
+  test(`an update is taken in within ${TAKEN_MS} ms: ${name}`, { timeout: 60_000 }, async () => {
+    await startPage();
+    const before = await acceptedRaw([create(from[0], { dataModel: from[1] })]);
+    const { state } = await acceptedRaw([create(to[0], { dataModel: to[1] })]);
+    const content = await drawRecord(before);
+    const drawn = () => content.querySelectorAll("a2ui-react-text").length;
+    const ms = await busy(async () => {
+      await redraw(createElement(SurfaceView, { terminal: TERMINAL, surfaces: [changed(before, { state, revision: 2 })] }));
+      for (let i = 0; i < 50 && drawn() !== texts; i += 1) await settle();
+    });
+    console.log(`${name}: ${ms.toFixed(0)} ms`);
+    assert.equal(drawn(), texts);
+    await leavePage();
+    assert.ok(ms < TAKEN_MS, `${ms.toFixed(0)} ms`);
+  });
+}

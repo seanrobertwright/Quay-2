@@ -2,16 +2,24 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "reac
 import { A2uiSurface } from "@a2ui/react";
 import { LayoutContext, type Layout, type SurfaceData } from "../layout.ts";
 import { ImagesContext, surfaceImages } from "../surfaceImages.ts";
+import { RAW_TOOL } from "../rawTool.ts";
 import { sameSurface } from "../surfaceAttention.ts";
 import type { CreateSurface, SentAction, SurfaceRecord } from "../surfaceTypes.ts";
 import { followUnsent, unsentIn } from "../unsent.ts";
 import { actionMessage } from "./actionMessage.ts";
 import { engineFor, type EngineSurface } from "./engine.ts";
+import { dataWith, holdToLimit } from "./heldToLimit.ts";
 import { UntypedContext, untypedIn, type Untyped } from "./untyped.ts";
 
 type OnAction = (action: SentAction) => Promise<void>;
 
 const noAction: OnAction = async () => {};
+
+type OnRefused = (why: string | null) => void;
+
+const noRefusal: OnRefused = () => {};
+
+const NOT_PUT_IN = "Not put in: the surface would have more components than Quay draws.";
 
 /** The engine that draws a surface, with what the operator has put in it so far. */
 interface Live {
@@ -23,6 +31,7 @@ interface Live {
   update: (state: CreateSurface) => void;
   data: SurfaceData;
   onAction: OnAction;
+  onRefused: OnRefused;
 }
 
 /** Kept while their records are, so a surface that comes back to the screen is as it was left. */
@@ -30,7 +39,9 @@ const lives = new WeakMap<SurfaceRecord, Live>();
 
 /** Puts what is unsent in `record` in `surface`. */
 function putIn({ dataModel }: EngineSurface, record: SurfaceRecord): void {
-  for (const [path, value] of Object.entries(unsentIn(record))) dataModel.set(path, value, true);
+  const values = unsentIn(record);
+  if (record.tool === RAW_TOOL && Object.keys(values).length > 0) dataModel.set("/", dataWith(record.state, values));
+  else for (const [path, value] of Object.entries(values)) dataModel.set(path, value, true);
 }
 
 /** Whether `record` is the surface of `before` with no content made new since, so the engine of `before` can be brought to it. */
@@ -67,7 +78,16 @@ function liveOf(record: SurfaceRecord): Live {
       },
     },
     onAction: noAction,
+    onRefused: noRefusal,
   };
+  // The operator can make nothing more of a typed surface than its tool did
+  if (record.tool === RAW_TOOL) {
+    holdToLimit(
+      surface,
+      () => live.record.state.createSurface.components,
+      (refused) => live.onRefused(refused ? NOT_PUT_IN : null),
+    );
+  }
   lives.set(record, live);
   return live;
 }
@@ -79,10 +99,12 @@ interface SurfaceContentProps {
   layout: Layout | null;
   /** The operator's action. Until it settles, the button that sent it takes no second click. Left out for a surface that has none. */
   onAction?: OnAction;
+  /** Told why what the operator put in was not taken, and null once something is taken again. */
+  onRefused?: OnRefused;
 }
 
 /** What an agent's surface holds, drawn by Quay's components. */
-export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceContentProps) => {
+export const SurfaceContent = ({ record, layout, onAction = noAction, onRefused = noRefusal }: SurfaceContentProps) => {
   const [live, setLive] = useState(() => liveOf(record));
   if (live.record !== record && !goesOn(live.record, record)) setLive(liveOf(record));
   useLayoutEffect(() => {
@@ -90,7 +112,8 @@ export const SurfaceContent = ({ record, layout, onAction = noAction }: SurfaceC
   }, [live, record]);
   useEffect(() => {
     live.onAction = onAction;
-  }, [live, onAction]);
+    live.onRefused = onRefused;
+  }, [live, onAction, onRefused]);
   const [images] = useState(() => surfaceImages(record));
   useEffect(() => followUnsent(record, live.data), [record, live]);
   const untyped = useCallback<Untyped>((at, written) => untypedIn(live.record.state, live.data.get("/"), at, written), [live]);

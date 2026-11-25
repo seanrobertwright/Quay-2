@@ -44,6 +44,9 @@ export interface DrawnSize extends Size {
   stopped: boolean;
 }
 
+/** Whether a surface that draws `size` is past the limit. */
+export const isPast = ({ atOnce, withRows }: DrawnSize): boolean => atOnce > MOST_AT_ONCE || withRows > MOST_WITH_ROWS;
+
 /** A component drawn once for each item of the list at `path`. */
 interface Template {
   id: string;
@@ -174,9 +177,9 @@ function shapeOf(component: SurfaceComponent, again: boolean): Shape {
 
 /** The ids of the components that may be drawn more than once: what a template draws, what is named more than once, and all under them. */
 function drawnAgain(components: readonly SurfaceComponent[]): ReadonlySet<string> {
-  const under = new Map<string, readonly string[]>();
+  const under = new Map<string, string[]>();
   const again = new Set<string>();
-  const named = new Set<string>();
+  const namedBy = new Map<string, string>();
   for (const component of components) {
     const held = heldBy(component).flatMap(({ value, keys }): string[] => {
       if (isText(value)) return [value];
@@ -185,11 +188,13 @@ function drawnAgain(components: readonly SurfaceComponent[]): ReadonlySet<string
       again.add(value.componentId);
       return [value.componentId];
     });
+    const here = new Set<string>();
     for (const id of held) {
-      if (named.has(id)) again.add(id);
-      named.add(id);
+      if (here.has(id) || (namedBy.get(id) ?? component.id) !== component.id) again.add(id);
+      here.add(id);
+      namedBy.set(id, component.id);
     }
-    under.set(component.id, held);
+    under.set(component.id, [...(under.get(component.id) ?? []), ...held]);
   }
   // It grows as it is gone through
   for (const id of again) for (const child of under.get(id) ?? []) again.add(child);
@@ -223,10 +228,21 @@ function paged(rows: readonly Size[]): Size {
   return { atOnce: largest(pages) + showsMore(rows.length), withRows: sumOf(pages).withRows };
 }
 
-/** Counts what is drawn of `components`, which the engine has found to be whole and without a cycle, over `data`. */
+/**
+ * Counts what is drawn of `components`, which the engine has found to be whole, over `data`. Where more than one
+ * has an id, what is counted is no less than what any of them would have drawn there. The count stops at
+ * components that hold each other.
+ */
 export function drawnSize(components: readonly SurfaceComponent[], data: DataModel): DrawnSize {
   const again = drawnAgain(components);
-  const shapes = new Map(components.map((component) => [component.id, shapeOf(component, again.has(component.id))]));
+  const shapes = new Map<string, Shape[]>();
+  for (const component of components) {
+    const shape = shapeOf(component, again.has(component.id));
+    const others = shapes.get(component.id);
+    if (others) others.push(shape);
+    else shapes.set(component.id, [shape]);
+  }
+  const counting = new Set<string>();
   const depends = new Map<string, boolean>();
   const sizes = new Map<string, Map<string, Size>>();
   const lengths = new Map<object, number>();
@@ -256,8 +272,11 @@ export function drawnSize(components: readonly SurfaceComponent[], data: DataMod
   const ofRow = (id: string): boolean => {
     const kept = depends.get(id);
     if (kept !== undefined) return kept;
-    const { lists, templates, choices, bound } = shapes.get(id)!;
-    const is = bound.some(isRelative) || templates.some(({ path }) => isRelative(path)) || lists.some((list) => list.some(ofRow)) || choices.some(ofRow);
+    // Until it is known, for one that holds itself
+    depends.set(id, false);
+    const is = shapes
+      .get(id)!
+      .some(({ lists, templates, choices, bound }) => bound.some(isRelative) || templates.some(({ path }) => isRelative(path)) || lists.some((list) => list.some(ofRow)) || choices.some(ofRow));
     depends.set(id, is);
     return is;
   };
@@ -282,7 +301,20 @@ export function drawnSize(components: readonly SurfaceComponent[], data: DataMod
       if (its || inRow) count(kept.withRows);
       return kept;
     }
-    const shape = shapes.get(id)!;
+    if (counting.has(id)) throw new Stopped();
+    counting.add(id);
+    const each = shapes.get(id)!.map((shape) => sizeAs(shape, at, its, above));
+    counting.delete(id);
+    const size = capped({ atOnce: largest(each), withRows: each.reduce((most, { withRows }) => Math.max(most, withRows), 0) });
+    const known = sizes.get(id);
+    if (known) known.set(key, size);
+    else sizes.set(id, new Map([[key, size]]));
+    if (!its && inRow) count(size.withRows);
+    return size;
+  };
+
+  /** The size of a component as `shape` has it, which depends on its row if `its`. The rest is as `sizeOf` has it. */
+  const sizeAs = (shape: Shape, at: string, its: boolean, above: number): Size => {
     const self = itself(shape, at);
     if (its) count(self.withRows + above);
     const under = above + shape.name;
@@ -292,12 +324,7 @@ export function drawnSize(components: readonly SurfaceComponent[], data: DataMod
       ...shape.templates.map((template) => rowsOf(template, at, its, under)),
       { atOnce: largest(choices), withRows: sumOf(choices).withRows },
     ]);
-    const size = capped({ atOnce: self.atOnce + held.atOnce, withRows: self.withRows + held.withRows * (1 + shape.name) });
-    const known = sizes.get(id);
-    if (known) known.set(key, size);
-    else sizes.set(id, new Map([[key, size]]));
-    if (!its && inRow) count(size.withRows);
-    return size;
+    return { atOnce: self.atOnce + held.atOnce, withRows: self.withRows + held.withRows * (1 + shape.name) };
   };
 
   /** The size of a template's rows. The rest is as `sizeOf` has it, of what the template is of. */
@@ -309,7 +336,7 @@ export function drawnSize(components: readonly SurfaceComponent[], data: DataMod
     const rowAt = (i: number): Size => sizeOf(id, pathAt(data, listAt, String(i)), inRow, above + name);
     const row = rowAt(0);
     if (inRow && !ofRow(id)) count(row.withRows * (items.length - 1));
-    const rows = ofRow(id) ? paged([row, ...items.slice(1).map((_, i) => rowAt(i + 1))]) : alike(items.length, row);
+    const rows = ofRow(id) ? paged([row, ...Array.from({ length: items.length - 1 }, (_, i) => rowAt(i + 1))]) : alike(items.length, row);
     let told = 0;
     for (let i = 0; i < items.length; i += PAGE) told = Math.max(told, per(ROW_DATA, charactersOf(items.slice(i, i + PAGE))));
     return { atOnce: rows.atOnce + told, withRows: rows.withRows * (1 + name) };
