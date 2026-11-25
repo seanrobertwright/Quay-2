@@ -13,7 +13,7 @@ Three agents from three vendors build one small tool. Antigravity plans a CSV-to
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The letter after `Ctrl+Shift+B` is the plain key, with no `Shift`. `Ctrl+Shift+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, click into the pane and press `Ctrl+V`, then press `Enter` to send it.
 
-Every agent on the A2A bus is a **peer**, and Quay can type a message into any of them. A **full peer** can also send messages with the `quay_*` tools and answer a sender who waits for it. A **responder** can answer a sender who waits, but it has no `quay_*` tools, so it never starts a conversation. In this tutorial Claude Code and Codex are full peers and Antigravity is a responder.
+Every agent on the A2A bus is a **peer**, and Quay can type a message into any of them. A **full peer** can also send messages with the `quay_*` tools and answer a sender who waits for it. A **responder** can answer a sender who waits, but it has no tool to send a message, so it never starts a conversation. In this tutorial Claude Code and Codex are full peers and Antigravity is a responder.
 
 ::: before
 ## Before you start

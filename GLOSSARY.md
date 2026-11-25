@@ -112,7 +112,7 @@ _Avoid_: status message, toast
 
 ## Agent surfaces
 
-The terms of the A2UI surfaces spec. The build adds what they name.
+The terms of the A2UI surfaces spec.
 
 **Surface**:
 One piece of UI an agent describes to Quay through a tool call, which Quay draws with its own
@@ -200,7 +200,7 @@ tabs are in once their tabs are left.
 _Avoid_: history, archive
 
 **Surface record**:
-The daily file of what was shown, answered and fired in agent surfaces, without its content. It is in
+The daily file of what became of agent surfaces, from shown to rejected, without their content. It is in
 the `surfaces` folder beside the logs.
 _Avoid_: surface log, history, audit trail
 
@@ -218,6 +218,6 @@ the Quay mark and is never a surface.
 _Avoid_: modal, dialog, surface
 
 **Quay mark**:
-The accent glow and QUAY badge on a Quay card. In a lens the badge stands alone. No agent surface can
-have it.
+The accent edge and glow and the QUAY badge on a Quay card. In a lens the badge stands alone. No agent
+surface can have it.
 _Avoid_: brand, highlight

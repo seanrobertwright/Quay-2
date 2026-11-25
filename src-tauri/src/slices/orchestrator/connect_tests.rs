@@ -39,7 +39,7 @@ fn names(list: &Value) -> Vec<&str> {
 
 #[tokio::test]
 async fn an_antigravity_terminal_that_starts_the_entry_has_the_surface_tools_only_and_stays_a_responder() {
-    let bridge = TestBridge::start_with(RunKind::Antigravity, true).await;
+    let bridge = TestBridge::start_with(RunKind::Antigravity).await;
     let launch = bridge.pty_manager.begin_launch("term-mcp", RunKind::Antigravity);
     let url = format!("http://127.0.0.1:{}/mcp/{}", bridge.port, launch.launch);
 

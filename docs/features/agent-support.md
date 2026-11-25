@@ -8,9 +8,9 @@ Quay 2 is designed as a universal desktop cockpit for all major autonomous AI co
 
 Each agent CLI sits at one of three levels on the [A2A bus](./a2a-orchestration.md), the level `quay_list_agents` reports:
 
-- **Full peer**: Quay gives it the `quay_*` tools, so it can send messages, and it answers a sender who waits.
-- **Responder**: it answers a sender who waits, but has no `quay_*` tools, so it can't start a conversation.
-- **Listener**: Quay types messages into it, but it has no `quay_*` tools and Quay can't read its answer.
+- **Full peer**: Quay gives it the messaging tools, so it can send messages, and it answers a sender who waits.
+- **Responder**: it answers a sender who waits, but has no messaging tools, so it can't start a conversation.
+- **Listener**: Quay types messages into it, but can't read its answer. It has no messaging tools, unless it is a Claude Code or PiG terminal that counts as a listener because its plugin or extension is silent: Quay's server still offers that terminal the tools.
 
 The model column lists the presets in the **New Terminal** dialog. Every agent can also start on its own default model, and **Custom CLI Arguments** passes any other model flag.
 
@@ -29,6 +29,34 @@ The model column lists the presets in the **New Terminal** dialog. Every agent c
 | **GitHub Copilot CLI** | `copilot.exe` from `%LOCALAPPDATA%\GitHub CLI\copilot`, else `gh copilot`, which gets no `--allow-all-tools` under Skip Permissions and so asks before its tools | Claude Sonnet 5.5, GPT-4o, o3-mini | Listener | None: Unknown from its first output |
 | **PowerShell Console** | `pwsh.exe` | N/A | Not a peer | None |
 | **Custom Command** | Your command line, run by `pwsh.exe -NoProfile -NoLogo -NoExit -Command`, so `cmd.exe` or `wsl.exe -d Ubuntu` opens that shell. Your PowerShell profile isn't loaded | N/A | Not a peer | None |
+
+---
+
+## Surfaces
+
+A CLI with Quay's MCP server can show you [surfaces](../guide/surfaces.md): questions, reviews, boards and raw surfaces. The table says which CLIs the first release connects, how, and what Quay sets for the [surface tools](./a2a-orchestration.md#the-surface-tools) in each. For each CLI of the first release, Quay sets the limit on a call to its server to 150 seconds, so the 100-second wait for your answer fits.
+
+| CLI | Route | Where the 150 s limit is set | Approval of the surface tools | The server's `instructions` reach the model | First release |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Claude Code** | `--mcp-config` | `timeout` in the server's entry | `--allowedTools`, naming each of them | Yes, from the start | Yes |
+| **Codex** | `-c mcp_servers.quay.*` | `tool_timeout_sec` | Every tool on Quay's server | Only in front of a tool's description, when the model looks it up | Yes |
+| **Antigravity** | Quay's relay, once you [connect it](../guide/surfaces.md#connect-antigravity) | `timeoutSeconds` in the entry Connect writes | None from Quay. With **Interactive Approvals**, Antigravity asks you itself | Only if the model opens the `instructions.md` that `agy` writes | Yes |
+| **OpenCode 1.x** | `OPENCODE_CONFIG_CONTENT` | `timeout` in the server's entry | One `permission` rule for each, by its full name, such as `quay_quay_ask`. None for a tool your own configuration denies. An agent's own `permission` in your configuration wins over these | Yes, in full | Yes |
+| **PiG** | Quay's PiG extension | `timeout` in the extension's registration | None needed: PiG never asks | No | Yes |
+| **OpenCode 2.x** | `OPENCODE_CONFIG_CONTENT` | Not tested | Not tested | Yes, in full | No. OpenCode 2.4.1 refuses the `--port` that Quay starts it with. It also hides MCP tools behind Code Mode unless the server's entry has `"codemode": false`, which Quay's doesn't |
+
+Quay doesn't connect the CLIs below. The table says how it is planned to, where each one's limit is to be set, and how the surface tools are to be approved:
+
+| CLI | Planned route | Planned limit | Planned approval |
+| :--- | :--- | :--- | :--- |
+| **Copilot** | `--additional-mcp-config`, only when Quay starts Copilot directly | `timeout` in the server's entry | A launch flag, if there is one |
+| **Pi**, from 0.99.0 | `-e`, with a Quay extension | The extension's registration | A launch flag, if there is one |
+| **Gemini** | `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`, to a file of Quay's | The server's entry, and `GEMINI_API_HEADERS_TIMEOUT_MS` | A launch flag, if there is one |
+| **Grok** | Quay's relay, once you connect it | `tool_timeout_sec` | `--allow` for Quay's server |
+| **Kiro** | Quay's relay, once you connect it | `requestTimeout` | A launch flag, if there is one |
+| **Aider** | None. It has no tool channel | | |
+
+A terminal that can't show surfaces [says so in its pane's title](../guide/surfaces.md#when-a-terminal-can-t-show-surfaces), with the reason and the remedy.
 
 ---
 
@@ -59,7 +87,7 @@ When spawning Claude Code, Quay 2 generates an MCP configuration pointing to its
   }
 }
 ```
-This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the token is neither written to a file nor visible on the command line, so a Claude Code terminal can call `quay_list_agents`, `quay_send_message` and the other tools without manual setup. Codex, OpenCode and PiG get the same server their own way, and the other CLIs get none (see [Peers and their levels](./a2a-orchestration.md#peers-and-their-levels)). The `/mcp` endpoint rejects calls that don't carry a live terminal's token.
+This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the token is neither written to a file nor visible on the command line, so a Claude Code terminal can call `quay_list_agents`, `quay_send_message` and the other tools without manual setup. `--allowedTools` before it lets Claude Code call the surface tools without asking you. Codex, OpenCode and PiG get the same server their own way, Antigravity reaches it once you [connect it](../guide/surfaces.md#connect-antigravity), and the other CLIs get none (see [Peers and their levels](./a2a-orchestration.md#peers-and-their-levels)). The `/mcp` endpoint rejects calls that don't carry a live terminal's token.
 
 ### Agent status
 In the Projects panel and each terminal's pane header, Quay 2 displays live agent status:
@@ -86,7 +114,7 @@ A Codex terminal is a full peer: it can call the `quay_*` tools, answer a sender
 
 ## Antigravity on the A2A Bus
 
-An Antigravity terminal is a responder: it answers a sender who waits and shows whether it is working, but it has no `quay_*` tools, so it can't start a conversation.
+An Antigravity terminal is a responder: it answers a sender who waits and shows whether it is working, but it has no messaging tools, so it can't start a conversation. Once you [connect it](../guide/surfaces.md#connect-antigravity), it can show you surfaces.
 
 - **Turn reports.** Quay starts `agy` with `AGY_CLI_OSC7501=on`, so it prints an OSC 7501 sequence in its output each time its turn moves, and Quay reads them as the output arrives. `working` shows the terminal Working, `blocked` shows it Waiting, and `done` and `idle` show it Idle. Quay unsets `AGY_CLI_OSC7501_MESSAGES`, whose `brief` setting would drop the text Quay answers with. See [Antigravity Environment](../reference/cli-flags.md#antigravity-environment).
 - **Answers.** A sender waiting on Antigravity gets the text of the `done` that ends the turn its message started. Antigravity sends at most 200 characters of it: a longer answer arrives as its first 199 characters and `…`, followed by a note from Quay saying it was cut off. Ask for anything longer in a file. A turn that stops on a prompt answers with what it waits on instead, for example `blocked (permission): Trust this folder?` or `blocked (permission): Approve RunCommand: ...`. The turn goes on once you answer the prompt in its pane, but its sender already has its answer.

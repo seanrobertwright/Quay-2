@@ -90,6 +90,12 @@ export default ({ command }: ConfigEnv) => {
             { text: 'Configuration & Settings', link: '/guide/configuration' },
           ],
         },
+        {
+          text: 'Working with Agents',
+          items: [
+            { text: 'Agent Surfaces', link: '/guide/surfaces' },
+          ],
+        },
       ],
       // Only tutorials whose pages exist, so the sidebar never links to an unwritten one.
       '/tutorials/': tutorialsSidebar(publishedTutorials(fileURLToPath(new URL('..', import.meta.url)))),

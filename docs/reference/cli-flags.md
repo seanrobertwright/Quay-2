@@ -13,7 +13,7 @@ Every agent terminal's command line is built in the same order:
 3. the custom flags;
 4. Codex's `-c` overrides, for a Codex terminal;
 5. a swarm agent's launch prompt, for a CLI that takes one;
-6. `--mcp-config <json>`, for a Claude Code terminal.
+6. `--allowedTools <tools>` and `--mcp-config <json>`, for a Claude Code terminal.
 
 **Custom flags** are the model chosen in the New Terminal dialog followed by its **Custom CLI Arguments**, or a swarm agent's flags. A terminal launched with none gets the project's **Default Claude CLI Flags** from Workspace Settings, whatever its CLI. Quay splits custom flags on whitespace, so a flag's value can't contain a space, and quotes are passed on as they are. Quay adds custom flags to agent terminals only, never to a PowerShell or Custom Command terminal.
 
@@ -26,12 +26,13 @@ The launch prompt is always one argument, so a multi-line prompt arrives intact.
 Quay 2 starts Claude Code as `claude.exe` on Windows and `claude` on macOS and Linux, found on the terminal's `PATH`:
 
 ```powershell
-claude.exe [--dangerously-skip-permissions] [CUSTOM_FLAGS] [LAUNCH_PROMPT] --mcp-config <json>
+claude.exe [--dangerously-skip-permissions] [CUSTOM_FLAGS] [LAUNCH_PROMPT] --allowedTools <tools> --mcp-config <json>
 ```
 
 | Flag | Purpose | Condition |
 | :--- | :--- | :--- |
 | `--dangerously-skip-permissions` | Bypasses interactive confirmation for file edits and shell commands | **Skip Permissions** is chosen |
+| `--allowedTools <tools>` | Lets Claude Code call each of the [surface tools](../features/a2a-orchestration.md#the-surface-tools) without asking you: their names after `mcp__quay__`, with commas between. It names no other tool, and an `--allowedTools` in your custom flags is passed as well | Every Claude Code terminal |
 | `--mcp-config <json>` | Inline JSON connecting Claude Code to Quay's MCP server. Its token header reads `${CLAUDE_EVENTS_TOKEN}`, so the token is neither written to a file nor visible on the command line | Every Claude Code terminal |
 
 The model is not a separate flag: the model you pick in the New Terminal dialog, such as **Claude Sonnet 5.5**, becomes the custom flag `--model claude-sonnet-5-5`.
@@ -54,7 +55,7 @@ The JSON passed to `--mcp-config`:
 `<launch>` is the number at the end of the terminal's [`QUAY_MCP_URL`](#every-a2a-peer), here and in the settings of the other CLIs below. `timeout` is how long Claude Code waits on a call to this server, in milliseconds.
 
 > [!IMPORTANT]
-> **Argument Ordering**: `--mcp-config` takes several values and would read a bare argument after it as another config file, so `--dangerously-skip-permissions`, the custom flags and a swarm agent's launch prompt always come *before* `--mcp-config`.
+> **Argument Ordering**: `--allowedTools` and `--mcp-config` take several values and would read a bare argument after them as one more, so `--dangerously-skip-permissions`, the custom flags and a swarm agent's launch prompt always come *before* them.
 
 ---
 
@@ -70,7 +71,7 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 | :--- | :--- |
 | `-c mcp_servers.quay.url="http://127.0.0.1:<port>/mcp/<launch>"` | Adds Quay's MCP server for this run only |
 | `-c mcp_servers.quay.bearer_token_env_var="QUAY_A2A_TOKEN"` | Codex reads the bearer token from the terminal's environment, so the token is neither written to a file nor visible on the command line |
-| `-c mcp_servers.quay.default_tools_approval_mode="approve"` | Approves every tool on Quay's server without a prompt: `quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status` and the `machina_*` work-order tools. Without it, Codex refuses the call when its approval policy is `never`, which `--dangerously-bypass-approvals-and-sandbox` sets |
+| `-c mcp_servers.quay.default_tools_approval_mode="approve"` | Approves every tool on Quay's server without a prompt: the messaging tools, the `machina_*` work-order tools and the surface tools. Without it, Codex refuses the call when its approval policy is `never`, which `--dangerously-bypass-approvals-and-sandbox` sets |
 | `-c mcp_servers.quay.tool_timeout_sec=150` | How long Codex waits on a call to Quay's server, in seconds |
 | `-c notify=["<Quay's folder>\quay-codex-notify.exe"]` | Runs Quay's turn-end helper after each Codex turn (see [Codex on the A2A bus](../features/agent-support.md#codex-on-the-a2a-bus)) |
 
@@ -105,11 +106,14 @@ Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of 
       "oauth": false,
       "timeout": 150000
     }
+  },
+  "permission": {
+    "quay_quay_ask": "allow"
   }
 }
 ```
 
-`timeout` is how long OpenCode waits on a call to this server, in milliseconds. OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, which may have comments and trailing commas, Quay keeps it and adds `mcp.quay` to it.
+`permission` has such a rule for each of the [surface tools](../features/a2a-orchestration.md#the-surface-tools), so OpenCode runs them without asking you. An agent's own `permission` in your OpenCode configuration wins over these rules. A tool that your configuration denies gets none, and neither does any tool while Quay can't read that configuration. `timeout` is how long OpenCode waits on a call to this server, in milliseconds. OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, which may have comments and trailing commas, Quay keeps it and adds `mcp.quay` and these rules to it.
 
 ---
 
@@ -124,11 +128,13 @@ Quay 2 starts Antigravity as `agy.exe`, with `--dangerously-skip-permissions` wh
 
 Both are applied after the workspace's own variables, so none of those can replace them.
 
+Quay passes Antigravity no MCP server. It reaches Quay's through the relay, `quay-relay.exe`, once you [connect it](../guide/surfaces.md#connect-antigravity), and the relay reads `QUAY_MCP_URL` and `QUAY_A2A_TOKEN` from the terminal's environment.
+
 ---
 
 ## Listener CLIs
 
-These CLIs are listeners on the A2A bus: they get messages but have no `quay_*` tools and can't reply.
+These CLIs are listeners on the A2A bus: they get messages but have none of Quay's tools and can't reply.
 
 | CLI | Command | Skip Permissions flag | Launch prompt |
 | :--- | :--- | :--- | :--- |

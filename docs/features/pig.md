@@ -73,7 +73,7 @@ The terminal shows **Starting** until Quay first hears from the extension.
 
 If Quay hasn't heard from the extension 30 seconds after PiG's first output, the terminal turns **Unknown** and the Agents panel lists it as a listener (`pig · listener`).
 
-A listener still gets messages typed into its prompt, but Quay can't read its reply, so a sender who waits is told at once that no reply will come. It has no `quay_*` tools either. The most likely cause is a PiG release that changed how extensions work, so run `pig --version` and compare it with 0.5.1. If the extension starts reporting later, the terminal is a full peer again.
+A listener still gets messages typed into its prompt, but Quay can't read its reply, so a sender who waits is told at once that no reply will come. If PiG didn't load the extension, it has no `quay_*` tools either. The most likely cause is a PiG release that changed how extensions work, so run `pig --version` and compare it with 0.5.1. If the extension starts reporting later, the terminal is a full peer again.
 
 ---
 

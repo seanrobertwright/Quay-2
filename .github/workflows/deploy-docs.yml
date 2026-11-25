@@ -12,6 +12,7 @@ on:
       - 'scripts/mcp-tools/**'
       - 'src/slices/orchestrator/swarmTypes.ts'
       - 'src-tauri/src/slices/orchestrator/mcp_tools.json'
+      - 'src-tauri/src/slices/surface/surface_tools.json'
       - '.github/workflows/deploy-docs.yml'
       - 'package.json'
       - 'pnpm-lock.yaml'

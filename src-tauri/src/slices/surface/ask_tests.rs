@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use super::ask::{CONTEXT_LIMIT, DESCRIPTION_LIMIT, LABEL_LIMIT, OPTION_COUNT, QUESTION_COUNT, QUESTION_LIMIT};
 use super::check::Verdict;
 use super::store::{AnswerRefused, SurfaceKey};
-use super::test_seam::{accepted, start, start_with, CapturedLog, OpenCall, Seam};
+use super::test_seam::{accepted, start, CapturedLog, OpenCall, Seam};
 use super::timing::{Timing, WAIT};
 use crate::dates::now_ms;
 
@@ -74,17 +74,6 @@ async fn the_listed_schema_states_the_limits_the_calls_are_held_to() {
     assert_eq!(counts(options), (json!(OPTION_COUNT.start()), json!(OPTION_COUNT.end())));
     assert_eq!(question["multiple"]["type"], "boolean");
     assert_eq!(tool["inputSchema"]["properties"]["questions"]["items"]["required"], json!(["question"]));
-}
-
-#[tokio::test]
-async fn a_build_that_offers_no_surfaces_neither_lists_nor_accepts_the_tool() {
-    let (seam, mut webview) = start_with(false, Timing::default()).await;
-    let cli = seam.cli("term-a");
-
-    assert_eq!(cli.tools().await, SEVEN);
-    let reply = cli.call("quay_ask", question()).reply().await;
-    assert_eq!(reply["error"], json!({ "code": -32602, "message": "Unknown tool: quay_ask" }));
-    assert!(webview.no_check().await);
 }
 
 #[tokio::test]

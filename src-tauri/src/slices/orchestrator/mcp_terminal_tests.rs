@@ -47,22 +47,38 @@ async fn listed(bridge: &TestBridge) -> Vec<String> {
 #[tokio::test]
 async fn a_full_peer_is_listed_the_bus_tools_before_the_surface_tools_and_any_other_terminal_only_these() {
     for run_kind in ALL_RUN_KINDS {
-        let bridge = TestBridge::start_with(run_kind, true).await;
+        let bridge = TestBridge::start_with(run_kind).await;
 
         let tools = listed(&bridge).await;
 
-        let expected: &[&str] = if FULL_PEERS.contains(&run_kind) { &BUS_TOOLS } else { &[] };
-        let (bus, surface) = tools.split_at(expected.len());
-        assert_eq!(bus, expected, "{run_kind:?}");
-        assert!(surface.iter().any(|tool| tool == "quay_ask"), "{run_kind:?}: {tools:?}");
-        assert!(surface.iter().all(|tool| SURFACE_TOOLS.contains(&tool.as_str())), "{run_kind:?}: {tools:?}");
+        let bus: &[&str] = if FULL_PEERS.contains(&run_kind) { &BUS_TOOLS } else { &[] };
+        assert_eq!(tools, [bus, &SURFACE_TOOLS].concat(), "{run_kind:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_tools_a_terminal_is_listed_are_the_tools_it_may_call() {
+    for run_kind in ALL_RUN_KINDS {
+        let bridge = TestBridge::start_with(run_kind).await;
+        let listed = listed(&bridge).await;
+
+        let mut accepted = Vec::new();
+        for tool in [&BUS_TOOLS[..], &SURFACE_TOOLS, &["quay_unheard_of", ""]].concat() {
+            let reply = reply(&bridge, "tools/call", json!({ "name": tool, "arguments": {} })).await;
+            if reply["error"]["message"] != format!("Unknown tool: {tool}") {
+                accepted.push(tool);
+            }
+        }
+
+        assert_eq!(accepted, listed, "{run_kind:?}");
+        assert!(SURFACE_TOOLS.iter().all(|tool| accepted.contains(tool)), "{run_kind:?}: {accepted:?}");
     }
 }
 
 #[tokio::test]
 async fn a_terminal_is_refused_a_tool_it_is_not_listed_before_anything_is_done() {
     for run_kind in [RunKind::Antigravity, RunKind::Grok, RunKind::Copilot] {
-        let bridge = TestBridge::start_with(run_kind, true).await;
+        let bridge = TestBridge::start_with(run_kind).await;
 
         for tool in BUS_TOOLS {
             let arguments = json!({
@@ -88,7 +104,7 @@ async fn a_terminal_is_refused_a_tool_it_is_not_listed_before_anything_is_done()
 
 #[tokio::test]
 async fn a_terminal_without_the_bus_tools_still_has_the_surface_tools() {
-    let bridge = TestBridge::start_with(RunKind::Antigravity, true).await;
+    let bridge = TestBridge::start_with(RunKind::Antigravity).await;
 
     let rejected = result(&bridge, "tools/call", json!({ "name": "quay_ask", "arguments": {} })).await;
 
@@ -98,7 +114,7 @@ async fn a_terminal_without_the_bus_tools_still_has_the_surface_tools() {
 #[tokio::test]
 async fn the_guide_is_returned_to_every_terminal() {
     for run_kind in ALL_RUN_KINDS {
-        let bridge = TestBridge::start_with(run_kind, true).await;
+        let bridge = TestBridge::start_with(run_kind).await;
 
         let guide = result(&bridge, "tools/call", json!({ "name": "quay_surface_guide" })).await;
 
@@ -109,21 +125,14 @@ async fn the_guide_is_returned_to_every_terminal() {
 
 #[tokio::test]
 async fn a_claude_terminal_whose_plugin_is_silent_keeps_the_bus_tools() {
-    let bridge = TestBridge::start_with(RunKind::Claude, false).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     bridge.pty_manager.update_status("term-mcp", ClaudeStatus::Unknown);
     let level = bridge.pty_manager.get_info("term-mcp").unwrap().bus_level();
     assert_eq!(level, Some(BusLevel::Listener));
 
-    assert_eq!(listed(&bridge).await, BUS_TOOLS);
+    assert_eq!(listed(&bridge).await[..BUS_TOOLS.len()], BUS_TOOLS);
     let agents = result(&bridge, "tools/call", json!({ "name": "quay_list_agents" })).await;
     assert!(agents["content"][0]["text"].is_string(), "{agents}");
-}
-
-async fn instructions(run_kind: RunKind, offered: bool) -> (Option<String>, Vec<String>) {
-    let bridge = TestBridge::start_with(run_kind, offered).await;
-    let params = json!({ "protocolVersion": "2025-11-25", "capabilities": {} });
-    let initialized = result(&bridge, "initialize", params).await;
-    (initialized.get("instructions").map(|text| text.as_str().unwrap().to_string()), listed(&bridge).await)
 }
 
 /// The words of `text` that are written as Quay names its tools.
@@ -137,17 +146,14 @@ fn tools_named_in(text: &str) -> Vec<String> {
 #[tokio::test]
 async fn the_instructions_name_each_tool_the_terminal_has_once_and_no_other() {
     for run_kind in ALL_RUN_KINDS {
-        for offered in [true, false] {
-            let (text, listed) = instructions(run_kind, offered).await;
+        let bridge = TestBridge::start_with(run_kind).await;
+        let params = json!({ "protocolVersion": "2025-11-25", "capabilities": {} });
 
-            assert_eq!(tools_named_in(&text.unwrap_or_default()), listed, "{run_kind:?}, {offered}");
-        }
+        let initialized = result(&bridge, "initialize", params).await;
+
+        let text = initialized["instructions"].as_str().unwrap_or_else(|| panic!("{run_kind:?}: {initialized}"));
+        assert_eq!(tools_named_in(text), listed(&bridge).await, "{run_kind:?}");
     }
-}
-
-#[tokio::test]
-async fn a_terminal_without_a_tool_gets_no_instructions() {
-    assert_eq!(instructions(RunKind::Antigravity, false).await, (None, Vec::new()));
 }
 
 fn handshake() -> Value {
@@ -164,7 +170,7 @@ async fn shake_hands(bridge: &TestBridge, launch: &LaunchRef) {
 
 #[tokio::test]
 async fn a_terminals_handshake_is_recorded_for_it_alone_and_no_other_request_is_one() {
-    let bridge = TestBridge::start_with(RunKind::Antigravity, true).await;
+    let bridge = TestBridge::start_with(RunKind::Antigravity).await;
     let terminals = &bridge.pty_manager;
     let launch = terminals.begin_launch("term-mcp", RunKind::Antigravity);
     let other = terminals.begin_launch("term-other", RunKind::Claude);
@@ -183,7 +189,7 @@ async fn a_terminals_handshake_is_recorded_for_it_alone_and_no_other_request_is_
 
 #[tokio::test]
 async fn a_handshake_is_cleared_when_its_terminal_exits() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let launch = terminals.begin_launch("term-mcp", RunKind::Claude);
     shake_hands(&bridge, &launch).await;
@@ -198,7 +204,7 @@ async fn a_handshake_is_cleared_when_its_terminal_exits() {
 
 #[tokio::test]
 async fn a_handshake_is_cleared_at_relaunch_and_an_old_launchs_exit_leaves_the_new_ones() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let old = terminals.begin_launch("term-mcp", RunKind::Claude);
     shake_hands(&bridge, &old).await;
@@ -216,7 +222,7 @@ async fn a_handshake_is_cleared_at_relaunch_and_an_old_launchs_exit_leaves_the_n
 
 #[tokio::test]
 async fn an_old_launchs_handshake_after_a_relaunch_is_not_the_new_ones() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let old = terminals.begin_launch("term-mcp", RunKind::Claude);
     let new = terminals.begin_launch("term-mcp", RunKind::Claude);
@@ -230,7 +236,7 @@ async fn an_old_launchs_handshake_after_a_relaunch_is_not_the_new_ones() {
 
 #[tokio::test]
 async fn a_handshake_that_names_no_launch_is_answered_and_not_recorded() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     bridge.pty_manager.begin_launch("term-mcp", RunKind::Claude);
 
     let reply = bridge.post_to("/mcp", &handshake()).await;
@@ -241,7 +247,7 @@ async fn a_handshake_that_names_no_launch_is_answered_and_not_recorded() {
 
 #[tokio::test]
 async fn a_launch_that_is_no_number_is_refused() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
 
     for launch in ["-1", "1.5", "x", "99999999999999999999"] {
         let reply = bridge.post_to(&format!("/mcp/{launch}"), &handshake()).await;
@@ -251,7 +257,7 @@ async fn a_launch_that_is_no_number_is_refused() {
 
 #[tokio::test]
 async fn a_closed_terminal_has_no_handshake() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let launch = bridge.pty_manager.begin_launch("term-mcp", RunKind::Claude);
     shake_hands(&bridge, &launch).await;
     assert!(bridge.pty_manager.handshake_seen("term-mcp"));

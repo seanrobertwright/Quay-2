@@ -460,7 +460,7 @@ fn tools(ctx: &McpContext, terminal_id: &str) -> Vec<&'static Value> {
     let gets_bus_tools =
         ctx.pty_manager.get_info(terminal_id).is_some_and(|info| info.run_kind.gets_bus_tools());
     let bus_tools = tool_list().as_array().filter(|_| gets_bus_tools);
-    bus_tools.into_iter().flatten().chain(ctx.surfaces.list()).collect()
+    bus_tools.into_iter().flatten().chain(SurfaceTools::list()).collect()
 }
 
 /// What `quay_broadcast` answers with: the peers its notice reached, those holding it until

@@ -13,7 +13,6 @@ use super::board::{self, Board};
 use super::check::{Accepted, CheckRequest, Checks, HeldSurface, Verdict};
 use super::daily_record::{Clock, DailyRecord, Fired};
 use super::guide;
-use super::names;
 use super::place::Place;
 use super::raw::{self, RawCall};
 use super::read;
@@ -42,8 +41,6 @@ pub trait Webview: Send + Sync {
 }
 
 struct Inner {
-    /// Whether this build lists and accepts the surface tools.
-    offered: bool,
     timing: Timing,
     store: SurfaceStore,
     daily_record: DailyRecord,
@@ -76,15 +73,13 @@ impl Default for SurfaceTools {
 }
 
 impl SurfaceTools {
-    /// Offered where `names::OFFERED` says this build offers them.
     pub fn new() -> Self {
-        Self::with(names::OFFERED, Timing::default())
+        Self::with(Timing::default())
     }
 
-    pub(crate) fn with(offered: bool, timing: Timing) -> Self {
+    pub(crate) fn with(timing: Timing) -> Self {
         let daily_record = DailyRecord::default();
         Self(Arc::new(Inner {
-            offered,
             timing,
             store: SurfaceStore::recorded(daily_record.clone()),
             daily_record,
@@ -160,17 +155,15 @@ impl SurfaceTools {
         self.0.store.cancel_calls(terminal_id, request);
     }
 
-    /// The surface tools `tools/list` answers with.
-    pub fn list(&self) -> &'static [Value] {
-        if self.0.offered { tool_list() } else { &[] }
+    /// The surface tools, which `tools/list` answers with after those of `mcp_tools.json`. Parsed once.
+    pub fn list() -> &'static [Value] {
+        static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
+        TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("surface_tools.json is a JSON list"))
     }
 
     /// Runs `terminal_id`'s call of `tool`, whose JSON-RPC request has the id `request`. `None` when
-    /// it is not a tool this build offers.
+    /// it is not a surface tool.
     pub async fn call(&self, terminal_id: &str, request: &Value, tool: &str, arguments: &Value) -> Option<Value> {
-        if !self.0.offered {
-            return None;
-        }
         match tool {
             ask::TOOL => Some(match Ask::parse(arguments) {
                 Err(rejection) => self.reject(terminal_id, ask::TOOL, None, &rejection),
@@ -541,11 +534,6 @@ fn dismissed_result() -> Value {
     text_result(json!({ "dismissed": true }))
 }
 
-/// The surface tools, listed after those of `mcp_tools.json`.
+/// What `SurfaceTools::list` gives. `pnpm docs:build` checks the A2A page's tool reference against this
+/// file too.
 const TOOL_LIST: &str = include_str!("surface_tools.json");
-
-/// `TOOL_LIST`, parsed once.
-fn tool_list() -> &'static [Value] {
-    static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
-    TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("surface_tools.json is a JSON list"))
-}

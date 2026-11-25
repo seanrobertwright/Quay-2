@@ -1,16 +1,21 @@
 // Reads the tools Quay's MCP server lists and the A2A page's tool reference, and lists every
 // place they disagree, so a parameter name in the docs can't drift from the server again.
 
-/** The tool list Quay's MCP server answers `tools/list` with. */
-export const TOOL_LIST = new URL('../../src-tauri/src/slices/orchestrator/mcp_tools.json', import.meta.url);
+/** The tool lists Quay's MCP server answers `tools/list` from: the bus tools, then the surface tools. */
+export const TOOL_LISTS = [
+  new URL('../../src-tauri/src/slices/orchestrator/mcp_tools.json', import.meta.url),
+  new URL('../../src-tauri/src/slices/surface/surface_tools.json', import.meta.url),
+];
 
-/** The page whose tool reference must match it. */
+/** The page whose tool reference must match them. */
 export const REFERENCE_PAGE = new URL('../../docs/features/a2a-orchestration.md', import.meta.url);
 
 export interface Parameter {
+  /** Its path, for what another holds: `questions[].options[].label`, or `progress.done`. */
   name: string;
-  /** `string`, `boolean`, `integer`, `number`, or `array of <items>s`. */
+  /** `string`, `boolean`, `integer`, `number`, `object`, or `array of <items>s`. */
   type: string;
+  /** Of what another holds, whether that needs it. */
   required: boolean;
 }
 
@@ -29,23 +34,38 @@ export interface ReferencedTool {
   repeatedParametersLine?: true;
 }
 
-interface PropertySchema {
-  type?: unknown;
-  items?: { type?: unknown };
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** What a schema says, or nothing when `schema` is no object. */
+function schemaFields(schema: unknown): Record<string, unknown> {
+  return isObject(schema) ? schema : {};
+}
+
 function parameterType(tool: string, name: string, schema: unknown): string {
-  const { type, items } = (isObject(schema) ? schema : {}) as PropertySchema;
-  if (type === 'array' && typeof items?.type === 'string') return `array of ${items.type}s`;
+  const { type, enum: words, items } = schemaFields(schema);
+  if (type === 'array' && isObject(items) && typeof items.type === 'string') return `array of ${items.type}s`;
   if (typeof type === 'string' && type !== 'array') return type;
+  if (type === undefined && Array.isArray(words) && words.every((word) => typeof word === 'string')) return 'string';
   throw new Error(`${tool}: parameter ${name} has no type the reference can name`);
 }
 
-/** Parses `mcp_tools.json`, failing on any tool it can't read. */
+/** The parameters `schema` holds, each followed by those it holds itself. `path` leads to `schema`, unless it is the tool's own. */
+function parametersOf(tool: string, schema: unknown, path?: string): Parameter[] {
+  const { properties = {}, required = [] } = schemaFields(schema);
+  if (!isObject(properties) || !Array.isArray(required)) {
+    throw new Error(`${tool}: ${path ?? 'inputSchema'} has no properties object or required array`);
+  }
+  return Object.entries(properties).flatMap(([key, property]) => {
+    const name = path === undefined ? key : `${path}.${key}`;
+    const { type, items } = schemaFields(property);
+    const held = type === 'array' ? parametersOf(tool, items, `${name}[]`) : parametersOf(tool, property, name);
+    return [{ name, type: parameterType(tool, name, property), required: required.includes(key) }, ...held];
+  });
+}
+
+/** Parses a tool list, failing on any tool it can't read. */
 export function parseToolList(json: string): Tool[] {
   const list: unknown = JSON.parse(json);
   if (!Array.isArray(list)) throw new Error('the tool list is not a JSON array');
@@ -53,26 +73,14 @@ export function parseToolList(json: string): Tool[] {
     if (!isObject(tool) || typeof tool.name !== 'string' || !isObject(tool.inputSchema)) {
       throw new Error(`tool ${index} has no name or inputSchema`);
     }
-    const { properties = {}, required = [] } = tool.inputSchema;
-    if (!isObject(properties) || !Array.isArray(required)) {
-      throw new Error(`${tool.name}: inputSchema has no properties object or required array`);
-    }
-    const name = tool.name;
-    return {
-      name,
-      parameters: Object.entries(properties).map(([param, schema]) => ({
-        name: param,
-        type: parameterType(name, param, schema),
-        required: required.includes(param),
-      })),
-    };
+    return { name: tool.name, parameters: parametersOf(tool.name, tool.inputSchema) };
   });
 }
 
 const TOOL_HEADING = /^### `([A-Za-z0-9_]+)`\s*$/;
 const HEADING = /^#{1,6} /;
 const PARAMETERS_LINE = /^- \*\*Parameters\*\*:\s*(.*)$/;
-const PARAMETER_LINE = /^\s+- `([A-Za-z0-9_]+)` \(([^,()]+), (required|optional)[,)]/;
+const PARAMETER_LINE = /^\s+- `([A-Za-z0-9_]+(?:(?:\[\])?\.[A-Za-z0-9_]+)*)` \(([^,()]+), (required|optional)[,)]/;
 const FENCE = /^\s*(```|~~~)/;
 
 /**

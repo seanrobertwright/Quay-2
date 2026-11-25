@@ -35,7 +35,7 @@ fn not_seen(grace_left_ms: u64) -> Option<Handshake> {
 
 #[tokio::test]
 async fn the_grace_runs_from_the_launch_and_a_relaunch_has_a_grace_of_its_own() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     assert_eq!(told(terminals, GRACE), None, "it was never launched");
 
@@ -57,7 +57,7 @@ async fn the_grace_runs_from_the_launch_and_a_relaunch_has_a_grace_of_its_own() 
 
 #[tokio::test]
 async fn a_handshake_is_told_however_late_it_comes_and_for_that_launch_alone() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let old = terminals.begin_launch("term-mcp", RunKind::Claude);
     assert_eq!(told(terminals, GRACE), not_seen(0));
@@ -73,7 +73,7 @@ async fn a_handshake_is_told_however_late_it_comes_and_for_that_launch_alone() {
 
 #[tokio::test]
 async fn a_terminal_that_has_exited_or_closed_has_nothing_to_tell() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let launch = terminals.begin_launch("term-mcp", RunKind::Claude);
     terminals.exit_launch(&launch, Some(0));
@@ -95,7 +95,7 @@ fn listen(terminals: &PtyManager) -> Arc<Mutex<Vec<(String, Value)>>> {
 
 #[tokio::test]
 async fn the_window_hears_of_a_launchs_first_handshake_and_no_other_request() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let launch = terminals.begin_launch("term-mcp", RunKind::Claude);
     let sent = listen(terminals);
@@ -110,7 +110,7 @@ async fn the_window_hears_of_a_launchs_first_handshake_and_no_other_request() {
 
 #[tokio::test]
 async fn the_window_hears_of_a_relaunch_and_of_an_exit() {
-    let bridge = TestBridge::start_with(RunKind::Claude, true).await;
+    let bridge = TestBridge::start_with(RunKind::Claude).await;
     let terminals = &bridge.pty_manager;
     let info = terminals.get_info("term-mcp").unwrap();
     let sent = listen(terminals);
@@ -126,7 +126,7 @@ async fn the_window_hears_of_a_relaunch_and_of_an_exit() {
 
 #[tokio::test]
 async fn a_cli_that_connects_at_its_first_prompt_has_the_grace_from_then_too() {
-    let bridge = TestBridge::start_with(RunKind::Antigravity, true).await;
+    let bridge = TestBridge::start_with(RunKind::Antigravity).await;
     let terminals = &bridge.pty_manager;
     let launch = terminals.begin_launch("term-mcp", RunKind::Antigravity);
     assert_eq!(told(terminals, GRACE), Some(Handshake { seen: false, grace_left_ms: 0, prompted_grace_left_ms: None }));

@@ -14,7 +14,7 @@ use super::{commit_stamp, jsonc, opencode_permission};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::plugin_watch::LaunchRef;
 use super::screen::{self, ScreenKeeper};
-use crate::slices::surface::{names, timing::CLI_LIMIT};
+use crate::slices::surface::{names::SURFACE_TOOLS, timing::CLI_LIMIT};
 
 /// `CLI_LIMIT` in the unit Claude Code and OpenCode take it in.
 const CLI_LIMIT_MS: u64 = CLI_LIMIT.as_millis() as u64;
@@ -678,7 +678,7 @@ pub(crate) fn build_command(
     if request.run_kind == RunKind::OpenCode {
         let workspace = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
         let allowed = opencode_permission::not_denied(
-            names::pre_approved(),
+            &SURFACE_TOOLS,
             &opencode_permission::Surroundings {
                 project: Path::new(&request.project_path),
                 home: terminal_home(request).as_deref(),
@@ -736,12 +736,8 @@ pub(crate) fn build_command(
     // Claude's `--allowedTools` and `--mcp-config` take several values and would read a bare
     // argument after them as one more, so they go after the custom flags and the launch prompt.
     if request.run_kind == RunKind::Claude {
-        let allowed: Vec<String> =
-            names::pre_approved().iter().map(|tool| format!("mcp__quay__{tool}")).collect();
-        if !allowed.is_empty() {
-            cmd.arg("--allowedTools");
-            cmd.arg(allowed.join(","));
-        }
+        cmd.arg("--allowedTools");
+        cmd.arg(SURFACE_TOOLS.map(|tool| format!("mcp__quay__{tool}")).join(","));
         cmd.arg("--mcp-config");
         cmd.arg(mcp_config_arg(&mcp_url));
     }
