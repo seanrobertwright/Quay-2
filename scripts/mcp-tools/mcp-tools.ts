@@ -34,34 +34,33 @@ export interface ReferencedTool {
   repeatedParametersLine?: true;
 }
 
-interface PropertySchema {
-  type?: unknown;
-  enum?: unknown;
-  items?: unknown;
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** What a schema says, or nothing when `schema` is no object. */
+function schemaFields(schema: unknown): Record<string, unknown> {
+  return isObject(schema) ? schema : {};
+}
+
 function parameterType(tool: string, name: string, schema: unknown): string {
-  const { type, enum: words, items } = (isObject(schema) ? schema : {}) as PropertySchema;
+  const { type, enum: words, items } = schemaFields(schema);
   if (type === 'array' && isObject(items) && typeof items.type === 'string') return `array of ${items.type}s`;
   if (typeof type === 'string' && type !== 'array') return type;
   if (type === undefined && Array.isArray(words) && words.every((word) => typeof word === 'string')) return 'string';
   throw new Error(`${tool}: parameter ${name} has no type the reference can name`);
 }
 
-/** The parameters `schema` holds, each followed by those it holds itself. `prefix` is the path to them. */
-function parametersOf(tool: string, schema: unknown, prefix: string): Parameter[] {
-  const { properties = {}, required = [] } = isObject(schema) ? schema : {};
+/** The parameters `schema` holds, each followed by those it holds itself. `path` leads to `schema`, unless it is the tool's own. */
+function parametersOf(tool: string, schema: unknown, path?: string): Parameter[] {
+  const { properties = {}, required = [] } = schemaFields(schema);
   if (!isObject(properties) || !Array.isArray(required)) {
-    throw new Error(`${tool}: inputSchema has no properties object or required array`);
+    throw new Error(`${tool}: ${path ?? 'inputSchema'} has no properties object or required array`);
   }
   return Object.entries(properties).flatMap(([key, property]) => {
-    const name = prefix + key;
-    const { type, items } = (isObject(property) ? property : {}) as PropertySchema;
-    const held = type === 'array' ? parametersOf(tool, items, `${name}[].`) : parametersOf(tool, property, `${name}.`);
+    const name = path === undefined ? key : `${path}.${key}`;
+    const { type, items } = schemaFields(property);
+    const held = type === 'array' ? parametersOf(tool, items, `${name}[]`) : parametersOf(tool, property, name);
     return [{ name, type: parameterType(tool, name, property), required: required.includes(key) }, ...held];
   });
 }
@@ -74,7 +73,7 @@ export function parseToolList(json: string): Tool[] {
     if (!isObject(tool) || typeof tool.name !== 'string' || !isObject(tool.inputSchema)) {
       throw new Error(`tool ${index} has no name or inputSchema`);
     }
-    return { name: tool.name, parameters: parametersOf(tool.name, tool.inputSchema, '') };
+    return { name: tool.name, parameters: parametersOf(tool.name, tool.inputSchema) };
   });
 }
 

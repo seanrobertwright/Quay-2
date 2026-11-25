@@ -105,6 +105,17 @@ test('what an object or a list of them holds is named by its path, and a list of
   ]);
 });
 
+test('a tool list that is not a schema fails with the path to what is wrong', () => {
+  const list = (inputSchema: object) => JSON.stringify([{ name: 'ask', inputSchema }]);
+  const questions = { type: 'array', items: { type: 'object', properties: { options: { type: 'object', properties: [] } } } };
+  assert.throws(() => parseToolList(list({ properties: { questions } })), {
+    message: 'ask: questions[].options has no properties object or required array',
+  });
+  assert.throws(() => parseToolList(list({ properties: [] })), {
+    message: 'ask: inputSchema has no properties object or required array',
+  });
+});
+
 test('the reference reads only headings that are a tool name, and their parameter lists', () => {
   assert.deepEqual(parseToolReference(page), [
     {
