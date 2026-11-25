@@ -1,5 +1,6 @@
-// Writes the guide that quay_surface_guide returns, generated from the surface catalog's own schemas, to
-// where Rust builds it in. A build runs it with the release workflow's Node, which runs no TypeScript.
+// Writes the guide that quay_surface_guide returns to where Rust builds it in: rules and examples written
+// by hand, and lines generated from the surface catalog. A build runs it with the release workflow's Node,
+// which runs no TypeScript.
 //
 //   node scripts/surface-guide.mjs
 import { readFile, writeFile } from 'node:fs/promises';

@@ -175,7 +175,7 @@ impl SurfaceTools {
                 Err(rejection) => self.reject(terminal_id, raw::TOOL, &rejection),
                 Ok((call, found)) => self.show_raw(terminal_id, request, arguments, &call, found).await,
             }),
-            guide::TOOL => Some(plain_result(guide::GUIDE)),
+            guide::TOOL => Some(verbatim_result(guide::GUIDE)),
             read::TOOL => Some(match read::read(&self.0.store, terminal_id, arguments) {
                 Err(rejection) => self.reject(terminal_id, read::TOOL, &rejection),
                 Ok(body) => {
@@ -494,11 +494,13 @@ impl SurfaceTools {
 const NO_ANSWER_NEXT: &str = "End your turn now. The answer will be typed into this terminal. \
      quay_surface_read with this id returns it too.";
 
+/// The result whose text is `body` as JSON.
 fn text_result(body: Value) -> Value {
-    plain_result(&body.to_string())
+    verbatim_result(&body.to_string())
 }
 
-fn plain_result(text: &str) -> Value {
+/// The result whose text is `text` as it is.
+fn verbatim_result(text: &str) -> Value {
     json!({ "content": [{ "type": "text", "text": text }] })
 }
 

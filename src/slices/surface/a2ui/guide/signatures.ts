@@ -1,10 +1,11 @@
-// The catalog's components and functions, each as one line. Everything in a line is read from its schema,
-// and a schema of a kind that has no notation here throws.
+// The catalog's components and functions, each as one line. The name, and a function's return type and
+// description, are the API's own. The rest is read from its schema and written in this file's notation,
+// and a schema of a kind that has none throws.
 import { z } from "zod";
 import { SYSTEM_FUNCTIONS, type Catalog } from "@a2ui/web_core/v1_0";
 import type { ReactCatalogComponent } from "@a2ui/react";
 
-/** The standard's own types that the guide names instead of spelling them out. */
+/** The standard's own types that the guide names instead of spelling them out, each with its name in the guide. */
 const NAMED: Readonly<Record<string, string>> = {
   ComponentId: "id",
   Child: "id",
