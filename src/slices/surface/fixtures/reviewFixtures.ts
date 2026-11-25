@@ -63,7 +63,7 @@ export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL]
     const stage = useRef<HTMLElement | null>(null);
     const toolIds = tabs.tools.map(({ id }) => id);
     const front = frontId !== null && toolIds.includes(frontId) ? frontId : null;
-    useStageFocus(stage, { project: activeProject, toolIds, front, terminalId: null });
+    useStageFocus(stage, { project: activeProject, toolIds, front, focusTargetId: null });
     setFront = setFrontId;
     setProject = setActiveProject;
     return createElement(

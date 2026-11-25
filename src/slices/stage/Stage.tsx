@@ -100,18 +100,32 @@ export const Stage: FC<StageProps> = ({
   const visibleTerminals = terminals.filter((t) => isSamePath(t.project_path, activeProject));
   const activeTerminal =
     visibleTerminals.find((t) => t.id === activeTerminalId) || visibleTerminals[0];
+  // The tab bar's current terminal: the focused pane's, or the active one in a single pane or when that pane shows none.
+  let focusedTerminal = activeTerminal;
+  if (layout === "split-horizontal" || layout === "split-vertical") {
+    const targetId = focusedPane === "secondary" ? secondaryTerminalId : primaryTerminalId;
+    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
+  } else if (layout === "grid" && focusedPane.startsWith("grid-")) {
+    const idx = parseInt(focusedPane.replace("grid-", ""), 10);
+    const targetId = gridTerminalIds[idx];
+    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
+  }
+
+  const singleTerminalId = singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
+  // The terminals the panes show, in the panes' order.
+  const paneTerminalIds = (
+    layout === "grid" ? gridTerminalIds : layout === "single" ? [singleTerminalId] : [primaryTerminalId, secondaryTerminalId]
+  ).filter((id) => visibleTerminals.some((t) => t.id === id));
   // How many panes show a terminal, which the pane header menu's Close pane needs.
-  const paneTerminalIds =
-    layout === "grid" ? gridTerminalIds : layout === "single" ? [activeTerminalId] : [primaryTerminalId, secondaryTerminalId];
-  const paneCount = paneTerminalIds.filter((id) => visibleTerminals.some((t) => t.id === id)).length;
+  const paneCount = paneTerminalIds.length;
+  // Where a stage tab that closes leaves the focus: the focused terminal, or the first pane's when no pane shows it.
+  const focusTargetId = paneTerminalIds.find((id) => id === focusedTerminal.id) ?? paneTerminalIds[0] ?? null;
 
   // The stage tab in front of the panes. What it covers is inert, so that neither Tab nor a terminal that
   // would focus itself reaches it: drawn still, at its own size.
   const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
   const covered = front !== null;
 
-  // The terminal of the focused pane, or of the first pane that shows one when that has none.
-  let paneTerminalId: string | null = null;
   // Every terminal of every project, hidden unless its project is active. Both returns render
   // them in the same element of the same keyed viewport, so a project with no terminals never
   // remounts them.
@@ -130,9 +144,7 @@ export const Stage: FC<StageProps> = ({
       showPaneHeader = false;
       paneStyle = { display: "none" };
     } else if (layout === "single") {
-      isVisible =
-        term.id ===
-        singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
+      isVisible = term.id === singleTerminalId;
       isFocused = isVisible;
       // The pane header carries the terminal's state and Skip/Ask pill in every layout.
       showPaneHeader = true;
@@ -249,7 +261,6 @@ export const Stage: FC<StageProps> = ({
       }
     }
 
-    if (isVisible && (isFocused || paneTerminalId === null)) paneTerminalId = term.id;
     return (
       <TerminalView
         key={term.id}
@@ -280,7 +291,7 @@ export const Stage: FC<StageProps> = ({
     );
   });
 
-  useStageFocus(stageRef, { project: activeProject, toolIds: tools.map(({ id }) => id), front, terminalId: paneTerminalId });
+  useStageFocus(stageRef, { project: activeProject, toolIds: tools.map(({ id }) => id), front, focusTargetId });
   const panes = (
     <div key="stage-panes" className="contents" inert={covered}>
       {terminalViews}
@@ -332,16 +343,6 @@ export const Stage: FC<StageProps> = ({
         </div>
       </main>
     );
-  }
-
-  let focusedTerminal = activeTerminal;
-  if (layout === "split-horizontal" || layout === "split-vertical") {
-    const targetId = focusedPane === "secondary" ? secondaryTerminalId : primaryTerminalId;
-    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
-  } else if (layout === "grid" && focusedPane.startsWith("grid-")) {
-    const idx = parseInt(focusedPane.replace("grid-", ""), 10);
-    const targetId = gridTerminalIds[idx];
-    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
   }
 
   // Draggable Divider mouse down handler

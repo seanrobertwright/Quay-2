@@ -271,10 +271,20 @@ test("closing the stage tab in front from inside it takes the focus to the focus
   assert.equal(focused(), "terminal b");
 });
 
-test("closing the stage tab in front takes the focus to a pane that shows a terminal when the focused one shows none", async () => {
-  const { container } = await mountStage({ front: "Swarm", stage: { layout: "grid", focusedPane: "grid-3" } });
+test("closing the stage tab in front with an empty pane focused takes the focus to the current terminal", async () => {
+  const { container } = await mountStage({ front: "Swarm", stage: { layout: "grid", focusedPane: "grid-2", activeTerminalId: "b" } });
   await press(container, "Close Swarm");
-  assert.equal(focused(), "terminal a");
+  assert.equal(focused(), "terminal b");
+});
+
+test("closing the stage tab in front takes the focus to the first pane that shows a terminal when none shows the current one", async () => {
+  const { container } = await mountStage({
+    terminals: [...TERMINALS, terminal("c", "tester")],
+    front: "Swarm",
+    stage: { layout: "grid", gridTerminalIds: [null, "b", "a", null], focusedPane: "grid-3", activeTerminalId: "c" },
+  });
+  await press(container, "Close Swarm");
+  assert.equal(focused(), "terminal b");
 });
 
 test("in a project with no terminals, closing the stage tab in front takes the focus to Launch Terminal", async () => {
