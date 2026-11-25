@@ -3,7 +3,7 @@
 // the screen. It holds only what differs from the accepted state, and none of what the frame works out
 // again.
 import { invoke } from "@tauri-apps/api/core";
-import { carriedOn } from "./carried.ts";
+import { carriedOn, touches } from "./carried.ts";
 import { differences, type DataValues } from "./differences.ts";
 import type { SurfaceData } from "./layout.ts";
 import type { Carried, SurfaceKey, SurfaceRecord } from "./surfaceTypes.ts";
@@ -34,6 +34,8 @@ interface Kept extends Version {
   carried: Carried | null;
   /** What is unsent, as JSON, so nothing the engine does to its lists reaches it. */
   values: string;
+  /** What of it the surface on the screen has no room for. */
+  leftOut: DataValues;
 }
 
 const NOTHING = "{}";
@@ -59,7 +61,7 @@ export function openPage(opened: Page): void {
       if (its.carried) its.values = JSON.stringify(carriedOn(its.carried, revision, values));
       continue;
     }
-    kept.set(key, { order, revision, carried: its?.carried ?? null, values: JSON.stringify(values) });
+    kept.set(key, { order, revision, carried: its?.carried ?? null, values: JSON.stringify(values), leftOut: {} });
   }
 }
 
@@ -80,7 +82,7 @@ export function keepUnsent(record: SurfaceRecord): void {
   const before = kept.get(keyOf(record));
   const goesOn = before !== undefined && before.order === order && before.revision < revision;
   const values = goesOn ? JSON.stringify(carriedOn(carried, before.revision, JSON.parse(before.values))) : NOTHING;
-  kept.set(keyOf(record), { order, revision, carried, values });
+  kept.set(keyOf(record), { order, revision, carried, values, leftOut: {} });
 }
 
 /** Saves at once what is unsent in the surface `key`, if it is drawn. */
@@ -102,12 +104,20 @@ function keptFor(record: SurfaceRecord): Kept | null {
 /** What is unsent in `record`. */
 export const unsentIn = (record: SurfaceRecord): DataValues => JSON.parse(keptFor(record)?.values ?? NOTHING);
 
+/** Says that `values`, of what is unsent in `record`, are not in the surface on the screen. They stay unsent until the operator puts something else there. */
+export function leaveOut(record: SurfaceRecord, values: DataValues): void {
+  const its = keptFor(record);
+  if (its) its.leftOut = values;
+}
+
 function save(record: SurfaceRecord, data: SurfaceData): void {
   const its = keptFor(record);
   if (!its) return;
   const workedOut = typedTool(record.tool)?.workedOut ?? [];
   const differing = Object.entries(differences(record.state.createSurface.dataModel, data.get("/")));
-  const values = Object.fromEntries(differing.filter(([path]) => !workedOut.includes(path)));
+  const put = Object.fromEntries(differing.filter(([path]) => !workedOut.includes(path)));
+  its.leftOut = Object.fromEntries(Object.entries(its.leftOut).filter(([path]) => !Object.keys(put).some((other) => touches(other, path))));
+  const values = { ...its.leftOut, ...put };
   const text = JSON.stringify(values);
   if (text === its.values) return;
   its.values = text;

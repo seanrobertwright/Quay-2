@@ -4,7 +4,7 @@ import type { DataValues } from "./differences.ts";
 import type { Carried } from "./surfaceTypes.ts";
 
 /** Whether one of two data paths is the other, is under it, or holds it. The whole is `/`. */
-const touches = (a: string, b: string) => a === "/" || b === "/" || `${a}/`.startsWith(`${b}/`) || `${b}/`.startsWith(`${a}/`);
+export const touches = (a: string, b: string) => a === "/" || b === "/" || `${a}/`.startsWith(`${b}/`) || `${b}/`.startsWith(`${a}/`);
 
 /** What of `values`, read at `revision`, the revision that `carried` is of keeps. */
 export function carriedOn({ from, set }: Carried, revision: number, values: DataValues): DataValues {

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import type { CreateSurface, SurfaceRecord } from "./surfaceTypes.ts";
 import type { Mounted } from "./fixtures/askFixtures.ts";
-import { loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
+import { called, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 import { click, put } from "./fixtures/catalogFixtures.ts";
 import { acceptedRaw, button, create, EVENT, listOf, rows, text, times, type Component } from "./fixtures/rawFixtures.ts";
 import { arrives, changed, unmount as unmountPage } from "./fixtures/surfaceFixtures.ts";
@@ -16,6 +16,7 @@ import { arrives, changed, unmount as unmountPage } from "./fixtures/surfaceFixt
 const { mountCompanion, TERMINAL, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 
 const NOT_PUT_IN = "Not put in: the surface would have more components than Quay draws.";
+const NOT_PUT_BACK = "Some of what you put in is left out: the surface would have more components than Quay draws.";
 
 let list: SurfaceRecord[];
 let unsent: unknown[];
@@ -52,10 +53,8 @@ function updated(record: SurfaceRecord, components: Component[], dataModel: Reco
   return changed(record, { revision, state });
 }
 
-/** Lets a surface that has just been drawn be drawn again. */
-async function redrawn(): Promise<void> {
-  for (let i = 0; i < 16; i += 1) await settle();
-}
+/** What the page last saved as unsent. */
+const saved = (): unknown => (called("surface_save_unsent").pop()?.unsent as { values: unknown } | undefined)?.values;
 
 const asks = button("go", EVENT);
 const root = (...children: string[]): Component => ({ id: "root", component: "Column", children: [...children, "go"] });
@@ -96,26 +95,63 @@ test("a text that is drawn again and again is held to the limit by its length", 
   assert.deepEqual([input.value.length, said()?.length, notice(container)], [4000, 4000, NOT_PUT_IN]);
 });
 
-test("what is unsent is put back where the surface can be drawn with it, and left out where it cannot", { timeout: 60_000 }, async () => {
-  const accepted = () => acceptedRaw([create(ofPicked, { dataModel: { picked: [] } })]);
-  const container = await open(await accepted(), { "/picked": ["0", "1", "2"] });
-  assert.deepEqual([ticked(container), drawn(container, "text")], [3, 82]);
+test("a text that is filled in is not taken once it would fill in itself", { timeout: 60_000 }, async () => {
+  const field: Component = { id: "name", component: "TextField", label: "Name", value: { "@path": "/name" } };
+  const filled = text("filled", { "@call": "formatString", args: { value: { "@path": "/name" } } });
+  const container = await open(await acceptedRaw([create([root("name", "filled"), field, filled, ...asks], { dataModel: { name: "Ada" } })]));
+  const input = container.querySelector<HTMLInputElement>("a2ui-react-textfield input")!;
+  await put(input, "Grace");
+  assert.deepEqual([container.textContent!.includes("Grace"), notice(container)], [true, null]);
+  await put(input, "${formatString(value:${/name})}");
+  await settle();
+  assert.deepEqual([input.value, container.textContent!.includes("Grace"), notice(container)], ["Grace", true, NOT_PUT_IN]);
+});
+
+const noteField: Component = { id: "note", component: "TextField", label: "Note", value: { "@path": "/note" } };
+const onBox: Component = { id: "on", component: "CheckBox", label: "On", value: { "@path": "/on" } };
+
+/** `ofPicked`, with what no list is of. */
+const withOthers = [root("pick", "note", "on", "l1"), noteField, onBox, ...ofPicked.slice(1)];
+
+const noteIn = (container: HTMLElement) => container.querySelector<HTMLInputElement>("a2ui-react-textfield input")!.value;
+const isOn = (container: HTMLElement) => boxes(container)[9].checked;
+
+test("what is unsent is put back where the surface can be drawn with it, and only what cannot is left out, which is said and kept", { timeout: 60_000 }, async () => {
+  const accepted = () => acceptedRaw([create(withOthers, { dataModel: { picked: [], note: "", on: false } })]);
+  const container = await open(await accepted(), { "/picked": ["0", "1", "2"], "/note": "Later", "/on": true });
+  assert.deepEqual([ticked(container), noteIn(container), isOn(container), drawn(container, "text"), notice(container)], [4, "Later", true, 82, null]);
   await unmount(mounted!);
   mounted = null;
   unloadSurfaces();
-  const other = await open(await accepted(), { "/picked": ["0", "1", "2", "3", "4", "5", "6"] });
-  assert.deepEqual([ticked(other), drawn(other, "text")], [0, 1]);
+  const picked = ["0", "1", "2", "3", "4", "5", "6"];
+  const other = await open(await accepted(), { "/picked": picked, "/note": "Later", "/on": true });
+  assert.deepEqual([ticked(other), noteIn(other), isOn(other), drawn(other, "text"), notice(other)], [1, "Later", true, 1, NOT_PUT_BACK]);
+  await put(other.querySelector<HTMLInputElement>("a2ui-react-textfield input")!, "Now");
+  assert.equal(notice(other), null);
+  await until(() => saved() !== undefined, "nothing was saved");
+  assert.deepEqual(saved(), { "/picked": picked, "/note": "Now", "/on": true });
+  // Until the operator picks anew
+  await click(boxes(other)[3]);
+  await until(() => JSON.stringify(saved()).includes('["3"]'), "the pick was not saved");
+  assert.deepEqual(saved(), { "/picked": ["3"], "/note": "Now", "/on": true });
 });
 
-test("an update is drawn as it is accepted, with what the operator put in where there is room for it", { timeout: 60_000 }, async () => {
-  const plain = [root("pick", "l1"), picker, listOf("l1", "leaf", "/picked"), text("leaf", "x"), ...asks];
-  const record = await acceptedRaw([create(plain, { dataModel: { picked: [] } })]);
+test("an update is drawn as it is accepted, with what the operator put in where there is room for it, then or later", { timeout: 60_000 }, async () => {
+  const plain = [root("pick", "note", "on", "l1"), noteField, onBox, picker, listOf("l1", "leaf", "/picked"), text("leaf", "x"), ...asks];
+  const data = { picked: [], note: "", on: false };
+  const record = await acceptedRaw([create(plain, { dataModel: data })]);
   const container = await open(record);
   for (const box of boxes(container)) await click(box);
-  assert.deepEqual([ticked(container), drawn(container, "text")], [9, 10]);
-  await arrives(updated(record, ofPicked, { picked: [] }));
-  await redrawn();
-  assert.deepEqual([ticked(container), drawn(container, "text")], [0, 1]);
+  assert.deepEqual([ticked(container), drawn(container, "text")], [10, 10]);
+  const full = updated(record, withOthers, data);
+  await arrives(full);
+  await until(() => notice(container) !== null, "nothing was said");
+  assert.deepEqual([ticked(container), isOn(container), drawn(container, "text"), notice(container)], [1, true, 1, NOT_PUT_BACK]);
+  // Of what is picked, then a list of nothing
+  const roomy = withOthers.map((component) => (component.id === "l2" ? listOf("l2", "l3", "/none") : component));
+  await arrives(updated(full, roomy, { ...data, none: [] }));
+  await until(() => ticked(container) === 10, "what was left out was not put back");
+  assert.deepEqual([isOn(container), notice(container)], [true, null]);
 });
 
 test("an update leaves the rows of a long list that were shown as they are, also where its components cannot be replaced in steps", { timeout: 60_000 }, async () => {
@@ -138,10 +174,10 @@ test("an update leaves the rows of a long list that were shown as they are, also
   assert.deepEqual(seen("first"), [200, true, true]);
   const later = updated(record, table({ "@path": "c" }), data("second"));
   await arrives(later);
-  await redrawn();
+  await until(() => container.textContent!.includes("a0bsecond"), "the update was never drawn");
   assert.deepEqual(seen("second"), [200, true, true]);
   await arrives(updated(later, table("third"), data("second")));
-  await redrawn();
+  await until(() => container.textContent!.includes("a0bthird"), "the update was never drawn");
   assert.deepEqual(seen("third"), [200, true, true]);
 });
 
