@@ -13,7 +13,7 @@ A **surface** is one piece of UI that an agent describes to Quay through a tool 
 | **Question** | `quay_ask` | Up to four questions, each with a text box and, when the agent gives them, options, and one **Send** | The companion's **Surface** view |
 | **Review** | `quay_review` | A text to read, items to keep or drop, a comment and three verdicts | A stage tab |
 | **Board** | `quay_board` | How a long run stands: steps, progress and stats | A line on the terminal's pane |
-| **Surface** | `quay_surface` | Anything else, as A2UI 1.0 messages in Quay's own catalog of components. This is a **raw surface** | Where the agent asks: the Surface view, a stage tab or a line on the pane |
+| **Raw surface** | `quay_surface` | Anything else, as A2UI 1.0 messages in Quay's own catalog of components. Quay labels it **Surface** | Where the agent asks: the Surface view, a stage tab or a line on the pane |
 
 An agent has two more tools. `quay_surface_guide` returns how to write a raw surface, and `quay_surface_read` returns where one of the terminal's surfaces stands. [The surface tools](../features/a2a-orchestration.md#the-surface-tools) lists what each one takes.
 
@@ -82,7 +82,7 @@ Quay draws a **frame** around every surface. What the agent wrote is clipped to 
 
 Quay asks for decisions too, on its own cards: a permission request in the Activity view, and each decision in the Run view. These are **Quay cards**, never surfaces, and they carry the **Quay mark**: an edge and glow in your accent colour, and a **QUAY** badge in the card's title line. In a lens, the badge stands alone.
 
-No agent surface can have the mark. Quay's lint keeps the code that draws what an agent wrote from importing the code that draws cards, and nothing in Quay's catalog draws the mark. An agent can write the word QUAY, as it can write any other text, but it stays inside a frame that names the agent's terminal. Keyboard focus also rings a control in the accent colour, in a surface as anywhere else in Quay, so look for the badge.
+No agent surface can have the mark. Quay's lint keeps the module that holds Quay's catalog, whose components draw a surface's content, from importing the code that draws cards, and nothing in the catalog draws the mark. An agent can write the word QUAY, as it can write any other text, but it stays inside a frame that names the agent's terminal. Keyboard focus also rings a control in the accent colour, in a surface as anywhere else in Quay, so look for the badge.
 
 **What the mark proves.** Quay drew the card, and no agent surface looks like it.
 

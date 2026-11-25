@@ -10,7 +10,7 @@ Each agent CLI sits at one of three levels on the [A2A bus](./a2a-orchestration.
 
 - **Full peer**: Quay gives it the messaging tools, so it can send messages, and it answers a sender who waits.
 - **Responder**: it answers a sender who waits, but has no messaging tools, so it can't start a conversation.
-- **Listener**: Quay types messages into it, but it has no messaging tools and Quay can't read its answer.
+- **Listener**: Quay types messages into it, but can't read its answer. It has no messaging tools, unless it is a Claude Code or PiG terminal that counts as a listener because its plugin or extension is silent: Quay's server still offers that terminal the tools.
 
 The model column lists the presets in the **New Terminal** dialog. Every agent can also start on its own default model, and **Custom CLI Arguments** passes any other model flag.
 
@@ -34,18 +34,27 @@ The model column lists the presets in the **New Terminal** dialog. Every agent c
 
 ## Surfaces
 
-A CLI with Quay's MCP server can show you [surfaces](../guide/surfaces.md): questions, reviews, boards and raw surfaces. The table says which CLIs the first release connects, how, and what Quay sets for the [surface tools](./a2a-orchestration.md#the-surface-tools) in each. Quay sets each one's limit on a call to its server to 150 seconds, so the 100-second wait for your answer fits.
+A CLI with Quay's MCP server can show you [surfaces](../guide/surfaces.md): questions, reviews, boards and raw surfaces. The table says which CLIs the first release connects, how, and what Quay sets for the [surface tools](./a2a-orchestration.md#the-surface-tools) in each. For each CLI of the first release, Quay sets the limit on a call to its server to 150 seconds, so the 100-second wait for your answer fits.
 
 | CLI | Route | Where the 150 s limit is set | Approval of the surface tools | The server's `instructions` reach the model | First release |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Claude Code** | `--mcp-config` | `timeout` in the server's entry | `--allowedTools`, naming each of them | Yes, from the start | Yes |
 | **Codex** | `-c mcp_servers.quay.*` | `tool_timeout_sec` | Every tool on Quay's server | Only in front of a tool's description, when the model looks it up | Yes |
 | **Antigravity** | Quay's relay, once you [connect it](../guide/surfaces.md#connect-antigravity) | `timeoutSeconds` in the entry Connect writes | None from Quay. With **Interactive Approvals**, Antigravity asks you itself | Only if the model opens the `instructions.md` that `agy` writes | Yes |
-| **OpenCode 1.x** | `OPENCODE_CONFIG_CONTENT` | `timeout` in the server's entry | One `permission` rule for each, by its full name, such as `quay_quay_ask`. None for a tool your own configuration denies | Yes, in full | Yes |
+| **OpenCode 1.x** | `OPENCODE_CONFIG_CONTENT` | `timeout` in the server's entry | One `permission` rule for each, by its full name, such as `quay_quay_ask`. None for a tool your own configuration denies. An agent's own `permission` in your configuration wins over these | Yes, in full | Yes |
 | **PiG** | Quay's PiG extension | `timeout` in the extension's registration | None needed: PiG never asks | No | Yes |
-| **OpenCode 2.x** | None | | | | No. OpenCode 2.4.1 refuses the `--port` that Quay starts it with |
-| **Copilot**, **Pi**, **Gemini**, **Grok**, **Kiro** | None | | | | No |
-| **Aider** | None | | | | No, it has no tool channel |
+| **OpenCode 2.x** | `OPENCODE_CONFIG_CONTENT` | Not tested | Not tested | Yes, in full | No. OpenCode 2.4.1 refuses the `--port` that Quay starts it with. It also hides MCP tools behind Code Mode unless the server's entry has `"codemode": false`, which Quay's doesn't |
+
+Quay doesn't connect the CLIs below. The table says how it is planned to, where each one's limit is to be set, and how the surface tools are to be approved:
+
+| CLI | Planned route | Planned limit | Planned approval |
+| :--- | :--- | :--- | :--- |
+| **Copilot** | `--additional-mcp-config`, only when Quay starts Copilot directly | `timeout` in the server's entry | A launch flag, if there is one |
+| **Pi**, from 0.99.0 | `-e`, with a Quay extension | The extension's registration | A launch flag, if there is one |
+| **Gemini** | `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`, to a file of Quay's | The server's entry, and `GEMINI_API_HEADERS_TIMEOUT_MS` | A launch flag, if there is one |
+| **Grok** | Quay's relay, once you connect it | `tool_timeout_sec` | `--allow` for Quay's server |
+| **Kiro** | Quay's relay, once you connect it | `requestTimeout` | A launch flag, if there is one |
+| **Aider** | None. It has no tool channel | | |
 
 A terminal that can't show surfaces [says so in its pane's title](../guide/surfaces.md#when-a-terminal-can-t-show-surfaces), with the reason and the remedy.
 

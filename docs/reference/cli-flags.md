@@ -113,7 +113,7 @@ Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of 
 }
 ```
 
-`permission` has such a rule for each of the [surface tools](../features/a2a-orchestration.md#the-surface-tools), so OpenCode runs them without asking you. A tool that your own OpenCode configuration denies gets none, and neither does any tool while Quay can't read that configuration. `timeout` is how long OpenCode waits on a call to this server, in milliseconds. OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, which may have comments and trailing commas, Quay keeps it and adds `mcp.quay` and these rules to it.
+`permission` has such a rule for each of the [surface tools](../features/a2a-orchestration.md#the-surface-tools), so OpenCode runs them without asking you. An agent's own `permission` in your OpenCode configuration wins over these rules. A tool that your configuration denies gets none, and neither does any tool while Quay can't read that configuration. `timeout` is how long OpenCode waits on a call to this server, in milliseconds. OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, which may have comments and trailing commas, Quay keeps it and adds `mcp.quay` and these rules to it.
 
 ---
 
