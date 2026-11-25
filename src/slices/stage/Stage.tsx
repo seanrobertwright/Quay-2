@@ -9,6 +9,7 @@ import { ShellWarningBanner } from "./ShellWarningBanner.tsx";
 import { singleLayoutTerminalId } from "./singlePane";
 import { StageTabBar } from "./StageTabBar";
 import type { StageTool } from "./stageTools.ts";
+import { useStageFocus } from "./useStageFocus.ts";
 import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
 
@@ -91,6 +92,7 @@ export const Stage: FC<StageProps> = ({
   onCloseTool,
   earlierTabs,
 }) => {
+  const stageRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -108,6 +110,8 @@ export const Stage: FC<StageProps> = ({
   const front = tools.some((tool) => tool.id === frontToolId) ? frontToolId : null;
   const covered = front !== null;
 
+  // The terminal of the focused pane, or of the first pane that shows one when that has none.
+  let paneTerminalId: string | null = null;
   // Every terminal of every project, hidden unless its project is active. Both returns render
   // them in the same element of the same keyed viewport, so a project with no terminals never
   // remounts them.
@@ -245,6 +249,7 @@ export const Stage: FC<StageProps> = ({
       }
     }
 
+    if (isVisible && (isFocused || paneTerminalId === null)) paneTerminalId = term.id;
     return (
       <TerminalView
         key={term.id}
@@ -275,6 +280,7 @@ export const Stage: FC<StageProps> = ({
     );
   });
 
+  useStageFocus(stageRef, { project: activeProject, toolIds: tools.map(({ id }) => id), front, terminalId: paneTerminalId });
   const panes = (
     <div key="stage-panes" className="contents" inert={covered}>
       {terminalViews}
@@ -296,7 +302,7 @@ export const Stage: FC<StageProps> = ({
 
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
-      <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+      <main ref={stageRef} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
         {(tools.length > 0 || earlierTabs) && (
           <StageTabBar
             terminals={[]}
@@ -370,7 +376,7 @@ export const Stage: FC<StageProps> = ({
   };
 
   return (
-    <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
+    <main ref={stageRef} className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
       <StageTabBar
         terminals={visibleTerminals}
         currentTerminalId={focusedTerminal.id}

@@ -24,6 +24,12 @@ export function isTypingOutside(pane: Element | null): boolean {
   return !!active?.matches(FIELD) && !active.matches(TERMINAL_KEYS) && !pane?.contains(active);
 }
 
+/** The field that terminal `terminalId` takes its keys from, when its pane is in `root`. */
+export function terminalKeysOf(root: Element, terminalId: string | null): HTMLElement | null {
+  const pane = [...root.querySelectorAll<HTMLElement>("[data-pie-terminal]")].find((one) => one.dataset.pieTerminal === terminalId);
+  return pane?.querySelector<HTMLElement>(TERMINAL_KEYS) ?? null;
+}
+
 /** What of an xterm terminal its focus needs. */
 interface FocusableTerminal {
   readonly element?: HTMLElement;

@@ -18,6 +18,7 @@ export const Placeholder: React.FC<PlaceholderProps> = ({ onNewTerminal }) => {
         Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-white text-[11px]">Ctrl+Shift+B N</kbd> or click below to launch an AI Agent, PowerShell, or a custom Command.
       </p>
       <button
+        data-launch-terminal
         onClick={onNewTerminal}
         className="flex items-center gap-2 px-4 py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-sm font-medium shadow-sm transition-colors"
       >
