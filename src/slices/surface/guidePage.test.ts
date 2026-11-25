@@ -14,7 +14,7 @@ const TOOLS = read("docs/features/a2a-orchestration.md");
 function rust(file: string, name: string): number {
   const [, value] = new RegExp(`const ${name}: \\w+ = (?:Duration::from_secs\\()?([\\d_]+(?: \\* [\\d_]+)*)\\)?;`).exec(read(`src-tauri/src/slices/${file}`)) ?? [];
   assert.ok(value !== undefined, `${name} in ${file}`);
-  return value.split(" * ").reduce((product, factor) => product * Number(factor.replaceAll("_", "")), 1);
+  return value.split(" * ").reduce((product, factor) => product * Number(factor.replace(/_/g, "")), 1);
 }
 
 const states = (page: string, words: string) => assert.ok(page.includes(words), words);
