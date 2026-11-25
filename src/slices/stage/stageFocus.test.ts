@@ -84,11 +84,19 @@ async function mountStage({ terminals = TERMINALS, stage = {}, tools = ["Swarm",
   document.body.append(container);
   const root = createRoot(container);
   mounted = { root, container };
-  let app!: { open: (id: string) => void; close: (id: string) => void; vanish: (id: string) => void; show: (id: string | null) => void; project: (path: string) => void };
+  let app!: {
+    open: (id: string) => void;
+    close: (id: string) => void;
+    vanish: (id: string) => void;
+    show: (id: string | null) => void;
+    project: (path: string) => void;
+    overlay: (open: boolean) => void;
+  };
   const Harness = () => {
     const [openIds, setOpenIds] = useState(tools);
     const [frontId, setFrontId] = useState(front);
     const [activeProject, setActiveProject] = useState(PROJECT);
+    const [overlayOpen, setOverlayOpen] = useState(overlay);
     // A surface's tab shows with its terminal's project only, and a tool's with every one.
     const shownIds = openIds.filter((id) => id !== "Surface" || activeProject === PROJECT);
     const close = (id: string) => {
@@ -105,6 +113,7 @@ async function mountStage({ terminals = TERMINALS, stage = {}, tools = ["Swarm",
       vanish: (id) => setOpenIds((ids) => ids.filter((open) => open !== id)),
       show: setFrontId,
       project: setActiveProject,
+      overlay: setOverlayOpen,
     };
     return createElement(
       "div",
@@ -143,7 +152,7 @@ async function mountStage({ terminals = TERMINALS, stage = {}, tools = ["Swarm",
         ...stage,
       }),
       createElement("button", { type: "button" }, "Companion"),
-      overlay && createElement(EmptyOverlay),
+      overlayOpen && createElement(EmptyOverlay),
       // What is drawn over a tab's panel rather than in it, as the Praxis Builder is.
       createElement("div", { hidden: frontId !== "Builder" }, createElement("input", { "aria-label": "Node id" })),
     );
@@ -157,6 +166,7 @@ async function mountStage({ terminals = TERMINALS, stage = {}, tools = ["Swarm",
     vanish: (id: string) => act(async () => app.vanish(id)),
     show: (id: string | null) => act(async () => app.show(id)),
     project: (path: string) => act(async () => app.project(path)),
+    overlay: (open: boolean) => act(async () => app.overlay(open)),
   };
 }
 
@@ -397,6 +407,15 @@ test("a stage tab that closes beneath an open overlay leaves the focus to the ov
   assert.equal(focused(), "nothing");
   await close("Swarm");
   assert.equal(focused(), "nothing");
+});
+
+test("a stage tab that closed beneath an overlay takes the focus to the focused terminal once the overlay closes", async () => {
+  const { close, overlay } = await mountStage({ front: "Swarm", overlay: true });
+  await close("Swarm");
+  assert.equal(focused(), "nothing");
+  await overlay(false);
+  await settle();
+  assert.equal(focused(), "terminal a");
 });
 
 test("closing the stage tab in front of empty panes takes the focus to the current terminal's tab", async () => {
