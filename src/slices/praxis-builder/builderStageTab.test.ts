@@ -62,6 +62,16 @@ function fakeBackend() {
   });
 }
 
+/** The builder on the project, with the Inspector drawn into `inspectorSlot` when one is given. */
+const builderOn = (isOpen: boolean, inspectorSlot: HTMLElement | null = null) =>
+  createElement(PraxisBuilder, {
+    isOpen,
+    project: { path: PROJECT, name: "project" },
+    onClose: () => {},
+    onAddProject: () => {},
+    inspectorSlot,
+  });
+
 /** Shows the builder on the project, with the Inspector drawn into `inspectorSlot` when one is given. */
 async function showBuilder(inspectorSlot: HTMLElement | null = null): Promise<HTMLElement> {
   fakeBackend();
@@ -69,16 +79,12 @@ async function showBuilder(inspectorSlot: HTMLElement | null = null): Promise<HT
   document.body.appendChild(container);
   const root = createRoot(container);
   mounted = { root, container };
-  const builder = createElement(PraxisBuilder, {
-    isOpen: true,
-    project: { path: PROJECT, name: "project" },
-    onClose: () => {},
-    onAddProject: () => {},
-    inspectorSlot,
-  });
-  await act(async () => root.render(builder));
+  await act(async () => root.render(builderOn(true, inspectorSlot)));
   return container;
 }
+
+/** Hides the builder, as leaving or closing its stage tab does. */
+const hideBuilder = () => act(async () => mounted!.root.render(builderOn(false)));
 
 const definitions = (root: HTMLElement) => root.querySelector('nav[aria-label="Definitions"]') as HTMLElement;
 const graphRow = (root: HTMLElement) => {
@@ -149,6 +155,23 @@ test("the builder is drawn in its stage tab, not as an overlay: no modal dialog,
   );
   const builder = root.querySelector('[aria-label="Praxis Builder"]');
   assert.equal(builder?.tagName, "SECTION", "the builder is a region named Praxis Builder");
+});
+
+test("a builder that hides leaves the focus where the operator has taken it", async () => {
+  const opener = document.createElement("button");
+  const elsewhere = document.createElement("button");
+  document.body.append(opener, elsewhere);
+  try {
+    opener.focus();
+    const root = await showBuilder();
+    assert.equal(root.contains(document.activeElement), true, "the builder takes the focus as it shows");
+    elsewhere.focus();
+    await hideBuilder();
+    assert.equal(document.activeElement === elsewhere, true);
+  } finally {
+    opener.remove();
+    elsewhere.remove();
+  }
 });
 
 test("with no graph open, the inspector slot says what the Inspector will show", async () => {
