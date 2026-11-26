@@ -54,7 +54,7 @@ test("no stock element is ever drawn, whatever a surface holds", async () => {
   const custom: Element[] = [];
   const stock: Element[] = [];
   // Each tab's, as it is drawn
-  for (const tab of content.querySelectorAll<HTMLElement>("button[aria-pressed]")) {
+  for (const tab of content.querySelectorAll<HTMLElement>('[role="button"][aria-pressed]')) {
     await click(tab);
     custom.push(...[...document.querySelectorAll("*")].filter(({ localName }) => localName.includes("-")));
     stock.push(...content.querySelectorAll('[class*="a2ui-"], [class*="material-"], style, link, script'));

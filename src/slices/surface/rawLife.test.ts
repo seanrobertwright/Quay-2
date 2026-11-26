@@ -15,6 +15,7 @@ const { earlierButton, findButton, lockedLine, mountCompanion, openLocked, TERMI
 const { line, strip, opened } = await import("./fixtures/boardFixtures.ts");
 const { frame, mountStage, openTab, tab, tabs } = await import("./fixtures/reviewFixtures.ts");
 const { formatClock } = await import("../../lib/dates.ts");
+const { tabOf } = await import("./fixtures/catalogFixtures.ts");
 
 const MINUTE = 60_000;
 const SENT_AT = Date.UTC(2026, 10, 24, 19, 42, 5);
@@ -123,7 +124,7 @@ test("an update that takes away the tab the operator picked draws the first one,
     const record = await acceptedRaw([create(withButton(parts(["a", "b", "c"], [])))]);
     list = [record];
     const container = await openSurfaces();
-    await act(async () => findButton(content(container), pick)!.click());
+    await act(async () => tabOf(content(container), pick).click());
     const { createSurface } = (await acceptedRaw([create(withButton(parts(["a", "b"], ["c"])))])).state;
     await arrivesAndIsDrawn(changed(record, { revision: 2, state: { version: "1.0", createSurface } }));
     assert.deepEqual(pressed(container), [drawn]);

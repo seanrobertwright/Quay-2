@@ -15,6 +15,7 @@ import { acceptedRaw, button, column, create, EVENT, oneButton, text, type Compo
 const { earlierButton, findButton, mountCompanion, openLocked, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 const { line, lines, strip, opened } = await import("./fixtures/boardFixtures.ts");
 const { frame, mountStage, openTab, tabs } = await import("./fixtures/reviewFixtures.ts");
+const { tabOf } = await import("./fixtures/catalogFixtures.ts");
 
 const MINUTE = 60_000;
 
@@ -55,6 +56,13 @@ const content = (container: HTMLElement) => region(container).querySelector<HTML
 const view = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-companion-view]")?.dataset.companionView;
 
 const FIELD: Component = { id: "name", component: "TextField", label: "Name", value: { "@path": "/name" } };
+
+/**
+ * Whether `element` is disabled as a browser has it: a native form control is also disabled by a disabled
+ * fieldset around it, which happy-dom does not apply.
+ */
+const isDisabled = (element: Element) =>
+  element.matches(":disabled") || (element.matches("button, input, select, textarea") && element.closest("fieldset[disabled]") !== null);
 
 test("a raw companion surface is drawn in its frame, its title the content's first line and as it was written", async () => {
   list = [await acceptedRaw([create(column(text("said", "Hello *there*")))], { title: "A <b>plan</b> *x*" })];
@@ -221,6 +229,37 @@ test("an answered raw surface keeps the answer, and folds what was asked with no
   await act(async () => findButton(region(container), "Press page")!.click());
   await settle();
   assert.equal(called("plugin:opener|open_url").length + called("surface_answer").length, 0);
+});
+
+test("a locked raw surface's tabs still switch, so what each held can be read, and nothing in them can be put in or sent", async () => {
+  const [go, label] = button("go", EVENT);
+  const tabs: Component = { id: "tabs", component: "Tabs", tabs: [{ title: "Tab a", child: "a" }, { title: "Tab b", child: "b" }] };
+  const inB: Component = { id: "b", component: "Column", children: ["name", "go"] };
+  const record = await acceptedRaw([create([{ id: "root", component: "Column", children: ["tabs"] }, tabs, text("a", "In a"), inB, FIELD, go, label], { dataModel: { name: "" } })], {
+    ended_at: 1,
+  });
+  list = [record];
+  const container = await open();
+  await act(async () => viewEntry(container, "Surface")!.click());
+  await openLocked(container, "plan");
+  await act(async () => findButton(region(container), "What was shown")!.click());
+  await until(() => region(container).textContent!.includes("In a"), "what was shown is gone");
+  const tab = (name: string) => tabOf(region(container), name);
+  assert.equal(isDisabled(tab("Tab b")), false);
+
+  await act(async () => tab("Tab b").click());
+  const said = content(container).textContent!;
+  assert.deepEqual([said.includes("In a"), said.includes("Press go"), tab("Tab b").getAttribute("aria-pressed")], [false, true, "true"]);
+  await act(async () => void tab("Tab a").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  assert.ok(content(container).textContent!.includes("In a"), "a tab is picked by the keyboard too");
+
+  await act(async () => tab("Tab b").click());
+  const field = content(container).querySelector("input")!;
+  const press = findButton(region(container), "Press go")!;
+  assert.deepEqual([isDisabled(field), isDisabled(press)], [true, true]);
+  await act(async () => press.click());
+  await settle();
+  assert.equal(called("surface_answer").length, 0);
 });
 
 test("a raw surface that ended keeps what was typed in it, by the field's label", async () => {
