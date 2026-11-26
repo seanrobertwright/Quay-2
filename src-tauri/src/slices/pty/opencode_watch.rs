@@ -229,7 +229,7 @@ async fn get(port: u16, path: &str) -> Result<hyper::Response<Incoming>, String>
 }
 
 /// Reads one JSON document from OpenCode's server.
-async fn get_json(port: u16, path: &str) -> Result<Value, String> {
+pub(super) async fn get_json(port: u16, path: &str) -> Result<Value, String> {
     let read = async {
         let body = get(port, path).await?.into_body().collect().await.map_err(|e| e.to_string())?;
         serde_json::from_slice(&body.to_bytes()).map_err(|e| e.to_string())
