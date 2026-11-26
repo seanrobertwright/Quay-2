@@ -305,6 +305,19 @@ export const Topos: React.FC<ToposProps> = ({
     setInspectRequest((n) => n + 1);
   }, []);
   const focusGraph = useCallback(() => graphFocus.current?.(), []);
+  // A diff that closes with the focus in it hands the focus to the graph once the graph shows again,
+  // so it doesn't fall to the page as the diff unmounts (#792). Focus elsewhere stays where it is.
+  const diffSlot = useRef<HTMLDivElement | null>(null);
+  const [graphFocusAsks, setGraphFocusAsks] = useState(0);
+  useEffect(() => {
+    if (graphFocusAsks > 0) focusGraph();
+  }, [graphFocusAsks, focusGraph]);
+  const closeDiff = useCallback(() => {
+    const heldFocus = diffSlot.current?.contains(document.activeElement) === true;
+    setStagingFile(null);
+    setCommitFile(null);
+    if (heldFocus) setGraphFocusAsks((n) => n + 1);
+  }, []);
   const openCommitFile = useCallback(
     (file: CommitFile) => {
       const shown = details.shown;
@@ -683,38 +696,40 @@ export const Topos: React.FC<ToposProps> = ({
                       agentKinds={filterState?.agents ?? NO_AGENTS}
                     />
                   </div>
-                  {commitFile && (
-                    <CommitFileDiffView
-                      key={`${commitFile.oid}:${commitFile.against.kind}:${commitFile.against.oid ?? ""}:${commitFile.path}`}
-                      file={commitFile}
-                      reader={commitDiff}
-                      mode={prefs.diffMode}
-                      onMode={setDiffMode}
-                      onStep={commitFileIndex === -1 ? null : stepCommitFile}
-                      canStep={{
-                        previous: commitFileIndex > 0,
-                        next: stepFiles !== null && commitFileIndex !== -1 && commitFileIndex < stepFiles.length - 1,
-                      }}
-                      onBack={() => setCommitFile(null)}
-                      visible={diffOwnsEscape}
-                    />
-                  )}
-                  {openFile && (
-                    <FileDiffView
-                      key={`${openFile.side}:${openFile.path}`}
-                      worktreePath={target.path}
-                      file={openFile}
-                      reader={fileDiff}
-                      busy={staging.busy}
-                      mode={prefs.diffMode}
-                      onMode={setDiffMode}
-                      otherSideHasChanges={otherSideHasChanges}
-                      onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
-                      onBack={() => setOpenFile(null)}
-                      visible={diffOwnsEscape}
-                      announce={staging.announce}
-                    />
-                  )}
+                  <div ref={diffSlot} className="contents">
+                    {commitFile && (
+                      <CommitFileDiffView
+                        key={`${commitFile.oid}:${commitFile.against.kind}:${commitFile.against.oid ?? ""}:${commitFile.path}`}
+                        file={commitFile}
+                        reader={commitDiff}
+                        mode={prefs.diffMode}
+                        onMode={setDiffMode}
+                        onStep={commitFileIndex === -1 ? null : stepCommitFile}
+                        canStep={{
+                          previous: commitFileIndex > 0,
+                          next: stepFiles !== null && commitFileIndex !== -1 && commitFileIndex < stepFiles.length - 1,
+                        }}
+                        onBack={closeDiff}
+                        visible={diffOwnsEscape}
+                      />
+                    )}
+                    {openFile && (
+                      <FileDiffView
+                        key={`${openFile.side}:${openFile.path}`}
+                        worktreePath={target.path}
+                        file={openFile}
+                        reader={fileDiff}
+                        busy={staging.busy}
+                        mode={prefs.diffMode}
+                        onMode={setDiffMode}
+                        otherSideHasChanges={otherSideHasChanges}
+                        onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
+                        onBack={closeDiff}
+                        visible={diffOwnsEscape}
+                        announce={staging.announce}
+                      />
+                    )}
+                  </div>
                 </div>
                 {inspectorOpen && inspectorMode === "details" && graphRepo !== null && comparing && (
                   <div className="contents" inert={resolving !== null}>

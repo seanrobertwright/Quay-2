@@ -126,6 +126,8 @@ async function draw(): Promise<{ container: HTMLElement; review: HTMLElement }> 
 
 const lens = (container: HTMLElement) => container.querySelector('section[aria-label="Topos lens"]');
 const diff = (container: HTMLElement) => container.querySelector('[data-topos-layer] section[aria-label="Unstaged diff of src/turns.ts"]');
+/** The graph's commit list, where Topos's `focusGraph` puts the focus. */
+const graphList = (container: HTMLElement) => container.querySelector('[data-topos-layer] [role="listbox"][aria-label="Commits"]');
 const button = (within: Element, name: string) =>
   [...within.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name);
 
@@ -149,19 +151,22 @@ async function escape(): Promise<boolean> {
   return heard;
 }
 
-for (const [where, focus] of [
-  ["Topos, where the lens puts it", () => {}],
-  ["the diff view", (container: HTMLElement) => button(diff(container)!, "Back to graph")!.focus()],
-  ["the review's file link, under the lens", (_: HTMLElement, review: HTMLElement) => review.querySelector<HTMLElement>('[role="link"]')!.focus()],
+for (const [where, focus, toGraph] of [
+  ["Topos, where the lens puts it", () => {}, false],
+  ["the diff view", (container: HTMLElement) => button(diff(container)!, "Back to graph")!.focus(), true],
+  ["the review's file link, under the lens", (_: HTMLElement, review: HTMLElement) => review.querySelector<HTMLElement>('[role="link"]')!.focus(), false],
 ] as const) {
   test(`with the focus in ${where}, Escape closes the diff a review's file link opened, then the Topos lens, and Approve answers`, async () => {
     const { container, review } = await draw();
     await clickFileLink(container, review);
     await until(() => diff(container) !== null, "the diff view never opened");
     await act(async () => focus(container, review));
+    const focused = document.activeElement;
 
     assert.equal(await escape(), false, "the first Escape reached past the overlay stack");
     assert.deepEqual([diff(container) !== null, lens(container) !== null], [false, true], "the first Escape goes back to the graph");
+    if (toGraph) assert.equal(document.activeElement === graphList(container), true, "the focus left in the diff view goes to the graph");
+    else assert.equal(document.activeElement === focused, true, "the focus outside the diff view stays where it was");
     assert.equal(await escape(), false, "the second Escape reached past the overlay stack");
     assert.equal(lens(container) !== null, false, "the second Escape closes the lens");
     // The terminal is covered by the review's tab, so the focus goes back to the link that opened the lens
