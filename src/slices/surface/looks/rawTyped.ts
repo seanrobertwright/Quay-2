@@ -5,12 +5,15 @@ import type { TypedText } from "./typedText.ts";
 
 const isBinding = (value: unknown): value is { "@path": string } => isObject(value) && hasOwn(value, "@path") && typeof value["@path"] === "string";
 
+/** The absolute data path a binding written as `written` names at the root. */
+const absoluteOf = (written: string): string => `/${written.replace(/^\//, "")}`;
+
 /**
  * Whether a field bound to `written` may hold what is at `path`. A relative binding also holds it in each item
  * of a list the field is drawn for, at any depth: it is taken to, wherever an index comes before it.
  */
 function mayHold(written: string, path: string): boolean {
-  const absolute = `/${written.replace(/^\//, "")}`;
+  const absolute = absoluteOf(written);
   if (absolute === path) return true;
   if (written.startsWith("/") || !path.endsWith(absolute)) return false;
   return /\/\d+$/.test(path.slice(0, -absolute.length));
@@ -30,7 +33,7 @@ export function rawTypedIn(components: readonly SurfaceComponent[], unsent: Data
   return Object.entries(unsent).flatMap(([path, text]) => {
     if (typeof text !== "string" || text.trim() === "") return [];
     if (obscured.some((written) => mayHold(written, path))) return [];
-    const field = components.find(({ value }) => isBinding(value) && `/${value["@path"].replace(/^\//, "")}` === path);
+    const field = components.find(({ value }) => isBinding(value) && absoluteOf(value["@path"]) === path);
     return [{ part: path, question: typeof field?.label === "string" ? field.label : path, text }];
   });
 }
