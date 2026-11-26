@@ -28,7 +28,7 @@ export const DateTimeField = ({ label, type, value, min, max, note, onChange, re
         min={min || undefined}
         max={max || undefined}
         onChange={(e) => onChange(e.target.value)}
-        className={`${FIELD} max-w-64 scheme-dark`}
+        className={`${FIELD} scheme-dark`}
       />
     )}
   </LabelledField>
