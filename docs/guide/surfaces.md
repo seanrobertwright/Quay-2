@@ -59,7 +59,7 @@ The **×** in a surface's header dismisses it, as closing its stage tab does. An
 
 - **Companion:** when a question of the selected terminal arrives, the companion shows the **Surface** view. While the Activity or Run view shows a card you haven't decided, it stays there, and **Surface** on the view switch gets an amber dot. Once the last question settles, the companion returns to the view it showed before. Selecting a terminal with a question opens the Surface view, or Activity if a permission request waits too.
 - **Several questions:** the oldest is open and the others are lines with how long each has waited. Click a line to open it.
-- **Stage tab:** a review's tab pulses and never takes the stage by itself.
+- **Stage tab:** a review's tab shows its title and the terminal's name, pulses and never takes the stage by itself.
 - **Projects panel:** the terminal's row has a chip for each live surface, oldest first. Past three, the ones that ask come first, and those after the third fold into one chip, such as **+2**, which opens the first of them. An amber dot sits on the CLI's icon while one asks.
 - **Pane title:** a button such as **1 question for you** counts the terminal's asking surfaces, reviews included, and opens the oldest.
 - **Agents panel:** an asking surface is a row under **Waiting on you**. It counts on the **Agents** icon, and `Ctrl+Shift+B Q` finds its terminal.
@@ -73,8 +73,8 @@ The terminal keeps its own status beside all of these, so you still see that it 
 Quay draws a **frame** around every surface. What the agent wrote is clipped to the box inside it. A board's line is Quay's own, and opens the board in its frame.
 
 - **The header bar** shows an icon for the kind of surface, the CLI's icon, the terminal's name and the CLI's name. The dismiss and move controls are there.
-- **The line under the header** is Quay's: that the surface was answered, done, failed, ended, withdrawn or reopened, and when.
-- **The foot** shows where a link leads, in full, while the pointer or the focus is on it. It is also where Quay says why a click did nothing. A web link in the text has its host beside it as well.
+- **The line under the header** is Quay's: that the surface was answered, done, failed, ended, withdrawn or reopened, and when. On a locked surface it is tinted in the colour of how it ended, with the time at its right.
+- **The foot** shows where a link leads, in full, while the pointer or the focus is on it. It is also where Quay says why a click did nothing, or why your answer, a dismissal or a move was not taken. The **×** on that notice takes it away and leaves the surface as it was. A web link in the text has its host beside it as well.
 
 ---
 
@@ -106,7 +106,7 @@ Showing a surface runs nothing and makes no network request. All that Quay reads
 This is the same under **Skip Permissions** and **Interactive Approvals**. A surface can never run a command or prompt another terminal. All its buttons can send is your answer, to its own agent.
 
 - **Paths** are read relative to the terminal's working directory, or absolute. Quay refuses a network path before it touches it: `\\host\share`, a mapped network drive, or a symbolic link that leads to one.
-- **Images** are local PNG, JPEG, GIF or WebP files. Quay shows a small box in place of any other, with its description, the reason and its address.
+- **Images** are local PNG, JPEG, GIF or WebP files. Quay shows a dashed box with an image icon in place of any other, with its description, the reason and its address.
 
 ---
 

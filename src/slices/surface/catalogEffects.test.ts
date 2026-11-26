@@ -86,6 +86,19 @@ test("a Button whose address is no web address has none at the foot, opens nothi
   assert.deepEqual([opened(), notice()], [[], "Not opened: the link is not to a web address."]);
 });
 
+test("why a link was not opened closes with its ×, above the line of addresses, which stays", async () => {
+  const content = await drawTree(["a", "b"], [...calling("a", "openUrl", { url: "javascript:alert(1)" }), ...calling("b", "openUrl", { url: "https://a.example/" })]);
+  await click(buttonOf(content, "a"));
+  await settle();
+  const alert = document.querySelector('[role="alert"]')!;
+  assert.equal(alert.nextElementSibling?.hasAttribute("data-surface-foot"), true, "the addresses are below it");
+  await click(alert.querySelector<HTMLElement>('button[aria-label="Dismiss this notice"]')!);
+  assert.equal(notice(), null);
+  assert.equal(document.activeElement, document.querySelector("section[data-surface]"));
+  assert.equal(foot(), "");
+  assert.deepEqual(opened(), []);
+});
+
 test("an effect written inside another's argument never runs, so the click opens the address that was shown", async () => {
   await quietly(async () => {
     const evil = "${openUrl(url: 'https://evil.example/')}";

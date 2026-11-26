@@ -10,6 +10,8 @@ interface ButtonProps extends Pointed {
   /** Primary, the green one, is for the main action; the grey secondary for every other; borderless reads as a link. */
   variant?: keyof typeof VARIANT;
   disabled?: boolean;
+  /** Keeps it as wide as its label where what holds it would stretch it, as a Column does. */
+  ownWidth?: boolean;
   onClick: () => void;
   /** What the button says. */
   children: ReactNode;
@@ -20,8 +22,8 @@ interface ButtonProps extends Pointed {
 const FITS = "h-auto! min-h-7 max-w-full wrap-anywhere";
 
 /** A plain button. It submits no form. A destructive choice has no variant here; it is a card's alone. */
-export const Button = ({ variant = "secondary", disabled = false, onClick, children, ref, ...pointed }: ButtonProps) => (
-  <button ref={ref} type="button" disabled={disabled} onClick={onClick} className={`${VARIANT[variant]} ${FITS}`} {...pointed}>
+export const Button = ({ variant = "secondary", disabled = false, ownWidth = false, onClick, children, ref, ...pointed }: ButtonProps) => (
+  <button ref={ref} type="button" disabled={disabled} onClick={onClick} className={`${VARIANT[variant]} ${FITS}${ownWidth ? " w-fit" : ""}`} {...pointed}>
     {children}
   </button>
 );

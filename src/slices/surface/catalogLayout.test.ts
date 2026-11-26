@@ -49,6 +49,28 @@ test("a Row and a Column arrange their children as their justify and align say",
   }
 });
 
+test("a Button in a Column that stretches what it holds is as wide as its label, not as the Column, and a weighted one fills its share", async () => {
+  const content = await drawTree(
+    ["go", "other", "row"],
+    [
+      { id: "row", component: "Row", children: ["shared"] },
+      { id: "shared", component: "Button", child: "shared_label", action: { event: { name: "shared" } }, weight: 1 },
+      text("shared_label", "Shared"),
+      { id: "go", component: "Button", variant: "primary", child: "go_label", action: { event: { name: "go" } } },
+      text("go_label", "Go"),
+      { id: "other", component: "Button", child: "other_label", action: { event: { name: "other" } } },
+      text("other_label", "Other"),
+    ],
+  );
+  assert.ok(classes(around(content, "Go", "flex-col")).includes("items-stretch"), "the Column stretches what it holds");
+  const buttons = [...content.querySelectorAll("button")].map((button) => [button.textContent, classes(button).includes("w-fit")]);
+  assert.deepEqual(buttons, [
+    ["Go", true],
+    ["Other", true],
+    ["Shared", false],
+  ]);
+});
+
 test("a weight is how much of a Row's or Column's room a component takes, whatever it is", async () => {
   const content = await drawTree(
     ["row"],
