@@ -31,16 +31,30 @@ pub fn sweep_at_startup() {
 /// Removes each file in `dir` whose name starts with `quay-relay.exe.old`. Folders and links stay.
 /// So does a file that can't be deleted, such as a relay that is still running, with a log line:
 /// Windows refuses both a running relay and a file the operator may not delete with the same error.
-/// Fails if `dir` or one of its entries can't be read.
+/// Fails if `dir` can't be read. An entry that can't be read is logged and skipped, so the old
+/// relays after it are still removed.
 fn remove_relay_leftovers(dir: &Path) -> io::Result<()> {
     let prefix = format!("{RELAY_NAME}.exe.old");
     for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if name.to_string_lossy().starts_with(&prefix) && entry.file_type()?.is_file() {
-            if let Err(e) = std::fs::remove_file(entry.path()) {
-                tracing::info!("The old relay {} stays until Quay next starts: {e}", name.to_string_lossy());
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                tracing::warn!("Could not read an entry beside Quay while looking for old relays: {e}");
+                continue;
             }
+        };
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with(&prefix) {
+            continue;
+        }
+        match entry.file_type() {
+            Ok(kind) if kind.is_file() => {
+                if let Err(e) = std::fs::remove_file(entry.path()) {
+                    tracing::info!("The old relay {} stays until Quay next starts: {e}", name.to_string_lossy());
+                }
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("Could not tell what {} is, so it stays: {e}", name.to_string_lossy()),
         }
     }
     Ok(())
