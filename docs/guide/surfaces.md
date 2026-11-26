@@ -123,7 +123,7 @@ This is the same under **Skip Permissions** and **Interactive Approvals**. A sur
 
 Locked surfaces fold under **Earlier**: beneath the questions in the Surface view, and in a menu on the stage tab bar once you leave their tabs. The fold in the Surface view has **Dismiss all**.
 
-What you type and haven't sent is kept while you switch terminals, move a raw surface or reload the window. On a surface that ended or was withdrawn, the text you typed stays, with **Copy**. None of this is written to disk.
+What you type and haven't sent is kept while you switch terminals, move a raw surface or reload the window. On a surface that ended or was withdrawn, the text you typed stays, with **Copy**, except what you typed in a field that hides its text. None of this is written to disk.
 
 ### Limits
 
