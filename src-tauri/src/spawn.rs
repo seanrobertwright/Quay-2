@@ -3,7 +3,8 @@
 //! console window of its own that flashes up and closes. Every spawn goes through
 //! [`hidden_command`]; a test below fails if a `Command::new` appears anywhere else.
 //! [`spawn_tree`] starts a child that [`ProcessTree::kill`] can stop along with everything it
-//! started, for Machina's deadlines and Topos's Cancel.
+//! started, for Machina's deadlines and Topos's Cancel. [`spawn_tree_tied`] starts one that also
+//! ends when Quay does, for a helper that must not outlive it.
 
 use std::ffi::OsStr;
 use std::process::{Child, Command, Stdio};
@@ -36,6 +37,17 @@ pub struct ProcessTree {
 
 /// Spawns `cmd`, which should come from [`hidden_command`], as the root of a [`ProcessTree`].
 pub fn spawn_tree(cmd: &mut Command) -> std::io::Result<ProcessTree> {
+    spawn_tree_with(cmd, false)
+}
+
+/// [`spawn_tree`], for a tree that must not outlive Quay. On Windows its job kills it when the
+/// last handle to the job closes, which Quay exiting or crashing does, as dropping the
+/// [`ProcessTree`] unkilled also does. Elsewhere it is [`spawn_tree`].
+pub fn spawn_tree_tied(cmd: &mut Command) -> std::io::Result<ProcessTree> {
+    spawn_tree_with(cmd, true)
+}
+
+fn spawn_tree_with(cmd: &mut Command, tied: bool) -> std::io::Result<ProcessTree> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -43,7 +55,9 @@ pub fn spawn_tree(cmd: &mut Command) -> std::io::Result<ProcessTree> {
         cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
         let mut child = cmd.spawn()?;
         // Without a job, Cancel falls back to `taskkill /T`, which still reaches most trees.
-        let job = windows::Job::new().filter(|job| job.assign(&child));
+        let job = windows::Job::new()
+            .filter(|job| !tied || job.kill_on_close())
+            .filter(|job| job.assign(&child));
         if let Err(e) = windows::resume(&child) {
             let _ = child.kill();
             let _ = child.wait();
@@ -54,6 +68,7 @@ pub fn spawn_tree(cmd: &mut Command) -> std::io::Result<ProcessTree> {
     #[cfg(not(windows))]
     {
         use std::os::unix::process::CommandExt;
+        let _ = tied;
         cmd.process_group(0);
         Ok(ProcessTree { child: cmd.spawn()? })
     }
@@ -145,6 +160,7 @@ mod windows {
         fn AssignProcessToJobObject(job: Handle, process: Handle) -> i32;
         fn TerminateJobObject(job: Handle, exit_code: u32) -> i32;
         fn QueryInformationJobObject(job: Handle, class: i32, info: *mut c_void, length: u32, returned: *mut u32) -> i32;
+        fn SetInformationJobObject(job: Handle, class: i32, info: *const c_void, length: u32) -> i32;
         fn CloseHandle(handle: Handle) -> i32;
         fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
         fn Thread32First(snapshot: Handle, entry: *mut ThreadEntry32) -> i32;
@@ -154,6 +170,29 @@ mod windows {
     }
 
     const JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION: i32 = 1;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+
+    /// `JOBOBJECT_EXTENDED_LIMIT_INFORMATION`, with its `JOBOBJECT_BASIC_LIMIT_INFORMATION` and
+    /// `IO_COUNTERS` laid out in place.
+    #[repr(C)]
+    #[derive(Default)]
+    struct JobLimits {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+        io_counters: [u64; 6],
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
 
     /// `JOBOBJECT_BASIC_ACCOUNTING_INFORMATION`.
     #[repr(C)]
@@ -181,6 +220,20 @@ mod windows {
             // SAFETY: null attributes and name ask for a default, unnamed job.
             let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
             (!handle.is_null()).then_some(Job(handle))
+        }
+
+        /// Has the job kill its processes when its last handle closes. Returns whether it took.
+        pub fn kill_on_close(&self) -> bool {
+            let limits = JobLimits { limit_flags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, ..Default::default() };
+            // SAFETY: the job handle is open until drop, and `limits` is the struct this class reads.
+            unsafe {
+                SetInformationJobObject(
+                    self.0,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    (&limits as *const JobLimits).cast(),
+                    std::mem::size_of::<JobLimits>() as u32,
+                ) != 0
+            }
         }
 
         /// Puts `child` in the job. Everything it starts from then on joins the job too.
@@ -272,6 +325,23 @@ mod tests {
                 out.push(path);
             }
         }
+    }
+
+    /// A tied tree whose handle is dropped unkilled, as when Quay exits, ends with it: the grandchild
+    /// holding the pipe dies too, so the pipe reaches its end.
+    #[cfg(windows)]
+    #[test]
+    fn a_tied_tree_ends_when_its_handle_is_dropped() {
+        use std::io::Read;
+        let mut cmd = super::hidden_command("cmd.exe");
+        cmd.args(["/c", "ping -n 30 127.0.0.1"]).stdout(std::process::Stdio::piped());
+        let mut tree = super::spawn_tree_tied(&mut cmd).unwrap();
+        let mut out = tree.child().stdout.take().unwrap();
+        let started = std::time::Instant::now();
+        drop(tree);
+        let mut rest = Vec::new();
+        let _ = out.read_to_end(&mut rest);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "the tree outlived its handle");
     }
 
     #[test]
