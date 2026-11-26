@@ -31,21 +31,21 @@ export interface FileRequestState {
  */
 export function useFileRequest({ ready, request, conflicts, resolving, openDiff, openResolver, announce }: FileRequestState): void {
   const handled = useRef(0);
-  const told = useRef(0);
+  const toldSeq = useRef(0);
   useEffect(() => {
     if (!ready || request === null || request.seq === handled.current) return;
     const { path, side, seq } = request;
-    const waitForResolver = () => {
-      if (told.current === seq) return;
-      told.current = seq;
+    const tellWaiting = () => {
+      if (toldSeq.current === seq) return;
+      toldSeq.current = seq;
       announce(`Close the conflict resolver on ${resolving} to open ${path}.`);
     };
     if (side === "conflicted") {
       if (!conflicts.includes(path)) return;
-      if (resolving !== null && resolving !== path) return waitForResolver();
+      if (resolving !== null && resolving !== path) return tellWaiting();
       if (resolving === null) openResolver(path);
     } else {
-      if (resolving !== null) return waitForResolver();
+      if (resolving !== null) return tellWaiting();
       openDiff({ path, side });
     }
     handled.current = seq;
