@@ -240,6 +240,44 @@ test("a review whose tab could not be closed says why, and stays", async () => {
   assert.equal(tabs(container).length, 1);
 });
 
+/** The button that closes the notice in the frame in front, if there is one. */
+const noticeCloser = (container: HTMLElement) => frame(container)?.querySelector<HTMLButtonElement>('[role="alert"] button[aria-label="Dismiss this notice"]') ?? null;
+const alertsIn = (container: HTMLElement) => [...frame(container)!.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+
+test("a notice of why the review was not dismissed closes with its ×, gives the focus to the frame and keeps what was typed", async () => {
+  onDismiss = () => Promise.reject("Not dismissed: its answer is being sent.");
+  const container = await load([await acceptedReview("review_1")]);
+  await openTab(container);
+  await typeInto(comment(container), "Keep the second one");
+  await click(frame(container)!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss this review"]'));
+  assert.deepEqual(alertsIn(container), ["Not dismissed: its answer is being sent."]);
+
+  await click(noticeCloser(container));
+  assert.deepEqual(alertsIn(container), []);
+  assert.equal(document.activeElement, frame(container), "the focus goes to the frame");
+  assert.equal(comment(container).value, "Keep the second one");
+  assert.equal(tabs(container).length, 1);
+
+  await click(frame(container)!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss this review"]'));
+  assert.deepEqual(alertsIn(container), ["Not dismissed: its answer is being sent."], "a later refusal is told again");
+});
+
+test("a notice of why a tab could not be closed closes with its ×, and only that review's", async () => {
+  onDismiss = () => Promise.reject("Not dismissed: its answer is being sent.");
+  const container = await load([await acceptedReview("review_1"), await acceptedReview("review_2", { ...REVIEW, title: "Findings" }, "t1", 2)]);
+  for (const title of [REVIEW.title, "Findings"]) {
+    await openTab(container, title);
+    await click(closer(tab(container, title)!));
+  }
+  assert.deepEqual(alertsIn(container), ["Not dismissed: its answer is being sent."]);
+  await click(noticeCloser(container));
+  assert.deepEqual(alertsIn(container), []);
+  assert.equal(document.activeElement, frame(container));
+  assert.equal(tabs(container).length, 2);
+  await openTab(container, REVIEW.title);
+  assert.deepEqual(alertsIn(container), ["Not dismissed: its answer is being sent."], "the other review's notice stays");
+});
+
 test("why a tab could not be closed is no longer said once its review is decided", async () => {
   onDismiss = () => Promise.reject("Not dismissed: its answer is being sent.");
   const record = await acceptedReview("review_1");
@@ -380,7 +418,8 @@ test("each verdict has a band, an icon and a colour of its own", async () => {
     assert.equal(band(container), words);
     const line = frame(container)!.querySelector('[role="status"]')!;
     looks.add(line.querySelector("svg")!.getAttribute("class")!);
-    looks.add(line.className);
+    // The band is in the verdict's colour
+    looks.add(line.parentElement!.className);
   }
   assert.equal(looks.size, 6);
 });

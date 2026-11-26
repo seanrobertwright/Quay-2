@@ -22,10 +22,12 @@ interface LiveSurfaceProps {
   fills?: boolean;
   /** Why it was not dismissed from outside its frame. */
   notDismissed?: string | null;
+  /** Takes that away, at its notice's ×. */
+  onForgetNotDismissed?: () => void;
 }
 
 /** A surface the operator can act on. */
-export const LiveSurface = ({ record, terminal, fills = false, notDismissed = null }: LiveSurfaceProps) => {
+export const LiveSurface = ({ record, terminal, fills = false, notDismissed = null, onForgetNotDismissed }: LiveSurfaceProps) => {
   const { kind, KindIcon, layout } = lookOf(record.tool);
   const [refusal, setRefusal] = useState<string | null>(null);
   // What is unsent in it comes with the list
@@ -49,7 +51,7 @@ export const LiveSurface = ({ record, terminal, fills = false, notDismissed = nu
     [record],
   );
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<ReopenedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} fills={fills}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<ReopenedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} onDismissRefusal={() => (refusal !== null ? setRefusal(null) : onForgetNotDismissed?.())} fills={fills}>
       <SurfaceTitle record={record} />
       <SurfaceBoundary revision={record.revision}>
         <Suspense fallback={<Loading />}>

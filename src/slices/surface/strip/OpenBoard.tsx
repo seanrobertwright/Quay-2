@@ -45,7 +45,7 @@ export const OpenBoard = ({ record, terminal }: OpenBoardProps) => {
   const dismiss = useDismiss(record, setRefusal);
   const band = isLive(record) ? undefined : <LockedBand record={record} />;
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal} onDismissRefusal={() => setRefusal(null)}>
       <div className="flex min-w-0 flex-col gap-2.5">
         <BoardHead record={record} />
         <SurfaceBoundary key={record.change}>

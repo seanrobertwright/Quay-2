@@ -23,6 +23,8 @@ interface SurfaceFrameProps {
   move?: Move | null;
   /** Why the operator's answer or dismissal was not taken, at the frame's foot. */
   refusal: string | null;
+  /** Takes the refusal away, at its ×. */
+  onDismissRefusal: () => void;
   /** Fills what it is in, so its header bar and foot stay in view while what it holds scrolls. */
   fills?: boolean;
   /** What the agent asked to show. */
@@ -47,7 +49,7 @@ const MoveButton = ({ move, moving, toTab }: Move) => {
  * What Quay draws around every agent surface: who is asking, in a bar of Quay's own, and a box that
  * the content cannot draw outside.
  */
-export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, move = null, refusal, fills = false, children }: SurfaceFrameProps) => (
+export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, move = null, refusal, onDismissRefusal, fills = false, children }: SurfaceFrameProps) => (
   <section
     aria-label={`${kind} from ${terminal.name}`}
     data-surface={id}
@@ -95,6 +97,6 @@ export const SurfaceFrame = ({ id, terminal, kind, KindIcon, band, dismiss, move
         </div>
       )}
     </SurfaceLinksProvider>
-    {refusal && <FrameNotice>{refusal}</FrameNotice>}
+    {refusal && <FrameNotice onDismiss={onDismissRefusal}>{refusal}</FrameNotice>}
   </section>
 );

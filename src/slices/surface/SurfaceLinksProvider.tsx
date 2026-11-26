@@ -57,7 +57,7 @@ export const SurfaceLinksProvider = ({ terminalId, id, children }: SurfaceLinksP
   return (
     <LinksContext.Provider value={links}>
       {children}
-      {notice !== null && <FrameNotice>{notice}</FrameNotice>}
+      {notice !== null && <FrameNotice onDismiss={() => setNotice(null)}>{notice}</FrameNotice>}
       {count > 0 && (
         <p
           id={footId}

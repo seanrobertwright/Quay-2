@@ -37,10 +37,12 @@ interface LockedSurfaceProps {
   fills?: boolean;
   /** Why it was not dismissed from outside its frame. */
   notDismissed?: string | null;
+  /** Takes that away, at its notice's ×. */
+  onForgetNotDismissed?: () => void;
 }
 
 /** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
-export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null }: LockedSurfaceProps) => {
+export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null, onForgetNotDismissed }: LockedSurfaceProps) => {
   const { kind, KindIcon, titled, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
   const { components } = record.state.createSurface;
   const unanswered = isUnanswered(record);
@@ -51,7 +53,7 @@ export const LockedSurface = ({ record, terminal, fills = false, notDismissed = 
   const read = useSurfacesRead();
   const texts = unanswered && read ? typedIn(components, unsentIn(record)) : [];
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} fills={fills}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} onDismissRefusal={() => (refusal !== null ? setRefusal(null) : onForgetNotDismissed?.())} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
           {(unanswered || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}
