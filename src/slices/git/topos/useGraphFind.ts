@@ -116,6 +116,12 @@ export interface FindControllerOptions {
   rowCount: number;
   /** Whether Topos shows; hiding it clears the find, which is never kept (#369). */
   visible: boolean;
+  /**
+   * Whether the open find is on the overlay stack, so that Escape clears it: while Topos shows wide,
+   * or shows and has focus. Escape in a terminal beside the companion stays the terminal's, and a
+   * terminal can take the focus back while the find stays open.
+   */
+  ownsEscape: boolean;
   /** The selected row, or null for none: where a step starts and what the counter counts from. */
   cursorRow: number | null;
   /** Selects `row` and scrolls it into view; a step lands there. */
@@ -151,14 +157,15 @@ export interface FindController {
 
 /**
  * The find over the commit list (#399). Its text lives only in this hook's state, so it is never
- * written anywhere. Ctrl+F opens it, F3 and Enter step, and Escape joins the overlay stack, so it
- * clears the find before Topos closes.
+ * written anywhere. Ctrl+F opens it, F3 and Enter step, and while Topos shows wide or has focus the
+ * open find joins the overlay stack, so Escape clears it before Topos closes.
  */
 export function useFindController({
   store,
   badges,
   rowCount,
   visible,
+  ownsEscape,
   cursorRow,
   selectRow,
   refocus,
@@ -232,7 +239,7 @@ export function useFindController({
   useEffect(() => {
     if (!visible) close(false);
   }, [visible, close]);
-  usePopupLayer(open, () => close(true), barRef);
+  usePopupLayer(open && ownsEscape, () => close(true), barRef);
 
   // A step asked for before the typed text's matches arrived runs once they have.
   const pendingStep = useRef<1 | -1 | null>(null);

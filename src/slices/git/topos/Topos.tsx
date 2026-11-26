@@ -134,10 +134,10 @@ export const Topos: React.FC<ToposProps> = ({
   useEffect(() => {
     if (isOpen && focusKey > 0) panel.current?.focus({ preventScroll: true });
   }, [isOpen, focusKey]);
-  // An open diff's Escape takes it back to the graph only while Topos is wide or has focus, so
-  // Escape in a terminal beside the companion stays the terminal's.
+  // An open diff's Escape takes it back to the graph, and an open find's clears it, only while Topos
+  // is wide or has focus, so Escape in a terminal beside the companion stays the terminal's.
   const [focusWithin, setFocusWithin] = useState(false);
-  const diffOwnsEscape = isOpen && (wide || focusWithin);
+  const ownsEscape = isOpen && (wide || focusWithin);
 
   // Retarget each time Topos is shown; while hidden it keeps the target it last showed.
   const [target, setTarget] = useState<ToposTarget | null>(project);
@@ -690,6 +690,7 @@ export const Topos: React.FC<ToposProps> = ({
                       onInspect={inspect}
                       focusRef={graphFocus}
                       visible={isOpen}
+                      ownsEscape={ownsEscape}
                       findKeysRef={findKeys}
                       repoPath={graphRepo}
                       refSet={refSet ?? DEFAULT_REF_SET}
@@ -710,7 +711,7 @@ export const Topos: React.FC<ToposProps> = ({
                           next: stepFiles !== null && commitFileIndex !== -1 && commitFileIndex < stepFiles.length - 1,
                         }}
                         onBack={closeDiff}
-                        visible={diffOwnsEscape}
+                        visible={ownsEscape}
                       />
                     )}
                     {openFile && (
@@ -725,7 +726,7 @@ export const Topos: React.FC<ToposProps> = ({
                         otherSideHasChanges={otherSideHasChanges}
                         onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
                         onBack={closeDiff}
-                        visible={diffOwnsEscape}
+                        visible={ownsEscape}
                         announce={staging.announce}
                       />
                     )}
