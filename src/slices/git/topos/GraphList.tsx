@@ -90,6 +90,8 @@ export interface GraphListProps {
   focusRef?: React.MutableRefObject<(() => void) | null>;
   /** Whether Topos shows; hiding it clears the find, which is never kept (#369, #399). */
   visible: boolean;
+  /** Whether the open find's Escape clears it: while Topos shows wide, or shows and has focus. */
+  ownsEscape: boolean;
   /**
    * Set to the find's key handler (#399), which Topos calls for keys anywhere in it: Ctrl+F opens
    * the find, F3 and Shift+F3 step, and Enter and Shift+Enter step from its field. It returns
@@ -531,6 +533,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   onInspect,
   focusRef,
   visible,
+  ownsEscape,
   findKeysRef,
   repoPath,
   refSet,
@@ -765,6 +768,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     badges: refs.badges,
     rowCount,
     visible,
+    ownsEscape,
     cursorRow,
     selectRow: selectFound,
     refocus: refocusList,

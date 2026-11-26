@@ -134,8 +134,8 @@ export const Topos: React.FC<ToposProps> = ({
   useEffect(() => {
     if (isOpen && focusKey > 0) panel.current?.focus({ preventScroll: true });
   }, [isOpen, focusKey]);
-  // An open diff's Escape takes it back to the graph only while Topos is wide or has focus, so
-  // Escape in a terminal beside the companion stays the terminal's.
+  // An open diff's Escape takes it back to the graph, and an open find's clears it, only while Topos
+  // is wide or has focus, so Escape in a terminal beside the companion stays the terminal's.
   const [focusWithin, setFocusWithin] = useState(false);
   const diffOwnsEscape = isOpen && (wide || focusWithin);
 
@@ -690,6 +690,7 @@ export const Topos: React.FC<ToposProps> = ({
                       onInspect={inspect}
                       focusRef={graphFocus}
                       visible={isOpen}
+                      ownsEscape={diffOwnsEscape}
                       findKeysRef={findKeys}
                       repoPath={graphRepo}
                       refSet={refSet ?? DEFAULT_REF_SET}

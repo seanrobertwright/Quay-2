@@ -31,7 +31,12 @@ export const Lens = ({ label, title, terminalId, onClose, replyStrip, children }
   const [opener] = useState(() => document.activeElement);
   const close = () => {
     onClose();
-    if (!canFocusTerminal(terminalId) && canTakeFocus(opener)) opener.focus({ preventScroll: true });
+    if (canFocusTerminal(terminalId)) {
+      // What the lens shows can outlast it, as Topos does in the companion. Focus left in it would
+      // keep the terminal from taking it, as from a field outside its pane.
+      blurWithin(frame.current);
+      focusTerminal(terminalId);
+    } else if (canTakeFocus(opener)) opener.focus({ preventScroll: true });
     else focusTerminal(terminalId);
   };
   // On the overlay stack, so Escape closes the lens from wherever focus is, and a modal opened
@@ -60,6 +65,21 @@ export const Lens = ({ label, title, terminalId, onClose, replyStrip, children }
     </section>
   );
 };
+
+const OVER_LENS = "data-over-lens";
+
+/**
+ * Marks what is drawn over a lens from outside its frame, as Topos is from its own layer. Closing the
+ * lens takes the focus out of it as out of the frame.
+ */
+export const OVER_LENS_MARK = { [OVER_LENS]: true };
+
+/** Takes the focus off what has it when that is in `frame` or in something marked as drawn over a lens. */
+function blurWithin(frame: HTMLElement | null): void {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return;
+  if (frame?.contains(active) || active.closest(`[${OVER_LENS}]`) !== null) active.blur();
+}
 
 /** Whether `element` is on the page and neither hidden nor inert, so that it can take the focus. */
 function canTakeFocus(element: Element | null): element is HTMLElement {

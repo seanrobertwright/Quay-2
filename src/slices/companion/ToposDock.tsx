@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { SlotLayer } from "../stage/SlotLayer.tsx";
-import { Lens } from "../lens/Lens.tsx";
+import { Lens, OVER_LENS_MARK } from "../lens/Lens.tsx";
 import { focusTerminal } from "../terminal/terminalRequests.ts";
 
 /** Topos as the companion sees it: where its view draws Topos, and the view's Wide toggle. */
@@ -84,7 +84,7 @@ export const ToposLayer = ({ dock, children }: { dock: ToposDock; children: Reac
   <SlotLayer
     slot={dock.slot}
     layerClass={`${dock.placement === "lens" ? "z-30" : "z-10"} flex flex-col`}
-    data={{ "data-topos-layer": true, "data-placement": dock.placement ?? undefined }}
+    data={{ "data-topos-layer": true, "data-placement": dock.placement ?? undefined, ...(dock.placement === "lens" ? OVER_LENS_MARK : {}) }}
   >
     {children}
   </SlotLayer>
