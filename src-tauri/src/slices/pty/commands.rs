@@ -34,7 +34,12 @@ pub async fn spawn_terminal(
     let port = bridge_state.port();
     let token = bridge_state.token_for(&terminal_id);
 
-    pty_manager.spawn(request, workspace_env, port, token, app_handle)
+    // Off the async runtime: an OpenCode launch probes OpenCode's version, and a 2.x one waits
+    // for its server
+    let pty_manager = pty_manager.inner().clone();
+    tokio::task::spawn_blocking(move || pty_manager.spawn(request, workspace_env, port, token, app_handle))
+        .await
+        .map_err(|e| format!("Quay couldn't open the terminal: {}", e))?
 }
 
 #[tauri::command]
@@ -157,6 +162,12 @@ pub async fn relaunch_terminal(
     // The pane's fitted size; a zero dimension falls back to the session default.
     let rows = rows.filter(|&n| n > 0);
     let cols = cols.filter(|&n| n > 0);
-    pty_manager.relaunch(&terminal_id, rows, cols, port, token, workspace_env, app_handle)
+    // Off the async runtime, as `spawn_terminal` is
+    let pty_manager = pty_manager.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        pty_manager.relaunch(&terminal_id, rows, cols, port, token, workspace_env, app_handle)
+    })
+    .await
+    .map_err(|e| format!("Quay couldn't relaunch the terminal: {}", e))?
 }
 

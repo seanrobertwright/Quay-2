@@ -11,6 +11,7 @@ use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
 use super::{commit_stamp, jsonc, opencode_permission};
+use super::opencode_serve::{self, OpenCodeForm, Sidecar};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::plugin_watch::LaunchRef;
 use super::screen::{self, ScreenKeeper};
@@ -57,6 +58,9 @@ pub struct PtySession {
     current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
     screen: Arc<ScreenKeeper>,
+    /// An OpenCode 2.x terminal's `opencode serve`, which ends when the session drops or its
+    /// process exits.
+    _sidecar: Option<Sidecar>,
 }
 
 /// Quay's MCP server as `launch`'s CLI is pointed at it. The launch in it is how a handshake is
@@ -341,6 +345,27 @@ fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Pat
         .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
 }
 
+/// How long `opencode --version` may take before an OpenCode terminal is launched as 2.x.
+const VERSION_PATIENCE: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// How long an OpenCode 2.x terminal's server may take to be ready. A cold start of OpenCode
+/// can take some seconds on a busy machine.
+const SIDECAR_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How the OpenCode `request`'s terminal would start is to be launched, by what its
+/// `--version` prints (see `opencode_serve::form_of`). The probe runs the program the terminal
+/// would, with the request's variables, and blocks for at most `VERSION_PATIENCE`: call it on a
+/// thread that may block, holding no lock.
+pub(crate) fn opencode_form(request: &SpawnTerminalRequest) -> OpenCodeForm {
+    let program = opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
+    let mut cmd = crate::spawn::hidden_command(program);
+    cmd.arg("--version");
+    if let Some(envs) = &request.env_vars {
+        cmd.envs(envs);
+    }
+    opencode_serve::form_of(opencode_serve::probe_version(cmd, VERSION_PATIENCE).as_deref())
+}
+
 /// The PiG executable's file name for this platform.
 fn pig_file_name() -> &'static str {
     #[cfg(windows)]
@@ -455,7 +480,7 @@ fn append_output(buffer: &mut (String, u64), text: &str, max_len: usize) -> u64 
 }
 
 /// The request's launch prompt, when it has one and its CLI takes one.
-fn launch_prompt(request: &SpawnTerminalRequest) -> Option<&str> {
+pub(super) fn launch_prompt(request: &SpawnTerminalRequest) -> Option<&str> {
     request
         .initial_prompt
         .as_deref()
@@ -837,8 +862,12 @@ impl PtySession {
     /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
     /// under this id (0 for a new terminal); output from this session is numbered above it,
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
-    /// `server_port` is the port an OpenCode terminal serves its events on (see
-    /// `build_command`). `on_first_output` runs once, on the reader thread, when the process
+    /// `server_port` is the port an OpenCode terminal's events are served on, and
+    /// `opencode_form` how an OpenCode terminal is launched (see `opencode_form`): for 2.x the
+    /// session starts the terminal's server as its sidecar, blocking until it is ready (see
+    /// `opencode_serve::Sidecar::start`), and attaches the PTY to it; when the server can't be
+    /// had, the PTY runs a message that says why. Other CLIs ignore both. `on_first_output` runs
+    /// once, on the reader thread, when the process
     /// first writes output. `on_osc7501`, when given, runs there with each OSC 7501 sequence
     /// the output carries, after `on_first_output`. `on_exit` runs once, on the exit watcher
     /// thread, with the exit code when the process ends, before `terminal-exited` is sent.
@@ -850,6 +879,7 @@ impl PtySession {
         bridge_port: u16,
         bridge_token: String,
         server_port: Option<u16>,
+        opencode_form: OpenCodeForm,
         app_handle: AppHandle,
         on_first_output: Box<dyn FnOnce() + Send>,
         on_osc7501: Option<Osc7501Hook>,
@@ -870,7 +900,23 @@ impl PtySession {
 
         let perm = request.run_kind.permission_mode(request.permission_mode);
 
-        let cmd = build_command(&request, &launch, bridge_port, &bridge_token, server_port);
+        // An OpenCode 2.x terminal's server is its sidecar. When the server can't be had, the
+        // pane says why. Should the PTY not start, the sidecar ends as `sidecar` drops.
+        let (cmd, sidecar) = match (request.run_kind, server_port, opencode_form) {
+            (RunKind::OpenCode, Some(port), OpenCodeForm::ServeAndAttach) => {
+                let (serve, attach) = build_serve_and_attach(&request, &launch, bridge_port, &bridge_token, port);
+                match Sidecar::start(serve, port, &mcp_url(bridge_port, &launch), SIDECAR_PATIENCE) {
+                    Ok(sidecar) => (attach, Some(sidecar)),
+                    Err(why) => {
+                        let mut c = message_command(&why);
+                        c.cwd(&request.project_path);
+                        (c, None)
+                    }
+                }
+            }
+            _ => (build_command(&request, &launch, bridge_port, &bridge_token, server_port), None),
+        };
+        let sidecar_ender = sidecar.as_ref().map(Sidecar::ender);
         let terminal_id = launch.terminal_id;
 
         let mut child = pair
@@ -1005,6 +1051,10 @@ impl PtySession {
             std::thread::spawn(move || {
                 let exit_status = child.wait();
                 is_alive.store(false, Ordering::SeqCst);
+                // The terminal's process is over, so its server is too
+                if let Some(ender) = sidecar_ender {
+                    ender.end();
+                }
 
                 // Compact log file if it exceeds 2MB to keep disk space bounded
                 if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
@@ -1078,6 +1128,7 @@ impl PtySession {
             current_size,
             is_alive,
             screen,
+            _sidecar: sidecar,
         })
     }
 
