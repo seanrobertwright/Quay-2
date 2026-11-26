@@ -1,5 +1,7 @@
-//! Quay's view of an OpenCode terminal's turns. Quay launches OpenCode with `--port`, so
-//! its TUI serves an HTTP server there, and reads two things from it: the event stream,
+//! Quay's view of an OpenCode terminal's turns. Quay gives each OpenCode launch a loopback
+//! port: OpenCode 1.x's TUI serves its HTTP server there, given `--port`, and for 2.x the
+//! terminal's `opencode serve` sidecar does (see `opencode_serve`). Quay reads two things from
+//! that server: the event stream,
 //! `GET /event`, for when the main session goes busy and idle, and the session's messages,
 //! `GET /session/:id/message`, for the reply once a turn ends. Quay only reads from that
 //! server: messages are still typed into the terminal.

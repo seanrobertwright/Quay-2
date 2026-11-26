@@ -12,7 +12,7 @@ Every agent terminal's command line is built in the same order:
 2. the flags Quay adds for the permission mode, such as `--dangerously-skip-permissions` when **Skip Permissions** is chosen;
 3. the custom flags;
 4. Codex's `-c` overrides, for a Codex terminal;
-5. a swarm agent's launch prompt, for a CLI that takes one;
+5. a swarm agent's launch prompt, for a CLI that takes one on its command line (OpenCode 2.x takes it typed in; see [OpenCode 2.x](#opencode-2x));
 6. `--allowedTools <tools>` and `--mcp-config <json>`, for a Claude Code terminal.
 
 **Custom flags** are the model chosen in the New Terminal dialog followed by its **Custom CLI Arguments**, or a swarm agent's flags. A terminal launched with none gets the project's **Default Claude CLI Flags** from Workspace Settings, whatever its CLI. Quay splits custom flags on whitespace, so a flag's value can't contain a space, and quotes are passed on as they are. Quay adds custom flags to agent terminals only, never to a PowerShell or Custom Command terminal.
@@ -81,20 +81,40 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 ## OpenCode CLI Arguments
 
-When spawning OpenCode terminals, Quay 2 runs:
+Quay starts `opencode.exe` (`opencode` on macOS and Linux) by name, so the terminal's `PATH` finds it, and a workspace's own `PATH` variable can point it at another copy. Only when no folder on that `PATH` holds one does Quay fall back to bun's install, `%USERPROFILE%\.bun\bin\opencode.exe`.
+
+Before each launch, a relaunch included, Quay runs `opencode.exe --version`, with the terminal's variables, and gives it 3 seconds. A version below 2 gets the OpenCode 1.x launch. Any other version gets the 2.x launch, and so does a probe that prints no version or doesn't finish in time.
+
+### OpenCode 1.x {#opencode-1x}
 
 ```powershell
 opencode.exe --port <free_port> [--auto] [CUSTOM_FLAGS] [--prompt <launch_prompt>]
 ```
-
-Quay starts `opencode.exe` (`opencode` on macOS and Linux) by name, so the terminal's `PATH` finds it, and a workspace's own `PATH` variable can point it at another copy. Only when no folder on that `PATH` holds one does Quay fall back to bun's install, `%USERPROFILE%\.bun\bin\opencode.exe`.
 
 | Flag | Purpose | Condition |
 | :--- | :--- | :--- |
 | `--port <free_port>` | The OpenCode TUI serves its HTTP server on this loopback port. Quay subscribes to its `GET /event` stream: the main session going busy shows the terminal Working, and its first idle after that ends the turn, whose reply Quay reads from `GET /session/:id/message`. Sessions with a `parentID` (subagents) are ignored. Quay only reads from this server; messages are still typed into the terminal. | Every OpenCode terminal; a free port is picked at each launch |
 | `--auto` | Auto-approves tool permissions | **Skip Permissions** is chosen |
 
-Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of a flag:
+### OpenCode 2.x {#opencode-2x}
+
+OpenCode 2.x refuses `--port`. Quay starts the terminal's server as a separate process, then attaches the terminal to it:
+
+```powershell
+opencode.exe serve --port <free_port> --hostname 127.0.0.1
+opencode.exe attach http://127.0.0.1:<free_port> --dir <project_path> [CUSTOM_FLAGS]
+```
+
+- The server runs in the terminal's folder, with the same environment as the terminal. It has no window, and Quay reads its output and discards it.
+- Quay waits up to 10 seconds for the server's `GET /config` to answer with this launch's own `mcp.quay` entry, and only then starts `attach` in the terminal. The same server feeds the `GET /event` stream and the replies described for 1.x.
+- If the server exits first, doesn't answer in time, or another process answers on the port, the terminal prints why, with the end of what the server printed, and exits. Relaunch it to try again on a new port.
+- The server ends when the terminal's process exits, when you close or relaunch the terminal, and when Quay exits. On Windows, Quay ends everything the server started, too.
+- `attach` takes neither `--auto` nor `--prompt`. **Skip Permissions** goes into the config below as `"permission": "allow"`, unless the workspace's own `OPENCODE_CONFIG_CONTENT` sets `permission`. A launch prompt is typed into the terminal, with its Enter, once the terminal first prints. The terminal shows Starting until then, so a message to it waits until the prompt is in.
+- Quay's `mcp.quay` entry also has `"codemode": false`, without which OpenCode 2.x shows Quay's tools only through Code Mode.
+
+### Quay's MCP server
+
+Quay's MCP server reaches OpenCode, 1.x or 2.x, through `OPENCODE_CONFIG_CONTENT` instead of a flag:
 
 ```json
 {

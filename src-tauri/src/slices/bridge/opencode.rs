@@ -1,5 +1,5 @@
-//! Feeds an OpenCode terminal's turns, as `opencode_watch` reads them from the server its
-//! TUI runs, through the handling the event-bridge plugin's events get, so an OpenCode
+//! Feeds an OpenCode terminal's turns, as `opencode_watch` reads them from its OpenCode
+//! server, through the handling the event-bridge plugin's events get, so an OpenCode
 //! turn moves status, answers a waiting sender and lets held messages in like a Claude one.
 
 use std::sync::Arc;

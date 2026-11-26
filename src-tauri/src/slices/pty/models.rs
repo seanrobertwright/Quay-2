@@ -68,7 +68,7 @@ impl RunKind {
     /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
     /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
     /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), Quay reads OpenCode's
-    /// from the server its TUI runs (see `opencode_watch`), and Quay's PiG extension reports
+    /// from its OpenCode server (see `opencode_watch`), and Quay's PiG extension reports
     /// PiG's. The frontend's `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
         matches!(
