@@ -153,6 +153,11 @@ export const StageTabBar = ({
                   {tool.icon}
                 </span>
                 <span className="truncate">{tool.label}</span>
+                {tool.from !== undefined && (
+                  <span aria-hidden="true" data-tab-from className="max-w-[5rem] shrink-0 truncate font-mono text-[10px] text-[#8b949e]">
+                    {tool.from}
+                  </span>
+                )}
                 {tool.waits && <span aria-hidden="true" data-waiting-dot className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d29922]" />}
               </button>
               <button

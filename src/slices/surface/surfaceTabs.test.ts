@@ -107,6 +107,18 @@ test("a review that arrives has a pulsing tab that waits, and does not take the 
   assert.ok(!pulses(tabs(container)[0]), "in front it does not pulse");
 });
 
+test("a review's tab shows the name of the terminal it is from after its title, and cuts it short where it is long", async () => {
+  const long = { ...TERMINAL, name: "fix-75-a-terminal-name-that-goes-on-and-on" };
+  const container = await load([await acceptedReview("review_1")], [long]);
+  const [button] = tabs(container);
+  const from = button.querySelector<HTMLElement>("[data-tab-from]");
+  assert.equal(from?.textContent, long.name);
+  assert.ok(button.textContent?.startsWith(REVIEW.title), "the title comes first");
+  assert.equal(from?.getAttribute("aria-hidden"), "true", "the tab's name already says it");
+  assert.equal(button.getAttribute("aria-label"), `${REVIEW.title}, review from ${long.name}, waiting on you`);
+  assert.ok(from!.className.split(" ").includes("truncate"));
+});
+
 test("a second review leaves the first one in front", async () => {
   const container = await load([await acceptedReview("review_1")]);
   await openTab(container);

@@ -123,6 +123,7 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
         id,
         label,
         name: waits ? `${name}, ${WAITING_ON_YOU}` : name,
+        from: terminal.name,
         waits,
         icon: <KindIcon className="h-3.5 w-3.5 text-[#d29922]" />,
         content: (

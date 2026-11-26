@@ -7,6 +7,8 @@ export interface StageToolTab {
   label: string;
   /** What names it for a screen reader and on hover, when that is more than its label. */
   name?: string;
+  /** Who it is from, shown small after its label, such as the terminal of a surface. Its name says it too. */
+  from?: string;
   /** Whether it waits for the operator: its icon pulses until it is in front. */
   waits?: boolean;
   icon: ReactNode;
