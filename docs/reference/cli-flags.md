@@ -109,7 +109,7 @@ opencode.exe attach http://127.0.0.1:<free_port> --dir <project_path> [CUSTOM_FL
 - Quay waits up to 10 seconds for the server's `GET /config` to answer with this launch's own `mcp.quay` entry, and only then starts `attach` in the terminal. The same server feeds the `GET /event` stream and the replies described for 1.x.
 - If the server exits first, doesn't answer in time, or another process answers on the port, the terminal prints why, with the end of what the server printed, and exits. Relaunch it to try again on a new port.
 - The server ends when the terminal's process exits, when you close or relaunch the terminal, and when Quay exits. On Windows, Quay ends everything the server started, too.
-- `attach` takes neither `--auto` nor `--prompt`. **Skip Permissions** goes into the config below as `"permission": "allow"`, unless the workspace's own `OPENCODE_CONFIG_CONTENT` sets `permission`. A launch prompt is typed into the terminal, with its Enter, once the terminal first prints. The terminal shows Starting until then, so a message to it waits until the prompt is in.
+- `attach` takes neither `--auto` nor `--prompt`. **Skip Permissions** goes into the config below as `"permission": "allow"`, unless the workspace's own `OPENCODE_CONFIG_CONTENT` sets `permission`. A launch prompt is typed into the terminal on one line, as an A2A message is, with its Enter, once the terminal first prints. The terminal shows Starting until then, so a message to it waits until the prompt is in.
 - Quay's `mcp.quay` entry also has `"codemode": false`, without which OpenCode 2.x shows Quay's tools only through Code Mode.
 
 ### Quay's MCP server

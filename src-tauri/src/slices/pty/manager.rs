@@ -948,7 +948,7 @@ impl PtyManager {
 
     /// A first-output hook for a launch whose launch prompt is typed into it rather than given on
     /// its command line, as OpenCode 2.x's is. On a thread of its own, once the launch's session is
-    /// in place, it types `prompt` with its Enter into that session and no other (see
+    /// in place, it types `prompt`, on one line, with its Enter into that session and no other (see
     /// `submit_prompt_to`), once, then runs `then`, the launch's usual first-output hook. Until
     /// then the terminal stays Starting, so it holds its messages, and they come after the prompt.
     fn typing_launch_prompt(
@@ -967,8 +967,10 @@ impl PtyManager {
                 {
                     std::thread::sleep(Duration::from_millis(50));
                 }
+                // On one line, as the router types an A2A message: a TUI reads a typed newline as Enter
+                let line = prompt.trim().replace("\r\n", " ").replace('\n', " ");
                 if manager.launch_current(&launch) {
-                    if let Err(e) = manager.submit_prompt_to(&launch, &prompt) {
+                    if let Err(e) = manager.submit_prompt_to(&launch, &line) {
                         tracing::warn!("Couldn't type the launch prompt into {}: {}", launch.terminal_id, e);
                     }
                 }
@@ -2058,9 +2060,10 @@ mod tests {
         let launch = launched(&manager, "term-oc2-prompt", RunKind::OpenCode);
         manager.open_test_input("term-oc2-prompt");
 
-        assert!(run_first_output(&manager, &launch, "Role: Lead\nWait for the task."));
+        assert!(run_first_output(&manager, &launch, "  Role: Lead\r\nYou are the lead.\nWait for the task.\n"));
 
-        assert_eq!(manager.test_input("term-oc2-prompt"), ["Role: Lead\nWait for the task.", "\r"]);
+        // On one line, as an A2A message is typed, since a typed newline would send the prompt early
+        assert_eq!(manager.test_input("term-oc2-prompt"), ["Role: Lead You are the lead. Wait for the task.", "\r"]);
     }
 
     #[test]
