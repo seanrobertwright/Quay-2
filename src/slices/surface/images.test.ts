@@ -326,7 +326,8 @@ test("the box of an image that is not shown is dashed, has an image icon and tak
     assert.equal(box.querySelector(":scope > svg")?.getAttribute("aria-hidden"), "true", "its icon is no more than a look");
   }
   const roomInText = drawn[2].closest("p")!.querySelector<HTMLElement>(":scope > span")!;
-  assert.ok(roomInText.className.split(" ").includes("has-[[data-image-refused]]:flex"), roomInText.className);
+  // A line of its own, which the box fills (the live check of #775 saw it keep the width of its text)
+  assert.deepEqual(["has-[[data-image-refused]]:flex", "has-[[data-image-refused]]:*:flex-1"].map((name) => roomInText.className.split(" ").includes(name)), [true, true], roomInText.className);
 });
 
 test("an image in Markdown that is no local path draws the box, and nothing is asked for", async () => {
