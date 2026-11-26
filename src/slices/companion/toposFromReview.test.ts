@@ -40,6 +40,8 @@ const MERGING: OpState = {
 
 /** Where Rust says a link to `src/turns.ts:12` leads: the file's unstaged diff. */
 const TURNS: Shown = { kind: "diff", worktree: "E:/alpha", path: "src/turns.ts", side: "unstaged", line: 12 };
+/** What git status reports when `src/turns.ts` has unstaged changes, so the staging inspector lists it. */
+const TURNS_CHANGED: StatusEntry[] = [{ path: "src/turns.ts", xy: ".M", kind: "tracked" }];
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
 /** The operation git reports in the worktree. */
@@ -139,6 +141,8 @@ const diff = (container: HTMLElement) => container.querySelector('[data-topos-la
 const graphList = (container: HTMLElement) => container.querySelector('[data-topos-layer] [role="listbox"][aria-label="Commits"]');
 const button = (within: Element, name: string) =>
   [...within.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name);
+/** The open diff view's Back to graph button. */
+const backToGraph = (container: HTMLElement) => button(diff(container)!, "Back to graph")!;
 
 /** Clicks the review's file link, as the operator does, and waits for the lens. */
 async function clickFileLink(container: HTMLElement, review: HTMLElement): Promise<void> {
@@ -160,9 +164,17 @@ async function escape(): Promise<boolean> {
   return heard;
 }
 
+/** Presses Escape with the Topos lens showing the graph, and checks it closes the lens and gives the focus back to the review's file link. */
+async function escapeClosesLens(container: HTMLElement, review: HTMLElement): Promise<void> {
+  assert.equal(await escape(), false, "the Escape that closes the lens reached past the overlay stack");
+  assert.equal(lens(container) !== null, false, "Escape closes the lens");
+  // The terminal is covered by the review's tab, so the focus goes back to the link that opened the lens
+  assert.equal(document.activeElement === review.querySelector('[role="link"]'), true, "the focus is back on the review's file link");
+}
+
 for (const [where, focus, toGraph] of [
   ["Topos, where the lens puts it", () => {}, false],
-  ["the diff view", (container: HTMLElement) => button(diff(container)!, "Back to graph")!.focus(), true],
+  ["the diff view", (container: HTMLElement) => backToGraph(container).focus(), true],
   ["the review's file link, under the lens", (_: HTMLElement, review: HTMLElement) => review.querySelector<HTMLElement>('[role="link"]')!.focus(), false],
 ] as const) {
   test(`with the focus in ${where}, Escape closes the diff a review's file link opened, then the Topos lens, and Approve answers`, async () => {
@@ -176,10 +188,7 @@ for (const [where, focus, toGraph] of [
     assert.deepEqual([diff(container) !== null, lens(container) !== null], [false, true], "the first Escape goes back to the graph");
     if (toGraph) assert.equal(document.activeElement === graphList(container), true, "the focus left in the diff view goes to the graph");
     else assert.equal(document.activeElement === focused, true, "the focus outside the diff view stays where it was");
-    assert.equal(await escape(), false, "the second Escape reached past the overlay stack");
-    assert.equal(lens(container) !== null, false, "the second Escape closes the lens");
-    // The terminal is covered by the review's tab, so the focus goes back to the link that opened the lens
-    assert.equal(document.activeElement === review.querySelector('[role="link"]'), true, "the focus is back on the review's file link");
+    await escapeClosesLens(container, review);
 
     await act(async () => button(review, "Approve")!.click());
     await until(() => called("surface_answer").length === 1, "Approve sent nothing");
@@ -190,16 +199,14 @@ test("Back to graph in the diff a review's file link opened puts the focus on th
   const { container, review } = await draw();
   await clickFileLink(container, review);
   await until(() => diff(container) !== null, "the diff view never opened");
-  const back = button(diff(container)!, "Back to graph")!;
+  const back = backToGraph(container);
   await act(async () => back.focus());
   await act(async () => back.click());
   await settle();
 
   assert.deepEqual([diff(container) !== null, lens(container) !== null], [false, true], "Back to graph shows the graph in the lens");
   assert.equal(document.activeElement === graphList(container), true, "the focus left in the diff view goes to the graph");
-  assert.equal(await escape(), false, "Escape reached past the overlay stack");
-  assert.equal(lens(container) !== null, false, "Escape closes the lens");
-  assert.equal(document.activeElement === review.querySelector('[role="link"]'), true, "the focus is back on the review's file link");
+  await escapeClosesLens(container, review);
 });
 
 /** Opens `path`'s unstaged diff from the staging inspector, as the operator does: the WIP row shows the inspector, a click on the file's row opens it. */
@@ -216,32 +223,30 @@ async function openFromStaging(container: HTMLElement, path: string): Promise<vo
 }
 
 test("in the Topos lens, Escape in a diff opened from staging puts the focus on the graph, and the next Escape closes the lens", async () => {
-  changes = [{ path: "src/turns.ts", xy: ".M", kind: "tracked" }];
+  changes = TURNS_CHANGED;
   const { container, review } = await draw();
   await clickFileLink(container, review);
   await until(() => diff(container) !== null, "the diff view never opened");
-  await act(async () => button(diff(container)!, "Back to graph")!.click());
+  await act(async () => backToGraph(container).click());
   await openFromStaging(container, "src/turns.ts");
-  await act(async () => button(diff(container)!, "Back to graph")!.focus());
+  await act(async () => backToGraph(container).focus());
 
   assert.equal(await escape(), false, "the first Escape reached past the overlay stack");
   assert.deepEqual([diff(container) !== null, lens(container) !== null], [false, true], "the first Escape goes back to the graph");
   assert.equal(document.activeElement === graphList(container), true, "the focus left in the diff view goes to the graph");
-  assert.equal(await escape(), false, "the second Escape reached past the overlay stack");
-  assert.equal(lens(container) !== null, false, "the second Escape closes the lens");
-  assert.equal(document.activeElement === review.querySelector('[role="link"]'), true, "the focus is back on the review's file link");
+  await escapeClosesLens(container, review);
 });
 
 for (const [how, close] of [
   ["Escape", () => escape()],
-  ["Back to graph", (container: HTMLElement) => act(async () => button(diff(container)!, "Back to graph")!.click())],
+  ["Back to graph", (container: HTMLElement) => act(async () => backToGraph(container).click())],
 ] as const) {
   test(`in the companion's Topos view, ${how} in a diff opened from staging puts the focus on the graph`, async () => {
-    changes = [{ path: "src/turns.ts", xy: ".M", kind: "tracked" }];
+    changes = TURNS_CHANGED;
     const { container } = await draw();
     await openFromStaging(container, "src/turns.ts");
     assert.equal(lens(container) !== null, false, "Topos is in the companion, not the lens");
-    await act(async () => button(diff(container)!, "Back to graph")!.focus());
+    await act(async () => backToGraph(container).focus());
 
     await close(container);
     await settle();
