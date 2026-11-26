@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 import type { TerminalInfo } from "../../terminal/types.ts";
 import { Bar } from "../../parts/Bar.tsx";
 import { LockedBand } from "../LockedBand.tsx";
@@ -9,6 +9,7 @@ import { loadA2ui } from "../surfaceHost.ts";
 import { isLive } from "../surfaceTypes.ts";
 import { PROGRESS_PART } from "../typed/board.ts";
 import { useDismiss } from "../useDismiss.ts";
+import { useRefusal } from "../useRefusal.ts";
 import { BoardClock } from "./BoardClock.tsx";
 import { readBoard, type BoardRecord } from "./boardReading.ts";
 import { boardState } from "./boardState.ts";
@@ -41,11 +42,11 @@ interface OpenBoardProps {
 /** A board in its frame. One that is locked keeps all it showed, under a band that says how it ended. */
 export const OpenBoard = ({ record, terminal }: OpenBoardProps) => {
   const { kind, KindIcon, layout } = lookOf(record.tool);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const { setRefusal, shown: refusal, dismiss: dismissRefusal } = useRefusal(null);
   const dismiss = useDismiss(record, setRefusal);
   const band = isLive(record) ? undefined : <LockedBand record={record} />;
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal} onDismissRefusal={() => setRefusal(null)}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={band} dismiss={dismiss} refusal={refusal} onDismissRefusal={dismissRefusal}>
       <div className="flex min-w-0 flex-col gap-2.5">
         <BoardHead record={record} />
         <SurfaceBoundary key={record.change}>
