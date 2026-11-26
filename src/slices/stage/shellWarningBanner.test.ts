@@ -60,3 +60,19 @@ test("each warning's Dismiss button removes only that warning", () => {
   act(() => (lines()[0].querySelector("button") as HTMLButtonElement).click());
   assert.equal(container.innerHTML, "");
 });
+
+test("a warning wraps where it has no room, so all of it can be read, beside its buttons", () => {
+  const { lines } = render();
+  const message = "Quay's entry is gone from Antigravity's configuration.";
+  act(() => showShellWarning({ id: "disk", message, action: { label: "Connect again", run: () => {} } }));
+  const [line] = lines();
+  const said = [...line.querySelectorAll("span")].find((span) => span.textContent === message)!;
+  const classes = (element: Element) => element.className.split(" ");
+  assert.deepEqual([classes(said).includes("truncate"), classes(said).includes("whitespace-nowrap")], [false, false]);
+  assert.equal(classes(line).some((name) => /^h-\d/.test(name)), false, "the line is as tall as its text");
+  const buttons = [...line.querySelectorAll("button")];
+  assert.deepEqual(buttons.map((button) => [button.textContent || button.getAttribute("aria-label"), classes(button).includes("shrink-0")]), [
+    ["Connect again", true],
+    ["Dismiss warning", true],
+  ]);
+});
