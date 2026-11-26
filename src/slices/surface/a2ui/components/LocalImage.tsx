@@ -15,7 +15,7 @@ const LINE = "col-start-2";
 
 /**
  * What stands for an image that is not shown: an image icon, what it is called, why, and where it would be.
- * It is dashed, and as wide as where it is.
+ * It is dashed, and as wide as the Column or the line of text it is in.
  */
 const RefusedImage = ({ name, why, address }: RefusedImageProps) => (
   <span
