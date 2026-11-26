@@ -308,15 +308,15 @@ export const Topos: React.FC<ToposProps> = ({
   // A diff that closes with the focus in it hands the focus to the graph once the graph shows again,
   // so it doesn't fall to the page as the diff unmounts (#792). Focus elsewhere stays where it is.
   const diffSlot = useRef<HTMLDivElement | null>(null);
-  const [graphFocusAsks, setGraphFocusAsks] = useState(0);
+  const [graphFocusRequest, setGraphFocusRequest] = useState(0);
   useEffect(() => {
-    if (graphFocusAsks > 0) focusGraph();
-  }, [graphFocusAsks, focusGraph]);
+    if (graphFocusRequest > 0) focusGraph();
+  }, [graphFocusRequest, focusGraph]);
   const closeDiff = useCallback(() => {
     const heldFocus = diffSlot.current?.contains(document.activeElement) === true;
     setStagingFile(null);
     setCommitFile(null);
-    if (heldFocus) setGraphFocusAsks((n) => n + 1);
+    if (heldFocus) setGraphFocusRequest((n) => n + 1);
   }, []);
   const openCommitFile = useCallback(
     (file: CommitFile) => {
