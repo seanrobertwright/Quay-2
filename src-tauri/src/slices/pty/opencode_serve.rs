@@ -75,6 +75,14 @@ impl OpenCodeServer {
     }
 }
 
+#[cfg(test)]
+impl OpenCodeServer {
+    /// The server a 2.x launch on loopback `port` gets, with a fresh random password.
+    pub(crate) fn for_tests(port: u16) -> OpenCodeServer {
+        OpenCodeServer::new(port)
+    }
+}
+
 impl std::fmt::Debug for OpenCodeServer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenCodeServer").field("port", &self.port).finish_non_exhaustive()
@@ -411,14 +419,11 @@ mod tests {
 
     #[test]
     fn a_version_below_2_is_launched_as_1x_and_anything_else_as_2x() {
-        assert_eq!(launch_of(Some("1.19.4
-"), 4567), OpenCodeLaunch::Tui(4567));
+        assert_eq!(launch_of(Some("1.19.4\n"), 4567), OpenCodeLaunch::Tui(4567));
         assert_eq!(launch_of(Some("opencode v0.9.1"), 4567), OpenCodeLaunch::Tui(4567));
-        assert_eq!(server_port(launch_of(Some("2.4.1
-"), 4567)), Some(4567));
+        assert_eq!(server_port(launch_of(Some("2.4.1\n"), 4567)), Some(4567));
         // What OpenCode 2.4.1 prints
-        assert_eq!(server_port(launch_of(Some("opencode v2.4.1
-"), 4567)), Some(4567));
+        assert_eq!(server_port(launch_of(Some("opencode v2.4.1\n"), 4567)), Some(4567));
         assert_eq!(server_port(launch_of(Some("opencode 10.0.0"), 4567)), Some(4567));
         // Nothing readable, or no answer at all: the form new installs get
         assert_eq!(server_port(launch_of(Some(""), 4567)), Some(4567));
@@ -427,17 +432,9 @@ mod tests {
         assert_eq!(server_port(launch_of(None, 4567)), Some(4567));
     }
 
-    /// The server of a 2.x launch on `port`.
-    fn server_on(port: u16) -> OpenCodeServer {
-        match launch_of(Some("2.4.1"), port) {
-            OpenCodeLaunch::Server(server) => server,
-            OpenCodeLaunch::Tui(_) => panic!("2.4.1 is launched as 2.x"),
-        }
-    }
-
     #[test]
     fn each_2x_launch_has_a_long_random_password_of_its_own_that_its_debug_form_never_shows() {
-        let (first, second) = (server_on(4567), server_on(4567));
+        let (first, second) = (OpenCodeServer::for_tests(4567), OpenCodeServer::for_tests(4567));
         assert_ne!(first.password(), second.password());
         assert!(first.password().len() >= 32, "{} characters", first.password().len());
         assert!(first.password().bytes().all(|b| b.is_ascii_alphanumeric()));
@@ -448,7 +445,7 @@ mod tests {
 
     #[test]
     fn a_2x_server_is_reached_on_loopback_with_basic_auth_as_opencode() {
-        let server = server_on(4567);
+        let server = OpenCodeServer::for_tests(4567);
         assert_eq!(server.url(), "http://127.0.0.1:4567");
         // The credential OpenCode 2.4.1's server checks: user `opencode`, the launch's password
         let expected = format!("opencode:{}", server.password());
@@ -519,7 +516,7 @@ mod tests {
         use std::io::{Read, Write};
         use std::sync::atomic::{AtomicUsize, Ordering};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let server = server_on(listener.local_addr().unwrap().port());
+        let server = OpenCodeServer::for_tests(listener.local_addr().unwrap().port());
         let authorization = format!("authorization: {}", server.authorization()).to_ascii_lowercase();
         let body = config.to_string();
         let settled = Arc::new(AtomicUsize::new(0));
@@ -715,7 +712,7 @@ mod tests {
         let file = dir.join("out.txt");
         // Another launch's server, with this launch's MCP server even, on the port
         let theirs = serving(quays_config(MCP_URL));
-        let ours = server_on(theirs.port());
+        let ours = OpenCodeServer::for_tests(theirs.port());
 
         let started = Instant::now();
         let failed = Sidecar::start(writing_to(&file), &ours, MCP_URL, Duration::from_secs(10)).err().expect("an error");
@@ -726,7 +723,7 @@ mod tests {
 
     #[test]
     fn a_sidecar_that_exits_before_it_is_ready_fails_with_what_it_printed_without_its_password() {
-        let server = server_on(unserved());
+        let server = OpenCodeServer::for_tests(unserved());
         let printed = format!("server password {}", server.password());
         let cmd = shell(
             &format!("echo {printed} & echo Unrecognized flag: --hostname 1>&2 & exit 3"),
@@ -746,7 +743,7 @@ mod tests {
         let file = dir.join("out.txt");
 
         let failed =
-            Sidecar::start(writing_to(&file), &server_on(unserved()), MCP_URL, Duration::from_secs(1)).err().expect("an error");
+            Sidecar::start(writing_to(&file), &OpenCodeServer::for_tests(unserved()), MCP_URL, Duration::from_secs(1)).err().expect("an error");
         assert!(failed.contains("wasn't ready"), "{failed}");
         assert!(stops_growing(&file), "the sidecar is ended");
     }

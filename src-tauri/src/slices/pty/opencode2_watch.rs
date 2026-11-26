@@ -274,7 +274,7 @@ pub async fn watch(server: &OpenCodeServer, running: impl Fn() -> bool, mut on_t
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slices::pty::opencode_serve::{launch_of, OpenCodeLaunch};
+    use crate::slices::pty::opencode_serve::OpenCodeLaunch;
     use serde_json::json;
     use std::time::Duration;
 
@@ -404,13 +404,6 @@ mod tests {
         assert!(answer_from(Err(GetError::unreached("timed out"))).contains("couldn't read its reply: timed out"));
     }
 
-    fn server_on(port: u16) -> OpenCodeServer {
-        match launch_of(Some("opencode v2.4.1"), port) {
-            OpenCodeLaunch::Server(server) => server,
-            OpenCodeLaunch::Tui(_) => panic!("2.4.1 is launched as 2.x"),
-        }
-    }
-
     /// Serves `events` as OpenCode 2.x's event stream to the first subscriber only, and `page`
     /// as session `ses_main`'s messages, which is a main session, to a request with `server`'s
     /// password and no other, as `opencode serve` does. Returns the server Quay would watch.
@@ -425,7 +418,7 @@ mod tests {
         use std::sync::Arc;
 
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
-        let server = server_on(listener.local_addr().unwrap().port());
+        let server = OpenCodeServer::for_tests(listener.local_addr().unwrap().port());
         let authorization = server.authorization();
         let authorized = move |headers: &HeaderMap| {
             headers.get("authorization").and_then(|v| v.to_str().ok()) == Some(authorization.as_str())
@@ -515,7 +508,7 @@ mod tests {
     #[tokio::test]
     async fn the_watcher_stops_once_its_launch_stops_running() {
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let server = server_on(free.local_addr().unwrap().port());
+        let server = OpenCodeServer::for_tests(free.local_addr().unwrap().port());
         drop(free);
         let end = tokio::time::timeout(Duration::from_secs(5), watch(&server, || false, |_| panic!("no turn was expected")))
             .await
@@ -779,7 +772,7 @@ mod tests {
     #[tokio::test]
     async fn a_read_with_another_launchs_password_is_turned_down() {
         let theirs = fake_opencode(vec![], json!({"data": []})).await;
-        let ours = server_on(theirs.port());
+        let ours = OpenCodeServer::for_tests(theirs.port());
         let refused = get_json(&ours, "/api/session/ses_main/message").await.unwrap_err();
         assert_eq!(refused.status, Some(401));
         assert!(get_json(&theirs, "/api/session/ses_main/message").await.is_ok());

@@ -153,17 +153,20 @@ const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
 /// `oauth: false` keeps OpenCode from trying to sign in to it, and `timeout` is how long OpenCode
 /// waits on a call to it, in milliseconds. Of that server's tools, `allowed` run without a prompt.
 pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
-    opencode_config(mcp_url, workspace, allowed, false).to_string()
+    opencode_config(mcp_url, workspace, allowed).to_string()
 }
 
 /// `opencode_config_content` for OpenCode 2.x, whose Quay server has `"codemode": false`:
 /// without it OpenCode 2.4.1 offers the model none of Quay's tools, only Code Mode's `execute`.
 pub fn opencode_2_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
-    opencode_config(mcp_url, workspace, allowed, true).to_string()
+    let mut config = opencode_config(mcp_url, workspace, allowed);
+    config["mcp"]["quay"]["codemode"] = serde_json::Value::Bool(false);
+    config.to_string()
 }
 
-/// The config of `opencode_config_content`, or of `opencode_2_config_content` when `v2`.
-fn opencode_config(mcp_url: &str, workspace: Option<&str>, allowed: &[&str], v2: bool) -> serde_json::Value {
+/// The config `opencode_config_content` gives as text, and that `opencode_2_config_content`
+/// adds `"codemode": false` to.
+fn opencode_config(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> serde_json::Value {
     let mut config = match workspace.filter(|content| !content.is_empty()).map(jsonc::object) {
         Some(Ok(object)) => serde_json::Value::Object(object),
         Some(Err(e)) => {
@@ -184,9 +187,6 @@ fn opencode_config(mcp_url: &str, workspace: Option<&str>, allowed: &[&str], v2:
         "oauth": false,
         "timeout": CLI_LIMIT_MS
     });
-    if v2 {
-        config["mcp"]["quay"]["codemode"] = serde_json::Value::Bool(false);
-    }
     opencode_permission::add_allow_rules(&mut config, allowed);
     config
 }
@@ -1760,14 +1760,6 @@ mod tests {
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
     }
 
-    /// The server of an OpenCode 2.x launch on loopback `port`.
-    fn server_on(port: u16) -> OpenCodeServer {
-        match opencode_serve::launch_of(Some("opencode v2.4.1"), port) {
-            OpenCodeLaunch::Server(server) => server,
-            OpenCodeLaunch::Tui(_) => panic!("2.4.1 is launched as 2.x"),
-        }
-    }
-
     /// `super::build_serve` for launch 7 of `term-oc2`, with Quay's bridge on 4321.
     fn serve_and_tui(request: &SpawnTerminalRequest, server: &OpenCodeServer) -> (std::process::Command, CommandBuilder) {
         let launch = LaunchRef { terminal_id: "term-oc2".to_string(), launch: 7 };
@@ -1792,7 +1784,7 @@ mod tests {
         request.custom_flags = Some("--model anthropic/x".to_string());
         request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
 
-        let (_, tui) = serve_and_tui(&request, &server_on(4567));
+        let (_, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
 
         assert_eq!(
             argv(&tui)[1..],
@@ -1811,7 +1803,7 @@ mod tests {
 
         let mut normal = spawn_request(RunKind::OpenCode);
         normal.permission_mode = Some(PermissionMode::Normal);
-        let (_, tui) = serve_and_tui(&normal, &server_on(4567));
+        let (_, tui) = serve_and_tui(&normal, &OpenCodeServer::for_tests(4567));
         assert!(!argv(&tui).iter().any(|arg| arg == "--auto"), "{:?}", argv(&tui));
     }
 
@@ -1821,7 +1813,7 @@ mod tests {
         request.project_path = "E:\\Projects\\App".to_string();
         request.env_vars = Some([("MY_KEY".to_string(), "mine".to_string())].into_iter().collect());
 
-        let (serve, tui) = serve_and_tui(&request, &server_on(4567));
+        let (serve, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
 
         assert_eq!(serve.get_program().to_string_lossy(), argv(&tui)[0]);
         let args: Vec<String> = serve.get_args().map(|a| a.to_string_lossy().to_string()).collect();
@@ -1842,7 +1834,7 @@ mod tests {
         request.initial_prompt = Some("Do the task".to_string());
         // A workspace's own password never stands in for the launch's
         request.env_vars = Some([("OPENCODE_PASSWORD".to_string(), "the-workspaces".to_string())].into_iter().collect());
-        let server = server_on(4567);
+        let server = OpenCodeServer::for_tests(4567);
 
         let (serve, tui) = serve_and_tui(&request, &server);
 
@@ -1858,7 +1850,7 @@ mod tests {
 
     #[test]
     fn only_opencode_2_shows_quays_tools_outside_code_mode() {
-        let two = opencode_config(&serve_and_tui(&spawn_request(RunKind::OpenCode), &server_on(4567)).1);
+        let two = opencode_config(&serve_and_tui(&spawn_request(RunKind::OpenCode), &OpenCodeServer::for_tests(4567)).1);
         assert_eq!(two["mcp"]["quay"]["codemode"], false);
         assert_eq!(two["mcp"]["quay"]["url"], "http://127.0.0.1:4321/mcp/7");
         // Skip is `--auto` on the command line, as for 1.x, not a rule in the config allowing all
