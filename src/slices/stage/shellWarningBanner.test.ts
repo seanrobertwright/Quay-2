@@ -69,6 +69,8 @@ test("a warning wraps where it has no room, so all of it can be read, beside its
   const said = [...line.querySelectorAll("span")].find((span) => span.textContent === message)!;
   const classes = (element: Element) => element.className.split(" ");
   assert.deepEqual([classes(said).includes("truncate"), classes(said).includes("whitespace-nowrap")], [false, false]);
+  // Between words, not inside one that fits on a line of its own (live check of #770 saw "Antigra/vity's")
+  assert.deepEqual([classes(said).includes("break-words"), classes(said).includes("wrap-anywhere"), classes(said).includes("break-all")], [true, false, false]);
   assert.equal(classes(line).some((name) => /^h-\d/.test(name)), false, "the line is as tall as its text");
   const buttons = [...line.querySelectorAll("button")];
   assert.deepEqual(buttons.map((button) => [button.textContent || button.getAttribute("aria-label"), classes(button).includes("shrink-0")]), [

@@ -20,7 +20,7 @@ export const ShellWarningBanner: FC = () => {
           className="min-h-8 bg-[#d29922]/15 border-b border-[#d29922]/40 px-4 py-1 flex items-center gap-2 text-xs text-[#e3b341]"
         >
           <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1 wrap-anywhere">{warning.message}</span>
+          <span className="min-w-0 flex-1 break-words">{warning.message}</span>
           {warning.action && (
             <button
               type="button"
