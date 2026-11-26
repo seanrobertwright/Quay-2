@@ -35,7 +35,8 @@ export function setChimeVolume(vol: number): void {
 }
 
 /**
- * Play a pleasant ascending harmonic chime when Claude finishes a turn
+ * Play a pleasant ascending harmonic chime when an agent's turn completes, as the bridge's
+ * `turn.completed` reports it
  */
 export function playTurnCompletedChime(): void {
   if (!isChimeEnabled()) return;

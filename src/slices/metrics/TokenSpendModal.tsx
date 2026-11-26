@@ -260,7 +260,7 @@ export const TokenSpendModal: FC<TokenSpendModalProps> = ({
                 <div>
                   <h4 className="text-xs font-semibold text-white">Background Turn Chimes</h4>
                   <p className="text-[11px] text-[#8b949e]">
-                    Plays a gentle chord when Claude completes a turn or asks for input
+                    Plays a gentle chord when a Claude Code, Codex, OpenCode or PiG turn completes, or when an agent asks for input
                   </p>
                 </div>
               </div>

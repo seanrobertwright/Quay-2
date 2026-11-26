@@ -93,8 +93,9 @@ fn describe(payload: &Value) -> String {
 
 /// The `/v1/events` request body for a main turn of the Codex terminal `tag`: one complete
 /// `turn.completed` envelope, whose answer is the turn's last assistant message. Its
-/// `inputMessages` are the prompts the turn started with, by which Quay pairs the turn with
-/// the message it typed in.
+/// `inputMessages` are every prompt of the thread so far, earlier and interrupted turns' included,
+/// and its `turnId` tells when the turn began. By both, Quay pairs the turn with the message it
+/// typed in.
 fn turn_completed_batch(payload: &Value, tag: &str, now_ms: u64) -> Value {
     let text = |key: &str| payload.get(key).and_then(Value::as_str);
     let inputs: Vec<&str> = payload

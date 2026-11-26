@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use super::models::{trail_now, A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::target::{resolve_target, same_project};
+use crate::dates::now_ms;
 use crate::slices::pty::manager::{PtyManager, TurnEvent};
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
 use crate::slices::pty::plugin_watch::{LaunchRef, EVENT_BRIDGE_INSTALL_LINE, PIG_TESTED_VERSION};
@@ -157,7 +158,8 @@ fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
     None
 }
 
-/// Types `text` into `terminal_id` with its Enter. The terminal shows Working from before
+/// Types `text` into `terminal_id` with its Enter, and returns a time just before that Enter (see
+/// `PtyManager::submit_prompt`). The terminal shows Working from before
 /// the Enter goes in, so the turn the Enter starts can't end before Working is set and be
 /// overwritten by it. A failed write puts the status back. With a `launch`, text and status changes
 /// are that launch's only: no later one gets any of the text, and once it is over the status is left
@@ -167,7 +169,7 @@ fn type_in(
     terminal_id: &str,
     text: &str,
     launch: Option<&LaunchRef>,
-) -> Result<(), String> {
+) -> Result<i64, String> {
     if let Some(launch) = launch {
         let before = pty_manager.mark_a2a_delivered_to(launch).ok_or("the terminal exited")?;
         let typed = pty_manager.submit_prompt_to(launch, text);
@@ -193,10 +195,34 @@ struct HeldDelivery {
     launch: Option<LaunchRef>,
 }
 
-/// A message typed in whose turn hasn't started yet, and the text Quay typed for it.
+/// A message typed in that no turn has been paired with yet, and the text Quay typed for it.
 struct AwaitingTurn {
     message_id: String,
     text: String,
+    /// When its Enter went in, in Unix milliseconds, or `None` while it is being typed.
+    entered: Option<i64>,
+    /// When its terminal's output first showed a turn over after that, in Unix milliseconds: its
+    /// own turn, or one it reached while it ran. A later turn isn't its own.
+    stopped: Option<i64>,
+}
+
+impl AwaitingTurn {
+    /// Whether the turn that began at `began` (Unix milliseconds) can be the message's own: it
+    /// began once the message was entered, and not after the message's turn was over.
+    fn can_own(&self, began: i64) -> bool {
+        self.entered.is_some_and(|entered| entered <= began) && self.stopped.is_none_or(|stopped| began <= stopped)
+    }
+}
+
+/// A turn that ended, as the bridge hears of it.
+#[derive(Debug, Clone, Default)]
+pub struct CompletedTurn {
+    pub answer: String,
+    /// The prompts it reports, as Codex's turn-end helper does: every one of the thread so far,
+    /// those of earlier turns and of interrupted ones too.
+    pub inputs: Option<Vec<String>>,
+    /// When it began, in Unix milliseconds, when its id says so.
+    pub began: Option<i64>,
 }
 
 /// Whether `input`, a prompt a CLI reports its turn started with, is `typed` as Quay typed
@@ -212,6 +238,8 @@ struct TurnPairing {
     awaiting_turn: VecDeque<AwaitingTurn>,
     /// The message the running turn answers, when a delivered message started it.
     answering: Option<String>,
+    /// When the terminal's output last showed a turn over, in Unix milliseconds.
+    last_stop: Option<i64>,
 }
 
 /// Each terminal's delivery queue, the terminals Quay is typing a message into now, and
@@ -233,15 +261,40 @@ impl DeliveryQueues {
             .entry(terminal_id.to_string())
             .or_default()
             .awaiting_turn
-            .push_back(AwaitingTurn { message_id: message_id.to_string(), text: text.to_string() });
+            .push_back(AwaitingTurn {
+                message_id: message_id.to_string(),
+                text: text.to_string(),
+                entered: None,
+                stopped: None,
+            });
     }
 
-    /// Ends the typing `start_typing` began. A message that couldn't be typed awaits no turn.
-    fn finish_typing(&mut self, terminal_id: &str, message_id: &str, typed: bool) {
+    /// Ends the typing `start_typing` began, with when the message's Enter went in. A message that
+    /// couldn't be typed awaits no turn.
+    fn finish_typing(&mut self, terminal_id: &str, message_id: &str, entered: Option<i64>) {
         self.typing.remove(terminal_id);
-        if !typed {
-            if let Some(pairing) = self.turns.get_mut(terminal_id) {
-                pairing.awaiting_turn.retain(|awaiting| awaiting.message_id != message_id);
+        let Some(pairing) = self.turns.get_mut(terminal_id) else {
+            return;
+        };
+        let Some(entered) = entered else {
+            pairing.awaiting_turn.retain(|awaiting| awaiting.message_id != message_id);
+            return;
+        };
+        if let Some(awaiting) = pairing.awaiting_turn.iter_mut().find(|a| a.message_id == message_id) {
+            awaiting.entered = Some(entered);
+            // Its own turn can be over before its typing ends
+            awaiting.stopped = pairing.last_stop.filter(|&stop| entered <= stop);
+        }
+    }
+
+    /// Records that `terminal_id`'s output showed its turn over at `at` (Unix milliseconds): no
+    /// turn that begins later is that of a message entered before.
+    fn stop_turn(&mut self, terminal_id: &str, at: i64) {
+        let pairing = self.turns.entry(terminal_id.to_string()).or_default();
+        pairing.last_stop = Some(at);
+        for awaiting in &mut pairing.awaiting_turn {
+            if awaiting.entered.is_some() && awaiting.stopped.is_none() {
+                awaiting.stopped = Some(at);
             }
         }
     }
@@ -252,18 +305,19 @@ impl DeliveryQueues {
         pairing.answering = pairing.awaiting_turn.pop_front().map(|awaiting| awaiting.message_id);
     }
 
-    /// Pairs the turn on `terminal_id` that started with the prompts `inputs` with the oldest
-    /// message awaiting a turn whose typed text is one of them, or with none. Messages typed
-    /// before that one stop awaiting: the CLI reads its input in order, so no later turn
-    /// answers them.
-    fn start_turn_from_inputs(&mut self, terminal_id: &str, inputs: &[String]) {
+    /// Pairs the turn that ended on `terminal_id` with the oldest message awaiting one that it can
+    /// be the turn of, or with none. With `inputs`, the prompts the turn reports, the message's
+    /// typed text is one of them. With `began`, when the turn began, that is a time the message's
+    /// own turn can have begun (`AwaitingTurn::can_own`). Messages typed before it stop awaiting:
+    /// the CLI reads its input in order, so no later turn answers them.
+    fn pair_ended_turn(&mut self, terminal_id: &str, inputs: Option<&[String]>, began: Option<i64>) {
         let pairing = self.turns.entry(terminal_id.to_string()).or_default();
-        let matched = pairing
-            .awaiting_turn
-            .iter()
-            .position(|awaiting| inputs.iter().any(|input| same_prompt(input, &awaiting.text)));
+        let matched = pairing.awaiting_turn.iter().position(|awaiting| {
+            inputs.is_none_or(|inputs| inputs.iter().any(|input| same_prompt(input, &awaiting.text)))
+                && began.is_none_or(|began| awaiting.can_own(began))
+        });
         pairing.answering = matched
-            .and_then(|at| pairing.awaiting_turn.drain(..=at).last())
+            .and_then(|at| pairing.awaiting_turn.drain(..=at).next_back())
             .map(|awaiting| awaiting.message_id);
     }
 
@@ -395,7 +449,7 @@ impl A2ARouter {
             message.mark_dispatched();
             let mut queues = self.deliveries.lock();
             queues.start_typing(&message.to_terminal, &message.id, &text);
-            queues.finish_typing(&message.to_terminal, &message.id, true);
+            queues.finish_typing(&message.to_terminal, &message.id, Some(now_ms()));
             drop(queues);
             self.record(&message);
             return Ok(message);
@@ -430,10 +484,10 @@ impl A2ARouter {
             message.mark_dispatched();
             self.record(&message);
         }
-        self.deliveries.lock().finish_typing(&target, &message.id, typed.is_ok());
+        self.deliveries.lock().finish_typing(&target, &message.id, typed.as_ref().ok().copied());
         // Messages that queued behind this one go now, or at the turn end it starts.
         self.deliver_held(&target, pty);
-        typed.map(|()| message)
+        typed.map(|_| message)
     }
 
     /// Types the messages held for `terminal_id` while it doesn't hold deliveries: the next
@@ -478,7 +532,7 @@ impl A2ARouter {
                     return completed_untimed;
                 }
                 match &typed {
-                    Ok(()) => {
+                    Ok(_) => {
                         msg.status = A2AMessageStatus::Dispatched;
                         msg.delivered_at = Some(typed_at);
                     }
@@ -489,7 +543,7 @@ impl A2ARouter {
                 }
                 true
             });
-            self.deliveries.lock().finish_typing(terminal_id, &next.message_id, typed.is_ok());
+            self.deliveries.lock().finish_typing(terminal_id, &next.message_id, typed.as_ref().ok().copied());
             if let Err(e) = &typed {
                 tracing::warn!("Failed typing a held A2A message into PTY {}: {}", terminal_id, e);
             }
@@ -789,10 +843,11 @@ impl A2ARouter {
         self.deliveries.lock().start_turn(terminal_id);
     }
 
-    /// Takes the turns a terminal's own output reports, Antigravity's OSC 7501 sequences
-    /// (see `PtyManager::apply_turn_report`), as the bridge takes a plugin's turn events:
-    /// a turn start pairs the turn with its message, and an answer ends it for the senders
-    /// waiting on it.
+    /// Takes the turns a terminal's own output reports, its OSC 7501 sequences (see
+    /// `PtyManager::apply_turn_report`), as the bridge takes a plugin's turn events: a turn start
+    /// pairs the turn with its message, and an answer ends it for the senders waiting on it. A turn
+    /// that stopped, whose answer comes another way, completes nothing, and no later turn answers
+    /// the messages entered before it stopped.
     pub fn follow_turns(&self, pty_manager: &PtyManager) {
         let router = self.clone();
         pty_manager.add_turn_watcher(move |terminal_id, event| match event {
@@ -801,6 +856,7 @@ impl A2ARouter {
                 router.resolve_pending_reply(terminal_id, answer);
             }
             TurnEvent::Ended => {}
+            TurnEvent::Stopped => router.deliveries.lock().stop_turn(terminal_id, now_ms()),
         });
     }
 
@@ -810,30 +866,31 @@ impl A2ARouter {
         self.deliveries.lock().turns.remove(terminal_id);
     }
 
-    /// Ends the turn running on `terminal_id` with `answer`, as the bridge does on its
-    /// `turn.completed` (see `resolve_pending_reply`). Quay never hears a Codex turn start
-    /// (`RunKind::reports_turn_start`), so a Codex turn is paired with its message here, at
-    /// its end, by `inputs`, the prompts the turn reports it started with: it answers the
-    /// message whose typed text is one of them. A turn the user or the launch prompt started
-    /// answers none, even when a message was typed in while it ran. Without `inputs` it
-    /// answers the oldest message typed in that no turn has taken yet.
+    /// Ends a turn of `terminal_id` with its answer, as the bridge does on its `turn.completed`
+    /// (see `resolve_pending_reply`). A Codex turn is paired with its message here, at its end
+    /// (`RunKind::pairs_at_turn_start`), since its turn-end helper alone says which prompts a turn
+    /// had. It answers a message whose typed text is one of them. Those are every prompt of the
+    /// thread so far, so in a launch whose output reports its turns, which shows when a turn is
+    /// over, the message's own turn must also be able to be this one, by when this one began: a
+    /// turn that the operator or the launch prompt started answers none, nor does a turn that runs
+    /// when a message reaches it, or one after a message's own turn. The report may come before or
+    /// after the output shows the turn over. Without those reports, or when the turn's id doesn't
+    /// say when it began, it answers the oldest message by the prompts alone; and without prompts,
+    /// the oldest typed in that no turn has taken yet.
     pub fn turn_completed(
         &self,
         terminal_id: &str,
-        answer: String,
-        inputs: Option<&[String]>,
+        turn: CompletedTurn,
         pty_manager: &PtyManager,
     ) -> Option<A2AMessage> {
         if pty_manager
             .get_info(terminal_id)
-            .is_some_and(|t| !t.run_kind.reports_turn_start())
+            .is_some_and(|t| !t.run_kind.pairs_at_turn_start())
         {
-            match inputs {
-                Some(inputs) => self.deliveries.lock().start_turn_from_inputs(terminal_id, inputs),
-                None => self.turn_started(terminal_id),
-            }
+            let began = turn.began.filter(|_| pty_manager.reports_own_turns(terminal_id));
+            self.deliveries.lock().pair_ended_turn(terminal_id, turn.inputs.as_deref(), began);
         }
-        self.resolve_pending_reply(terminal_id, answer)
+        self.resolve_pending_reply(terminal_id, turn.answer)
     }
 
     /// Ends the turn running on `terminal_id` with `answer`: completes the message that
@@ -1792,8 +1849,8 @@ mod tests {
         inputs: &[&str],
         answer: &str,
     ) -> Option<A2AMessage> {
-        let inputs: Vec<String> = inputs.iter().map(|i| i.to_string()).collect();
-        router.turn_completed(id, answer.to_string(), Some(&inputs), pty)
+        let inputs = Some(inputs.iter().map(|i| i.to_string()).collect());
+        router.turn_completed(id, CompletedTurn { answer: answer.to_string(), inputs, began: None }, pty)
     }
 
     /// Ends the terminal's turn as the bridge does on `turn.completed`.
@@ -2251,7 +2308,8 @@ mod tests {
     #[test]
     fn a_codex_turn_started_before_a_message_was_typed_in_doesnt_answer_it() {
         let router = A2ARouter::new();
-        // Idle, as a Codex terminal shows while a turn the user typed or its launch prompt runs
+        // Idle, as a Codex that prints no OSC 7501 shows while a turn the user typed or its launch
+        // prompt runs
         let pty = manager_with(&[
             ("term-cx-sender4", RunKind::Claude, ClaudeStatus::Idle),
             ("term-cx-user", RunKind::Codex, ClaudeStatus::Idle),
@@ -2281,7 +2339,8 @@ Confirm your role in one line, then wait.";
         ]);
         let msg = router.dispatch(peer_message("term-cx-sender5", "term-cx-noinputs"), Some(&pty)).unwrap();
 
-        let completed = router.turn_completed("term-cx-noinputs", "4".to_string(), None, &pty).unwrap();
+        let turn = CompletedTurn { answer: "4".to_string(), ..CompletedTurn::default() };
+        let completed = router.turn_completed("term-cx-noinputs", turn, &pty).unwrap();
         assert_eq!(completed.id, msg.id);
     }
 
@@ -2312,7 +2371,8 @@ Confirm your role in one line, then wait.";
         let msg = router.dispatch(peer_message("term-cx-sender2", "term-cx-claude"), Some(&pty)).unwrap();
 
         // A Claude turn that ends with no turn start after the message started before it
-        assert!(router.turn_completed("term-cx-claude", "older".to_string(), None, &pty).is_none());
+        let turn = CompletedTurn { answer: "older".to_string(), ..CompletedTurn::default() };
+        assert!(router.turn_completed("term-cx-claude", turn, &pty).is_none());
         assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
     }
 
@@ -2751,5 +2811,19 @@ Confirm your role in one line, then wait.";
 
         assert!(!sent.notices.is_empty());
         assert!(sent.notices.iter().all(|n| !n.waited && n.delivered_at.is_some()));
+    }
+
+    #[test]
+    fn a_turn_shown_over_while_its_message_is_typed_is_its_last_one_to_begin() {
+        let mut queues = DeliveryQueues::default();
+        let owner = |queues: &mut DeliveryQueues, began: i64| {
+            queues.start_typing("t1", "m1", "go");
+            queues.stop_turn("t1", 200);
+            queues.finish_typing("t1", "m1", Some(100));
+            queues.pair_ended_turn("t1", None, Some(began));
+            queues.end_turn("t1")
+        };
+        assert_eq!(owner(&mut queues, 150).as_deref(), Some("m1"), "its own turn, over before its typing ended");
+        assert_eq!(owner(&mut queues, 300), None, "a turn that began after that one was over");
     }
 }

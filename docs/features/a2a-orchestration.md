@@ -19,7 +19,7 @@ PowerShell, Custom Command and Archon terminals are not peers. `quay_list_agents
 How each full peer gets the tools:
 
 - **Claude Code** gets Quay's MCP server inline through `--mcp-config`. It answers through the [event-bridge plugin](../guide/installation.md#event-bridge-plugin). A Claude Code terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from that plugin, and keeps its tools meanwhile. Once the plugin is heard, it is a full peer again.
-- **Codex** gets the server through `-c` overrides and reports each turn end through Quay's turn-end helper. See [Codex on the A2A bus](./agent-support.md#codex-on-the-a2a-bus).
+- **Codex** gets the server through `-c` overrides. Quay reads its status from the OSC 7501 sequences it prints, and its answers come from Quay's turn-end helper. See [Codex on the A2A bus](./agent-support.md#codex-on-the-a2a-bus).
 - **OpenCode** gets the server through `OPENCODE_CONFIG_CONTENT`, and Quay reads its turns from the server its TUI runs.
 - **PiG** loads Quay's PiG extension, `quay-pig-bridge.exe`, which ships beside Quay. The extension registers the server for that session and reports each turn's start and end, with its answer. A PiG terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from the extension in the 30 seconds after its first output. Once the extension reports, it is a full peer again.
 
@@ -90,7 +90,8 @@ The sender waits at most 60 seconds from its call. A peer that takes longer is t
 A peer's message arrives in its target's terminal as `[Peer agent (<sender>)]: <message>`, typed in with its Enter.
 
 - Quay types a message into a Claude Code, Codex, Antigravity, OpenCode or PiG terminal only between turns, one message per turn. A message sent while that terminal is starting, working or waiting on a tool approval or another prompt waits in the terminal's queue and shows **queued** in the Activity view. When the turn ends, Quay types the next queued message and its entry moves on to **Dispatched**.
-- Quay doesn't see a Codex turn start, so a message can still reach a Codex turn you started by typing into its pane. That turn doesn't answer it; the message's own turn does.
+- A Codex turn that you start by typing into its pane holds messages like any other. A Codex that prints no [turn reports](./agent-support.md#codex-on-the-a2a-bus) doesn't show Quay such a turn, so there a message can reach it.
+- A message to Codex whose turn you interrupt with `Esc` is not answered. The messages queued behind it go in, and their turns answer only them.
 - A message to a listener, to a Claude Code terminal whose event-bridge plugin isn't reporting, to a PiG terminal whose PiG extension isn't reporting, or to an OpenCode terminal whose server Quay couldn't reach, is typed at once.
 - If Quay can't type a message it sends at once, the call fails. A queued message Quay can't type shows **Failed** in the trail.
 - A message to the caller itself, to an Archon terminal or to a terminal that has exited is refused.
