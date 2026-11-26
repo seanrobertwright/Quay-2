@@ -59,6 +59,9 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_LibraryLoader",
 ] }
+# The WebView2 bindings Tauri's own webview is built on, at its versions, for its ProcessFailed event (#799)
+webview2-com = "0.39.1"
+windows-core = "0.62.2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

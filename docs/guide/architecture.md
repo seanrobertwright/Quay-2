@@ -51,6 +51,18 @@ graph TB
     MachinaB <--> FS
 ```
 
+### When the window's WebView2 processes fail
+
+On Windows, Quay's window shows its page through WebView2, which runs the page in processes of its own. Your terminals live in Quay's own process, so they keep running whatever happens to those. Quay watches the main window's WebView2 processes:
+
+- **The browser process exits**, as it does when the machine runs short of memory: Quay closes the window and builds a new one in the same place. The page shows the terminals again with their recent output, as it does after a reload, and their CLIs carry on. If WebView2 won't start, Quay tries again for ten minutes, waiting longer each time, and exits only if it still has no window, so that you can start it again.
+- **The page's renderer exits:** Quay reloads the page.
+- **The GPU process exits:** WebView2 starts another by itself.
+
+Quay builds at most three new windows, and reloads the page at most three times, in ten minutes. A fourth waits until ten minutes have passed since the first. While the window has no page, closing it exits Quay at once. Otherwise closing it would wait for the page to check for unsaved Praxis drafts.
+
+Quay logs each failure in one line in `%LOCALAPPDATA%\Quay2\logs`, then what came of its recovery. The failure's line gives the process, the reason and exit code WebView2 reports, and the machine's commit at that moment. A commit near its limit means the machine was short of memory.
+
 ---
 
 ## Backend Feature Slices (`src-tauri/src/slices/`)
