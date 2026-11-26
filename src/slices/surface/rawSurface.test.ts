@@ -10,7 +10,7 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import type { Mounted } from "./fixtures/askFixtures.ts";
 import { called, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 import { arrives, changed, mount, unmount as unmountPage } from "./fixtures/surfaceFixtures.ts";
-import { acceptedRaw, button, column, create, EVENT, oneButton, text, type Component } from "./fixtures/rawFixtures.ts";
+import { acceptedRaw, button, column, create, EVENT, listOf, oneButton, text, type Component } from "./fixtures/rawFixtures.ts";
 
 const { earlierButton, findButton, mountCompanion, openLocked, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 const { line, lines, strip, opened } = await import("./fixtures/boardFixtures.ts");
@@ -274,6 +274,38 @@ test("a raw surface that ended keeps what was typed in it, by the field's label"
     ["NameAda"],
   );
   assert.ok(content(container).textContent!.startsWith("Migration plan"));
+});
+
+test("what was typed in an obscured field of a raw surface that ended is neither shown nor copied, where it is bound and in a list", async () => {
+  const secret = (id: string, path: string): Component => ({ id, component: "TextField", label: id, variant: "obscured", value: { "@path": path } });
+  const plain = (id: string, path: string): Component => ({ id, component: "TextField", label: id, value: { "@path": path } });
+  const components = [
+    { id: "root", component: "Column", children: ["name", "key", "shared", "also", "people"] },
+    FIELD,
+    secret("key", "/key"),
+    // Two fields of one path, one of them obscured
+    plain("shared", "/shared"),
+    secret("also", "shared"),
+    listOf("people", "person", "/people", "List"),
+    { id: "person", component: "Row", children: ["pin", "nick"] },
+    secret("pin", "pin"),
+    plain("nick", "nick"),
+  ];
+  const live = await acceptedRaw([create(components, { dataModel: { name: "", key: "", shared: "", people: [{ pin: "", nick: "" }] } })], { asks: true });
+  list = [changed(live, { ended_at: 1 })];
+  const values = { "/name": "Ada", "/key": "hunter2", "/shared": "s3cret", "/people/0/pin": "1234", "/people/0/nick": "Bo" };
+  unsent = [{ terminal_id: "t1", id: "plan", order: live.order, revision: 1, values }];
+  const written: string[] = [];
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (said: string) => void written.push(said) } });
+  const container = await open();
+  await act(async () => viewEntry(container, "Surface")!.click());
+  await openLocked(container, "plan");
+  assert.deepEqual([...content(container).querySelectorAll("dl dd")].map((row) => row.textContent), ["Ada", "Bo"]);
+  await act(async () => findButton(region(container), "Copy")!.click());
+  await settle();
+  assert.deepEqual(written, ["Ada\n\nBo"]);
+  const said = region(container).textContent!;
+  assert.deepEqual(["hunter2", "s3cret", "1234"].filter((typed) => said.includes(typed)), []);
 });
 
 test("the companion draws a raw surface again from Rust's list after a reload, with what was typed in it", async () => {
