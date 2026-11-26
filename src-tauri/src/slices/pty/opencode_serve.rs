@@ -395,11 +395,18 @@ mod tests {
         false
     }
 
-    /// Whether something writes to `file` now.
+    /// Whether something writes to `file`: it grows within fifteen seconds, time for a shell to
+    /// start on a busy machine.
     fn grows(file: &std::path::Path) -> bool {
         let before = size(file);
-        std::thread::sleep(Duration::from_millis(2500));
-        size(file) > before
+        let since = Instant::now();
+        while since.elapsed() < Duration::from_secs(15) {
+            std::thread::sleep(Duration::from_millis(250));
+            if size(file) > before {
+                return true;
+            }
+        }
+        false
     }
 
     #[test]

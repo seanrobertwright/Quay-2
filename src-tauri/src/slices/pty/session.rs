@@ -149,6 +149,20 @@ const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
 /// `oauth: false` keeps OpenCode from trying to sign in to it, and `timeout` is how long OpenCode
 /// waits on a call to it, in milliseconds. Of that server's tools, `allowed` run without a prompt.
 pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
+    opencode_config(mcp_url, workspace, allowed, None).to_string()
+}
+
+/// `opencode_config_content` for OpenCode 2.x, which runs as `opencode serve` and takes no `--auto`.
+/// In `perm` Skip every tool is allowed, `"permission": "allow"`, unless `workspace` sets a
+/// `permission` of its own. Quay's server has `"codemode": false`, without which OpenCode 2.x
+/// shows its tools only through Code Mode.
+pub fn opencode_2_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str], perm: PermissionMode) -> String {
+    opencode_config(mcp_url, workspace, allowed, Some(perm)).to_string()
+}
+
+/// The config of `opencode_config_content`, or of `opencode_2_config_content` when there is a
+/// 2.x permission mode, `two`.
+fn opencode_config(mcp_url: &str, workspace: Option<&str>, allowed: &[&str], two: Option<PermissionMode>) -> serde_json::Value {
     let mut config = match workspace.filter(|content| !content.is_empty()).map(jsonc::object) {
         Some(Ok(object)) => serde_json::Value::Object(object),
         Some(Err(e)) => {
@@ -169,8 +183,14 @@ pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: 
         "oauth": false,
         "timeout": CLI_LIMIT_MS
     });
+    if let Some(perm) = two {
+        config["mcp"]["quay"]["codemode"] = serde_json::Value::Bool(false);
+        if perm == PermissionMode::Skip && config.get("permission").is_none() {
+            config["permission"] = serde_json::json!("allow");
+        }
+    }
     opencode_permission::add_allow_rules(&mut config, allowed);
-    config.to_string()
+    config
 }
 
 /// Sets the `CLAUDE_EVENTS_*` variables Claude Code's event-bridge plugin reads.
@@ -521,15 +541,56 @@ fn shell_command(command_text: Option<&str>) -> CommandBuilder {
     }
 }
 
+/// How `build_command_as` starts an OpenCode terminal.
+#[derive(Clone, Copy)]
+enum OpenCodeLaunch {
+    /// OpenCode 1.x's TUI, serving its events on the loopback port when there is one.
+    Tui(Option<u16>),
+    /// OpenCode 2.x's `opencode attach`, to the server on this loopback port.
+    Attach(u16),
+}
+
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
 /// the launch prompt and, last, Quay's MCP config. `server_port` is the loopback port an
-/// OpenCode terminal serves its events on; other CLIs ignore it.
+/// OpenCode 1.x terminal serves its events on; other CLIs ignore it. OpenCode 2.x is
+/// `build_serve_and_attach`.
 pub(crate) fn build_command(
     request: &SpawnTerminalRequest,
     launch: &LaunchRef,
     bridge_port: u16,
     bridge_token: &str,
     server_port: Option<u16>,
+) -> CommandBuilder {
+    build_command_as(request, launch, bridge_port, bridge_token, OpenCodeLaunch::Tui(server_port))
+}
+
+/// The two commands of an OpenCode 2.x terminal, which share one environment and folder:
+/// `opencode serve`, listening on loopback `port` only, for the terminal's sidecar (see
+/// `opencode_serve::Sidecar`), and `opencode attach` to it, for the PTY. Neither takes the launch
+/// prompt, which is typed into the PTY instead, nor `--auto`: Skip is in the config (see
+/// `opencode_2_config_content`).
+pub(crate) fn build_serve_and_attach(
+    request: &SpawnTerminalRequest,
+    launch: &LaunchRef,
+    bridge_port: u16,
+    bridge_token: &str,
+    port: u16,
+) -> (std::process::Command, CommandBuilder) {
+    let attach = build_command_as(request, launch, bridge_port, bridge_token, OpenCodeLaunch::Attach(port));
+    let mut serve = crate::spawn::hidden_command(&attach.get_argv()[0]);
+    serve.args(["serve", "--port", &port.to_string(), "--hostname", "127.0.0.1"]);
+    serve.env_clear();
+    serve.envs(attach.iter_full_env_as_str());
+    serve.current_dir(&request.project_path);
+    (serve, attach)
+}
+
+fn build_command_as(
+    request: &SpawnTerminalRequest,
+    launch: &LaunchRef,
+    bridge_port: u16,
+    bridge_token: &str,
+    opencode: OpenCodeLaunch,
 ) -> CommandBuilder {
     let mcp_url = mcp_url(bridge_port, launch);
     let perm = request.run_kind.permission_mode(request.permission_mode);
@@ -632,13 +693,23 @@ pub(crate) fn build_command(
             let program =
                 opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
             let mut c = CommandBuilder::new(program);
-            // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
-            if let Some(port) = server_port {
-                c.arg("--port");
-                c.arg(port.to_string());
-            }
-            if perm == PermissionMode::Skip {
-                c.arg("--auto");
+            match opencode {
+                // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
+                OpenCodeLaunch::Tui(server_port) => {
+                    if let Some(port) = server_port {
+                        c.arg("--port");
+                        c.arg(port.to_string());
+                    }
+                    if perm == PermissionMode::Skip {
+                        c.arg("--auto");
+                    }
+                }
+                OpenCodeLaunch::Attach(port) => {
+                    c.arg("attach");
+                    c.arg(format!("http://127.0.0.1:{}", port));
+                    c.arg("--dir");
+                    c.arg(&request.project_path);
+                }
             }
             c
         }
@@ -695,7 +766,11 @@ pub(crate) fn build_command(
                 content: workspace.as_deref(),
             },
         );
-        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(&mcp_url, workspace.as_deref(), &allowed));
+        let content = match opencode {
+            OpenCodeLaunch::Tui(_) => opencode_config_content(&mcp_url, workspace.as_deref(), &allowed),
+            OpenCodeLaunch::Attach(_) => opencode_2_config_content(&mcp_url, workspace.as_deref(), &allowed, perm),
+        };
+        cmd.env(OPENCODE_CONFIG_VAR, content);
     }
     // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
     // answer, is unset whether the request or Quay's own environment set it
@@ -723,8 +798,10 @@ pub(crate) fn build_command(
         }
     }
 
-    // The launch prompt is one argument, never split, so multi-line prompts survive
-    if let Some(prompt) = launch_prompt(request) {
+    // The launch prompt is one argument, never split, so multi-line prompts survive. OpenCode
+    // 2.x's `attach` takes none; the prompt is typed into it instead.
+    let takes_prompt = !matches!(opencode, OpenCodeLaunch::Attach(_));
+    if let Some(prompt) = launch_prompt(request).filter(|_| takes_prompt) {
         let form = request.run_kind.launch_prompt_form();
         if starts_through_cmd(&cmd) {
             start_through_pwsh(&mut cmd, form, prompt);
@@ -1629,6 +1706,95 @@ mod tests {
             })
         );
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
+    }
+
+    /// `super::build_serve_and_attach` for launch 7 of `term-oc2`, with Quay's bridge on 4321.
+    fn serve_and_attach(request: &SpawnTerminalRequest, port: u16) -> (std::process::Command, CommandBuilder) {
+        let launch = LaunchRef { terminal_id: "term-oc2".to_string(), launch: 7 };
+        super::build_serve_and_attach(request, &launch, 4321, "tok-1", port)
+    }
+
+    fn opencode_config(cmd: &CommandBuilder) -> serde_json::Value {
+        serde_json::from_str(&env_of(cmd, "OPENCODE_CONFIG_CONTENT").expect("OpenCode's config")).unwrap()
+    }
+
+    #[test]
+    fn opencode_2_attaches_its_pty_to_the_server_without_its_1x_flags() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.project_path = "E:\\Projects\\App".to_string();
+        request.custom_flags = Some("--model anthropic/x".to_string());
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+
+        let (_, attach) = serve_and_attach(&request, 4567);
+
+        assert_eq!(
+            argv(&attach)[1..],
+            ["attach", "http://127.0.0.1:4567", "--dir", "E:\\Projects\\App", "--model", "anthropic/x"]
+        );
+        assert_eq!(attach.get_cwd().map(|d| d.to_string_lossy().to_string()).as_deref(), Some("E:\\Projects\\App"));
+    }
+
+    #[test]
+    fn opencode_2s_server_serves_on_loopback_with_the_ptys_environment() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.project_path = "E:\\Projects\\App".to_string();
+        request.env_vars = Some([("MY_KEY".to_string(), "mine".to_string())].into_iter().collect());
+
+        let (serve, attach) = serve_and_attach(&request, 4567);
+
+        assert_eq!(serve.get_program().to_string_lossy(), argv(&attach)[0]);
+        let args: Vec<String> = serve.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(args, ["serve", "--port", "4567", "--hostname", "127.0.0.1"]);
+        assert_eq!(serve.get_current_dir().map(|d| d.to_string_lossy().to_string()).as_deref(), Some("E:\\Projects\\App"));
+        let serve_env: std::collections::BTreeMap<String, String> = serve
+            .get_envs()
+            .filter_map(|(k, v)| Some((k.to_string_lossy().to_string(), v?.to_string_lossy().to_string())))
+            .collect();
+        let attach_env: std::collections::BTreeMap<String, String> =
+            attach.iter_full_env_as_str().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        assert_eq!(serve_env, attach_env);
+        assert_eq!(serve_env.get("MY_KEY").map(String::as_str), Some("mine"));
+        assert_eq!(serve_env.get("QUAY_A2A_TOKEN").map(String::as_str), Some("tok-1"));
+        assert!(serve_env.contains_key("OPENCODE_CONFIG_CONTENT"));
+    }
+
+    #[test]
+    fn opencode_2_in_skip_mode_allows_every_tool_through_its_config_unless_the_workspace_sets_permission() {
+        let allow_all = |config: &serde_json::Value| {
+            config["permission"] == "allow" || config["permission"]["*"] == "allow"
+        };
+        let skip = spawn_request(RunKind::OpenCode);
+        assert!(allow_all(&opencode_config(&serve_and_attach(&skip, 4567).1)));
+
+        let mut normal = spawn_request(RunKind::OpenCode);
+        normal.permission_mode = Some(PermissionMode::Normal);
+        assert!(!allow_all(&opencode_config(&serve_and_attach(&normal, 4567).1)));
+
+        let mut asks = spawn_request(RunKind::OpenCode);
+        asks.env_vars = Some(
+            [("OPENCODE_CONFIG_CONTENT".to_string(), r#"{"permission":"ask"}"#.to_string())].into_iter().collect(),
+        );
+        let config = opencode_config(&serve_and_attach(&asks, 4567).1);
+        assert!(!allow_all(&config), "{config}");
+
+        // The value itself, with no rule of Quay's for a surface tool added
+        let content = |workspace: Option<&str>, perm| -> serde_json::Value {
+            serde_json::from_str(&opencode_2_config_content("http://127.0.0.1:4321/mcp/7", workspace, &[], perm)).unwrap()
+        };
+        assert_eq!(content(None, PermissionMode::Skip)["permission"], "allow");
+        assert_eq!(content(Some(r#"{"model":"x"}"#), PermissionMode::Skip)["permission"], "allow");
+        assert_eq!(content(Some(r#"{"permission":{"bash":"ask"}}"#), PermissionMode::Skip)["permission"], serde_json::json!({"bash":"ask"}));
+        assert_eq!(content(None, PermissionMode::Normal).get("permission"), None);
+    }
+
+    #[test]
+    fn only_opencode_2_shows_quays_tools_outside_code_mode() {
+        let two = opencode_config(&serve_and_attach(&spawn_request(RunKind::OpenCode), 4567).1);
+        assert_eq!(two["mcp"]["quay"]["codemode"], false);
+        assert_eq!(two["mcp"]["quay"]["url"], "http://127.0.0.1:4321/mcp/7");
+
+        let one = build_command(&spawn_request(RunKind::OpenCode), "term-oc", 4321, "tok-1", Some(4567));
+        assert_eq!(opencode_config(&one)["mcp"]["quay"].get("codemode"), None);
     }
 
     #[test]
