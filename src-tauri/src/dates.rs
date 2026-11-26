@@ -19,6 +19,15 @@ pub fn system_time_ms(time: SystemTime) -> i64 {
     time.duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
+/// Milliseconds since the Unix epoch that a version 7 UUID was made at: its first 48 bits.
+/// `None` for a UUID of another version.
+pub fn uuid_v7_ms(id: &uuid::Uuid) -> Option<i64> {
+    if id.get_version_num() != 7 {
+        return None;
+    }
+    i64::try_from(id.as_u128() >> 80).ok()
+}
+
 /// Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's algorithm).
 pub fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let y = if month <= 2 { year - 1 } else { year };
@@ -158,6 +167,13 @@ pub fn parse_timestamp_ms(s: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_version_7_uuid_tells_when_it_was_made_and_no_other_does() {
+        let made = uuid::Uuid::parse_str("019abc12-3456-7def-8123-456789abcdef").unwrap();
+        assert_eq!(uuid_v7_ms(&made), Some(0x019a_bc12_3456));
+        assert_eq!(uuid_v7_ms(&uuid::Uuid::new_v4()), None);
+    }
 
     #[test]
     fn civil_round_trip() {

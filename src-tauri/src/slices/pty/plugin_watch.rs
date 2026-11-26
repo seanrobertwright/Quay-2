@@ -1,8 +1,9 @@
 //! What Quay knows, in one launch of a terminal, about whether the plugin or extension
 //! that reports its turns is loaded (Claude Code's event-bridge plugin, or Quay's PiG
 //! extension; see `RunKind::reports_through_plugin`), and the status rules that follow. The
-//! time a launch began, its first output, its process's exit and its CLI's handshake with Quay's MCP
-//! server are kept here too, since all of them begin anew with each launch.
+//! time a launch began, its first output, the turns its own output reports, its process's exit and its
+//! CLI's handshake with Quay's MCP server are kept here too, since all of them begin anew with each
+//! launch.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,6 +11,8 @@ use std::time::{Duration, Instant};
 
 use super::handshake::Handshake;
 use super::models::{ClaudeStatus, RunKind};
+use super::osc7501::TurnReport;
+use crate::dates::now_ms;
 
 /// How long a Claude or PiG terminal may stay silent after its first output before Quay
 /// shows it as Unknown (a Claude terminal with the plugin hint).
@@ -46,6 +49,15 @@ impl LaunchRef {
     }
 }
 
+/// The turns a launch's own output has reported so far (see `osc7501`).
+#[derive(Debug, Clone, Copy)]
+struct ReportedTurns {
+    /// Whether the last report showed a turn running.
+    running: bool,
+    /// When a turn was last shown over, in Unix milliseconds.
+    last_stop: Option<i64>,
+}
+
 /// One launch of a terminal. Relaunch keeps the terminal id and starts a new watch,
 /// so the "heard from the plugin" mark and the clock never carry over.
 #[derive(Debug, Clone)]
@@ -57,6 +69,10 @@ pub struct PluginWatch {
     first_output_at: Option<Instant>,
     /// When the launch began.
     began: Instant,
+    /// `began`, in Unix milliseconds.
+    began_ms: i64,
+    /// The turns its output has reported, or `None` while it has reported none.
+    reported: Option<ReportedTurns>,
     /// When it first worked, for a CLI that connects then (`RunKind::connects_at_first_prompt`).
     prompted_at: Option<Instant>,
     /// Whether the launch's CLI has shaken hands with Quay's MCP server.
@@ -74,6 +90,8 @@ impl PluginWatch {
             hint_dismissed: false,
             first_output_at: None,
             began: Instant::now(),
+            began_ms: now_ms(),
+            reported: None,
             prompted_at: None,
             handshake: false,
             exited: false,
@@ -120,6 +138,37 @@ impl PluginWatch {
         first
     }
 
+    /// Records what the launch's output reports of its turn, at `at` (Unix milliseconds). A report
+    /// with no status is none. Returns whether a turn runs now that didn't before.
+    pub fn report_turn(&mut self, report: &TurnReport, at: i64) -> bool {
+        let Some(status) = &report.status else {
+            return false;
+        };
+        let running = *status != ClaudeStatus::Idle;
+        let before = self.reported;
+        let last_stop = before.and_then(|turns| turns.last_stop);
+        self.reported = Some(ReportedTurns { running, last_stop: if report.stops_turn { Some(at) } else { last_stop } });
+        running && !before.is_some_and(|turns| turns.running)
+    }
+
+    /// Whether the launch's own output reports its turns, so that its status is theirs alone.
+    pub fn reports_own_turns(&self) -> bool {
+        self.reported.is_some()
+    }
+
+    /// Whether the turn that began at `began` (Unix milliseconds) still runs, by the launch's own
+    /// output. A turn of an unknown time is taken for the last one.
+    pub fn turn_running(&self, began: Option<i64>) -> bool {
+        self.reported.is_some_and(|turns| {
+            turns.running && !began.zip(turns.last_stop).is_some_and(|(began, stop)| began <= stop)
+        })
+    }
+
+    /// Whether the launch began after `at` (Unix milliseconds).
+    pub fn began_after(&self, at: i64) -> bool {
+        self.began_ms > at
+    }
+
     /// Records the CLI's handshake with Quay's MCP server, unless the launch's process has exited.
     /// Returns whether it is the launch's first.
     pub fn shake_hands(&mut self) -> bool {
@@ -139,6 +188,11 @@ impl PluginWatch {
         let connects_from =
             if self.run_kind.connects_at_first_prompt() { self.prompted_at } else { Some(self.began) };
         (!self.exited).then(|| Handshake::at(now, self.began, connects_from, self.handshake))
+    }
+
+    /// Whether the launch's process has exited.
+    pub fn exited(&self) -> bool {
+        self.exited
     }
 
     /// Marks the launch's process exited and clears its CLI's handshake.

@@ -288,8 +288,9 @@ export function useWorkspace() {
               break;
             }
             case "turn.completed": {
+              // Its status comes in the `terminal-status` that the backend sends. A Codex turn can
+              // be reported while its terminal is still Working, or is already again
               playTurnCompletedChime();
-              updated.claude_status = "idle";
               updated.current_tool = null;
               updated.tool_detail = null;
               break;
