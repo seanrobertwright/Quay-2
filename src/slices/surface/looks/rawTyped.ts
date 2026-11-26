@@ -10,9 +10,11 @@ const absoluteOf = (written: string): string => `/${written.replace(/^\//, "")}`
 
 /**
  * Whether a field bound to `written` may hold what is at `path`. A relative binding also holds it in each item
- * of a list the field is drawn for, at any depth: it is taken to, wherever an index comes before it.
+ * of a list the field is drawn for, at any depth: it is taken to, wherever an index comes before it. A binding
+ * of `""` or `"."` names the item itself, as the engine resolves it, or the root outside a list.
  */
 function mayHold(written: string, path: string): boolean {
+  if (written === "" || written === ".") return path === "/" || /\/\d+$/.test(path);
   const absolute = absoluteOf(written);
   if (absolute === path) return true;
   if (written.startsWith("/") || !path.endsWith(absolute)) return false;
