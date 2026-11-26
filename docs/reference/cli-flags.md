@@ -81,20 +81,42 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 ## OpenCode CLI Arguments
 
-When spawning OpenCode terminals, Quay 2 runs:
+Quay starts `opencode.exe` (`opencode` on macOS and Linux) by name, so the terminal's `PATH` finds it, and a workspace's own `PATH` variable can point it at another copy. Only when no folder on that `PATH` holds one does Quay fall back to bun's install, `%USERPROFILE%\.bun\bin\opencode.exe`.
+
+Before each launch, a relaunch included, Quay runs `opencode.exe --version`, with the terminal's variables, and gives it 3 seconds. A version below 2 gets the OpenCode 1.x launch. Any other version gets the 2.x launch, and so does a probe that prints no version or doesn't finish in time.
+
+### OpenCode 1.x {#opencode-1x}
 
 ```powershell
 opencode.exe --port <free_port> [--auto] [CUSTOM_FLAGS] [--prompt <launch_prompt>]
 ```
 
-Quay starts `opencode.exe` (`opencode` on macOS and Linux) by name, so the terminal's `PATH` finds it, and a workspace's own `PATH` variable can point it at another copy. Only when no folder on that `PATH` holds one does Quay fall back to bun's install, `%USERPROFILE%\.bun\bin\opencode.exe`.
-
 | Flag | Purpose | Condition |
 | :--- | :--- | :--- |
-| `--port <free_port>` | The OpenCode TUI serves its HTTP server on this loopback port. Quay subscribes to its `GET /event` stream: the main session going busy shows the terminal Working, and its first idle after that ends the turn, whose reply Quay reads from `GET /session/:id/message`. Sessions with a `parentID` (subagents) are ignored. Quay only reads from this server; messages are still typed into the terminal. | Every OpenCode terminal; a free port is picked at each launch |
+| `--port <free_port>` | The OpenCode TUI serves its HTTP server on this loopback port. Quay subscribes to its `GET /event` stream: the main session going busy shows the terminal Working, and its first idle after that ends the turn, whose reply Quay reads from `GET /session/:id/message`. Sessions with a `parentID` (subagents) are ignored. Quay only reads from this server; messages are still typed into the terminal. | Every OpenCode 1.x terminal; a free port is picked at each launch |
 | `--auto` | Auto-approves tool permissions | **Skip Permissions** is chosen |
 
-Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of a flag:
+### OpenCode 2.x {#opencode-2x}
+
+OpenCode 2.x refuses `--port`. Each OpenCode 2.x terminal gets a server of its own, as a separate process, and its TUI connects to it:
+
+```powershell
+opencode.exe serve --port <free_port> --hostname 127.0.0.1
+opencode.exe --server http://127.0.0.1:<free_port> <project_path> [--auto] [CUSTOM_FLAGS] [--prompt <launch_prompt>]
+```
+
+- The server runs in the terminal's folder, with the same environment as the terminal. It has no window, and Quay reads its output and discards it.
+- The server listens on loopback only and asks for a password. Quay makes a new random one for each launch, a relaunch included, and passes it to the server and the TUI as `OPENCODE_PASSWORD` in their environment, which replaces any `OPENCODE_PASSWORD` the workspace sets. It is never on a command line, and Quay never logs, shows or stores it. OpenCode keeps it out of the shells its tools run.
+- Quay waits up to 10 seconds for the server's `GET /api/config` to take the password and list this launch's own `mcp.quay` entry. Then it waits, within the same 10 seconds, until the server's default model has stayed the same for a second, and only then starts the TUI in the terminal. OpenCode 2.4.1 answers before it has loaded the providers your configuration names, and until then its default model is one of OpenCode's own free ones, which a launch prompt would go to.
+- If the server exits first, doesn't answer in time, or another process answers on the port, the terminal prints why, with the end of what the server printed, and exits. Relaunch it to try again on a new port.
+- The server ends when the terminal's process exits, when you close or relaunch the terminal, and when Quay exits. On Windows it also ends if Quay is stopped abruptly, and Quay ends everything the server started, too.
+- `--auto` and `--prompt` work as they do for 1.x.
+- Quay subscribes to the server's `GET /api/event` stream: the main session's execution starting shows the terminal Working, and its end, whether it succeeded, failed or was interrupted, ends the turn. Quay reads the reply from `GET /api/session/:id/message`: the newest assistant text since the latest prompt. Sessions with a `parentID` (subagents) are ignored. Quay only reads from this server; messages are still typed into the terminal.
+- Quay's `mcp.quay` entry also has `"codemode": false`. Without it, OpenCode 2.4.1 offers the model none of Quay's tools, only Code Mode's `execute`.
+
+### Quay's MCP server
+
+Quay's MCP server reaches OpenCode, 1.x or 2.x, through `OPENCODE_CONFIG_CONTENT` instead of a flag:
 
 ```json
 {

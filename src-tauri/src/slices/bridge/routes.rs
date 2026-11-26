@@ -417,8 +417,7 @@ pub async fn handle_mcp(
     headers: HeaderMap,
     Json(req): Json<crate::slices::orchestrator::mcp::JsonRpcRequest>,
 ) -> Response {
-    let terminal_ids = ctx.pty_manager.list().into_iter().map(|t| t.id);
-    let caller = match authenticate_mcp_caller(&ctx.bridge_state, &headers, terminal_ids) {
+    let caller = match authenticate_mcp_caller(&ctx.bridge_state, &headers, ctx.pty_manager.mcp_caller_ids()) {
         Ok(id) => id,
         Err(rejection) => return rejection.into_response(),
     };

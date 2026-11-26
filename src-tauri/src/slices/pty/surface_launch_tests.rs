@@ -7,6 +7,7 @@ use portable_pty::CommandBuilder;
 use serde_json::{json, Value};
 
 use super::models::{PermissionMode, RunKind, SpawnTerminalRequest, ALL_RUN_KINDS};
+use super::opencode_serve::OpenCodeLaunch;
 use super::plugin_watch::LaunchRef;
 use super::session::{build_command, mcp_config_arg};
 use crate::test_support::TempDir;
@@ -44,7 +45,7 @@ fn request(run_kind: RunKind) -> SpawnTerminalRequest {
 
 fn launch(request: &SpawnTerminalRequest) -> CommandBuilder {
     let launch = LaunchRef { terminal_id: "term-surfaces".to_string(), launch: 7 };
-    build_command(request, &launch, 1234, "tok", Some(4567))
+    build_command(request, &launch, 1234, "tok", Some(OpenCodeLaunch::Tui(4567)))
 }
 
 fn args(cmd: &CommandBuilder) -> Vec<String> {

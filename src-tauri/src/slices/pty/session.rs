@@ -11,6 +11,7 @@ use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
 use super::{commit_stamp, jsonc, opencode_permission};
+use super::opencode_serve::{self, OpenCodeLaunch, OpenCodeServer, Sidecar, SidecarEnder};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::plugin_watch::LaunchRef;
 use super::screen::{self, ScreenKeeper};
@@ -57,6 +58,9 @@ pub struct PtySession {
     current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
     screen: Arc<ScreenKeeper>,
+    /// An OpenCode 2.x terminal's `opencode serve`, which ends when the session drops, its
+    /// process exits, or Quay exits (`PtyManager::end_sidecars`).
+    sidecar: Option<Sidecar>,
 }
 
 /// Quay's MCP server as `launch`'s CLI is pointed at it. The launch in it is how a handshake is
@@ -149,6 +153,20 @@ const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
 /// `oauth: false` keeps OpenCode from trying to sign in to it, and `timeout` is how long OpenCode
 /// waits on a call to it, in milliseconds. Of that server's tools, `allowed` run without a prompt.
 pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
+    opencode_config(mcp_url, workspace, allowed).to_string()
+}
+
+/// `opencode_config_content` for OpenCode 2.x, whose Quay server has `"codemode": false`:
+/// without it OpenCode 2.4.1 offers the model none of Quay's tools, only Code Mode's `execute`.
+pub fn opencode_2_config_content(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> String {
+    let mut config = opencode_config(mcp_url, workspace, allowed);
+    config["mcp"]["quay"]["codemode"] = serde_json::Value::Bool(false);
+    config.to_string()
+}
+
+/// The config `opencode_config_content` gives as text, and that `opencode_2_config_content`
+/// adds `"codemode": false` to.
+fn opencode_config(mcp_url: &str, workspace: Option<&str>, allowed: &[&str]) -> serde_json::Value {
     let mut config = match workspace.filter(|content| !content.is_empty()).map(jsonc::object) {
         Some(Ok(object)) => serde_json::Value::Object(object),
         Some(Err(e)) => {
@@ -170,7 +188,7 @@ pub fn opencode_config_content(mcp_url: &str, workspace: Option<&str>, allowed: 
         "timeout": CLI_LIMIT_MS
     });
     opencode_permission::add_allow_rules(&mut config, allowed);
-    config.to_string()
+    config
 }
 
 /// Sets the `CLAUDE_EVENTS_*` variables Claude Code's event-bridge plugin reads.
@@ -319,6 +337,27 @@ fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Pat
     home.map(|home| home.join(".bun").join("bin").join(name))
         .filter(|bun| bun.is_file())
         .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
+}
+
+/// How long `opencode --version` may take before an OpenCode terminal is launched as 2.x.
+const VERSION_PATIENCE: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// How long an OpenCode 2.x terminal's server may take to be ready. A cold start of OpenCode
+/// can take some seconds on a busy machine.
+const SIDECAR_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How the OpenCode terminal of `request` is launched on loopback `port`, by what its CLI's
+/// `--version` prints (see `opencode_serve::launch_of`). The probe runs the program the
+/// terminal would, with the request's variables, and blocks for at most `VERSION_PATIENCE`, so
+/// call it on a thread that may block, holding no lock.
+pub(crate) fn opencode_launch(request: &SpawnTerminalRequest, port: u16) -> OpenCodeLaunch {
+    let program = opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
+    let mut cmd = crate::spawn::hidden_command(program);
+    cmd.arg("--version");
+    if let Some(envs) = &request.env_vars {
+        cmd.envs(envs);
+    }
+    opencode_serve::launch_of(opencode_serve::probe_version(cmd, VERSION_PATIENCE).as_deref(), port)
 }
 
 /// The PiG executable's file name for this platform.
@@ -521,15 +560,43 @@ fn shell_command(command_text: Option<&str>) -> CommandBuilder {
     }
 }
 
+/// The variable OpenCode 2.x's server takes its password from, and its TUI the password it sends
+/// to a `--server`. OpenCode keeps it out of the environment of the shells its tools run.
+const OPENCODE_PASSWORD_VAR: &str = "OPENCODE_PASSWORD";
+
+/// The two commands of an OpenCode 2.x terminal, which share one environment, the server's
+/// password in it, and one folder: `opencode serve`, listening on `server`'s loopback port only,
+/// for the terminal's sidecar (see `opencode_serve::Sidecar`), and the TUI connected to it, for
+/// the PTY (see `build_command`).
+pub(crate) fn build_serve(
+    request: &SpawnTerminalRequest,
+    launch: &LaunchRef,
+    bridge_port: u16,
+    bridge_token: &str,
+    server: &OpenCodeServer,
+) -> (std::process::Command, CommandBuilder) {
+    let tui = build_command(request, launch, bridge_port, bridge_token, Some(OpenCodeLaunch::Server(server.clone())));
+    let mut serve = crate::spawn::hidden_command(opencode_program(
+        terminal_path(request).as_deref(),
+        terminal_home(request).as_deref(),
+    ));
+    serve.args(["serve", "--port", &server.port().to_string(), "--hostname", "127.0.0.1"]);
+    serve.env_clear();
+    serve.envs(tui.iter_full_env_as_str());
+    serve.current_dir(&request.project_path);
+    (serve, tui)
+}
+
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
-/// the launch prompt and, last, Quay's MCP config. `server_port` is the loopback port an
-/// OpenCode terminal serves its events on; other CLIs ignore it.
+/// the launch prompt and, last, Quay's MCP config. `opencode` is how an OpenCode terminal is
+/// launched; other CLIs ignore it, and an OpenCode terminal without one runs its TUI with no
+/// `--port`. The sidecar of an OpenCode 2.x terminal is `build_serve`'s.
 pub(crate) fn build_command(
     request: &SpawnTerminalRequest,
     launch: &LaunchRef,
     bridge_port: u16,
     bridge_token: &str,
-    server_port: Option<u16>,
+    opencode: Option<OpenCodeLaunch>,
 ) -> CommandBuilder {
     let mcp_url = mcp_url(bridge_port, launch);
     let perm = request.run_kind.permission_mode(request.permission_mode);
@@ -632,10 +699,20 @@ pub(crate) fn build_command(
             let program =
                 opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
             let mut c = CommandBuilder::new(program);
-            // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
-            if let Some(port) = server_port {
-                c.arg("--port");
-                c.arg(port.to_string());
+            match &opencode {
+                // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
+                None | Some(OpenCodeLaunch::Tui(_)) => {
+                    if let Some(port) = opencode.as_ref().map(OpenCodeLaunch::port) {
+                        c.arg("--port");
+                        c.arg(port.to_string());
+                    }
+                }
+                // The TUI of 2.x, connected to the terminal's own server, in the project
+                Some(OpenCodeLaunch::Server(server)) => {
+                    c.arg("--server");
+                    c.arg(server.url());
+                    c.arg(&request.project_path);
+                }
             }
             if perm == PermissionMode::Skip {
                 c.arg("--auto");
@@ -695,7 +772,15 @@ pub(crate) fn build_command(
                 content: workspace.as_deref(),
             },
         );
-        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(&mcp_url, workspace.as_deref(), &allowed));
+        let content = match &opencode {
+            None | Some(OpenCodeLaunch::Tui(_)) => opencode_config_content(&mcp_url, workspace.as_deref(), &allowed),
+            Some(OpenCodeLaunch::Server(_)) => opencode_2_config_content(&mcp_url, workspace.as_deref(), &allowed),
+        };
+        cmd.env(OPENCODE_CONFIG_VAR, content);
+        // After the request's variables, so none of them can stand in for the launch's password
+        if let Some(OpenCodeLaunch::Server(server)) = &opencode {
+            cmd.env(OPENCODE_PASSWORD_VAR, server.password());
+        }
     }
     // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
     // answer, is unset whether the request or Quay's own environment set it
@@ -760,11 +845,15 @@ impl PtySession {
     /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
     /// under this id (0 for a new terminal); output from this session is numbered above it,
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
-    /// `server_port` is the port an OpenCode terminal serves its events on (see
-    /// `build_command`). `on_first_output` runs once, on the reader thread, when the process
-    /// first writes output. `on_osc7501`, when given, runs there with each OSC 7501 sequence
-    /// the output carries, after `on_first_output`. `on_exit` runs once, on the exit watcher
-    /// thread, with the exit code when the process ends, before `terminal-exited` is sent.
+    /// `opencode` is how an OpenCode terminal is launched (see `opencode_launch`), and `None`
+    /// for other CLIs. For 2.x the session starts the terminal's server as its sidecar,
+    /// blocking until it is ready (see `opencode_serve::Sidecar::start`), and runs the TUI
+    /// connected to it in the PTY; when the server can't be had, the PTY runs a message that
+    /// says why.
+    /// `on_first_output` runs once, on the reader thread, when the process first writes output.
+    /// `on_osc7501`, when given, runs there with each OSC 7501 sequence the output carries,
+    /// after `on_first_output`. `on_exit` runs once, on the exit watcher thread, with the exit
+    /// code when the process ends, before `terminal-exited` is sent.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         request: SpawnTerminalRequest,
@@ -772,7 +861,7 @@ impl PtySession {
         start_seq: u64,
         bridge_port: u16,
         bridge_token: String,
-        server_port: Option<u16>,
+        opencode: Option<OpenCodeLaunch>,
         app_handle: AppHandle,
         on_first_output: Box<dyn FnOnce() + Send>,
         on_osc7501: Option<Osc7501Hook>,
@@ -793,7 +882,23 @@ impl PtySession {
 
         let perm = request.run_kind.permission_mode(request.permission_mode);
 
-        let cmd = build_command(&request, &launch, bridge_port, &bridge_token, server_port);
+        // An OpenCode 2.x terminal's server is its sidecar. When the server can't be had, the
+        // pane says why. Should the PTY not start, the sidecar ends as `sidecar` drops.
+        let (cmd, sidecar) = match opencode {
+            Some(OpenCodeLaunch::Server(server)) => {
+                let (serve, tui) = build_serve(&request, &launch, bridge_port, &bridge_token, &server);
+                match Sidecar::start(serve, &server, &mcp_url(bridge_port, &launch), SIDECAR_PATIENCE) {
+                    Ok(sidecar) => (tui, Some(sidecar)),
+                    Err(why) => {
+                        let mut c = message_command(&why);
+                        c.cwd(&request.project_path);
+                        (c, None)
+                    }
+                }
+            }
+            opencode => (build_command(&request, &launch, bridge_port, &bridge_token, opencode), None),
+        };
+        let sidecar_ender = sidecar.as_ref().map(Sidecar::ender);
         let terminal_id = launch.terminal_id;
 
         let mut child = pair
@@ -928,6 +1033,10 @@ impl PtySession {
             std::thread::spawn(move || {
                 let exit_status = child.wait();
                 is_alive.store(false, Ordering::SeqCst);
+                // The terminal's process is over, so its server is too
+                if let Some(ender) = sidecar_ender {
+                    ender.end();
+                }
 
                 // Compact log file if it exceeds 2MB to keep disk space bounded
                 if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
@@ -1001,6 +1110,7 @@ impl PtySession {
             current_size,
             is_alive,
             screen,
+            sidecar,
         })
     }
 
@@ -1012,6 +1122,11 @@ impl PtySession {
     /// Stops this session saving its screen, for a terminal being closed or relaunched.
     pub fn discard_screen(&self) {
         self.screen.discard();
+    }
+
+    /// What ends this session's OpenCode server, if it has one.
+    pub fn sidecar_ender(&self) -> Option<SidecarEnder> {
+        self.sidecar.as_ref().map(Sidecar::ender)
     }
 
     /// The keeper of this session's screen, for discarding it once the session itself has
@@ -1090,7 +1205,8 @@ mod tests {
     use crate::test_support::TempDir;
     use std::io::Read;
 
-    /// `super::build_command` for launch 7 of terminal `terminal_id`.
+    /// `super::build_command` for launch 7 of terminal `terminal_id`, as OpenCode 1.x on
+    /// `server_port` when there is one.
     fn build_command(
         request: &SpawnTerminalRequest,
         terminal_id: &str,
@@ -1099,7 +1215,7 @@ mod tests {
         server_port: Option<u16>,
     ) -> CommandBuilder {
         let launch = LaunchRef { terminal_id: terminal_id.to_string(), launch: 7 };
-        super::build_command(request, &launch, bridge_port, bridge_token, server_port)
+        super::build_command(request, &launch, bridge_port, bridge_token, server_port.map(OpenCodeLaunch::Tui))
     }
 
     #[test]
@@ -1642,6 +1758,108 @@ mod tests {
             })
         );
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
+    }
+
+    /// `super::build_serve` for launch 7 of `term-oc2`, with Quay's bridge on 4321.
+    fn serve_and_tui(request: &SpawnTerminalRequest, server: &OpenCodeServer) -> (std::process::Command, CommandBuilder) {
+        let launch = LaunchRef { terminal_id: "term-oc2".to_string(), launch: 7 };
+        super::build_serve(request, &launch, 4321, "tok-1", server)
+    }
+
+    fn opencode_config(cmd: &CommandBuilder) -> serde_json::Value {
+        serde_json::from_str(&env_of(cmd, "OPENCODE_CONFIG_CONTENT").expect("OpenCode's config")).unwrap()
+    }
+
+    fn envs_of(serve: &std::process::Command) -> std::collections::BTreeMap<String, String> {
+        serve
+            .get_envs()
+            .filter_map(|(k, v)| Some((k.to_string_lossy().to_string(), v?.to_string_lossy().to_string())))
+            .collect()
+    }
+
+    #[test]
+    fn opencode_2_runs_its_tui_on_the_terminals_server_in_the_project_with_auto_and_the_launch_prompt() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.project_path = "E:\\Projects\\App".to_string();
+        request.custom_flags = Some("--model anthropic/x".to_string());
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+
+        let (_, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
+
+        assert_eq!(
+            argv(&tui)[1..],
+            [
+                "--server",
+                "http://127.0.0.1:4567",
+                "E:\\Projects\\App",
+                "--auto",
+                "--model",
+                "anthropic/x",
+                "--prompt",
+                MULTI_LINE_PROMPT
+            ]
+        );
+        assert_eq!(tui.get_cwd().map(|d| d.to_string_lossy().to_string()).as_deref(), Some("E:\\Projects\\App"));
+
+        let mut normal = spawn_request(RunKind::OpenCode);
+        normal.permission_mode = Some(PermissionMode::Normal);
+        let (_, tui) = serve_and_tui(&normal, &OpenCodeServer::for_tests(4567));
+        assert!(!argv(&tui).iter().any(|arg| arg == "--auto"), "{:?}", argv(&tui));
+    }
+
+    #[test]
+    fn opencode_2s_server_serves_on_loopback_with_the_tuis_environment() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.project_path = "E:\\Projects\\App".to_string();
+        request.env_vars = Some([("MY_KEY".to_string(), "mine".to_string())].into_iter().collect());
+
+        let (serve, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
+
+        assert_eq!(serve.get_program().to_string_lossy(), argv(&tui)[0]);
+        let args: Vec<String> = serve.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(args, ["serve", "--port", "4567", "--hostname", "127.0.0.1"]);
+        assert_eq!(serve.get_current_dir().map(|d| d.to_string_lossy().to_string()).as_deref(), Some("E:\\Projects\\App"));
+        let serve_env = envs_of(&serve);
+        let tui_env: std::collections::BTreeMap<String, String> =
+            tui.iter_full_env_as_str().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        assert_eq!(serve_env, tui_env);
+        assert_eq!(serve_env.get("MY_KEY").map(String::as_str), Some("mine"));
+        assert_eq!(serve_env.get("QUAY_A2A_TOKEN").map(String::as_str), Some("tok-1"));
+        assert!(serve_env.contains_key("OPENCODE_CONFIG_CONTENT"));
+    }
+
+    #[test]
+    fn opencode_2s_password_is_the_launchs_own_in_the_environment_and_never_on_a_command_line() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.initial_prompt = Some("Do the task".to_string());
+        // A workspace's own password never stands in for the launch's
+        request.env_vars = Some([("OPENCODE_PASSWORD".to_string(), "the-workspaces".to_string())].into_iter().collect());
+        let server = OpenCodeServer::for_tests(4567);
+
+        let (serve, tui) = serve_and_tui(&request, &server);
+
+        assert_eq!(env_of(&tui, "OPENCODE_PASSWORD").as_deref(), Some(server.password()));
+        assert_eq!(envs_of(&serve).get("OPENCODE_PASSWORD").map(String::as_str), Some(server.password()));
+        let serve_args: Vec<String> = serve.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        assert!(!argv(&tui).iter().chain(&serve_args).any(|arg| arg.contains(server.password())));
+
+        // 1.x gets none
+        let one = build_command(&spawn_request(RunKind::OpenCode), "term-oc", 4321, "tok-1", Some(4567));
+        assert_eq!(env_of(&one, "OPENCODE_PASSWORD"), None);
+    }
+
+    #[test]
+    fn only_opencode_2_shows_quays_tools_outside_code_mode() {
+        let two = opencode_config(&serve_and_tui(&spawn_request(RunKind::OpenCode), &OpenCodeServer::for_tests(4567)).1);
+        assert_eq!(two["mcp"]["quay"]["codemode"], false);
+        assert_eq!(two["mcp"]["quay"]["url"], "http://127.0.0.1:4321/mcp/7");
+        // Skip is `--auto` on the command line, as for 1.x, not a rule in the config allowing all
+        assert_ne!(two["permission"], "allow");
+        assert_ne!(two["permission"]["*"], "allow");
+        assert_eq!(two["permission"]["quay_quay_ask"], "allow");
+
+        let one = build_command(&spawn_request(RunKind::OpenCode), "term-oc", 4321, "tok-1", Some(4567));
+        assert_eq!(opencode_config(&one)["mcp"]["quay"].get("codemode"), None);
     }
 
     #[test]

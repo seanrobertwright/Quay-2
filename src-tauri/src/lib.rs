@@ -444,6 +444,7 @@ pub fn run() {
             // Terminals still running when Quay closes come back showing their last screen
             if let tauri::RunEvent::Exit = event {
                 exiting_terminals.save_all_screens();
+                exiting_terminals.end_sidecars();
                 exiting_surfaces.finish_record();
                 // A pref changed in the last 500 ms is written now rather than lost.
                 if let Err(e) = topos_settings.flush() {

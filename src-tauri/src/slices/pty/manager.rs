@@ -13,7 +13,8 @@ use super::models::{
 };
 use super::osc7501::{TurnReader, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
-use super::session::{same_variable, Osc7501Hook, PtySession};
+use super::opencode_serve::OpenCodeLaunch;
+use super::session::{opencode_launch, same_variable, Osc7501Hook, PtySession};
 use crate::dates::now_ms;
 use crate::webview::WebviewEvents;
 
@@ -33,9 +34,9 @@ type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
 /// What the input watcher runs, with a terminal's id and what the operator typed into it.
 type InputWatcher = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
-/// What the server watcher runs, with a launch whose CLI serves its own events and the
-/// loopback port it serves them on.
-type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
+/// What the server watcher runs, with a launch whose CLI serves its own events and how it was
+/// launched, which says where it serves them.
+type ServerWatcher = Arc<dyn Fn(LaunchRef, OpenCodeLaunch) + Send + Sync>;
 
 /// What becomes of a terminal's launches.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +66,13 @@ fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
         .and_then(|listener| listener.local_addr())
         .map(|addr| Some(addr.port()))
         .map_err(|e| format!("Failed to find a free port for OpenCode's server: {}", e))
+}
+
+/// How an OpenCode `request` is launched, on a free loopback port, from a probe of its version
+/// (see `opencode_launch`), which blocks for a few seconds at most. `None` for other CLIs,
+/// which aren't probed.
+fn opencode_launch_for(request: &SpawnTerminalRequest) -> Result<Option<OpenCodeLaunch>, String> {
+    Ok(server_port_for(request.run_kind)?.map(|port| opencode_launch(request, port)))
 }
 
 /// What a terminal's own output says about its turn, as the turn watchers hear it.
@@ -436,7 +444,7 @@ impl PtyManager {
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
         let start_seq = self.last_seq(&terminal_id);
-        let server_port = server_port_for(request.run_kind)?;
+        let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let webview = WebviewEvents::to_app(app_handle.clone());
@@ -448,7 +456,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
-            server_port,
+            opencode.clone(),
             app_handle,
             on_first_output,
             on_osc7501,
@@ -488,7 +496,7 @@ impl PtyManager {
         self.sessions.lock().insert(terminal_id, session);
         let info = self.insert_launched(&launch_ref, info);
         self.save_sessions_to_disk();
-        self.notify_server_watcher(launch_ref, server_port);
+        self.notify_server_watcher(launch_ref, opencode);
 
         Ok(info)
     }
@@ -513,7 +521,8 @@ impl PtyManager {
         // Read before the old session goes: its pane stays mounted and has seen up to this seq
         let start_seq = self.last_seq(terminal_id);
 
-        let server_port = server_port_for(info.run_kind)?;
+        let request = relaunch_request(&info, rows, cols, workspace_env);
+        let opencode = opencode_launch_for(&request)?;
         // Begin the new launch before the old session goes, so the old process's exit, which
         // dropping its session causes, finds its launch over and leaves the terminal alone
         let launch_ref = self.begin_launch(terminal_id, info.run_kind);
@@ -526,7 +535,6 @@ impl PtyManager {
             old_session.discard_screen();
         }
 
-        let request = relaunch_request(&info, rows, cols, workspace_env);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let webview = WebviewEvents::to_app(app_handle.clone());
         let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, webview);
@@ -537,7 +545,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
-            server_port,
+            opencode.clone(),
             app_handle,
             on_first_output,
             on_osc7501,
@@ -578,7 +586,7 @@ impl PtyManager {
         };
         self.dormant_buffers.lock().remove(terminal_id);
         self.save_sessions_to_disk();
-        self.notify_server_watcher(launch_ref, server_port);
+        self.notify_server_watcher(launch_ref, opencode);
 
         Ok(updated_info)
     }
@@ -750,6 +758,17 @@ impl PtyManager {
         }
     }
 
+    /// Ends every OpenCode 2.x terminal's server, and waits for each to exit, for Quay's exit. A
+    /// tied process tree would end with Quay on Windows anyway; elsewhere nothing else ends it,
+    /// since Quay exits without dropping its sessions.
+    pub fn end_sidecars(&self) {
+        // Collected first, so the kills never hold up the sessions lock
+        let enders: Vec<_> = self.sessions.lock().values().filter_map(|session| session.sidecar_ender()).collect();
+        for ender in enders {
+            ender.end();
+        }
+    }
+
     /// Runs `watcher` with a terminal's id when its status moves outside the bridge's event
     /// route: its first output moves it out of Starting, the plugin silence clock makes it
     /// Unknown, an OSC 7501 sequence moves it (`apply_turn_report`), or the terminal closes.
@@ -765,17 +784,17 @@ impl PtyManager {
         }
     }
 
-    /// Runs `watcher` with each launch whose CLI serves its own events (OpenCode), and the
-    /// loopback port it serves them on, once the launch's terminal is listed. It runs on the
-    /// thread that spawned the terminal, with no lock of this manager held.
-    pub fn set_server_watcher(&self, watcher: impl Fn(LaunchRef, u16) + Send + Sync + 'static) {
+    /// Runs `watcher` with each launch whose CLI serves its own events (OpenCode), and how it
+    /// was launched, which says where it serves them, once the launch's terminal is listed. It
+    /// runs on the thread that spawned the terminal, with no lock of this manager held.
+    pub fn set_server_watcher(&self, watcher: impl Fn(LaunchRef, OpenCodeLaunch) + Send + Sync + 'static) {
         *self.server_watcher.lock() = Some(Arc::new(watcher));
     }
 
-    fn notify_server_watcher(&self, launch: LaunchRef, server_port: Option<u16>) {
+    fn notify_server_watcher(&self, launch: LaunchRef, opencode: Option<OpenCodeLaunch>) {
         let watcher = self.server_watcher.lock().clone();
-        if let (Some(watcher), Some(port)) = (watcher, server_port) {
-            watcher(launch, port);
+        if let (Some(watcher), Some(opencode)) = (watcher, opencode) {
+            watcher(launch, opencode);
         }
     }
 
@@ -849,6 +868,26 @@ impl PtyManager {
         let mut list: Vec<TerminalInfo> = self.terminals_info.lock().values().cloned().collect();
         list.sort_by_key(|t| t.created_at);
         list
+    }
+
+    /// The terminals that may call Quay's MCP server: each listed one, and each whose launch has
+    /// begun but which is not listed yet. An OpenCode 2.x terminal's server connects while its
+    /// terminal is still starting, and OpenCode does not try again after a refusal. A closed
+    /// terminal is neither, since closing ends its launch first.
+    pub fn mcp_caller_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.terminals_info.lock().keys().cloned().collect();
+        for id in self.plugin_watches.lock().keys() {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+        ids
+    }
+
+    /// The CLI of `terminal_id`: its listed one, or, while it is still starting, its launch's.
+    pub fn run_kind_of(&self, terminal_id: &str) -> Option<RunKind> {
+        let listed = self.terminals_info.lock().get(terminal_id).map(|info| info.run_kind);
+        listed.or_else(|| self.plugin_watches.lock().get(terminal_id).map(PluginWatch::run_kind))
     }
 
     pub fn get_info(&self, terminal_id: &str) -> Option<TerminalInfo> {
@@ -1962,6 +2001,36 @@ mod tests {
 
     fn status_of(manager: &PtyManager, id: &str) -> ClaudeStatus {
         manager.get_info(id).unwrap().claude_status
+    }
+
+    #[test]
+    fn a_terminal_whose_launch_has_begun_may_call_quay_before_it_is_listed_and_not_once_closed() {
+        // The manager also loads what other tests saved, so only these terminals are asked about
+        let manager = PtyManager::new();
+        let callers = |manager: &PtyManager| {
+            let ids = manager.mcp_caller_ids();
+            ["term-oc-early", "term-listed"].map(|id| ids.iter().any(|caller| caller == id))
+        };
+        manager.begin_launch("term-oc-early", RunKind::OpenCode);
+        assert!(manager.get_info("term-oc-early").is_none());
+        assert_eq!(callers(&manager), [true, false]);
+
+        launched(&manager, "term-listed", RunKind::Claude);
+        assert_eq!(callers(&manager), [true, true]);
+        assert_eq!(manager.mcp_caller_ids().iter().filter(|id| *id == "term-listed").count(), 1, "listed once");
+
+        let _ = manager.kill("term-oc-early");
+        assert_eq!(callers(&manager), [false, true]);
+    }
+
+    #[test]
+    fn a_terminal_still_starting_has_the_run_kind_of_its_launch() {
+        let manager = PtyManager::new();
+        manager.begin_launch("term-oc-starting", RunKind::OpenCode);
+        assert_eq!(manager.run_kind_of("term-oc-starting"), Some(RunKind::OpenCode));
+        launched(&manager, "term-listed-claude", RunKind::Claude);
+        assert_eq!(manager.run_kind_of("term-listed-claude"), Some(RunKind::Claude));
+        assert_eq!(manager.run_kind_of("term-none"), None);
     }
 
     #[test]
