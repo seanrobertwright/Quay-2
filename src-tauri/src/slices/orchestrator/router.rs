@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::models::{trail_now, A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::target::{resolve_target, same_project};
-use crate::slices::pty::manager::{PtyManager, TurnEvent};
+use crate::slices::pty::manager::{typed_line, PtyManager, TurnEvent};
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
 use crate::slices::pty::plugin_watch::{LaunchRef, EVENT_BRIDGE_INSTALL_LINE, PIG_TESTED_VERSION};
 
@@ -627,7 +627,7 @@ impl A2ARouter {
         };
         let to_name = target.map_or_else(|| target_terminal_id.clone(), |t| t.name);
 
-        let clean_content = request.prompt.trim().replace("\r\n", " ").replace('\n', " ");
+        let clean_content = typed_line(&request.prompt);
         let pty_prompt = if as_user {
             clean_content
         } else {
@@ -881,7 +881,7 @@ impl A2ARouter {
         sender: &BroadcastSender,
         pty_manager: &PtyManager,
     ) -> Result<Broadcast, String> {
-        let clean_text = text.trim().replace("\r\n", " ").replace('\n', " ");
+        let clean_text = typed_line(text);
         if clean_text.is_empty() {
             return Err("No broadcast text given. Pass the notice to send.".to_string());
         }

@@ -13,8 +13,8 @@ use super::models::{
 };
 use super::osc7501::{AntigravityTurn, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
-use super::opencode_serve::OpenCodeForm;
-use super::session::{launch_prompt, opencode_form, same_variable, Osc7501Hook, PtySession};
+use super::opencode_serve::OpenCodeLaunch;
+use super::session::{launch_prompt, opencode_launch, same_variable, Osc7501Hook, PtySession};
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
@@ -69,13 +69,17 @@ fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
         .map_err(|e| format!("Failed to find a free port for OpenCode's server: {}", e))
 }
 
-/// How an OpenCode `request` is launched, from a probe of its version (see `opencode_form`),
-/// which blocks for a few seconds at most. Other CLIs aren't probed; the form means nothing to them.
-fn opencode_form_for(request: &SpawnTerminalRequest) -> OpenCodeForm {
-    match request.run_kind {
-        RunKind::OpenCode => opencode_form(request),
-        _ => OpenCodeForm::Tui,
-    }
+/// How an OpenCode `request` is launched, on a free loopback port, from a probe of its version
+/// (see `opencode_launch`), which blocks for a few seconds at most. `None` for other CLIs,
+/// which aren't probed.
+fn opencode_launch_for(request: &SpawnTerminalRequest) -> Result<Option<OpenCodeLaunch>, String> {
+    Ok(server_port_for(request.run_kind)?.map(|port| opencode_launch(request, port)))
+}
+
+/// `text` as one line to type into a terminal: trimmed, with each newline a space, since a TUI
+/// reads a typed newline as Enter.
+pub fn typed_line(text: &str) -> String {
+    text.trim().replace("\r\n", " ").replace('\n', " ")
 }
 
 /// What a terminal's own output says about its turn, as the turn watchers hear it.
@@ -441,15 +445,14 @@ impl PtyManager {
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
         let start_seq = self.last_seq(&terminal_id);
-        let server_port = server_port_for(request.run_kind)?;
-        let form = opencode_form_for(&request);
+        let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let mut on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
-        // OpenCode 2.x's `attach` takes no launch prompt, so it is typed in
-        if request.run_kind == RunKind::OpenCode && form == OpenCodeForm::ServeAndAttach {
-            if let Some(prompt) = launch_prompt(&request) {
-                on_first_output = self.typing_launch_prompt(launch_ref.clone(), prompt.to_string(), on_first_output);
-            }
+        // A launch prompt its CLI's command line can't take is typed in
+        if opencode.is_some_and(|opencode| !opencode.takes_launch_prompt())
+            && let Some(prompt) = launch_prompt(&request)
+        {
+            on_first_output = self.typing_launch_prompt(launch_ref.clone(), prompt.to_string(), on_first_output);
         }
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, &app_handle);
         let on_exit = self.exit_hook(launch_ref.clone());
@@ -459,8 +462,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
-            server_port,
-            form,
+            opencode,
             app_handle,
             on_first_output,
             on_osc7501,
@@ -500,7 +502,7 @@ impl PtyManager {
         self.sessions.lock().insert(terminal_id, session);
         let info = self.insert_launched(&launch_ref, info);
         self.save_sessions_to_disk();
-        self.notify_server_watcher(launch_ref, server_port);
+        self.notify_server_watcher(launch_ref, opencode.map(OpenCodeLaunch::port));
 
         Ok(info)
     }
@@ -525,9 +527,8 @@ impl PtyManager {
         // Read before the old session goes: its pane stays mounted and has seen up to this seq
         let start_seq = self.last_seq(terminal_id);
 
-        let server_port = server_port_for(info.run_kind)?;
         let request = relaunch_request(&info, rows, cols, workspace_env);
-        let form = opencode_form_for(&request);
+        let opencode = opencode_launch_for(&request)?;
         // Begin the new launch before the old session goes, so the old process's exit, which
         // dropping its session causes, finds its launch over and leaves the terminal alone
         let launch_ref = self.begin_launch(terminal_id, info.run_kind);
@@ -549,8 +550,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
-            server_port,
-            form,
+            opencode,
             app_handle,
             on_first_output,
             on_osc7501,
@@ -591,7 +591,7 @@ impl PtyManager {
         };
         self.dormant_buffers.lock().remove(terminal_id);
         self.save_sessions_to_disk();
-        self.notify_server_watcher(launch_ref, server_port);
+        self.notify_server_watcher(launch_ref, opencode.map(OpenCodeLaunch::port));
 
         Ok(updated_info)
     }
@@ -967,12 +967,10 @@ impl PtyManager {
                 {
                     std::thread::sleep(Duration::from_millis(50));
                 }
-                // On one line, as the router types an A2A message: a TUI reads a typed newline as Enter
-                let line = prompt.trim().replace("\r\n", " ").replace('\n', " ");
-                if manager.launch_current(&launch) {
-                    if let Err(e) = manager.submit_prompt_to(&launch, &line) {
-                        tracing::warn!("Couldn't type the launch prompt into {}: {}", launch.terminal_id, e);
-                    }
+                if manager.launch_current(&launch)
+                    && let Err(e) = manager.submit_prompt_to(&launch, &typed_line(&prompt))
+                {
+                    tracing::warn!("Couldn't type the launch prompt into {}: {}", launch.terminal_id, e);
                 }
                 then();
             });

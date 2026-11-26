@@ -10,13 +10,29 @@ use parking_lot::Mutex;
 
 use crate::spawn::ProcessTree;
 
-/// The two ways Quay launches an OpenCode terminal.
+/// How Quay launches an OpenCode terminal, with the loopback port its events are served on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpenCodeForm {
+pub enum OpenCodeLaunch {
     /// OpenCode 1.x: the TUI, with `--port`.
-    Tui,
-    /// OpenCode 2.x: `opencode serve` as a sidecar, and `opencode attach` in the PTY.
-    ServeAndAttach,
+    Tui(u16),
+    /// OpenCode 2.x: `opencode serve` on the port as the terminal's sidecar, and `opencode
+    /// attach` to it in the PTY.
+    ServeAndAttach(u16),
+}
+
+impl OpenCodeLaunch {
+    /// The loopback port the terminal's events are served on.
+    pub fn port(self) -> u16 {
+        match self {
+            OpenCodeLaunch::Tui(port) | OpenCodeLaunch::ServeAndAttach(port) => port,
+        }
+    }
+
+    /// Whether the launch prompt goes on the command line. OpenCode 2.x's `attach` takes none,
+    /// so the prompt is typed into it instead.
+    pub fn takes_launch_prompt(self) -> bool {
+        matches!(self, OpenCodeLaunch::Tui(_))
+    }
 }
 
 /// The major version in what `opencode --version` printed: the first word that reads as
@@ -31,13 +47,13 @@ fn major_version(printed: &str) -> Option<u64> {
     })
 }
 
-/// The form for the OpenCode whose `--version` printed `printed`, or that printed nothing
-/// Quay could read (`None`). Only a version below 2 is launched as 1.x; anything else, a probe
-/// that failed included, as 2.x, the form new installs get.
-pub fn form_of(printed: Option<&str>) -> OpenCodeForm {
+/// The launch, on `port`, of the OpenCode whose `--version` printed `printed`, or that printed
+/// nothing Quay could read (`None`). Only a version below 2 is launched as 1.x; anything else, a
+/// probe that failed included, as 2.x, the form new installs get.
+pub fn launch_of(printed: Option<&str>, port: u16) -> OpenCodeLaunch {
     match printed.and_then(major_version) {
-        Some(major) if major < 2 => OpenCodeForm::Tui,
-        _ => OpenCodeForm::ServeAndAttach,
+        Some(major) if major < 2 => OpenCodeLaunch::Tui(port),
+        _ => OpenCodeLaunch::ServeAndAttach(port),
     }
 }
 
@@ -271,37 +287,34 @@ mod tests {
 
     #[test]
     fn a_version_below_2_is_launched_as_1x_and_anything_else_as_2x() {
-        assert_eq!(form_of(Some("1.19.4\n")), OpenCodeForm::Tui);
-        assert_eq!(form_of(Some("opencode v0.9.1")), OpenCodeForm::Tui);
-        assert_eq!(form_of(Some("2.4.1\n")), OpenCodeForm::ServeAndAttach);
-        assert_eq!(form_of(Some("opencode 10.0.0")), OpenCodeForm::ServeAndAttach);
+        assert_eq!(launch_of(Some("1.19.4\n"), 4567), OpenCodeLaunch::Tui(4567));
+        assert_eq!(launch_of(Some("opencode v0.9.1"), 4567), OpenCodeLaunch::Tui(4567));
+        assert_eq!(launch_of(Some("2.4.1\n"), 4567), OpenCodeLaunch::ServeAndAttach(4567));
+        assert_eq!(launch_of(Some("opencode 10.0.0"), 4567), OpenCodeLaunch::ServeAndAttach(4567));
         // Nothing readable, or no answer at all: the form new installs get
-        assert_eq!(form_of(Some("")), OpenCodeForm::ServeAndAttach);
-        assert_eq!(form_of(Some("command not found")), OpenCodeForm::ServeAndAttach);
-        assert_eq!(form_of(Some("v.1")), OpenCodeForm::ServeAndAttach);
-        assert_eq!(form_of(None), OpenCodeForm::ServeAndAttach);
+        assert_eq!(launch_of(Some(""), 4567), OpenCodeLaunch::ServeAndAttach(4567));
+        assert_eq!(launch_of(Some("command not found"), 4567), OpenCodeLaunch::ServeAndAttach(4567));
+        assert_eq!(launch_of(Some("v.1"), 4567), OpenCodeLaunch::ServeAndAttach(4567));
+        assert_eq!(launch_of(None, 4567), OpenCodeLaunch::ServeAndAttach(4567));
+    }
+
+    /// A command that runs `windows` through cmd.exe on Windows, and `unix` through sh elsewhere.
+    fn shell(windows: &str, unix: &str) -> std::process::Command {
+        let (program, flag, script) = if cfg!(windows) { ("cmd.exe", "/c", windows) } else { ("sh", "-c", unix) };
+        let mut cmd = crate::spawn::hidden_command(program);
+        cmd.args([flag, script]);
+        cmd
     }
 
     /// A command that prints `text` and exits.
     fn printing(text: &str) -> std::process::Command {
-        let mut cmd = crate::spawn::hidden_command(if cfg!(windows) { "cmd.exe" } else { "sh" });
-        if cfg!(windows) {
-            cmd.args(["/c", &format!("echo {text}")]);
-        } else {
-            cmd.args(["-c", &format!("echo {text}")]);
-        }
-        cmd
+        let script = format!("echo {text}");
+        shell(&script, &script)
     }
 
     /// A command that runs for half a minute, through a shell, as an npm shim runs its CLI.
     fn lingering() -> std::process::Command {
-        let mut cmd = crate::spawn::hidden_command(if cfg!(windows) { "cmd.exe" } else { "sh" });
-        if cfg!(windows) {
-            cmd.args(["/c", "ping -n 30 127.0.0.1"]);
-        } else {
-            cmd.args(["-c", "sleep 30; :"]);
-        }
-        cmd
+        shell("ping -n 30 127.0.0.1", "sleep 30; :")
     }
 
     #[test]
@@ -447,12 +460,10 @@ mod tests {
 
     #[test]
     fn a_sidecar_that_exits_before_it_is_ready_fails_with_what_it_printed() {
-        let mut cmd = crate::spawn::hidden_command(if cfg!(windows) { "cmd.exe" } else { "sh" });
-        if cfg!(windows) {
-            cmd.args(["/c", "echo Unrecognized flag: --hostname 1>&2 & exit 3"]);
-        } else {
-            cmd.args(["-c", "echo 'Unrecognized flag: --hostname' >&2; exit 3"]);
-        }
+        let cmd = shell(
+            "echo Unrecognized flag: --hostname 1>&2 & exit 3",
+            "echo 'Unrecognized flag: --hostname' >&2; exit 3",
+        );
 
         let failed = Sidecar::start(cmd, unserved(), MCP_URL, Duration::from_secs(10)).err().expect("an error");
         assert!(failed.contains("exited before it was ready"), "{failed}");
