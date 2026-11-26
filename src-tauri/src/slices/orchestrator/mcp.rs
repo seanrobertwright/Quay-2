@@ -457,8 +457,9 @@ pub(super) fn tool_list() -> &'static Value {
 /// Every tool `terminal_id` has, and so those it is listed and may call: the bus tools when its CLI
 /// gets them, then the surface tools.
 fn tools(ctx: &McpContext, terminal_id: &str) -> Vec<&'static Value> {
-    let gets_bus_tools =
-        ctx.pty_manager.get_info(terminal_id).is_some_and(|info| info.run_kind.gets_bus_tools());
+    // A terminal still starting is not listed yet, and an OpenCode 2.x server asks for the tools
+    // then and keeps what it got.
+    let gets_bus_tools = ctx.pty_manager.run_kind_of(terminal_id).is_some_and(|kind| kind.gets_bus_tools());
     let bus_tools = tool_list().as_array().filter(|_| gets_bus_tools);
     bus_tools.into_iter().flatten().chain(SurfaceTools::list()).collect()
 }

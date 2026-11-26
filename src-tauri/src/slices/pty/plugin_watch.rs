@@ -82,6 +82,11 @@ pub struct PluginWatch {
 }
 
 impl PluginWatch {
+    /// The CLI of the launch.
+    pub fn run_kind(&self) -> RunKind {
+        self.run_kind
+    }
+
     pub fn new(run_kind: RunKind) -> Self {
         Self {
             launch: NEXT_LAUNCH.fetch_add(1, Ordering::SeqCst),

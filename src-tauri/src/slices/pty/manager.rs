@@ -884,6 +884,12 @@ impl PtyManager {
         ids
     }
 
+    /// The CLI of `terminal_id`: its listed one, or, while it is still starting, its launch's.
+    pub fn run_kind_of(&self, terminal_id: &str) -> Option<RunKind> {
+        let listed = self.terminals_info.lock().get(terminal_id).map(|info| info.run_kind);
+        listed.or_else(|| self.plugin_watches.lock().get(terminal_id).map(PluginWatch::run_kind))
+    }
+
     pub fn get_info(&self, terminal_id: &str) -> Option<TerminalInfo> {
         self.terminals_info.lock().get(terminal_id).cloned()
     }
@@ -1999,18 +2005,32 @@ mod tests {
 
     #[test]
     fn a_terminal_whose_launch_has_begun_may_call_quay_before_it_is_listed_and_not_once_closed() {
+        // The manager also loads what other tests saved, so only these terminals are asked about
         let manager = PtyManager::new();
+        let callers = |manager: &PtyManager| {
+            let ids = manager.mcp_caller_ids();
+            ["term-oc-early", "term-listed"].map(|id| ids.iter().any(|caller| caller == id))
+        };
         manager.begin_launch("term-oc-early", RunKind::OpenCode);
-        assert!(manager.list().is_empty());
-        assert_eq!(manager.mcp_caller_ids(), ["term-oc-early"]);
+        assert!(manager.get_info("term-oc-early").is_none());
+        assert_eq!(callers(&manager), [true, false]);
 
         launched(&manager, "term-listed", RunKind::Claude);
-        let mut ids = manager.mcp_caller_ids();
-        ids.sort();
-        assert_eq!(ids, ["term-listed", "term-oc-early"]);
+        assert_eq!(callers(&manager), [true, true]);
+        assert_eq!(manager.mcp_caller_ids().iter().filter(|id| *id == "term-listed").count(), 1, "listed once");
 
         let _ = manager.kill("term-oc-early");
-        assert_eq!(manager.mcp_caller_ids(), ["term-listed"]);
+        assert_eq!(callers(&manager), [false, true]);
+    }
+
+    #[test]
+    fn a_terminal_still_starting_has_the_run_kind_of_its_launch() {
+        let manager = PtyManager::new();
+        manager.begin_launch("term-oc-starting", RunKind::OpenCode);
+        assert_eq!(manager.run_kind_of("term-oc-starting"), Some(RunKind::OpenCode));
+        launched(&manager, "term-listed-claude", RunKind::Claude);
+        assert_eq!(manager.run_kind_of("term-listed-claude"), Some(RunKind::Claude));
+        assert_eq!(manager.run_kind_of("term-none"), None);
     }
 
     #[test]
