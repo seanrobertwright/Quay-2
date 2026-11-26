@@ -11,7 +11,7 @@ use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
 use super::{commit_stamp, jsonc, opencode_permission};
-use super::opencode_serve::{self, OpenCodeLaunch, Sidecar};
+use super::opencode_serve::{self, OpenCodeLaunch, Sidecar, SidecarEnder};
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::plugin_watch::LaunchRef;
 use super::screen::{self, ScreenKeeper};
@@ -58,9 +58,9 @@ pub struct PtySession {
     current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
     screen: Arc<ScreenKeeper>,
-    /// An OpenCode 2.x terminal's `opencode serve`, which ends when the session drops or its
-    /// process exits.
-    _sidecar: Option<Sidecar>,
+    /// An OpenCode 2.x terminal's `opencode serve`, which ends when the session drops, its
+    /// process exits, or Quay exits (`PtyManager::end_sidecars`).
+    sidecar: Option<Sidecar>,
 }
 
 /// Quay's MCP server as `launch`'s CLI is pointed at it. The launch in it is how a handshake is
@@ -1109,7 +1109,7 @@ impl PtySession {
             current_size,
             is_alive,
             screen,
-            _sidecar: sidecar,
+            sidecar,
         })
     }
 
@@ -1121,6 +1121,11 @@ impl PtySession {
     /// Stops this session saving its screen, for a terminal being closed or relaunched.
     pub fn discard_screen(&self) {
         self.screen.discard();
+    }
+
+    /// What ends this session's OpenCode server, if it has one.
+    pub fn sidecar_ender(&self) -> Option<SidecarEnder> {
+        self.sidecar.as_ref().map(Sidecar::ender)
     }
 
     /// The keeper of this session's screen, for discarding it once the session itself has

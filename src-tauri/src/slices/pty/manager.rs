@@ -773,6 +773,17 @@ impl PtyManager {
         }
     }
 
+    /// Ends every OpenCode 2.x terminal's server, and waits for each to exit, for Quay's exit. A
+    /// tied process tree would end with Quay on Windows anyway; elsewhere nothing else ends it,
+    /// since Quay exits without dropping its sessions.
+    pub fn end_sidecars(&self) {
+        // Collected first, so the kills never hold up the sessions lock
+        let enders: Vec<_> = self.sessions.lock().values().filter_map(|session| session.sidecar_ender()).collect();
+        for ender in enders {
+            ender.end();
+        }
+    }
+
     /// Runs `watcher` with a terminal's id when its status moves outside the bridge's event
     /// route: its first output moves it out of Starting, the plugin silence clock makes it
     /// Unknown, an OSC 7501 sequence moves it (`apply_turn_report`), or the terminal closes.
