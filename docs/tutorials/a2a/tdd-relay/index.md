@@ -260,7 +260,7 @@ Paste `Send feature-impl the names of the failing tests with quay_send_message, 
 
 ## 7. Read the relay in Activity
 
-Both messages of the relay went to or from `test-architect`, so its **Activity** view holds the whole relay. The Activity view is one of the views of the **companion**, the panel on the window's right that shows what the selected terminal is working on.
+Both messages of the relay went to or from `test-architect`, so its **Activity** view holds the whole relay. The Activity view is one of the views of the **companion**, the column on the window's right that shows what the selected terminal is working on.
 
 ::: do
 1. Click inside `test-architect` to select it, then press `Ctrl+Shift+B M`, or pick **Activity** in the companion's view switch.
