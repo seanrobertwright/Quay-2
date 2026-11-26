@@ -164,6 +164,8 @@ for (const [where, focus] of [
     assert.deepEqual([diff(container) !== null, lens(container) !== null], [false, true], "the first Escape goes back to the graph");
     assert.equal(await escape(), false, "the second Escape reached past the overlay stack");
     assert.equal(lens(container) !== null, false, "the second Escape closes the lens");
+    // The terminal is covered by the review's tab, so the focus goes back to the link that opened the lens
+    assert.equal(document.activeElement === review.querySelector('[role="link"]'), true, "the focus is back on the review's file link");
 
     await act(async () => button(review, "Approve")!.click());
     await until(() => called("surface_answer").length === 1, "Approve sent nothing");
