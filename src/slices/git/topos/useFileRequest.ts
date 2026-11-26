@@ -20,25 +20,34 @@ export interface FileRequestState {
   resolving: string | null;
   openDiff: (file: OpenFile) => void;
   openResolver: (path: string) => void;
+  /** Tells the operator something, here that a file waits for the open resolver to close. */
+  announce: (text: string) => void;
 }
 
 /**
  * Opens a requested file once, when Topos can show it: a conflicted one in the resolver, any other in
- * the diff view. An open resolver may hold unsaved edits, so the file waits until it closes.
+ * the diff view. An open resolver may hold unsaved edits, so the file waits until it closes, and
+ * the operator is told so once for each request.
  */
-export function useFileRequest({ ready, request, conflicts, resolving, openDiff, openResolver }: FileRequestState): void {
+export function useFileRequest({ ready, request, conflicts, resolving, openDiff, openResolver, announce }: FileRequestState): void {
   const handled = useRef(0);
+  const told = useRef(0);
   useEffect(() => {
     if (!ready || request === null || request.seq === handled.current) return;
     const { path, side, seq } = request;
+    const waitForResolver = () => {
+      if (told.current === seq) return;
+      told.current = seq;
+      announce(`Close the conflict resolver on ${resolving} to open ${path}.`);
+    };
     if (side === "conflicted") {
       if (!conflicts.includes(path)) return;
-      if (resolving !== null && resolving !== path) return;
+      if (resolving !== null && resolving !== path) return waitForResolver();
       if (resolving === null) openResolver(path);
     } else {
-      if (resolving !== null) return;
+      if (resolving !== null) return waitForResolver();
       openDiff({ path, side });
     }
     handled.current = seq;
-  }, [ready, request, conflicts, resolving, openDiff, openResolver]);
+  }, [ready, request, conflicts, resolving, openDiff, openResolver, announce]);
 }
