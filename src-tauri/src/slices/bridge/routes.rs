@@ -180,10 +180,7 @@ fn turn_inputs(envelope: &Envelope) -> Option<Vec<String>> {
 /// carries no such id.
 fn turn_began(envelope: &Envelope) -> Option<i64> {
     let id = uuid::Uuid::parse_str(envelope.data.get("turnId")?.as_str()?).ok()?;
-    if id.get_version_num() != 7 {
-        return None;
-    }
-    i64::try_from(id.as_u128() >> 80).ok()
+    crate::dates::uuid_v7_ms(&id)
 }
 
 /// The kind of notification an `attention.notification` reports, in its `notificationType`,
@@ -217,7 +214,8 @@ pub fn apply_event(ctx: &AppContext, mut envelope: Envelope) {
     ctx.bridge_state.record_envelope(envelope.clone());
 
     let began = turn_began(&envelope);
-    if tag.as_ref().zip(began).is_some_and(|(id, began)| ctx.pty_manager.launch_began_after(id, began)) {
+    if let Some((id, began)) = tag.as_ref().zip(began).filter(|(id, began)| ctx.pty_manager.launch_began_after(id, *began)) {
+        tracing::info!("dropped {} for {}: its turn began at {} ms, before the terminal's launch", envelope.event_type, id, began);
         return;
     }
     let mut status = None;

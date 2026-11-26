@@ -1149,8 +1149,8 @@ impl PtyManager {
         let changed = {
             let mut watches = self.plugin_watches.lock();
             let watch = launch.current_in(&mut watches)?;
-            let turn_runs = watch.report_turn(report, now_ms());
             let exited = watch.exited();
+            let turn_runs = !exited && watch.report_turn(report, now_ms());
             // A sign-in or a folder's trust question, which it asks as it starts, is no prompt of the operator's
             if report.status == Some(ClaudeStatus::Working) {
                 prompted = watch.works();
@@ -1162,7 +1162,7 @@ impl PtyManager {
                 moved = info.claude_status != status;
                 info.claude_status = status;
             }
-            (moved || (turn_runs && !exited)).then(|| status_payload(info))
+            (moved || turn_runs).then(|| status_payload(info))
         };
         if prompted {
             self.notify_launch_watchers(LaunchEvent::Prompted(launch.clone()));

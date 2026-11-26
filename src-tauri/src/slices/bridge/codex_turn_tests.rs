@@ -304,6 +304,16 @@ async fn a_report_of_an_exited_or_earlier_launch_changes_nothing() {
     assert_eq!(codex.told(), ["working"], "the old launch's turn is not listed as finished");
 }
 
+#[test]
+fn output_after_a_launch_exits_starts_no_turn() {
+    let mut codex = Codex::ready();
+    codex.turn_starts("the operator's prompt");
+    codex.prints("done");
+    codex.ctx.pty_manager.exit_launch(&codex.launch, None);
+    codex.prints("working");
+    assert!(!codex.ctx.pty_manager.turn_running(CODEX, None));
+}
+
 #[tokio::test]
 async fn the_helpers_report_moves_no_status_in_a_launch_whose_output_does() {
     let mut codex = Codex::ready();

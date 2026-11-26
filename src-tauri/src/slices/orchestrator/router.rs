@@ -238,6 +238,8 @@ struct TurnPairing {
     awaiting_turn: VecDeque<AwaitingTurn>,
     /// The message the running turn answers, when a delivered message started it.
     answering: Option<String>,
+    /// When the terminal's output last showed a turn over, in Unix milliseconds.
+    last_stop: Option<i64>,
 }
 
 /// Each terminal's delivery queue, the terminals Quay is typing a message into now, and
@@ -274,19 +276,22 @@ impl DeliveryQueues {
         let Some(pairing) = self.turns.get_mut(terminal_id) else {
             return;
         };
-        if entered.is_none() {
+        let Some(entered) = entered else {
             pairing.awaiting_turn.retain(|awaiting| awaiting.message_id != message_id);
-        } else if let Some(awaiting) = pairing.awaiting_turn.iter_mut().find(|a| a.message_id == message_id) {
-            awaiting.entered = entered;
+            return;
+        };
+        if let Some(awaiting) = pairing.awaiting_turn.iter_mut().find(|a| a.message_id == message_id) {
+            awaiting.entered = Some(entered);
+            // Its own turn can be over before its typing ends
+            awaiting.stopped = pairing.last_stop.filter(|&stop| entered <= stop);
         }
     }
 
     /// Records that `terminal_id`'s output showed its turn over at `at` (Unix milliseconds): no
     /// turn that begins later is that of a message entered before.
     fn stop_turn(&mut self, terminal_id: &str, at: i64) {
-        let Some(pairing) = self.turns.get_mut(terminal_id) else {
-            return;
-        };
+        let pairing = self.turns.entry(terminal_id.to_string()).or_default();
+        pairing.last_stop = Some(at);
         for awaiting in &mut pairing.awaiting_turn {
             if awaiting.entered.is_some() && awaiting.stopped.is_none() {
                 awaiting.stopped = Some(at);
@@ -312,7 +317,7 @@ impl DeliveryQueues {
                 && began.is_none_or(|began| awaiting.can_own(began))
         });
         pairing.answering = matched
-            .and_then(|at| pairing.awaiting_turn.drain(..=at).last())
+            .and_then(|at| pairing.awaiting_turn.drain(..=at).next_back())
             .map(|awaiting| awaiting.message_id);
     }
 
@@ -2806,5 +2811,19 @@ Confirm your role in one line, then wait.";
 
         assert!(!sent.notices.is_empty());
         assert!(sent.notices.iter().all(|n| !n.waited && n.delivered_at.is_some()));
+    }
+
+    #[test]
+    fn a_turn_shown_over_while_its_message_is_typed_is_its_last_one_to_begin() {
+        let mut queues = DeliveryQueues::default();
+        let owner = |queues: &mut DeliveryQueues, began: i64| {
+            queues.start_typing("t1", "m1", "go");
+            queues.stop_turn("t1", 200);
+            queues.finish_typing("t1", "m1", Some(100));
+            queues.pair_ended_turn("t1", None, Some(began));
+            queues.end_turn("t1")
+        };
+        assert_eq!(owner(&mut queues, 150).as_deref(), Some("m1"), "its own turn, over before its typing ended");
+        assert_eq!(owner(&mut queues, 300), None, "a turn that began after that one was over");
     }
 }

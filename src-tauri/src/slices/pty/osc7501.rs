@@ -207,7 +207,7 @@ pub struct CodexTurn {
 impl CodexTurn {
     /// Reads the next sequence. `working` and `blocked` show the terminal Working and Waiting, and
     /// the `done` or `idle` after them stops the turn. Outside a turn, `done` and `idle` show it
-    /// Idle, unless a message made it Working. No report answers a sender, or starts or ends a turn
+    /// Idle, unless it is Working. No report answers a sender, or starts or ends a turn
     /// for those who wait on one: Codex's turn-end helper does (`A2ARouter::turn_completed`).
     pub fn read(&mut self, seq: &Osc7501) -> TurnReport {
         let (status, in_turn_after) = match seq.state.as_str() {
