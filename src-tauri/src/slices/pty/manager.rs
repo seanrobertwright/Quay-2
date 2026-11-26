@@ -870,6 +870,20 @@ impl PtyManager {
         list
     }
 
+    /// The terminals that may call Quay's MCP server: each listed one, and each whose launch has
+    /// begun but which is not listed yet. An OpenCode 2.x terminal's server connects while its
+    /// terminal is still starting, and OpenCode does not try again after a refusal. A closed
+    /// terminal is neither, since closing ends its launch first.
+    pub fn mcp_caller_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.terminals_info.lock().keys().cloned().collect();
+        for id in self.plugin_watches.lock().keys() {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+        ids
+    }
+
     pub fn get_info(&self, terminal_id: &str) -> Option<TerminalInfo> {
         self.terminals_info.lock().get(terminal_id).cloned()
     }
@@ -1981,6 +1995,22 @@ mod tests {
 
     fn status_of(manager: &PtyManager, id: &str) -> ClaudeStatus {
         manager.get_info(id).unwrap().claude_status
+    }
+
+    #[test]
+    fn a_terminal_whose_launch_has_begun_may_call_quay_before_it_is_listed_and_not_once_closed() {
+        let manager = PtyManager::new();
+        manager.begin_launch("term-oc-early", RunKind::OpenCode);
+        assert!(manager.list().is_empty());
+        assert_eq!(manager.mcp_caller_ids(), ["term-oc-early"]);
+
+        launched(&manager, "term-listed", RunKind::Claude);
+        let mut ids = manager.mcp_caller_ids();
+        ids.sort();
+        assert_eq!(ids, ["term-listed", "term-oc-early"]);
+
+        let _ = manager.kill("term-oc-early");
+        assert_eq!(manager.mcp_caller_ids(), ["term-listed"]);
     }
 
     #[test]
