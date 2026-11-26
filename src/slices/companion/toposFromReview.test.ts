@@ -17,7 +17,7 @@ import type { FileDiffRequest } from "../git/fileDiffRequest.ts";
 /** How Rust showed a file, as `surface_show_file` answers. */
 type Shown = { kind: "diff" } & Omit<FileDiffRequest, "terminalId">;
 
-const { acceptedReview, openTab, REVIEW, TERMINAL } = await import("../surface/fixtures/reviewFixtures.ts");
+const { acceptedReview, openTab, REVIEW, stageProps, TERMINAL } = await import("../surface/fixtures/reviewFixtures.ts");
 const { Stage } = await import("../stage/Stage.tsx");
 const { useSurfaceTabs } = await import("../surface/useSurfaceTabs.tsx");
 const { useToposDock, ToposLens, ToposLayer } = await import("./ToposDock.tsx");
@@ -94,34 +94,7 @@ const Window = () => {
     createElement(
       "div",
       { "data-stage-wrapper": "" },
-      createElement(Stage, {
-        terminals: [],
-        activeProject: "E:/alpha",
-        activeTerminalId: null,
-        primaryTerminalId: null,
-        secondaryTerminalId: null,
-        gridTerminalIds: [null, null, null, null],
-        layout: "single",
-        focusedPane: "primary",
-        splitRatio: 50,
-        zoomedFromLayout: null,
-        onSelectTerminal: noop,
-        onSelectPane: noop,
-        onSwitchPaneTerminal: noop,
-        onSetLayout: noop,
-        onSetSplitRatio: noop,
-        onToggleZoom: noop,
-        onUnsplit: noop,
-        onSplitHorizontal: noop,
-        onSplitVertical: noop,
-        onSplitGrid: noop,
-        onNewTerminal: noop,
-        tools: tabs.tools,
-        frontToolId: frontId,
-        onSelectTool: tabs.select,
-        onCloseTool: tabs.close,
-        earlierTabs: tabs.earlier,
-      }),
+      createElement(Stage, stageProps(tabs, frontId, "E:/alpha")),
       dock.wide ? createElement(ToposLens, { dock, terminalId: TERMINAL.id, title: "Topos · Alpha", replyStrip: null }) : null,
     ),
     createElement("aside", { "data-companion": "" }, createElement("div", { ref: dock.companion.viewSlot })),
