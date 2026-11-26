@@ -5,6 +5,7 @@ pub mod spawn;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod webview;
+pub mod webview_recovery;
 
 use tauri::{Emitter, Manager};
 
@@ -143,9 +144,13 @@ pub fn run() {
         .manage(topos_settings.clone())
         .manage(PraxisCli::new())
         .manage(Connect::for_operator())
+        .manage(webview_recovery::WebviewRecovery::default())
         .setup(move |app| {
             let app_handle = app.handle().clone();
             surfaces_clone.set_webview(AppWebview(app_handle.clone()));
+            if let Some(window) = app.get_webview_window(webview_recovery::MAIN_WINDOW) {
+                webview_recovery::watch(&window);
+            }
 
             // Every trail entry the router adds or changes updates Mission Control's trail,
             // and a message raises its toast when it is typed in, waited on or not.
@@ -440,7 +445,24 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(move |_app, event| {
+        .run(move |app, event| {
+            let recovery = app.state::<webview_recovery::WebviewRecovery>();
+            match &event {
+                // The main window closing for a new one to take its place is no reason to exit
+                tauri::RunEvent::ExitRequested { code: None, api, .. } if recovery.rebuilding() => {
+                    api.prevent_exit();
+                }
+                // No page is there to allow the close, so it would wait for ever
+                tauri::RunEvent::WindowEvent {
+                    label,
+                    event: tauri::WindowEvent::CloseRequested { .. },
+                    ..
+                } if label == webview_recovery::MAIN_WINDOW && recovery.page_lost() => {
+                    tracing::info!("Quay exits as its window closes, with no page to ask first");
+                    app.exit(0);
+                }
+                _ => {}
+            }
             // Terminals still running when Quay closes come back showing their last screen
             if let tauri::RunEvent::Exit = event {
                 exiting_terminals.save_all_screens();
