@@ -136,6 +136,25 @@ const bandOf = (section: HTMLElement) => {
   return [status.textContent, status.parentElement!.querySelector("time")?.textContent, status.querySelector("svg")?.getAttribute("aria-hidden")];
 };
 
+test("the band is tinted in the colour of its state, with the time at its right end", async () => {
+  const cases: [SurfaceRecord, string][] = [
+    [settled(await asked(1), ANSWERS("Question 1?", ["Yes"])), "text-[#3fb950]"],
+    [ended(await asked(2)), "text-[#8b949e]"],
+  ];
+  for (const [record, tone] of cases) {
+    await load(record);
+    await click(earlier()!);
+    await click(lineOf(record.id));
+    const band = region(record.id).querySelector('[role="status"]')!.parentElement!;
+    const names = band.className.split(" ");
+    assert.ok(names.includes("bg-current/8") && names.includes(tone), `${record.id}: ${band.className}`);
+    const time = band.querySelector("time")!;
+    assert.ok(time.className.split(" ").includes("ml-auto"), `${record.id}: ${time.className}`);
+    assert.equal(band.lastElementChild, time, `${record.id}: the time is last`);
+    assert.equal(time.textContent, formatClock(AT));
+  }
+});
+
 test("a line opens its surface in place, with the reason and the time in a band, and folds it again", async () => {
   const [one, two] = [await asked(1), await asked(2)];
   await load(settled(one, ANSWERS("Question 1?", ["Yes"])), settled(two, ANSWERS("Question 2?", ["No"])));
