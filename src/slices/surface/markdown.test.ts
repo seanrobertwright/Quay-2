@@ -274,7 +274,11 @@ test("a hostile link is text, however its address is spelled and whatever form t
       const roomAround = (el: Element) =>
         el.tagName === "SPAN" && el.getAttributeNames().join() === "class" && el.children.length === 1 && el.children[0].matches("[data-image-refused]");
       const elements = [...content.querySelectorAll("*")].filter((el) => !el.closest("[data-image-refused]") && !roomAround(el));
-      const boxed = [...content.querySelectorAll("[data-image-refused], [data-image-refused] *")];
+      // Quay's own icon in such a box is one hidden svg in it, which nothing the agent wrote is drawn into
+      const icon = (el: Element) => el.closest("[data-image-refused] > svg[aria-hidden='true']") !== null;
+      const boxed = [...content.querySelectorAll("[data-image-refused], [data-image-refused] *")].filter((el) => !icon(el));
+      const icons = [...content.querySelectorAll("[data-image-refused]")].map((box) => box.querySelectorAll("svg").length);
+      if (icons.some((count) => count !== 1) || [...content.querySelectorAll("[data-image-refused] svg")].some((svg) => svg.textContent !== "")) drawn.push(form(address));
       if (boxed.some((el) => !/^(span|bdi)$/i.test(el.tagName) || el.getAttributeNames().some((name) => !["class", "dir", "data-image-refused"].includes(name)))) drawn.push(form(address));
       const bad = elements.filter((el) => !/^(a2ui-react-.*|div|p|em|strong|code|s|br|h3)$/i.test(el.tagName) || el.getAttributeNames().some((name) => name !== "class"));
       if (bad.length > 0 || content.querySelector("[role]")) drawn.push(form(address));

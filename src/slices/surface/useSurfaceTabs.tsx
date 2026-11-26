@@ -95,6 +95,17 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
     bring(id);
     return true;
   };
+  /** Takes away why closing `record`'s tab did not dismiss it, at its notice's ×. */
+  const forgetRefusal = useCallback(
+    (record: SurfaceRecord) =>
+      setRefusals((before) => {
+        if (!before.has(record)) return before;
+        const after = new Map(before);
+        after.delete(record);
+        return after;
+      }),
+    [],
+  );
   const close = (id: string): boolean => {
     if (!id.startsWith(PREFIX)) return false;
     const record = tabbed.find((tab) => tab.id === id)?.record;
@@ -123,6 +134,7 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
         id,
         label,
         name: waits ? `${name}, ${WAITING_ON_YOU}` : name,
+        from: terminal.name,
         waits,
         icon: <KindIcon className="h-3.5 w-3.5 text-[#d29922]" />,
         content: (
@@ -132,6 +144,7 @@ export function useSurfaceTabs({ terminals, activeProject, frontId, onFront, onS
             inFront={id === frontId}
             asked={asked?.id === id ? asked.seq : 0}
             notDismissed={refusals.get(record) ?? null}
+            onForgetNotDismissed={forgetRefusal}
           />
         ),
       };

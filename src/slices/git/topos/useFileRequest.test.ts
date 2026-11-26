@@ -1,6 +1,7 @@
 /// <reference types="node" />
 // Tests for how Topos opens the file a link asked for (#721): once it shows the file's worktree, in the
-// diff view or, for a conflicted file, in the resolver, and never over a resolver that is open.
+// diff view or, for a conflicted file, in the resolver, and never over a resolver that is open, which
+// it says once for each request (#772).
 import "../../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,9 +15,10 @@ afterEach(() => {
   mounted = null;
 });
 
-/** Runs the hook with `state`, and gives what it opened so far. */
+/** Runs the hook with `state`, and gives what it opened and said so far. */
 function render(state: Partial<FileRequestState>) {
   const opened: string[] = [];
+  const said: string[] = [];
   let now: FileRequestState = {
     ready: true,
     request: null,
@@ -24,6 +26,7 @@ function render(state: Partial<FileRequestState>) {
     resolving: null,
     openDiff: ({ path, side }) => void opened.push(`${side} ${path}`),
     openResolver: (path) => void opened.push(`resolver ${path}`),
+    announce: (text) => void said.push(text),
   };
   const Topos = (state: FileRequestState) => (useFileRequest(state), null);
   mounted = createRoot(document.createElement("div"));
@@ -32,7 +35,7 @@ function render(state: Partial<FileRequestState>) {
     act(() => mounted!.render(createElement(Topos, now)));
   };
   set(state);
-  return { opened, set };
+  return { opened, said, set };
 }
 
 const request = (seq: number, side: FileRequest["side"] = "unstaged"): FileRequest => ({ seq, path: "a.ts", side });
@@ -71,4 +74,26 @@ test("a conflicted file the resolver shows already is not opened again", () => {
   const { opened, set } = render({ resolving: "a.ts", conflicts: ["a.ts"], request: request(1, "conflicted") });
   set({ resolving: null });
   assert.deepEqual(opened, []);
+});
+
+test("a file that waits for the open resolver says so once for each request, and opens when it closes", () => {
+  const { opened, said, set } = render({ resolving: "b.ts", conflicts: ["a.ts", "b.ts"], request: request(1) });
+  assert.deepEqual(said, ["Close the conflict resolver on b.ts to open a.ts."]);
+  set({ conflicts: ["b.ts", "a.ts"] });
+  set({ resolving: "c.ts" });
+  assert.equal(said.length, 1, "drawn again for the same request");
+  set({ request: request(2, "conflicted") });
+  assert.deepEqual(said.slice(1), ["Close the conflict resolver on c.ts to open a.ts."]);
+  set({ resolving: null });
+  assert.deepEqual(opened, ["resolver a.ts"]);
+  assert.equal(said.length, 2, "nothing is said as it opens");
+});
+
+test("nothing is said for a file that opens at once or waits for something other than the resolver", () => {
+  const { said, set } = render({ ready: false, resolving: "b.ts", request: request(1) });
+  set({ resolving: null, conflicts: [], request: request(2, "conflicted") });
+  set({ ready: true });
+  set({ resolving: "a.ts", conflicts: ["a.ts"], request: request(3, "conflicted") });
+  set({ resolving: null, request: request(4) });
+  assert.deepEqual(said, []);
 });

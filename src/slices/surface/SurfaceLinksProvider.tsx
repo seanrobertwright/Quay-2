@@ -14,11 +14,13 @@ interface SurfaceLinksProviderProps {
   terminalId: string;
   /** The surface's id among that terminal's. */
   id: string;
+  /** Gives the focus to the frame when a notice's × takes the notice away. */
+  focusFrame?: () => void;
   children: ReactNode;
 }
 
 /** What a frame holds, with the foot that says where its links lead and why a click did nothing. */
-export const SurfaceLinksProvider = ({ terminalId, id, children }: SurfaceLinksProviderProps) => {
+export const SurfaceLinksProvider = ({ terminalId, id, focusFrame, children }: SurfaceLinksProviderProps) => {
   const footId = useId();
   const [count, setCount] = useState(0);
   const [pointed, setPointed] = useState<{ pointer: Pointed | null; focus: Pointed | null }>({ pointer: null, focus: null });
@@ -57,7 +59,16 @@ export const SurfaceLinksProvider = ({ terminalId, id, children }: SurfaceLinksP
   return (
     <LinksContext.Provider value={links}>
       {children}
-      {notice !== null && <FrameNotice>{notice}</FrameNotice>}
+      {notice !== null && (
+        <FrameNotice
+          onDismiss={() => {
+            focusFrame?.();
+            setNotice(null);
+          }}
+        >
+          {notice}
+        </FrameNotice>
+      )}
       {count > 0 && (
         <p
           id={footId}

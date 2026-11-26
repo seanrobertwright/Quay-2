@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState, type Ref } from "react";
+import { ImageOff } from "lucide-react";
 import type { ImageTarget } from "../../imageTarget.ts";
 import { shownText } from "../../shownText.ts";
 import { ImagesContext, READING, type ImageReading } from "../../surfaceImages.ts";
@@ -9,13 +10,23 @@ interface RefusedImageProps {
   address: string;
 }
 
-/** What stands for an image that is not shown: what it is called, why, and where it would be. */
+/** The lines of a box beside its icon. */
+const LINE = "col-start-2";
+
+/**
+ * What stands for an image that is not shown: an image icon, what it is called, why, and where it would be.
+ * It is dashed, and as wide as the Column or the line of text it is in.
+ */
 const RefusedImage = ({ name, why, address }: RefusedImageProps) => (
-  <span data-image-refused className="inline-flex max-w-full min-w-0 flex-col rounded border border-[#30363d] bg-[#161b22] px-2 py-1 text-[11px] wrap-anywhere text-[#8b949e]">
-    {name !== "" && <bdi className="text-[#c9d1d9]">{name}</bdi>}
-    <span>{why}</span>
+  <span
+    data-image-refused
+    className="grid max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-1.5 rounded-md border border-dashed border-[#484f58] px-2.5 py-1.5 text-[11px] wrap-anywhere text-[#8b949e]"
+  >
+    <ImageOff aria-hidden="true" className="row-span-3 mt-px h-3.5 w-3.5 text-[#8b949e]" />
+    {name !== "" && <bdi className={`${LINE} text-[#c9d1d9]`}>{name}</bdi>}
+    <span className={LINE}>{why}</span>
     {address !== "" && (
-      <bdi dir="ltr" className="font-mono">
+      <bdi dir="ltr" className={`${LINE} font-mono`}>
         {shownText(address)}
       </bdi>
     )}

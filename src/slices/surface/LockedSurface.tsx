@@ -11,6 +11,7 @@ import { isUnanswered, type SurfaceRecord } from "./surfaceTypes.ts";
 import { unsentIn } from "./unsent.ts";
 import { useDismiss } from "./useDismiss.ts";
 import { useMove } from "./useMove.ts";
+import { useRefusal } from "./useRefusal.ts";
 
 /** What was asked, folded behind `label`. */
 const Folded = ({ label, children }: { label: string; children: ReactNode }) => {
@@ -37,21 +38,23 @@ interface LockedSurfaceProps {
   fills?: boolean;
   /** Why it was not dismissed from outside its frame. */
   notDismissed?: string | null;
+  /** Takes that away, at its notice's ×. */
+  onForgetNotDismissed?: () => void;
 }
 
 /** A locked surface, in its frame: why and when, the operator's answer or what they had typed, and what was asked. */
-export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null }: LockedSurfaceProps) => {
+export const LockedSurface = ({ record, terminal, fills = false, notDismissed = null, onForgetNotDismissed }: LockedSurfaceProps) => {
   const { kind, KindIcon, titled, asksFor, Settled, Asked, askedLabel, typedIn } = lookOf(record.tool);
   const { components } = record.state.createSurface;
   const unanswered = isUnanswered(record);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const { setRefusal, shown: refusal, dismiss: dismissRefusal } = useRefusal(notDismissed, onForgetNotDismissed);
   const dismiss = useDismiss(record, setRefusal);
   const move = useMove(record, setRefusal);
   // What is unsent in it comes with the list
   const read = useSurfacesRead();
   const texts = unanswered && read ? typedIn(components, unsentIn(record)) : [];
   return (
-    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal ?? notDismissed} fills={fills}>
+    <SurfaceFrame id={record.id} terminal={terminal} kind={kind} KindIcon={KindIcon} band={<LockedBand record={record} />} dismiss={dismiss} move={move} refusal={refusal} onDismissRefusal={dismissRefusal} fills={fills}>
       <SurfaceBoundary>
         <div className="flex min-w-0 flex-col gap-2.5">
           {(unanswered || titled) && <p className="wrap-anywhere whitespace-pre-wrap">{asksFor(record)}</p>}

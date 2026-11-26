@@ -17,6 +17,8 @@ const VARIANTS = { default: "secondary", primary: "primary", borderless: "border
 
 interface LookProps {
   variant: (typeof VARIANTS)[keyof typeof VARIANTS];
+  /** Whether it is as wide as its label: it is, but where its weight gives it a share to fill. */
+  ownWidth: boolean;
   /** Whether the component's checks all hold. */
   valid: boolean;
   buttonRef: Ref<HTMLButtonElement> | undefined;
@@ -29,7 +31,7 @@ interface ActionButtonProps extends LookProps {
 }
 
 /** A button that sends its surface's agent something. */
-const ActionButton = ({ variant, valid, action, buttonRef, children }: ActionButtonProps) => {
+const ActionButton = ({ variant, ownWidth, valid, action, buttonRef, children }: ActionButtonProps) => {
   const [busy, setBusy] = useState(false);
   // A second click can come before the button is drawn again.
   const running = useRef(false);
@@ -46,7 +48,7 @@ const ActionButton = ({ variant, valid, action, buttonRef, children }: ActionBut
     }
   };
   return (
-    <PlainButton ref={buttonRef} variant={variant} disabled={!valid || busy} onClick={() => void click()}>
+    <PlainButton ref={buttonRef} variant={variant} ownWidth={ownWidth} disabled={!valid || busy} onClick={() => void click()}>
       {children}
     </PlainButton>
   );
@@ -58,7 +60,7 @@ interface EffectButtonProps extends LookProps {
 }
 
 /** A button that causes something in Quay, of the arguments it was drawn with: what it opens is what the frame's foot said. */
-const EffectButton = ({ variant, valid, call: { effect, args: written }, context, buttonRef, children }: EffectButtonProps) => {
+const EffectButton = ({ variant, ownWidth, valid, call: { effect, args: written }, context, buttonRef, children }: EffectButtonProps) => {
   const links = useContext(LinksContext);
   const args = useArguments(context.dataContext, written);
   const address = effect === "openUrl" ? (webTarget(textOf(args.url))?.address ?? null) : null;
@@ -72,7 +74,7 @@ const EffectButton = ({ variant, valid, call: { effect, args: written }, context
     if (valid && links) duringClick(effect, () => cause(effect, args, links.effects), untypedTarget);
   };
   return (
-    <PlainButton ref={buttonRef} variant={variant} disabled={!valid} onClick={click} {...pointed}>
+    <PlainButton ref={buttonRef} variant={variant} ownWidth={ownWidth} disabled={!valid} onClick={click} {...pointed}>
       {children}
     </PlainButton>
   );
@@ -81,11 +83,15 @@ const EffectButton = ({ variant, valid, call: { effect, args: written }, context
 /** What kind of component `id` is, as the surface has it. */
 const typeOf = ({ surfaceComponents }: ComponentContext, id: unknown) => (typeof id === "string" ? surfaceComponents.get(id)?.type : undefined);
 
-/** A button, held while a check of it fails and while its last click is being answered. */
+/**
+ * A button, held while a check of it fails and while its last click is being answered. It is as wide as its
+ * label, also in a Column that stretches what it holds, and the Column's `align` still places it. One with a
+ * weight fills its share.
+ */
 export const Button = createComponentImplementation(ButtonApi, ({ props, buildChild, context, accessibilityRef }) => {
   const { action, child } = context.componentModel.properties;
   const call = effectCallOf(action);
-  const look = { variant: VARIANTS[props.variant ?? "default"], valid: props.isValid !== false, buttonRef: accessibilityRef };
+  const look = { variant: VARIANTS[props.variant ?? "default"], ownWidth: typeof props.weight !== "number", valid: props.isValid !== false, buttonRef: accessibilityRef };
   const label = (
     <InsideButton.Provider value={true}>
       <AloneInButton.Provider value={typeOf(context, child) === "Icon"}>{props.child && buildChild(props.child)}</AloneInButton.Provider>

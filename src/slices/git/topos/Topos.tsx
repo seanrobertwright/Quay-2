@@ -462,6 +462,9 @@ export const Topos: React.FC<ToposProps> = ({
     }
   }, [showsProject, request, refContext, newBranch, pickCheckout, fetchRemote, pullRemote, pushRemote]);
   const conflictPaths = useMemo(() => operation.op?.conflicts.map((conflict) => conflict.path) ?? [], [operation.op]);
+  // A file that waits for the open resolver says so in a toast, which its live region speaks too (#772).
+  const showToast = refActions.toast;
+  const toastWaiting = useCallback((text: string) => showToast({ tone: "done", text }), [showToast]);
   useFileRequest({
     ready: showsProject,
     request: fileRequest,
@@ -469,6 +472,7 @@ export const Topos: React.FC<ToposProps> = ({
     resolving,
     openDiff: setOpenFile,
     openResolver: setResolving,
+    announce: toastWaiting,
   });
   const newBranchAtHead = useCallback(() => newBranch("HEAD"), [newBranch]);
   const watch = graph.feed?.watch ?? null;

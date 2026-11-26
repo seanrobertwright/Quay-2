@@ -157,8 +157,9 @@ test("a surface that comes back to the screen has its images read again", async 
   assert.deepEqual(revoked, ["blob:http://localhost/1"]);
 });
 
-/** The lines of each box that stands for an image that is not shown. */
-const boxes = (within: HTMLElement) => [...within.querySelectorAll<HTMLElement>("[data-image-refused]")].map((box) => [...box.children].map((line) => line.textContent));
+/** The lines of each box that stands for an image that is not shown, without its icon. */
+const boxes = (within: HTMLElement) =>
+  [...within.querySelectorAll<HTMLElement>("[data-image-refused]")].map((box) => [...box.children].filter((line) => !line.matches("svg")).map((line) => line.textContent));
 
 test("what Rust refuses draws a box with the description, the reason and the address", async () => {
   const reasons: Record<string, string> = { "gone.png": "There is no such file.", "//host/share/x.png": "It is not a file on this computer, or Quay cannot tell that it is." };
@@ -312,6 +313,21 @@ test("images and their boxes beside each other in Markdown have room around each
   assert.equal(inRow.length, 2);
   const row = (drawn: Element) => drawn.closest(".gap-2")!;
   assert.deepEqual(inRow.flatMap((drawn) => marginsOf(drawn, row(drawn))), [], "a Row's gap is all that is between them");
+});
+
+test("the box of an image that is not shown is dashed, has an image icon and takes the width it is given, also in Markdown", async () => {
+  onImage = () => Promise.reject("There is no such file.");
+  const content = await draw(surfaceOf([image("a", "https://a.example/a.png"), image("b", "gone.png"), text("c", "Before ![chart](https://a.example/c.png) after")]));
+  const drawn = [...content.querySelectorAll<HTMLElement>("[data-image-refused]")];
+  assert.equal(drawn.length, 3);
+  for (const box of drawn) {
+    const names = box.className.split(" ");
+    assert.ok(names.includes("border-dashed") && names.includes("grid") && !names.includes("inline-flex"), box.className);
+    assert.equal(box.querySelector(":scope > svg")?.getAttribute("aria-hidden"), "true", "its icon is no more than a look");
+  }
+  const roomInText = drawn[2].closest("p")!.querySelector<HTMLElement>(":scope > span")!;
+  // A line of its own, which the box fills (the live check of #775 saw it keep the width of its text)
+  assert.deepEqual(["has-[[data-image-refused]]:flex", "has-[[data-image-refused]]:*:flex-1"].map((name) => roomInText.className.split(" ").includes(name)), [true, true], roomInText.className);
 });
 
 test("an image in Markdown that is no local path draws the box, and nothing is asked for", async () => {

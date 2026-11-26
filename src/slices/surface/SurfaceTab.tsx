@@ -15,10 +15,12 @@ interface SurfaceTabProps {
   asked: number;
   /** Why closing its tab did not dismiss it. */
   notDismissed: string | null;
+  /** Takes that away from what is said of `record`. */
+  onForgetNotDismissed: (record: SurfaceRecord) => void;
 }
 
 /** What a surface's stage tab shows. Nothing is drawn until the tab is first in front; from then on it stays drawn. */
-export const SurfaceTab = memo(({ record, terminal, inFront, asked, notDismissed }: SurfaceTabProps) => {
+export const SurfaceTab = memo(({ record, terminal, inFront, asked, notDismissed, onForgetNotDismissed }: SurfaceTabProps) => {
   const [opened, setOpened] = useState(inFront);
   if (inFront && !opened) setOpened(true);
   const box = useRef<HTMLDivElement>(null);
@@ -32,12 +34,13 @@ export const SurfaceTab = memo(({ record, terminal, inFront, asked, notDismissed
   // What is decided leaves with the button that decided it
   const keptFocus = useKeptFocus(terminal.id, focusFrame);
   if (!opened) return null;
+  const forget = () => onForgetNotDismissed(record);
   return (
     <div ref={box} {...keptFocus} className="flex min-h-0 flex-1 flex-col items-center p-4 select-text">
       {isLive(record) ? (
-        <LiveSurface record={record} terminal={terminal} fills notDismissed={notDismissed} />
+        <LiveSurface record={record} terminal={terminal} fills notDismissed={notDismissed} onForgetNotDismissed={forget} />
       ) : (
-        <LockedSurface record={record} terminal={terminal} fills notDismissed={notDismissed} />
+        <LockedSurface record={record} terminal={terminal} fills notDismissed={notDismissed} onForgetNotDismissed={forget} />
       )}
     </div>
   );

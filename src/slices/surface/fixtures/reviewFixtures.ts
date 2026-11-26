@@ -1,11 +1,12 @@
 // What the tests of reviews share: a review, and the stage its tab is on, worked as the operator
 // would. The test owns what it mounts.
 import "../../../test-support/bundlerImports.ts";
-import { act, createElement, useState } from "react";
+import { act, createElement, useState, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { terminalInfo } from "../../companion/fixtures/companionFixtures.ts";
 import type { TerminalInfo } from "../../terminal/types.ts";
 import type { SurfaceKey, SurfaceRecord } from "../surfaceTypes.ts";
+import type { SurfaceTabs } from "../useSurfaceTabs.tsx";
 import type { Mounted } from "./askFixtures.ts";
 import { acceptedSurface, settle, until } from "./fakeRust.ts";
 
@@ -44,6 +45,36 @@ export interface MountedStage extends Mounted {
 
 const noop = () => {};
 
+/** What `Stage` takes in a single layout with no terminal drawn, Launch Terminal in their place, and the surfaces' `tabs` on its tab bar with `frontId` in front. */
+export const stageProps = (tabs: SurfaceTabs, frontId: string | null, activeProject: string): ComponentProps<typeof Stage> => ({
+  terminals: [],
+  activeProject,
+  activeTerminalId: null,
+  primaryTerminalId: null,
+  secondaryTerminalId: null,
+  gridTerminalIds: [null, null, null, null],
+  layout: "single",
+  focusedPane: "primary",
+  splitRatio: 50,
+  zoomedFromLayout: null,
+  onSelectTerminal: noop,
+  onSelectPane: noop,
+  onSwitchPaneTerminal: noop,
+  onSetLayout: noop,
+  onSetSplitRatio: noop,
+  onToggleZoom: noop,
+  onUnsplit: noop,
+  onSplitHorizontal: noop,
+  onSplitVertical: noop,
+  onSplitGrid: noop,
+  onNewTerminal: noop,
+  tools: tabs.tools,
+  frontToolId: frontId,
+  onSelectTool: tabs.select,
+  onCloseTool: tabs.close,
+  earlierTabs: tabs.earlier,
+});
+
 /** The stage on `project` with the surfaces' tabs, as Quay's window has them, but for the terminals' panes: none is drawn, and Launch Terminal is in their place. */
 export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL], project = "E:/alpha"): Promise<MountedStage> {
   let tabs: ReturnType<typeof useSurfaceTabs>;
@@ -61,34 +92,7 @@ export async function mountStage(terminals: readonly TerminalInfo[] = [TERMINAL]
     });
     setFront = setFrontId;
     setProject = setActiveProject;
-    return createElement(Stage, {
-      terminals: [],
-      activeProject,
-      activeTerminalId: null,
-      primaryTerminalId: null,
-      secondaryTerminalId: null,
-      gridTerminalIds: [null, null, null, null],
-      layout: "single",
-      focusedPane: "primary",
-      splitRatio: 50,
-      zoomedFromLayout: null,
-      onSelectTerminal: noop,
-      onSelectPane: noop,
-      onSwitchPaneTerminal: noop,
-      onSetLayout: noop,
-      onSetSplitRatio: noop,
-      onToggleZoom: noop,
-      onUnsplit: noop,
-      onSplitHorizontal: noop,
-      onSplitVertical: noop,
-      onSplitGrid: noop,
-      onNewTerminal: noop,
-      tools: tabs.tools,
-      frontToolId: frontId,
-      onSelectTool: tabs.select,
-      onCloseTool: tabs.close,
-      earlierTabs: tabs.earlier,
-    });
+    return createElement(Stage, stageProps(tabs, frontId, activeProject));
   };
   const container = document.createElement("div");
   document.body.append(container);

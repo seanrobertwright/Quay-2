@@ -12,13 +12,14 @@ interface MarkdownImageProps {
 
 /**
  * A Markdown image, or its text alone inside a button. It has room around it, so that images beside each other
- * in a line, or in lines one above the other, do not touch.
+ * in a line, or in lines one above the other, do not touch. The box of one that is not shown takes a line of
+ * its own, which it fills.
  */
 export const MarkdownImage = ({ src, name }: MarkdownImageProps) => {
   const insideButton = useContext(InsideButton);
   if (insideButton) return name || `![](${src})`;
   return (
-    <span className="m-0.5 inline-flex max-w-full min-w-0">
+    <span className="m-0.5 inline-flex max-w-full min-w-0 has-[[data-image-refused]]:flex has-[[data-image-refused]]:*:flex-1">
       <LocalImage target={markdownImageTarget(src)} address={src} name={name} className={imageLook()} />
     </span>
   );
