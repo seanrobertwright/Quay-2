@@ -1,18 +1,26 @@
-//! Antigravity's turn reports. With `AGY_CLI_OSC7501=on`, `agy` prints an OSC 7501
-//! sequence, `ESC ] 7501 ; state=<state>:key=value:... BEL`, each time its turn moves:
-//! `working` when a turn starts, `done` when it ends, `blocked` when it waits on a prompt,
-//! `idle` when it is ready. `done` and `blocked` carry a base64 `msg`: the answer, or what
-//! it is waiting on. Quay reads them from the PTY output to show Antigravity's status and to
-//! answer a sender waiting on it.
+//! The turn reports a CLI prints in its own output: an OSC 7501 sequence,
+//! `ESC ] 7501 ; state=<state>:key=value:...` and a terminator, each time its turn moves. Quay
+//! reads them from the PTY output to show the terminal's status. What they say of a turn differs
+//! by CLI, which `TurnReader` tells apart.
+//!
+//! - Antigravity prints them when `AGY_CLI_OSC7501=on`: `working` when a turn starts, `done` when
+//!   it ends, `blocked` when it waits on a prompt, `idle` when it is ready. `done` and `blocked`
+//!   carry a base64 `msg`, the answer or what it waits on, with which Quay answers a waiting sender.
+//! - Codex prints them unasked, in some versions (0.163.0, 0.164.0 and 0.172.0 do, 0.154.0 does
+//!   not), and with no `msg` that Quay has seen: `working` when a turn starts, `blocked` at a
+//!   permission prompt, and at a turn's end `done`, or `idle` when the turn was interrupted. `idle`
+//!   also comes outside a turn: when Codex is ready after its start, and with the first key after a
+//!   `done`, so as Quay types the next message in, before that message's turn. Quay takes its
+//!   answers from its turn-end helper.
 
 use base64::Engine;
 
-use super::models::ClaudeStatus;
+use super::models::{ClaudeStatus, RunKind};
 
-/// Turns the sequences on.
+/// Turns Antigravity's sequences on.
 pub const ENABLE_VAR: &str = "AGY_CLI_OSC7501";
 
-/// Set to `brief`, it drops `msg` from every sequence, so Quay never passes it on.
+/// Set to `brief`, it drops `msg` from every sequence of Antigravity's, so Quay never passes it on.
 pub const MESSAGES_VAR: &str = "AGY_CLI_OSC7501_MESSAGES";
 
 const INTRO: &str = "\x1b]7501;";
@@ -144,17 +152,78 @@ fn terminator(body: &str) -> Option<(usize, usize)> {
     }
 }
 
-/// What one sequence means for an Antigravity terminal.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What one sequence means for the terminal it was printed in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TurnReport {
     /// The status it puts the terminal in, if any.
     pub status: Option<ClaudeStatus>,
-    /// Whether a turn starts with it.
+    /// Whether a terminal that is Working stays so all the same: the report ends no turn, so the
+    /// terminal is Working for a message whose turn has yet to start.
+    pub leaves_working: bool,
+    /// Whether a turn starts with it, and takes the message typed in before it.
     pub starts_turn: bool,
     /// What a sender waiting on the running turn is told, if it hears now.
     pub answer: Option<String>,
-    /// Whether a turn ends with it.
+    /// Whether a turn ends with it, after its answer.
     pub ends_turn: bool,
+    /// Whether it shows the running turn over, while the turn's answer comes another way: before
+    /// it, after it, or never.
+    pub stops_turn: bool,
+}
+
+/// Follows one launch's turns through its sequences, by what they mean for its CLI.
+#[derive(Debug)]
+pub enum TurnReader {
+    Antigravity(AntigravityTurn),
+    Codex(CodexTurn),
+}
+
+impl TurnReader {
+    /// The reader for one launch of `run_kind`, or `None` for a CLI whose sequences Quay doesn't read.
+    pub fn for_launch(run_kind: RunKind) -> Option<Self> {
+        match run_kind {
+            RunKind::Antigravity => Some(Self::Antigravity(AntigravityTurn::default())),
+            RunKind::Codex => Some(Self::Codex(CodexTurn::default())),
+            _ => None,
+        }
+    }
+
+    /// Reads the launch's next sequence.
+    pub fn read(&mut self, seq: &Osc7501) -> TurnReport {
+        match self {
+            Self::Antigravity(turn) => turn.read(seq),
+            Self::Codex(turn) => turn.read(seq),
+        }
+    }
+}
+
+/// Follows one launch of a Codex terminal through its sequences, so it can tell the `idle` that
+/// ends a turn from one outside a turn.
+#[derive(Debug, Default)]
+pub struct CodexTurn {
+    in_turn: bool,
+}
+
+impl CodexTurn {
+    /// Reads the next sequence. `working` and `blocked` show the terminal Working and Waiting, and
+    /// the `done` or `idle` after them stops the turn. Outside a turn, `done` and `idle` show it
+    /// Idle, unless it is Working. No report answers a sender, or starts or ends a turn
+    /// for those who wait on one: Codex's turn-end helper does (`A2ARouter::turn_completed`).
+    pub fn read(&mut self, seq: &Osc7501) -> TurnReport {
+        let (status, in_turn_after) = match seq.state.as_str() {
+            "working" => (ClaudeStatus::Working, true),
+            "blocked" => (ClaudeStatus::Waiting, true),
+            "done" | "idle" => (ClaudeStatus::Idle, false),
+            _ => return TurnReport::default(),
+        };
+        let was_in_turn = std::mem::replace(&mut self.in_turn, in_turn_after);
+        TurnReport {
+            status: Some(status),
+            leaves_working: !in_turn_after && !was_in_turn,
+            stops_turn: !in_turn_after && was_in_turn,
+            ..TurnReport::default()
+        }
+    }
 }
 
 /// Follows one launch of an Antigravity terminal through its sequences, so it can tell a
@@ -175,12 +244,12 @@ impl AntigravityTurn {
             "working" => (ClaudeStatus::Working, true),
             "blocked" => (ClaudeStatus::Waiting, true),
             "done" | "idle" => (ClaudeStatus::Idle, false),
-            _ => return TurnReport { status: None, starts_turn: false, answer: None, ends_turn: false },
+            _ => return TurnReport::default(),
         };
         let starts_turn = !self.in_turn && seq.state != "idle";
         let ends_turn = (self.in_turn || starts_turn) && !in_turn_after;
         self.in_turn = in_turn_after;
-        TurnReport { status: Some(status), starts_turn, answer: seq.answer(), ends_turn }
+        TurnReport { status: Some(status), starts_turn, answer: seq.answer(), ends_turn, ..TurnReport::default() }
     }
 }
 
@@ -318,13 +387,13 @@ mod tests {
         assert_eq!(
             reports,
             [
-                TurnReport { status: Some(ClaudeStatus::Idle), starts_turn: false, answer: None, ends_turn: false },
-                TurnReport { status: Some(ClaudeStatus::Working), starts_turn: true, answer: None, ends_turn: false },
+                TurnReport { status: Some(ClaudeStatus::Idle), ..TurnReport::default() },
+                TurnReport { status: Some(ClaudeStatus::Working), starts_turn: true, ..TurnReport::default() },
                 TurnReport {
                     status: Some(ClaudeStatus::Idle),
-                    starts_turn: false,
                     answer: Some("pong".to_string()),
-                    ends_turn: true
+                    ends_turn: true,
+                    ..TurnReport::default()
                 },
             ]
         );
@@ -360,10 +429,95 @@ mod tests {
     fn an_unknown_state_changes_nothing() {
         let mut turn = AntigravityTurn::default();
         turn.read(&seq("state=working"));
-        assert_eq!(
-            turn.read(&seq("state=thinking")),
-            TurnReport { status: None, starts_turn: false, answer: None, ends_turn: false }
-        );
+        assert_eq!(turn.read(&seq("state=thinking")), TurnReport::default());
         assert!(!turn.read(&seq("state=done")).starts_turn);
+    }
+
+    /// What Codex 0.164.0 prints, as bodies: ready, a turn, the next turn's first key, that turn
+    /// with a permission prompt that Esc ends, and a turn that Esc ends.
+    const CODEX_BODIES: [&str; 10] = [
+        "state=idle:app=codex",
+        "state=working:app=codex",
+        "state=done:app=codex",
+        "state=idle:app=codex",
+        "state=working:app=codex",
+        "state=blocked:app=codex:kind=permission",
+        "state=working:app=codex",
+        "state=idle:app=codex",
+        "state=working:app=codex",
+        "state=idle:app=codex",
+    ];
+
+    /// `CODEX_BODIES` as printed, each sequence ended with ST as Codex does.
+    fn codex_stream() -> String {
+        CODEX_BODIES.iter().map(|body| format!("\x1b]7501;{}\x1b\\pong", body)).collect()
+    }
+
+    /// The reports of `codex_stream`, read in two parts of which the first is `split` bytes long.
+    fn codex_reports(split: usize) -> Vec<TurnReport> {
+        let stream = codex_stream();
+        let mut scanner = Osc7501Scanner::default();
+        let mut reader = TurnReader::for_launch(RunKind::Codex).unwrap();
+        let (first, second) = stream.split_at(split);
+        [first, second].iter().flat_map(|part| scanner.feed(part)).map(|seq| reader.read(&seq)).collect()
+    }
+
+    #[test]
+    fn codexs_sequences_show_its_status_wherever_a_read_splits_them() {
+        for split in 0..=codex_stream().len() {
+            let statuses: Vec<ClaudeStatus> =
+                codex_reports(split).into_iter().map(|report| report.status.unwrap()).collect();
+            assert_eq!(
+                statuses,
+                [
+                    ClaudeStatus::Idle,
+                    ClaudeStatus::Working,
+                    ClaudeStatus::Idle,
+                    ClaudeStatus::Idle,
+                    ClaudeStatus::Working,
+                    ClaudeStatus::Waiting,
+                    ClaudeStatus::Working,
+                    ClaudeStatus::Idle,
+                    ClaudeStatus::Working,
+                    ClaudeStatus::Idle,
+                ],
+                "split at {split}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_codex_turn_stops_at_done_or_idle_and_an_idle_outside_a_turn_leaves_a_message_working() {
+        let reports = codex_reports(0);
+        let stops: Vec<bool> = reports.iter().map(|r| r.stops_turn).collect();
+        assert_eq!(stops, [false, false, true, false, false, false, false, true, false, true]);
+        let leaves: Vec<bool> = reports.iter().map(|r| r.leaves_working).collect();
+        assert_eq!(leaves, [true, false, false, true, false, false, false, false, false, false]);
+    }
+
+    #[test]
+    fn no_codex_report_answers_or_starts_or_ends_a_turn() {
+        let mut reader = TurnReader::for_launch(RunKind::Codex).unwrap();
+        for body in ["state=working", "state=blocked:kind=permission:msg=cG9uZw==", "state=done:msg=cG9uZw==", "state=idle"] {
+            let report = reader.read(&seq(body));
+            assert!(!report.starts_turn && !report.ends_turn && report.answer.is_none(), "{body}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_codex_state_changes_nothing() {
+        let mut reader = TurnReader::for_launch(RunKind::Codex).unwrap();
+        reader.read(&seq("state=working"));
+        assert_eq!(reader.read(&seq("state=thinking")), TurnReport::default());
+        assert!(reader.read(&seq("state=done")).stops_turn);
+    }
+
+    #[test]
+    fn quay_reads_the_sequences_of_antigravity_and_codex_alone() {
+        let kinds: Vec<RunKind> = crate::slices::pty::models::ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| TurnReader::for_launch(*kind).is_some())
+            .collect();
+        assert_eq!(kinds, [RunKind::Antigravity, RunKind::Codex]);
     }
 }

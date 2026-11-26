@@ -88,8 +88,9 @@ export interface AttentionQueueView {
  *
  * A new turn starting is the bridge's `turn.started` from the terminal's own session (Claude,
  * OpenCode and PiG send it, including for a prompt a peer typed in over A2A), or a
- * `terminal-status` that moves the terminal to Working, for the CLIs that send no turn start
- * (Codex goes Working on its first tool; Antigravity on its own turn report).
+ * `terminal-status` of Working, for the CLIs that send no turn start (Codex and Antigravity go
+ * Working on their own turn reports). The backend sends none with a turn it hears of while the
+ * terminal's output still shows that turn running, so the turn stays listed.
  *
  * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
  * terminal list (closed), or the user relaunches it.

@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod codex_turn_tests;
 pub mod commands;
 pub mod models;
 pub mod opencode;
