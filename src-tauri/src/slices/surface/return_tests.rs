@@ -10,7 +10,7 @@ use super::test_seam::{accepted, answer_to, key, question, start, FakeWebview, O
 use super::timing::Timing;
 use super::typing::NotTyped;
 use crate::slices::pty::models::{ClaudeStatus, RunKind};
-use crate::slices::pty::osc7501::{AntigravityTurn, Osc7501};
+use crate::slices::pty::osc7501::{AntigravityTurn, Osc7501, TurnReader};
 
 const BASE: &str = "Which base should this branch take?";
 
@@ -187,6 +187,29 @@ async fn a_wait_ends_when_the_operator_types_a_lone_escape_in_codex() {
     tokio::time::sleep(A_WHILE).await;
     assert!(call.is_open(), "no other key ends it");
     seam.operator_types("term-a", "\u{1b}");
+    assert_eq!(call.answer().await, no_answer_yet("ask_1"));
+    seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
+    assert!(seam.typed("term-a").contains(TYPED.trim_end()));
+}
+
+#[tokio::test]
+async fn a_wait_in_codex_ends_when_its_helper_reports_the_turn_and_not_when_its_output_shows_it_over() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let launch = seam.open_terminal("term-a", RunKind::Codex, ClaudeStatus::Idle);
+    let mut turn = TurnReader::for_launch(RunKind::Codex).unwrap();
+    let mut prints = |state: &str| {
+        let report = turn.read(&Osc7501::parse(state).unwrap());
+        seam.pty_manager.apply_turn_report(&launch, &report);
+    };
+    prints("state=working");
+    let call = asked(&seam, &mut webview, "term-a").await;
+
+    for state in ["state=blocked:kind=permission", "state=working", "state=idle", "state=working", "state=done"] {
+        prints(state);
+    }
+    tokio::time::sleep(A_WHILE).await;
+    assert!(call.is_open(), "the agent may still wait");
+    seam.cli("term-a").event("turn.completed", json!({ "answer": "done" })).await;
     assert_eq!(call.answer().await, no_answer_yet("ask_1"));
     seam.surfaces.answer(&key("term-a", "ask_1"), 1, answer()).unwrap();
     assert!(seam.typed("term-a").contains(TYPED.trim_end()));

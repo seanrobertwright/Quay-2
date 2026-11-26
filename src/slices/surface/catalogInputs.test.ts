@@ -209,6 +209,23 @@ test("a DateTimeInput is a labelled native input of the parts it takes", async (
   assert.deepEqual(inputs(content).map(labelOf), ["Day", "Time", "Both", "Date", "Time", "Date and time", "Date and time", "Date and time"]);
 });
 
+test("an empty DateTimeInput of each type takes all the width it is given, with no cap, so its placeholder has room in a narrow pane", async () => {
+  const content = await drawAll([
+    { id: "d", component: "DateTimeInput", enableDate: true, value: at("/d") },
+    { id: "t", component: "DateTimeInput", enableTime: true, value: at("/t") },
+    { id: "b", component: "DateTimeInput", enableDate: true, enableTime: true, value: at("/b") },
+  ]);
+  const looks = inputs(content).map((input) => {
+    const names = input.className.split(" ");
+    return [input.type, names.includes("w-full"), names.some((name) => /^max-w-/.test(name))];
+  });
+  assert.deepEqual(looks, [
+    ["date", true, false],
+    ["time", true, false],
+    ["datetime-local", true, false],
+  ]);
+});
+
 test("a DateTimeInput shows and writes the digits of its zone, and says which zone that is", async () => {
   const cases: [unknown, string | null | undefined, string, string, string][] = [
     ["2026-10-21T14:06:11Z", "When (UTC)", "2026-10-21T14:06", "2026-10-22T09:30", "2026-10-22T09:30Z"],

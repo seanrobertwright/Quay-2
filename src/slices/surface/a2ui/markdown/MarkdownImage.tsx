@@ -10,9 +10,16 @@ interface MarkdownImageProps {
   name: string;
 }
 
-/** A Markdown image, or its text alone inside a button. */
+/**
+ * A Markdown image, or its text alone inside a button. It has room around it, so that images beside each other
+ * in a line, or in lines one above the other, do not touch.
+ */
 export const MarkdownImage = ({ src, name }: MarkdownImageProps) => {
   const insideButton = useContext(InsideButton);
   if (insideButton) return name || `![](${src})`;
-  return <LocalImage target={markdownImageTarget(src)} address={src} name={name} className={imageLook()} />;
+  return (
+    <span className="m-0.5 inline-flex max-w-full min-w-0">
+      <LocalImage target={markdownImageTarget(src)} address={src} name={name} className={imageLook()} />
+    </span>
+  );
 };

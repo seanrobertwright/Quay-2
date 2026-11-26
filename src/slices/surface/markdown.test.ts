@@ -270,7 +270,10 @@ test("a hostile link is text, however its address is spelled and whatever form t
       const content = await drawText(`before ${form(address)} after`);
       // Emphasis, code and the box of an image that is not shown are all that a spelling may come to:
       // nothing that acts, loads or is named.
-      const elements = [...content.querySelectorAll("*")].filter((el) => !el.closest("[data-image-refused]"));
+      // The room around such a box is a span that holds the box alone
+      const roomAround = (el: Element) =>
+        el.tagName === "SPAN" && el.getAttributeNames().join() === "class" && el.children.length === 1 && el.children[0].matches("[data-image-refused]");
+      const elements = [...content.querySelectorAll("*")].filter((el) => !el.closest("[data-image-refused]") && !roomAround(el));
       const boxed = [...content.querySelectorAll("[data-image-refused], [data-image-refused] *")];
       if (boxed.some((el) => !/^(span|bdi)$/i.test(el.tagName) || el.getAttributeNames().some((name) => !["class", "dir", "data-image-refused"].includes(name)))) drawn.push(form(address));
       const bad = elements.filter((el) => !/^(a2ui-react-.*|div|p|em|strong|code|s|br|h3)$/i.test(el.tagName) || el.getAttributeNames().some((name) => name !== "class"));

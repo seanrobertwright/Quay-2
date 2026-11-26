@@ -4,7 +4,7 @@ import { showShellWarning } from "./shellWarnings.ts";
 /** The shell-wide warning's id. */
 export const REDIRECTION_GUARD_WARNING_ID = "redirection-guard";
 
-// The banner is one line whose end is cut on a narrow stage, so the fix comes before the effect.
+// The fix comes before the effect, so the operator reads what to do first.
 const MESSAGE =
   "Restart Quay from the Start menu, taskbar or Explorer: " +
   "terminals can't follow symlinks, so node_modules and commit hooks fail.";

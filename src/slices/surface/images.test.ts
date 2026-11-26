@@ -289,6 +289,31 @@ test("an image in Markdown shows the file, named by its text", async () => {
   assert.equal(images(content)[2].closest('[role="link"]') !== null, true, "a link's image is its label");
 });
 
+/** The margin classes of `element` and of what holds it, up to `stop`. */
+function marginsOf(element: Element, stop: Element): string[] {
+  const found: string[] = [];
+  for (let at: Element | null = element; at !== null && at !== stop; at = at.parentElement) found.push(...at.className.split(" ").filter((name) => /^-?m[trblxy]?-/.test(name)));
+  return found;
+}
+
+test("images and their boxes beside each other in Markdown have room around each, and in a Row only the Row's gap", async () => {
+  const content = await draw(
+    surfaceOf([
+      text("a", "![a](https://a.example/a.png)![b](https://a.example/b.png)![c](c.png)![d](d.png)"),
+      { id: "row", component: "Row", children: ["e", "f"] },
+      image("e", "https://a.example/e.png"),
+      image("f", "f.png"),
+    ], {}, ["a", "row"]),
+  );
+  const inText = [...content.querySelectorAll("p [data-image-refused], p img")];
+  assert.equal(inText.length, 4);
+  assert.deepEqual(inText.filter((drawn) => marginsOf(drawn, drawn.closest("p")!).length === 0).length, 0, "each in Markdown has a margin");
+  const inRow = [...content.querySelectorAll("[data-image-refused], img")].filter((drawn) => drawn.closest("p") === null);
+  assert.equal(inRow.length, 2);
+  const row = (drawn: Element) => drawn.closest(".gap-2")!;
+  assert.deepEqual(inRow.flatMap((drawn) => marginsOf(drawn, row(drawn))), [], "a Row's gap is all that is between them");
+});
+
 test("an image in Markdown that is no local path draws the box, and nothing is asked for", async () => {
   const content = await draw(
     surfaceOf([

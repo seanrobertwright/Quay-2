@@ -782,7 +782,7 @@ pub(crate) fn build_command(
     }
     // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
     // answer, is unset whether the request or Quay's own environment set it
-    if request.run_kind.prints_osc7501() {
+    if request.run_kind.takes_osc7501_vars() {
         cmd.env(osc7501::ENABLE_VAR, "on");
         cmd.env_remove(osc7501::MESSAGES_VAR);
     }
@@ -1684,6 +1684,19 @@ mod tests {
 
         assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501").as_deref(), Some("on"));
         assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501_MESSAGES"), None);
+    }
+
+    #[test]
+    fn no_other_cli_gets_antigravitys_variables() {
+        for kind in crate::slices::pty::models::ALL_RUN_KINDS.into_iter().filter(|kind| *kind != RunKind::Antigravity) {
+            let mut request = spawn_request(kind);
+            request.env_vars = Some([("AGY_CLI_OSC7501_MESSAGES".to_string(), "brief".to_string())].into());
+
+            let cmd = build_command(&request, "term-no-agy", 4321, "tok-1", Some(4567));
+
+            assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501"), None, "{kind:?}");
+            assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501_MESSAGES").as_deref(), Some("brief"), "{kind:?}");
+        }
     }
 
     #[test]

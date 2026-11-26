@@ -1,5 +1,5 @@
 // The shell-wide warning stack (#635): problems that affect the whole window, shown as one
-// dismissible line each under the stage tab bar. Per-terminal notices, such as the Skip banner,
+// dismissible row each under the stage tab bar. Per-terminal notices, such as the Skip banner,
 // are not shell-wide and stay with their pane.
 import { useSyncExternalStore } from "react";
 

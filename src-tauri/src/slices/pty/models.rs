@@ -67,7 +67,7 @@ impl RunKind {
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
     /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
     /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
-    /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), Quay reads OpenCode's
+    /// so do Antigravity's and Codex's OSC 7501 sequences (see `osc7501`), Quay reads OpenCode's
     /// from its OpenCode server (see `opencode_watch`), and Quay's PiG extension reports
     /// PiG's. The frontend's `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
@@ -77,11 +77,12 @@ impl RunKind {
         )
     }
 
-    /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, from
-    /// Antigravity's OSC 7501 `working`, from OpenCode's watcher seeing its main session
-    /// go busy, and from Quay's PiG extension. Codex's turn-end helper runs only once a turn
-    /// has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
-    pub fn reports_turn_start(&self) -> bool {
+    /// Whether a turn of this CLI is paired with the message it answers as it starts: at the start
+    /// Claude's event-bridge plugin reports, at Antigravity's OSC 7501 `working`, when OpenCode's
+    /// watcher sees its main session go busy, and at the start Quay's PiG extension reports. Codex's
+    /// `working` doesn't say which prompt it works on, so `A2ARouter::turn_completed` pairs a Codex
+    /// turn with its message when Codex's turn-end helper reports it.
+    pub fn pairs_at_turn_start(&self) -> bool {
         matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode | RunKind::Pig)
     }
 
@@ -91,9 +92,9 @@ impl RunKind {
         matches!(self, RunKind::Antigravity)
     }
 
-    /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
-    /// output (see `osc7501`). The spawn and the PTY reader both read this.
-    pub fn prints_osc7501(&self) -> bool {
+    /// Whether this CLI prints its OSC 7501 turn reports only when its own variables ask for them,
+    /// which the spawn then sets (see `osc7501`). Codex prints them unasked.
+    pub fn takes_osc7501_vars(&self) -> bool {
         matches!(self, RunKind::Antigravity)
     }
 
@@ -727,19 +728,19 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_antigravity_opencode_and_pig_report_a_turn_start() {
+    fn only_claude_antigravity_opencode_and_pig_pair_a_turn_as_it_starts() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
-            .filter(|kind| kind.reports_turn_start())
+            .filter(|kind| kind.pairs_at_turn_start())
             .collect();
         assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::OpenCode, RunKind::Pig]);
     }
 
     #[test]
-    fn only_antigravity_prints_osc7501() {
+    fn only_antigravity_takes_osc7501_variables() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
-            .filter(|kind| kind.prints_osc7501())
+            .filter(|kind| kind.takes_osc7501_vars())
             .collect();
         assert_eq!(kinds, [RunKind::Antigravity]);
     }
