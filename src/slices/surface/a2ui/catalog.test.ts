@@ -6,7 +6,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { basicCatalog } from "@a2ui/web_core/catalogs/basic/v1";
 import { ALL_CHILDREN, ALL_COMPONENTS, ALL_DATA } from "../fixtures/allComponents.ts";
-import { click, drawTree, leavePage, startPage } from "../fixtures/catalogFixtures.ts";
+import { click, drawTree, leavePage, startPage, tabsIn } from "../fixtures/catalogFixtures.ts";
 
 const { catalog } = await import("./catalog.ts");
 
@@ -54,7 +54,7 @@ test("no stock element is ever drawn, whatever a surface holds", async () => {
   const custom: Element[] = [];
   const stock: Element[] = [];
   // Each tab's, as it is drawn
-  for (const tab of content.querySelectorAll<HTMLElement>("button[aria-pressed]")) {
+  for (const tab of tabsIn(content)) {
     await click(tab);
     custom.push(...[...document.querySelectorAll("*")].filter(({ localName }) => localName.includes("-")));
     stock.push(...content.querySelectorAll('[class*="a2ui-"], [class*="material-"], style, link, script'));

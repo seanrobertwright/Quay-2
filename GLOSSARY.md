@@ -106,7 +106,7 @@ sub-actions.
 _Avoid_: submenu, outer menu
 
 **Shell-wide warning**:
-A dismissible one-line banner under the stage tab bar for a problem that affects the whole window,
+A dismissible banner under the stage tab bar for a problem that affects the whole window,
 such as an inherited RedirectionGuard.
 _Avoid_: status message, toast
 

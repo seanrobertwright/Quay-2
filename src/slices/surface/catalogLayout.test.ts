@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { acceptedRaw, create, text, type Component } from "./fixtures/rawFixtures.ts";
 import { mount, settle } from "./fixtures/surfaceFixtures.ts";
-import { buttonOf, click, drawAll, drawTree, leavePage, one, put, startPage, texts, type Data } from "./fixtures/catalogFixtures.ts";
+import { click, drawAll, drawTree, leavePage, one, put, startPage, tabOf, tabsIn, texts, type Data } from "./fixtures/catalogFixtures.ts";
 import type { LayoutProps, SurfaceData } from "./layout.ts";
 import { loadA2ui } from "./surfaceHost.ts";
 
@@ -131,7 +131,7 @@ test("rows put in another order, as many as they were, each stay the one they we
   ];
   for (const component of ["List", "Row", "Column"]) {
     const { content, set } = await drawWithData("box", [{ id: "box", component, children: { componentId: "row", path: "/rows" } }, ...row], { rows: [{ name: "a" }, { name: "b" }, { name: "c" }] });
-    await click([...content.querySelectorAll("button")].filter(({ textContent }) => textContent === "Form")[2]);
+    await click(tabsIn(content).filter(({ textContent }) => textContent === "Form")[2]);
     const field = one<HTMLInputElement>(content, "input");
     await act(async () => field.focus());
     assert.equal(field.value, "c", component);
@@ -234,18 +234,18 @@ const TABS: Component[] = [
 
 test("Tabs are toggle buttons, of which the pressed one's child is drawn", async () => {
   const content = await drawTree(["tabs"], TABS, { second: "Risks" });
-  const buttons = () => [...content.querySelectorAll("button")].map((button) => [button.textContent, button.getAttribute("aria-pressed")]);
+  const buttons = () => tabsIn(content).map((tab) => [tab.textContent, tab.getAttribute("aria-pressed")]);
   assert.deepEqual(buttons(), [["Plan", "true"], ["Risks", "false"], ["Plan", "false"]]);
   assert.equal(content.querySelectorAll('[role="tab"], [role="tablist"]').length, 0);
   assert.deepEqual([content.textContent!.includes("The plan"), content.textContent!.includes("The risks")], [true, false]);
   const group = one(content, '[role="group"][aria-label="Parts"]');
-  assert.equal(group.querySelectorAll("button").length, 3);
+  assert.equal(tabsIn(group).length, 3);
   for (const name of ["overflow-x-auto", "max-w-full"]) assert.ok(classes(group).includes(name), name);
 
-  await click(buttonOf(content, "Risks"));
+  await click(tabOf(content, "Risks"));
   assert.deepEqual(buttons().map(([, pressed]) => pressed), ["false", "true", "false"]);
   assert.deepEqual([content.textContent!.includes("The plan"), content.textContent!.includes("The risks")], [false, true]);
-  await click([...content.querySelectorAll("button")][2]);
+  await click(tabsIn(content)[2]);
   assert.deepEqual(buttons().map(([, pressed]) => pressed), ["false", "false", "true"], "two tabs of one title are two tabs");
   assert.ok(content.textContent!.includes("The other plan"));
 });
@@ -260,8 +260,8 @@ test("what was typed in a tab is there when the operator comes back to it", asyn
     ],
   );
   await put(one<HTMLInputElement>(content, "input"), "Ann");
-  await click(buttonOf(content, "Help"));
+  await click(tabOf(content, "Help"));
   assert.equal(content.querySelectorAll("input").length, 0);
-  await click(buttonOf(content, "Form"));
+  await click(tabOf(content, "Form"));
   assert.equal(one<HTMLInputElement>(content, "input").value, "Ann");
 });

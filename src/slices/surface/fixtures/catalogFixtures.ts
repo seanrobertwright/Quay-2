@@ -67,6 +67,16 @@ export const buttonOf = (within: ParentNode, name: string): HTMLButtonElement =>
   return found;
 };
 
+/** The tabs of a Tabs, each a toggle button that is no native one. */
+export const tabsIn = (within: ParentNode): HTMLElement[] => [...within.querySelectorAll<HTMLElement>('[role="button"][aria-pressed]')];
+
+/** The tab named `name`. */
+export const tabOf = (within: ParentNode, name: string): HTMLElement => {
+  const found = tabsIn(within).find((tab) => tab.textContent === name);
+  assert.ok(found !== undefined, `there is no tab "${name}"`);
+  return found;
+};
+
 export const click = (element: HTMLElement): Promise<void> => act(async () => element.click());
 
 /** Puts `value` in a field as the operator does. */

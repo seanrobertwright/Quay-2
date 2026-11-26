@@ -10,11 +10,12 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import type { Mounted } from "./fixtures/askFixtures.ts";
 import { called, loadSurfaces, settle, startRust, unloadSurfaces, until } from "./fixtures/fakeRust.ts";
 import { arrives, changed, mount, unmount as unmountPage } from "./fixtures/surfaceFixtures.ts";
-import { acceptedRaw, button, column, create, EVENT, oneButton, text, type Component } from "./fixtures/rawFixtures.ts";
+import { acceptedRaw, button, column, create, EVENT, listOf, oneButton, text, type Component } from "./fixtures/rawFixtures.ts";
 
 const { earlierButton, findButton, mountCompanion, openLocked, TERMINAL, typeInto, unmount, viewEntry } = await import("./fixtures/askFixtures.ts");
 const { line, lines, strip, opened } = await import("./fixtures/boardFixtures.ts");
 const { frame, mountStage, openTab, tabs } = await import("./fixtures/reviewFixtures.ts");
+const { tabOf } = await import("./fixtures/catalogFixtures.ts");
 
 const MINUTE = 60_000;
 
@@ -55,6 +56,13 @@ const content = (container: HTMLElement) => region(container).querySelector<HTML
 const view = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-companion-view]")?.dataset.companionView;
 
 const FIELD: Component = { id: "name", component: "TextField", label: "Name", value: { "@path": "/name" } };
+
+/**
+ * Whether `element` is disabled as a browser has it: a native form control is also disabled by a disabled
+ * fieldset around it, which happy-dom does not apply.
+ */
+const isDisabled = (element: Element) =>
+  element.matches(":disabled") || (element.matches("button, input, select, textarea") && element.closest("fieldset[disabled]") !== null);
 
 test("a raw companion surface is drawn in its frame, its title the content's first line and as it was written", async () => {
   list = [await acceptedRaw([create(column(text("said", "Hello *there*")))], { title: "A <b>plan</b> *x*" })];
@@ -223,6 +231,37 @@ test("an answered raw surface keeps the answer, and folds what was asked with no
   assert.equal(called("plugin:opener|open_url").length + called("surface_answer").length, 0);
 });
 
+test("a locked raw surface's tabs still switch, so what each held can be read, and nothing in them can be put in or sent", async () => {
+  const [go, label] = button("go", EVENT);
+  const tabs: Component = { id: "tabs", component: "Tabs", tabs: [{ title: "Tab a", child: "a" }, { title: "Tab b", child: "b" }] };
+  const inB: Component = { id: "b", component: "Column", children: ["name", "go"] };
+  const record = await acceptedRaw([create([{ id: "root", component: "Column", children: ["tabs"] }, tabs, text("a", "In a"), inB, FIELD, go, label], { dataModel: { name: "" } })], {
+    ended_at: 1,
+  });
+  list = [record];
+  const container = await open();
+  await act(async () => viewEntry(container, "Surface")!.click());
+  await openLocked(container, "plan");
+  await act(async () => findButton(region(container), "What was shown")!.click());
+  await until(() => region(container).textContent!.includes("In a"), "what was shown is gone");
+  const tab = (name: string) => tabOf(region(container), name);
+  assert.equal(isDisabled(tab("Tab b")), false);
+
+  await act(async () => tab("Tab b").click());
+  const said = content(container).textContent!;
+  assert.deepEqual([said.includes("In a"), said.includes("Press go"), tab("Tab b").getAttribute("aria-pressed")], [false, true, "true"]);
+  await act(async () => void tab("Tab a").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  assert.ok(content(container).textContent!.includes("In a"), "a tab is picked by the keyboard too");
+
+  await act(async () => tab("Tab b").click());
+  const field = content(container).querySelector("input")!;
+  const press = findButton(region(container), "Press go")!;
+  assert.deepEqual([isDisabled(field), isDisabled(press)], [true, true]);
+  await act(async () => press.click());
+  await settle();
+  assert.equal(called("surface_answer").length, 0);
+});
+
 test("a raw surface that ended keeps what was typed in it, by the field's label", async () => {
   const live = await acceptedRaw([create(column(FIELD), { dataModel: { name: "" } })], { asks: true });
   list = [changed(live, { ended_at: 1 })];
@@ -235,6 +274,38 @@ test("a raw surface that ended keeps what was typed in it, by the field's label"
     ["NameAda"],
   );
   assert.ok(content(container).textContent!.startsWith("Migration plan"));
+});
+
+test("what was typed in an obscured field of a raw surface that ended is neither shown nor copied, where it is bound and in a list", async () => {
+  const secret = (id: string, path: string): Component => ({ id, component: "TextField", label: id, variant: "obscured", value: { "@path": path } });
+  const plain = (id: string, path: string): Component => ({ id, component: "TextField", label: id, value: { "@path": path } });
+  const components = [
+    { id: "root", component: "Column", children: ["name", "key", "shared", "also", "people"] },
+    FIELD,
+    secret("key", "/key"),
+    // Two fields of one path, one of them obscured
+    plain("shared", "/shared"),
+    secret("also", "shared"),
+    listOf("people", "person", "/people", "List"),
+    { id: "person", component: "Row", children: ["pin", "nick"] },
+    secret("pin", "pin"),
+    plain("nick", "nick"),
+  ];
+  const live = await acceptedRaw([create(components, { dataModel: { name: "", key: "", shared: "", people: [{ pin: "", nick: "" }] } })], { asks: true });
+  list = [changed(live, { ended_at: 1 })];
+  const values = { "/name": "Ada", "/key": "hunter2", "/shared": "s3cret", "/people/0/pin": "1234", "/people/0/nick": "Bo" };
+  unsent = [{ terminal_id: "t1", id: "plan", order: live.order, revision: 1, values }];
+  const written: string[] = [];
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (said: string) => void written.push(said) } });
+  const container = await open();
+  await act(async () => viewEntry(container, "Surface")!.click());
+  await openLocked(container, "plan");
+  assert.deepEqual([...content(container).querySelectorAll("dl dd")].map((row) => row.textContent), ["Ada", "Bo"]);
+  await act(async () => findButton(region(container), "Copy")!.click());
+  await settle();
+  assert.deepEqual(written, ["Ada\n\nBo"]);
+  const said = region(container).textContent!;
+  assert.deepEqual(["hunter2", "s3cret", "1234"].filter((typed) => said.includes(typed)), []);
 });
 
 test("the companion draws a raw surface again from Rust's list after a reload, with what was typed in it", async () => {
