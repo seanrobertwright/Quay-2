@@ -96,8 +96,8 @@ fn taking_a_file_back_makes_it_writable_again() {
 
 #[test]
 fn a_hand_off_in_one_worktree_never_reaches_another() {
-    let (root_a, wt_a) = conflicted();
-    let (root_b, wt_b) = conflicted();
+    let (_root_a, wt_a) = conflicted();
+    let (_root_b, wt_b) = conflicted();
     let locks = StagingLocks::default();
     hand_off(&locks, &wt_a, &paths(&["notes.txt"]), &claude()).unwrap();
 
