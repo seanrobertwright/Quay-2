@@ -4,6 +4,7 @@ pub mod handshake;
 mod jsonc;
 pub mod manager;
 pub mod models;
+pub mod opencode2_watch;
 mod opencode_permission;
 pub mod opencode_serve;
 pub mod opencode_watch;

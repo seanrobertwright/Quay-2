@@ -61,8 +61,8 @@ impl BridgeServer {
 
         // Each OpenCode launch from now on gets a watcher on its OpenCode server
         let watched = Arc::new(ctx.clone());
-        ctx.pty_manager.set_server_watcher(move |launch, port| {
-            start_watching(watched.clone(), launch, port);
+        ctx.pty_manager.set_server_watcher(move |launch, opencode| {
+            start_watching(watched.clone(), launch, opencode);
         });
 
         let app = create_router(ctx);

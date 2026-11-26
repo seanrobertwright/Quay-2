@@ -1,13 +1,16 @@
-//! Feeds an OpenCode terminal's turns, as `opencode_watch` reads them from its OpenCode
-//! server, through the handling the event-bridge plugin's events get, so an OpenCode
-//! turn moves status, answers a waiting sender and lets held messages in like a Claude one.
+//! Feeds an OpenCode terminal's turns, as `opencode_watch` reads them from the server an
+//! OpenCode 1.x TUI runs and `opencode2_watch` from an OpenCode 2.x terminal's own server,
+//! through the handling the event-bridge plugin's events get, so an OpenCode turn moves status,
+//! answers a waiting sender and lets held messages in like a Claude one.
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::models::Envelope;
 use super::routes::{apply_event, AppContext};
-use crate::slices::pty::opencode_watch::{watch, TurnEvent, WatchEnd, CONNECT_BUDGET};
+use crate::slices::pty::opencode_serve::OpenCodeLaunch;
+use crate::slices::pty::opencode_watch::{TurnEvent, WatchEnd, CONNECT_BUDGET};
+use crate::slices::pty::{opencode2_watch, opencode_watch};
 use crate::slices::pty::plugin_watch::LaunchRef;
 
 /// The `boot` of the envelopes Quay makes for an OpenCode terminal, where a plugin's
@@ -36,21 +39,22 @@ pub fn turn_envelope(terminal_id: &str, seq: u64, turn: &TurnEvent) -> Envelope 
     }
 }
 
-/// Watches the OpenCode server `launch` runs on loopback `port` for as long as the launch
+/// Watches the OpenCode server of `launch`, launched as `opencode`, for as long as the launch
 /// runs. When the server can't be reached, the terminal shows Unknown, so it stops holding
 /// messages that no turn end would let in.
-pub fn start_watching(ctx: Arc<AppContext>, launch: LaunchRef, port: u16) {
+pub fn start_watching(ctx: Arc<AppContext>, launch: LaunchRef, opencode: OpenCodeLaunch) {
     tauri::async_runtime::spawn(async move {
         let mut seq = 0;
-        let end = watch(
-            port,
-            || ctx.pty_manager.launch_running(&launch),
-            |turn| {
-                seq += 1;
-                apply_event(&ctx, turn_envelope(&launch.terminal_id, seq, &turn));
-            },
-        )
-        .await;
+        let running = || ctx.pty_manager.launch_running(&launch);
+        let on_turn = |turn: TurnEvent| {
+            seq += 1;
+            apply_event(&ctx, turn_envelope(&launch.terminal_id, seq, &turn));
+        };
+        let end = match &opencode {
+            OpenCodeLaunch::Tui(port) => opencode_watch::watch(*port, running, on_turn).await,
+            OpenCodeLaunch::Server(server) => opencode2_watch::watch(server, running, on_turn).await,
+        };
+        let port = opencode.port();
 
         // No turn of a later launch answers a message typed into this one. After a
         // relaunch the pairing belongs to the new launch, so it is left alone.

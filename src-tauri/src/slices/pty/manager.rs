@@ -14,15 +14,12 @@ use super::models::{
 use super::osc7501::{TurnReader, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
 use super::opencode_serve::OpenCodeLaunch;
-use super::session::{launch_prompt, opencode_launch, same_variable, Osc7501Hook, PtySession};
+use super::session::{opencode_launch, same_variable, Osc7501Hook, PtySession};
 use crate::dates::now_ms;
 use crate::webview::WebviewEvents;
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
-
-/// How long a launch prompt typed at first output waits for its launch's session to be in place.
-const LAUNCH_PROMPT_WAIT: Duration = Duration::from_secs(10);
 
 /// The End key, which Quay presses after a prompt to a Codex terminal and before its Enter.
 /// Codex on Windows reads a fast stream of typed characters as a paste and takes an Enter
@@ -37,9 +34,9 @@ type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
 /// What the input watcher runs, with a terminal's id and what the operator typed into it.
 type InputWatcher = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
-/// What the server watcher runs, with a launch whose CLI serves its own events and the
-/// loopback port it serves them on.
-type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
+/// What the server watcher runs, with a launch whose CLI serves its own events and how it was
+/// launched, which says where it serves them.
+type ServerWatcher = Arc<dyn Fn(LaunchRef, OpenCodeLaunch) + Send + Sync>;
 
 /// What becomes of a terminal's launches.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,12 +73,6 @@ fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
 /// which aren't probed.
 fn opencode_launch_for(request: &SpawnTerminalRequest) -> Result<Option<OpenCodeLaunch>, String> {
     Ok(server_port_for(request.run_kind)?.map(|port| opencode_launch(request, port)))
-}
-
-/// `text` as one line to type into a terminal: trimmed, with each newline a space, since a TUI
-/// reads a typed newline as Enter.
-pub fn typed_line(text: &str) -> String {
-    text.trim().replace("\r\n", " ").replace('\n', " ")
 }
 
 /// What a terminal's own output says about its turn, as the turn watchers hear it.
@@ -455,13 +446,7 @@ impl PtyManager {
         let start_seq = self.last_seq(&terminal_id);
         let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
-        let mut on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
-        // A launch prompt its CLI's command line can't take is typed in
-        if opencode.is_some_and(|opencode| !opencode.takes_launch_prompt())
-            && let Some(prompt) = launch_prompt(&request)
-        {
-            on_first_output = self.typing_launch_prompt(launch_ref.clone(), prompt.to_string(), on_first_output);
-        }
+        let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let webview = WebviewEvents::to_app(app_handle.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview);
         let on_exit = self.exit_hook(launch_ref.clone());
@@ -471,7 +456,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
-            opencode,
+            opencode.clone(),
             app_handle,
             on_first_output,
             on_osc7501,
@@ -511,7 +496,7 @@ impl PtyManager {
         self.sessions.lock().insert(terminal_id, session);
         let info = self.insert_launched(&launch_ref, info);
         self.save_sessions_to_disk();
-        self.notify_server_watcher(launch_ref, opencode.map(OpenCodeLaunch::port));
+        self.notify_server_watcher(launch_ref, opencode);
 
         Ok(info)
     }
@@ -560,7 +545,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
-            opencode,
+            opencode.clone(),
             app_handle,
             on_first_output,
             on_osc7501,
@@ -601,7 +586,7 @@ impl PtyManager {
         };
         self.dormant_buffers.lock().remove(terminal_id);
         self.save_sessions_to_disk();
-        self.notify_server_watcher(launch_ref, opencode.map(OpenCodeLaunch::port));
+        self.notify_server_watcher(launch_ref, opencode);
 
         Ok(updated_info)
     }
@@ -799,17 +784,17 @@ impl PtyManager {
         }
     }
 
-    /// Runs `watcher` with each launch whose CLI serves its own events (OpenCode), and the
-    /// loopback port it serves them on, once the launch's terminal is listed. It runs on the
-    /// thread that spawned the terminal, with no lock of this manager held.
-    pub fn set_server_watcher(&self, watcher: impl Fn(LaunchRef, u16) + Send + Sync + 'static) {
+    /// Runs `watcher` with each launch whose CLI serves its own events (OpenCode), and how it
+    /// was launched, which says where it serves them, once the launch's terminal is listed. It
+    /// runs on the thread that spawned the terminal, with no lock of this manager held.
+    pub fn set_server_watcher(&self, watcher: impl Fn(LaunchRef, OpenCodeLaunch) + Send + Sync + 'static) {
         *self.server_watcher.lock() = Some(Arc::new(watcher));
     }
 
-    fn notify_server_watcher(&self, launch: LaunchRef, server_port: Option<u16>) {
+    fn notify_server_watcher(&self, launch: LaunchRef, opencode: Option<OpenCodeLaunch>) {
         let watcher = self.server_watcher.lock().clone();
-        if let (Some(watcher), Some(port)) = (watcher, server_port) {
-            watcher(launch, port);
+        if let (Some(watcher), Some(opencode)) = (watcher, opencode) {
+            watcher(launch, opencode);
         }
     }
 
@@ -968,49 +953,6 @@ impl PtyManager {
                 }
             });
         })
-    }
-
-    /// A first-output hook for a launch whose launch prompt is typed into it rather than given on
-    /// its command line, as OpenCode 2.x's is. On a thread of its own, once the launch's session is
-    /// in place, it types `prompt`, on one line, with its Enter into that session and no other (see
-    /// `submit_prompt_to`), once, then runs `then`, the launch's usual first-output hook. Until
-    /// then the terminal stays Starting, so it holds its messages, and they come after the prompt.
-    fn typing_launch_prompt(
-        &self,
-        launch: LaunchRef,
-        prompt: String,
-        then: Box<dyn FnOnce() + Send>,
-    ) -> Box<dyn FnOnce() + Send> {
-        let manager = self.clone();
-        Box::new(move || {
-            std::thread::spawn(move || {
-                let since = Instant::now();
-                while !manager.launch_attached(&launch)
-                    && manager.launch_current(&launch)
-                    && since.elapsed() < LAUNCH_PROMPT_WAIT
-                {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                if manager.launch_current(&launch)
-                    && let Err(e) = manager.submit_prompt_to(&launch, &typed_line(&prompt))
-                {
-                    tracing::warn!("Couldn't type the launch prompt into {}: {}", launch.terminal_id, e);
-                }
-                then();
-            });
-        })
-    }
-
-    /// Whether the session `launch` started is the terminal's session in this manager.
-    fn launch_attached(&self, launch: &LaunchRef) -> bool {
-        #[cfg(test)]
-        if self.test_input.lock().contains_key(&launch.terminal_id) {
-            return true;
-        }
-        self.sessions
-            .lock()
-            .get(&launch.terminal_id)
-            .is_some_and(|session| session.is_of_launch(launch.launch))
     }
 
     /// Records the first output of `launch` at `now`. Returns true when that starts the
@@ -2090,48 +2032,6 @@ mod tests {
         manager.update_status("term-oc-exited", ClaudeStatus::Exited);
         assert!(manager.lose_turn_sight(&exited).is_none());
         assert_eq!(status_of(&manager, "term-oc-exited"), ClaudeStatus::Exited);
-    }
-
-    /// Runs `hook`, a first-output hook, and waits up to ten seconds for the usual hook it ends
-    /// with to run. Returns whether it ran.
-    fn run_first_output(manager: &PtyManager, launch: &LaunchRef, prompt: &str) -> bool {
-        let settled = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let ran = settled.clone();
-        let hook = manager.typing_launch_prompt(
-            launch.clone(),
-            prompt.to_string(),
-            Box::new(move || ran.store(true, std::sync::atomic::Ordering::SeqCst)),
-        );
-        hook();
-        let since = Instant::now();
-        while !settled.load(std::sync::atomic::Ordering::SeqCst) && since.elapsed() < Duration::from_secs(10) {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        settled.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    #[test]
-    fn a_launch_prompt_typed_at_first_output_goes_in_once_with_its_enter_before_the_terminal_settles() {
-        let manager = PtyManager::new();
-        let launch = launched(&manager, "term-oc2-prompt", RunKind::OpenCode);
-        manager.open_test_input("term-oc2-prompt");
-
-        assert!(run_first_output(&manager, &launch, "  Role: Lead\r\nYou are the lead.\nWait for the task.\n"));
-
-        // On one line, as an A2A message is typed, since a typed newline would send the prompt early
-        assert_eq!(manager.test_input("term-oc2-prompt"), ["Role: Lead You are the lead. Wait for the task.", "\r"]);
-    }
-
-    #[test]
-    fn a_launch_prompt_is_never_typed_into_a_later_launch() {
-        let manager = PtyManager::new();
-        let first = launched(&manager, "term-oc2-later", RunKind::OpenCode);
-        manager.open_test_input("term-oc2-later");
-        manager.begin_launch("term-oc2-later", RunKind::OpenCode);
-
-        assert!(run_first_output(&manager, &first, "Do the first launch's task"));
-
-        assert!(manager.test_input("term-oc2-later").is_empty());
     }
 
     #[test]

@@ -1,10 +1,9 @@
-//! Quay's view of an OpenCode terminal's turns. Quay gives each OpenCode launch a loopback
-//! port: OpenCode 1.x's TUI serves its HTTP server there, given `--port`, and for 2.x the
-//! terminal's `opencode serve` sidecar does (see `opencode_serve`). Quay reads two things from
-//! that server: the event stream,
+//! Quay's view of an OpenCode 1.x terminal's turns. Quay launches OpenCode 1.x with `--port`, so
+//! its TUI serves an HTTP server there, and reads two things from it: the event stream,
 //! `GET /event`, for when the main session goes busy and idle, and the session's messages,
 //! `GET /session/:id/message`, for the reply once a turn ends. Quay only reads from that
-//! server: messages are still typed into the terminal.
+//! server: messages are still typed into the terminal. OpenCode 2.x serves another API, which
+//! `opencode2_watch` reads.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -20,13 +19,13 @@ use serde_json::Value;
 pub const CONNECT_BUDGET: Duration = Duration::from_secs(60);
 
 /// Pause between attempts to reach OpenCode's server.
-const RETRY: Duration = Duration::from_millis(250);
+pub(super) const RETRY: Duration = Duration::from_millis(250);
 
 /// How long connecting to OpenCode's server may take.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// How long one read of a session or its messages may take.
-const READ_TIMEOUT: Duration = Duration::from_secs(5);
+pub(super) const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A turn of the terminal's main session, as the watcher reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,14 +48,14 @@ pub enum WatchEnd {
 /// Splits a server-sent event stream into the `data` of each event. Other fields and
 /// comments are dropped.
 #[derive(Default)]
-struct SseDecoder {
+pub(super) struct SseDecoder {
     pending: Vec<u8>,
     data: Option<String>,
 }
 
 impl SseDecoder {
     /// Takes the next chunk of the stream and returns the data of each event it completes.
-    fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+    pub(super) fn push(&mut self, chunk: &[u8]) -> Vec<String> {
         self.pending.extend_from_slice(chunk);
         let mut events = Vec::new();
         while let Some(end) = self.pending.iter().position(|&b| b == b'\n') {
@@ -156,7 +155,7 @@ impl TurnTracker {
 
 /// Whether `id` is safe to put in a URL path: OpenCode's ids are letters, digits and `_`,
 /// and this also lets `-` through.
-fn is_plain_id(id: &str) -> bool {
+pub(super) fn is_plain_id(id: &str) -> bool {
     !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
@@ -231,7 +230,7 @@ async fn get(port: u16, path: &str) -> Result<hyper::Response<Incoming>, String>
 }
 
 /// Reads one JSON document from OpenCode's server.
-pub(super) async fn get_json(port: u16, path: &str) -> Result<Value, String> {
+async fn get_json(port: u16, path: &str) -> Result<Value, String> {
     let read = async {
         let body = get(port, path).await?.into_body().collect().await.map_err(|e| e.to_string())?;
         serde_json::from_slice(&body.to_bytes()).map_err(|e| e.to_string())
