@@ -99,7 +99,7 @@ Showing a surface runs nothing and makes no network request. All that Quay reads
 | On your click | What happens |
 | :--- | :--- |
 | A web link or button | Your browser opens it. Only `http` and `https` addresses open |
-| A file link or button | The file manager shows the file in its folder, or the diff view opens when the file has uncommitted changes. The file's own program never starts |
+| A file link or button | The file manager shows the file in its folder, or the diff view opens in the Topos lens when the file has uncommitted changes. While Topos's conflict resolver is open, the file waits until you close it, and a Topos notification says so. In the lens, `Esc` goes back from the diff to the graph, then closes the lens. The file's own program never starts |
 | A button that shows a terminal | Quay selects that terminal, in the same project only |
 | A button that copies | The text goes to the clipboard |
 
