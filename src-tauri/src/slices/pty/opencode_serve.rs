@@ -629,12 +629,12 @@ mod tests {
         false
     }
 
-    /// Whether something writes to `file`: it grows within fifteen seconds, time for a shell to
+    /// Whether something writes to `file`: it grows within `LOADED_SLACK`, time for a shell to
     /// start on a busy machine.
     fn grows(file: &std::path::Path) -> bool {
         let before = size(file);
         let since = Instant::now();
-        while since.elapsed() < Duration::from_secs(15) {
+        while since.elapsed() < LOADED_SLACK {
             std::thread::sleep(Duration::from_millis(250));
             if size(file) > before {
                 return true;
