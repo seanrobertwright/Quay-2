@@ -355,3 +355,20 @@ test("staging the last conflicted file from the resolver, with the focus on the 
 
   assert.equal(document.activeElement === graphList(container), true, "the focus left in the resolver goes to the graph");
 });
+
+for (const [how, close] of [
+  ["Back to the graph", (container: HTMLElement) => resolverBack(container)!.click()],
+  ["staging the last conflicted file", (container: HTMLElement) => button(container, "Keep modified")!.click()],
+] as const) {
+  test(`${how} closes the conflict resolver with the focus outside it, and leaves the focus where it was`, async () => {
+    const { container } = await openSidePicker();
+    const link = container.querySelector<HTMLElement>('[role="link"]')!;
+    await act(async () => link.focus());
+    assert.equal(document.activeElement === link, true, "the review's file link takes the focus");
+
+    await act(async () => close(container));
+    await until(() => resolverBack(container) === undefined, `${how} left the resolver open`);
+    await settle();
+    assert.equal(document.activeElement === link, true, "the focus outside the resolver stays where it was");
+  });
+}
