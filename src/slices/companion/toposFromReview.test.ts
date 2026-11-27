@@ -51,13 +51,13 @@ let operation: OpState;
 let shown: Shown[];
 /** The changes git status reports in the worktree, or null when the status read fails. */
 let changes: StatusEntry[] | null;
-/** More of Rust's answers, past the ones every test has. */
-let more: Record<string, (args: Record<string, unknown>) => unknown>;
+/** Rust's answers a test adds to, or puts in place of, the ones every test has. */
+let extraAnswers: Record<string, (args: Record<string, unknown>) => unknown>;
 beforeEach(() => {
   operation = NO_OPERATION;
   shown = [TURNS];
   changes = null;
-  more = {};
+  extraAnswers = {};
 });
 afterEach(async () => {
   if (mounted) {
@@ -86,7 +86,7 @@ async function startRust(): Promise<void> {
   };
   fakeInvoke(async (cmd, args) => {
     calls.push({ cmd, args });
-    if (Object.prototype.hasOwnProperty.call(more, cmd)) return more[cmd](args);
+    if (Object.prototype.hasOwnProperty.call(extraAnswers, cmd)) return extraAnswers[cmd](args);
     if (Object.prototype.hasOwnProperty.call(answers, cmd)) return answers[cmd](args);
     if (cmd.startsWith("surface_")) return null;
     throw new Error(`${cmd} is not faked`);
@@ -288,10 +288,13 @@ test("a review's file link that waits for the open resolver says so once in a To
 const B_CONFLICTED: Shown = { kind: "diff", worktree: "E:/alpha", path: "b.ts", side: "conflicted", line: null };
 const resolverBack = (container: HTMLElement) => button(container, "Back to the graph");
 
-/** Draws Quay's window in a merge and opens the conflicted `b.ts` in the resolver from the review's file link. */
-async function openResolver(): Promise<{ container: HTMLElement; review: HTMLElement }> {
+/**
+ * Draws Quay's window in a merge and opens the conflicted `b.ts` in the resolver from the review's
+ * file link. `later` is how Rust shows the file link's next clicks.
+ */
+async function openResolver(later: Shown[] = []): Promise<{ container: HTMLElement; review: HTMLElement }> {
   operation = MERGING;
-  shown = [B_CONFLICTED];
+  shown = [B_CONFLICTED, ...later];
   const drawn = await draw();
   await clickFileLink(drawn.container, drawn.review);
   await until(() => resolverBack(drawn.container) !== undefined, "the resolver never opened");
@@ -332,7 +335,7 @@ const B_DELETED_BY_THEM: ConflictFile = {
 /** Opens `b.ts` in the resolver as the side-picker card, where Keep modified stages it and leaves the merge with no conflict. */
 async function openSidePicker(): Promise<{ container: HTMLElement; keep: HTMLButtonElement }> {
   changes = [];
-  more = {
+  extraAnswers = {
     git_conflict_open: () => B_DELETED_BY_THEM,
     git_conflict_mark_resolved: ({ requestId }) => {
       operation = { ...MERGING, conflicts: [], conflictsTotal: 0 };
@@ -374,11 +377,7 @@ for (const [how, close] of [
 }
 
 test("Back to the graph in the conflict resolver, with the focus on it, opens the diff that waited for it and leaves the focus in Topos, not under the diff", async () => {
-  operation = MERGING;
-  shown = [B_CONFLICTED, TURNS];
-  const { container, review } = await draw();
-  await clickFileLink(container, review);
-  await until(() => resolverBack(container) !== undefined, "the resolver never opened");
+  const { container, review } = await openResolver([TURNS]);
   await escape();
   await clickFileLink(container, review);
   await until(() => container.querySelector('[aria-label="Topos notifications"] li p') !== null, "nothing said why the file waits");
