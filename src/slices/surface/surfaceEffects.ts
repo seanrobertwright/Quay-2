@@ -6,11 +6,32 @@ import { requestTerminalSelection } from "../terminal/terminalSelectionRequest.t
 import { spendClick, type Effect, type UntypedTarget } from "./clickOnly.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
+import type { NoticeKind } from "./FrameNotice.tsx";
 import { shownText } from "./shownText.ts";
 import type { SurfaceKey } from "./surfaceTypes.ts";
 
 /** How Rust showed a file. Mirrors `Shown`. */
-type Shown = { kind: "revealed" } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
+type Shown = { kind: "revealed"; path: string; line: number | null } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
+
+/** What the frame says after an effect: why it did nothing, or what it did that Quay's window does not show. */
+export interface Notice {
+  kind: NoticeKind;
+  text: string;
+}
+
+const refusal = (text: string): Notice => ({ kind: "refusal", text });
+
+/** That the file manager shows the file written as `path`, and that it cannot go to the `line` the link named. */
+function revealed(path: string, line: number | null): Notice {
+  const atLine = line === null ? "" : ` It cannot go to line ${line}.`;
+  return { kind: "information", text: `Shown in the file manager: ${shownText(path)}.${atLine}` };
+}
+
+/** `effect`'s refusal, if it settles with one, as a notice. */
+async function refused(effect: Promise<string | null> | string | null): Promise<Notice | null> {
+  const why = await effect;
+  return why === null ? null : refusal(why);
+}
 
 async function open(url: string): Promise<string | null> {
   const target = webTarget(url);
@@ -23,15 +44,15 @@ async function open(url: string): Promise<string | null> {
   }
 }
 
-async function show(terminalId: string, path: string, line: number | null): Promise<string | null> {
+async function show(terminalId: string, path: string, line: number | null): Promise<Notice | null> {
   try {
     const shown = await invoke<Shown>("surface_show_file", { terminalId, path, line });
-    if (shown.kind === "revealed") return null;
+    if (shown.kind === "revealed") return revealed(shown.path, shown.line);
     const { worktree, path: inWorktree, side, line: shownLine } = shown;
     if (requestFileDiff({ terminalId, worktree, path: inWorktree, side, line: shownLine })) return null;
-    return `Not opened: the diff view is not there for ${shown.path}. Select its terminal and try again.`;
+    return refusal(`Not opened: the diff view is not there for ${shown.path}. Select its terminal and try again.`);
   } catch (error) {
-    return String(error);
+    return refusal(String(error));
   }
 }
 
@@ -83,15 +104,17 @@ function tried(untyped: UntypedTarget): string | null {
 }
 
 /**
- * The effects of `surface`. `run` takes each effect, which settles with why it did nothing, or null. Each is
- * recorded as it fires, whether or not it does something.
+ * The effects of `surface`. `run` takes each effect, which settles with the notice the frame is to show, or
+ * null when there is nothing to say. That is why it did nothing, or, for a file the file manager shows, that it
+ * shows it, since that window may open behind Quay's. Each is recorded as it fires, whether or not it does
+ * something.
  */
-export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<string | null>) => void): SurfaceEffects {
+export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<Notice | null>) => void): SurfaceEffects {
   const terminalId = surface.terminal_id;
   return {
     openUrl: (url) => {
       spend(surface, "openUrl", url);
-      run(open(url));
+      run(refused(open(url)));
     },
     showFile: (path, line) => {
       spend(surface, "showFile", path);
@@ -99,11 +122,11 @@ export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<string
     },
     focusTerminal: (target) => {
       spend(surface, "focusTerminal", target);
-      run(Promise.resolve(focus(terminalId, target)));
+      run(refused(focus(terminalId, target)));
     },
     copyText: (text) => {
       spend(surface, "copyText", null);
-      run(copy(text));
+      run(refused(copy(text)));
     },
   };
 }
