@@ -409,6 +409,11 @@ impl Drop for Sidecar {
 mod tests {
     use super::*;
 
+    /// What a loaded machine may take, beyond any patience under test, to spawn a stand-in
+    /// process tree and kill it: seconds each, and the kill waits at most `KILL_PATIENCE` for the
+    /// tree to exit. Every time limit here that also counts a spawn or a kill adds this.
+    const LOADED_SLACK: Duration = Duration::from_secs(20);
+
     /// The port of `launch` when it is OpenCode 2.x's.
     fn server_port(launch: OpenCodeLaunch) -> Option<u16> {
         match launch {
@@ -470,9 +475,9 @@ mod tests {
         shell(&script, &script)
     }
 
-    /// A command that runs for half a minute, through a shell, as an npm shim runs its CLI.
+    /// A command that runs for two minutes, through a shell, as an npm shim runs its CLI.
     fn lingering() -> std::process::Command {
-        shell("ping -n 30 127.0.0.1", "sleep 30; :")
+        shell("ping -n 120 127.0.0.1", "sleep 120; :")
     }
 
     #[test]
@@ -483,9 +488,11 @@ mod tests {
 
     #[test]
     fn a_version_probe_that_outlasts_its_patience_is_killed_and_reads_as_none() {
+        // A probe that waited for the command to exit would take its two minutes.
+        let patience = Duration::from_millis(500);
         let started = std::time::Instant::now();
-        assert_eq!(probe_version(lingering(), Duration::from_millis(500)), None);
-        assert!(started.elapsed() < Duration::from_secs(10), "the probe waited {:?}", started.elapsed());
+        assert_eq!(probe_version(lingering(), patience), None);
+        assert!(started.elapsed() < patience + LOADED_SLACK, "the probe waited {:?}", started.elapsed());
     }
 
     const MCP_URL: &str = "http://127.0.0.1:4321/mcp/7";
@@ -607,10 +614,12 @@ mod tests {
     }
 
     /// Whether whatever writes to `file` has stopped: it doesn't grow over a few seconds, within
-    /// ten.
+    /// `LOADED_SLACK`. That leaves a dropped sidecar, which is killed on a thread of its own, time
+    /// to exit, and is still well inside the minute or so `writing_to` writes for, so a sidecar
+    /// never ended still reads as growing.
     fn stops_growing(file: &std::path::Path) -> bool {
         let since = Instant::now();
-        while since.elapsed() < Duration::from_secs(10) {
+        while since.elapsed() < LOADED_SLACK {
             let before = size(file);
             std::thread::sleep(Duration::from_millis(2500));
             if size(file) == before {
@@ -620,12 +629,12 @@ mod tests {
         false
     }
 
-    /// Whether something writes to `file`: it grows within fifteen seconds, time for a shell to
+    /// Whether something writes to `file`: it grows within `LOADED_SLACK`, time for a shell to
     /// start on a busy machine.
     fn grows(file: &std::path::Path) -> bool {
         let before = size(file);
         let since = Instant::now();
-        while since.elapsed() < Duration::from_secs(15) {
+        while since.elapsed() < LOADED_SLACK {
             std::thread::sleep(Duration::from_millis(250));
             if size(file) > before {
                 return true;
@@ -674,10 +683,21 @@ mod tests {
         let dir = crate::test_support::TempDir::new("sidecar-no-model");
         let file = dir.join("out.txt");
         let (server, _) = serving_models(quays_config(MCP_URL), vec![default_model(None)]);
+        let patience = Duration::from_secs(2);
+        // Only catches a start that keeps waiting past its patience, which would never return
+        // here. Past the patience it may still finish the read in flight at the deadline, which
+        // READ_TIMEOUT bounds; before it, it spawns the sidecar, which the patience doesn't count.
+        let bound = patience + crate::slices::pty::opencode_watch::READ_TIMEOUT + LOADED_SLACK;
 
-        let started = Instant::now();
-        let sidecar = Sidecar::start(writing_to(&file), &server, MCP_URL, Duration::from_secs(2)).expect("ready");
-        assert!(started.elapsed() < Duration::from_secs(8), "it waited {:?}", started.elapsed());
+        let cmd = writing_to(&file);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(Sidecar::start(cmd, &server, MCP_URL, patience));
+        });
+        let sidecar = rx
+            .recv_timeout(bound)
+            .unwrap_or_else(|_| panic!("it waited past {:?} on a model that never settles", bound))
+            .expect("ready");
         drop(sidecar);
         assert!(stops_growing(&file), "dropping the sidecar ends it");
     }
@@ -713,11 +733,14 @@ mod tests {
         // Another launch's server, with this launch's MCP server even, on the port
         let theirs = serving(quays_config(MCP_URL));
         let ours = OpenCodeServer::for_tests(theirs.port());
+        // A start that waited out its patience on the refused password would take all of it, which
+        // is three times what spawning the sidecar and ending it may take.
+        let patience = 3 * LOADED_SLACK;
 
         let started = Instant::now();
-        let failed = Sidecar::start(writing_to(&file), &ours, MCP_URL, Duration::from_secs(10)).err().expect("an error");
+        let failed = Sidecar::start(writing_to(&file), &ours, MCP_URL, patience).err().expect("an error");
+        assert!(started.elapsed() < LOADED_SLACK, "it waited {:?}", started.elapsed());
         assert!(failed.contains("another process"), "{failed}");
-        assert!(started.elapsed() < Duration::from_secs(5), "it waited {:?}", started.elapsed());
         assert!(stops_growing(&file), "the sidecar is ended");
     }
 
