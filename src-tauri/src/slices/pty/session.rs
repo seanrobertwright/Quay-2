@@ -1205,8 +1205,10 @@ impl PtySession {
     }
 
     pub fn write(&self, data: &str) -> Result<(), String> {
+        // A session without a process drops what is typed into it, as an exited process's PTY
+        // does
         let Some(pty) = &self.pty else {
-            return Err(format!("Terminal {} has no process to write to", self.id));
+            return Ok(());
         };
         let mut writer = pty.writer.lock();
         writer
@@ -2205,7 +2207,8 @@ mod tests {
         replay: TerminalOutputPayload,
         ran_first_output: bool,
         ran_a_process: bool,
-        took_input: bool,
+        /// What typing Enter into it answered.
+        typed: Result<(), String>,
         /// The exit code `on_exit` had before the report ran, and after.
         exit_before_report: Option<Option<i32>>,
         exit_after_report: Option<Option<i32>>,
@@ -2238,7 +2241,7 @@ mod tests {
             session.resize(rows, cols).unwrap();
         }
         let ran_a_process = session.is_alive();
-        let took_input = session.write("\r").is_ok();
+        let typed = session.write("\r");
         let exit_before_report = exit_code.try_recv().ok();
         let report = session.take_exit_report().expect("a session without a process reports its own end");
         assert!(session.take_exit_report().is_none(), "it reports its end once");
@@ -2249,7 +2252,7 @@ mod tests {
             replay: session.get_output(),
             ran_first_output: first_output.load(Ordering::SeqCst),
             ran_a_process,
-            took_input,
+            typed,
             exit_before_report,
             exit_after_report: exit_code.try_recv().ok(),
             ends: sent.iter().filter(|(event, _)| event == "terminal-exited").map(|(_, payload)| payload.clone()).collect(),
@@ -2268,7 +2271,7 @@ mod tests {
         assert_eq!((shown.replay.last_seq, shown.replay.rows, shown.replay.cols), (6, Some(40), Some(160)));
         assert!(shown.ran_first_output, "the message is the terminal's first output");
         assert!(!shown.ran_a_process);
-        assert!(!shown.took_input);
+        assert_eq!(shown.typed, Ok(()), "typing into it is dropped, as an exited process's PTY drops it");
         assert_eq!(shown.exit_before_report, None, "its end waits for the report");
         assert_eq!(shown.exit_after_report, Some(Some(1)));
         assert_eq!(shown.ends, [serde_json::json!({ "terminal_id": terminal_id, "exit_code": 1 })]);
