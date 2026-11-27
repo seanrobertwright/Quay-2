@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
-
-/** Why something the operator did was not done, or what was done that Quay's window does not show. */
-export type NoticeKind = "refusal" | "information";
+import type { NoticeKind } from "./surfaceEffects.ts";
 
 /** How each kind of notice looks: a refusal in red, information in blue. */
 const LOOK: Record<NoticeKind, { box: string; dismiss: string }> = {

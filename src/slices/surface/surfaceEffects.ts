@@ -6,12 +6,14 @@ import { requestTerminalSelection } from "../terminal/terminalSelectionRequest.t
 import { spendClick, type Effect, type UntypedTarget } from "./clickOnly.ts";
 import type { SurfaceEffects } from "./links.ts";
 import { webTarget } from "./linkTarget.ts";
-import type { NoticeKind } from "./FrameNotice.tsx";
 import { shownText } from "./shownText.ts";
 import type { SurfaceKey } from "./surfaceTypes.ts";
 
 /** How Rust showed a file. Mirrors `Shown`. */
 type Shown = { kind: "revealed"; path: string; line: number | null } | ({ kind: "diff" } & Omit<FileDiffRequest, "terminalId">);
+
+/** Why something the operator did was not done, or what was done that Quay's window does not show. */
+export type NoticeKind = "refusal" | "information";
 
 /** What the frame says after an effect: why it did nothing, or what it did that Quay's window does not show. */
 export interface Notice {
@@ -28,7 +30,7 @@ function revealed(path: string, line: number | null): Notice {
 }
 
 /** `effect`'s refusal, if it settles with one, as a notice. */
-async function refused(effect: Promise<string | null> | string | null): Promise<Notice | null> {
+async function asRefusal(effect: Promise<string | null> | string | null): Promise<Notice | null> {
   const why = await effect;
   return why === null ? null : refusal(why);
 }
@@ -114,7 +116,7 @@ export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<Notice
   return {
     openUrl: (url) => {
       spend(surface, "openUrl", url);
-      run(refused(open(url)));
+      run(asRefusal(open(url)));
     },
     showFile: (path, line) => {
       spend(surface, "showFile", path);
@@ -122,11 +124,11 @@ export function surfaceEffects(surface: SurfaceKey, run: (effect: Promise<Notice
     },
     focusTerminal: (target) => {
       spend(surface, "focusTerminal", target);
-      run(refused(focus(terminalId, target)));
+      run(asRefusal(focus(terminalId, target)));
     },
     copyText: (text) => {
       spend(surface, "copyText", null);
-      run(refused(copy(text)));
+      run(asRefusal(copy(text)));
     },
   };
 }
