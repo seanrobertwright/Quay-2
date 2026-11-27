@@ -14,7 +14,7 @@ use super::models::{
 use super::osc7501::{TurnReader, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
 use super::opencode_serve::OpenCodeLaunch;
-use super::session::{opencode_launch, same_variable, Osc7501Hook, PtySession};
+use super::session::{opencode_launch, same_variable, ExitReport, Osc7501Hook, PtySession};
 use crate::dates::now_ms;
 use crate::webview::WebviewEvents;
 
@@ -448,21 +448,22 @@ impl PtyManager {
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let webview = WebviewEvents::to_app(app_handle.clone());
-        let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview);
+        let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
-        let session = PtySession::spawn(
+        let mut session = PtySession::spawn(
             request.clone(),
             launch_ref.clone(),
             start_seq,
             bridge_port,
             bridge_token,
             opencode.clone(),
-            app_handle,
+            webview,
             on_first_output,
             on_osc7501,
             on_exit,
         )?
         .of_launch(launch_ref.launch);
+        let exit_report = session.take_exit_report();
 
         let created_at = next_created_at();
 
@@ -498,7 +499,7 @@ impl PtyManager {
         self.save_sessions_to_disk();
         self.notify_server_watcher(launch_ref, opencode);
 
-        Ok(info)
+        Ok(self.end_without_process(exit_report, info))
     }
 
     pub fn relaunch(
@@ -537,21 +538,22 @@ impl PtyManager {
 
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let webview = WebviewEvents::to_app(app_handle.clone());
-        let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, webview);
+        let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
-        let session = PtySession::spawn(
+        let mut session = PtySession::spawn(
             request,
             launch_ref.clone(),
             start_seq,
             bridge_port,
             bridge_token,
             opencode.clone(),
-            app_handle,
+            webview,
             on_first_output,
             on_osc7501,
             on_exit,
         )?
         .of_launch(launch_ref.launch);
+        let exit_report = session.take_exit_report();
 
         let mut updated_info = info;
         updated_info.claude_status = if updated_info.run_kind.is_agent() {
@@ -588,7 +590,19 @@ impl PtyManager {
         self.save_sessions_to_disk();
         self.notify_server_watcher(launch_ref, opencode);
 
-        Ok(updated_info)
+        Ok(self.end_without_process(exit_report, updated_info))
+    }
+
+    /// Runs `exit_report`, the end of a just-listed launch whose session runs no process (see
+    /// `PtySession::take_exit_report`), and returns the terminal as listed after it, Exited, for
+    /// the caller to answer with. Without a report, or with the terminal closed meanwhile, it
+    /// returns `listed`.
+    fn end_without_process(&self, exit_report: Option<ExitReport>, listed: TerminalInfo) -> TerminalInfo {
+        let Some(report) = exit_report else {
+            return listed;
+        };
+        report();
+        self.get_info(&listed.id).unwrap_or(listed)
     }
 
     /// Writes `data`, which the operator typed into the terminal's pane. The input watcher hears it

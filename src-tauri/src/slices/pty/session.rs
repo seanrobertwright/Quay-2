@@ -5,7 +5,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use crate::webview::WebviewEvents;
 
 use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
@@ -27,6 +27,13 @@ const SCREEN_SAVE_POLL: std::time::Duration = std::time::Duration::from_millis(5
 /// How long after a process ends its screen is saved, so the reader can take the output
 /// still in flight.
 const EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// How much recent output a session keeps for a pane that mounts, in bytes.
+const OUTPUT_BUFFER_LIMIT: usize = 256 * 1024;
+
+/// The exit code of a terminal that shows why its CLI couldn't start, the one the exit watcher
+/// gives any process that failed.
+const MESSAGE_EXIT_CODE: i32 = 1;
 
 /// What a PTY reader runs with each OSC 7501 sequence the process prints, in order.
 pub type Osc7501Hook = Box<dyn FnMut(Osc7501) + Send>;
@@ -52,8 +59,9 @@ pub struct PtySession {
     pub permission_mode: PermissionMode,
     /// The launch that started it (see `LaunchRef`), once `of_launch` has named it.
     launch: Option<u64>,
-    master: Box<dyn MasterPty + Send>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    /// The PTY its process runs in, or `None` for a terminal whose CLI couldn't start, which
+    /// runs no process and shows why.
+    pty: Option<PtyEnds>,
     output_buffer: Arc<Mutex<(String, u64)>>,
     current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
@@ -61,6 +69,28 @@ pub struct PtySession {
     /// An OpenCode 2.x terminal's `opencode serve`, which ends when the session drops, its
     /// process exits, or Quay exits (`PtyManager::end_sidecars`).
     sidecar: Option<Sidecar>,
+    /// The end of a session that runs no process, until `take_exit_report` takes it.
+    exit_report: Option<ExitReport>,
+}
+
+/// The two ends of a PTY Quay holds: the master, which takes its size, and the writer into it.
+struct PtyEnds {
+    master: Box<dyn MasterPty + Send>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+}
+
+/// What reports the end of a session: its `on_exit`, then `terminal-exited`.
+pub type ExitReport = Box<dyn FnOnce() + Send>;
+
+/// Reports a session's end with `exit_code`: `on_exit` runs, then `terminal-exited` is sent.
+fn report_exit(
+    on_exit: Box<dyn FnOnce(Option<i32>) + Send>,
+    events: &WebviewEvents,
+    terminal_id: String,
+    exit_code: Option<i32>,
+) {
+    on_exit(exit_code);
+    events.emit("terminal-exited", PtyExitPayload { terminal_id, exit_code });
 }
 
 /// Quay's MCP server as `launch`'s CLI is pointed at it. The launch in it is how a handshake is
@@ -411,22 +441,16 @@ fn pig_program(path: Option<&std::ffi::OsStr>, home: Option<&Path>) -> Option<Pa
     on_path.chain(behind_npm_shim).chain(from_go).find(|program| program.is_file())
 }
 
-/// A command that prints `message` and exits as a failure, for a terminal whose CLI isn't
-/// installed.
-fn message_command(message: &str) -> CommandBuilder {
-    #[cfg(windows)]
-    {
-        let mut c = CommandBuilder::new("pwsh.exe");
-        c.args(["-NoProfile", "-NoLogo", "-Command"]);
-        c.arg(format!("Write-Output {}; exit 1", pwsh_literal(message)));
-        c
-    }
-    #[cfg(not(windows))]
-    {
-        let mut c = CommandBuilder::new("sh");
-        c.args(["-c", "printf '%s\\n' \"$1\"; exit 1", "sh", message]);
-        c
-    }
+/// `message` as a terminal shows it, each line ended with `\r\n`.
+fn message_output(message: &str) -> String {
+    message.lines().map(|line| format!("{}\r\n", line)).collect()
+}
+
+/// What a terminal's pane shows in place of its CLI when the CLI isn't installed, or `None`
+/// when it can start. Only PiG is looked for before its launch.
+fn missing_cli_message(request: &SpawnTerminalRequest) -> Option<&'static str> {
+    let pig = || pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
+    (request.run_kind == RunKind::Pig && pig().is_none()).then_some(PIG_NOT_INSTALLED)
 }
 
 /// The home folder a terminal's process gets: its `USERPROFILE`, or failing that its `HOME`.
@@ -722,24 +746,17 @@ pub(crate) fn build_command(
         // PiG never asks before a tool call, and its `--approve` only trusts project-local
         // files, so Quay passes no permission flag
         RunKind::Pig => {
-            match pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref()) {
-                // Quay's extension registers Quay's MCP server and reports PiG's turns, from
-                // the terminal's `QUAY_*` variables. Explicit `-e` paths load even with
-                // `--no-extensions` in the custom flags.
-                Some(program) => {
-                    let mut c = CommandBuilder::new(program);
-                    c.arg("-e");
-                    c.arg(pig_bridge_program());
-                    c
-                }
-                // Nothing else joins the line: the custom flags and the launch prompt would
-                // reach the shell that prints the message
-                None => {
-                    let mut c = message_command(PIG_NOT_INSTALLED);
-                    c.cwd(&request.project_path);
-                    return c;
-                }
-            }
+            // Without PiG this is its bare name, so a spawn error names it; `PtySession::spawn`
+            // shows `PIG_NOT_INSTALLED` instead and starts nothing (see `missing_cli_message`)
+            let program = pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref())
+                .unwrap_or_else(|| PathBuf::from(pig_file_name()));
+            // Quay's extension registers Quay's MCP server and reports PiG's turns, from the
+            // terminal's `QUAY_*` variables. Explicit `-e` paths load even with
+            // `--no-extensions` in the custom flags.
+            let mut c = CommandBuilder::new(program);
+            c.arg("-e");
+            c.arg(pig_bridge_program());
+            c
         }
     };
 
@@ -841,6 +858,31 @@ pub(crate) fn build_command(
     cmd
 }
 
+/// The name a terminal gets when its request gives none: its CLI's, or a command terminal's
+/// command.
+fn terminal_name(request: &SpawnTerminalRequest) -> String {
+    request.name.clone().unwrap_or_else(|| match request.run_kind {
+        RunKind::Claude => "claude".to_string(),
+        RunKind::Antigravity => "agy".to_string(),
+        RunKind::Codex => "codex".to_string(),
+        RunKind::Pi => "pi".to_string(),
+        RunKind::Gemini => "gemini".to_string(),
+        RunKind::Grok => "grok".to_string(),
+        RunKind::Aider => "aider".to_string(),
+        RunKind::Kiro => "kiro".to_string(),
+        RunKind::Copilot => "copilot".to_string(),
+        RunKind::OpenCode => "opencode".to_string(),
+        RunKind::Pig => "pig".to_string(),
+        RunKind::PowerShell => "pwsh".to_string(),
+        RunKind::Command => request
+            .command_text
+            .as_deref()
+            .unwrap_or("cmd")
+            .to_string(),
+        RunKind::Archon => "archon".to_string(),
+    })
+}
+
 impl PtySession {
     /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
     /// under this id (0 for a new terminal); output from this session is numbered above it,
@@ -848,12 +890,17 @@ impl PtySession {
     /// `opencode` is how an OpenCode terminal is launched (see `opencode_launch`), and `None`
     /// for other CLIs. For 2.x the session starts the terminal's server as its sidecar,
     /// blocking until it is ready (see `opencode_serve::Sidecar::start`), and runs the TUI
-    /// connected to it in the PTY; when the server can't be had, the PTY runs a message that
-    /// says why.
+    /// connected to it in the PTY.
     /// `on_first_output` runs once, on the reader thread, when the process first writes output.
     /// `on_osc7501`, when given, runs there with each OSC 7501 sequence the output carries,
     /// after `on_first_output`. `on_exit` runs once, on the exit watcher thread, with the exit
     /// code when the process ends, before `terminal-exited` is sent.
+    ///
+    /// When the CLI can't start, because an OpenCode 2.x server can't be had or PiG isn't
+    /// installed, the session runs no process and opens no PTY. Its output is one chunk, the
+    /// message that says why, numbered and sent as the reader would, with `on_first_output` run
+    /// here before it is sent. Its end, with `MESSAGE_EXIT_CODE`, is reported only when the
+    /// starter runs `take_exit_report`'s report.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         request: SpawnTerminalRequest,
@@ -862,16 +909,90 @@ impl PtySession {
         bridge_port: u16,
         bridge_token: String,
         opencode: Option<OpenCodeLaunch>,
-        app_handle: AppHandle,
+        events: WebviewEvents,
         on_first_output: Box<dyn FnOnce() + Send>,
         on_osc7501: Option<Osc7501Hook>,
         on_exit: Box<dyn FnOnce(Option<i32>) + Send>,
     ) -> Result<Self, String> {
-        let pty_system = native_pty_system();
         let rows = request.rows.unwrap_or(45);
         let cols = request.cols.unwrap_or(160);
+        let perm = request.run_kind.permission_mode(request.permission_mode);
 
-        let pair = pty_system
+        // An OpenCode 2.x terminal's server is its sidecar. When the server can't be had, or the
+        // CLI isn't installed, the pane says why. Should the PTY not start, the sidecar ends as
+        // `sidecar` drops.
+        let launched = match opencode {
+            Some(OpenCodeLaunch::Server(server)) => {
+                let (serve, tui) = build_serve(&request, &launch, bridge_port, &bridge_token, &server);
+                Sidecar::start(serve, &server, &mcp_url(bridge_port, &launch), SIDECAR_PATIENCE)
+                    .map(|sidecar| (tui, Some(sidecar)))
+            }
+            opencode => match missing_cli_message(&request) {
+                Some(message) => Err(message.to_string()),
+                None => Ok((build_command(&request, &launch, bridge_port, &bridge_token, opencode), None)),
+            },
+        };
+        let terminal_id = launch.terminal_id;
+        let name = terminal_name(&request);
+
+        let log_dir = super::manager::get_sessions_dir();
+        let log_path = log_dir.join(format!("{}.log", terminal_id));
+
+        // A relaunched terminal starts from what it showed before: its saved screen, or the
+        // raw log when an older Quay saved none
+        let earlier = match screen::load_screen(&log_dir, &terminal_id) {
+            Some(saved) => saved.data,
+            None => super::manager::read_log_tail(&log_path),
+        };
+        let initial_data = if earlier.is_empty() { String::new() } else { format!("{}\r\n", earlier) };
+
+        let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
+        let current_size = Arc::new(Mutex::new((rows, cols)));
+        let screen = Arc::new(ScreenKeeper::new(
+            &log_dir,
+            &terminal_id,
+            rows,
+            cols,
+            (!earlier.is_empty()).then_some(earlier.as_str()),
+        ));
+
+        let (cmd, sidecar) = match launched {
+            Ok(launched) => launched,
+            // No process and no PTY: Quay writes the message into the terminal's output itself,
+            // as the reader writes a chunk, so nothing is left to repaint it on a resize
+            Err(message) => {
+                let text = message_output(&message);
+                if let Ok(mut log_file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                    let _ = log_file.write_all(text.as_bytes());
+                }
+                screen.feed(&text, std::time::Instant::now());
+                on_first_output();
+                let seq = append_output(&mut output_buffer.lock(), &text, OUTPUT_BUFFER_LIMIT);
+                events.emit("pty-output", PtyOutputPayload { terminal_id: terminal_id.clone(), data: text, seq });
+                screen.save_now();
+                let exited = terminal_id.clone();
+                let exit_report: ExitReport =
+                    Box::new(move || report_exit(on_exit, &events, exited, Some(MESSAGE_EXIT_CODE)));
+                return Ok(Self {
+                    id: terminal_id,
+                    name,
+                    project_path: request.project_path,
+                    run_kind: request.run_kind,
+                    permission_mode: perm,
+                    launch: None,
+                    pty: None,
+                    output_buffer,
+                    current_size,
+                    is_alive: Arc::new(AtomicBool::new(false)),
+                    screen,
+                    sidecar: None,
+                    exit_report: Some(exit_report),
+                });
+            }
+        };
+        let sidecar_ender = sidecar.as_ref().map(Sidecar::ender);
+
+        let pair = native_pty_system()
             .openpty(PtySize {
                 rows,
                 cols,
@@ -879,27 +1000,6 @@ impl PtySession {
                 pixel_height: 0,
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
-
-        let perm = request.run_kind.permission_mode(request.permission_mode);
-
-        // An OpenCode 2.x terminal's server is its sidecar. When the server can't be had, the
-        // pane says why. Should the PTY not start, the sidecar ends as `sidecar` drops.
-        let (cmd, sidecar) = match opencode {
-            Some(OpenCodeLaunch::Server(server)) => {
-                let (serve, tui) = build_serve(&request, &launch, bridge_port, &bridge_token, &server);
-                match Sidecar::start(serve, &server, &mcp_url(bridge_port, &launch), SIDECAR_PATIENCE) {
-                    Ok(sidecar) => (tui, Some(sidecar)),
-                    Err(why) => {
-                        let mut c = message_command(&why);
-                        c.cwd(&request.project_path);
-                        (c, None)
-                    }
-                }
-            }
-            opencode => (build_command(&request, &launch, bridge_port, &bridge_token, opencode), None),
-        };
-        let sidecar_ender = sidecar.as_ref().map(Sidecar::ender);
-        let terminal_id = launch.terminal_id;
 
         let mut child = pair
             .slave
@@ -918,31 +1018,10 @@ impl PtySession {
             format!("Failed to take master writer: {}", e)
         })?));
 
-        let log_dir = super::manager::get_sessions_dir();
-        let log_path = log_dir.join(format!("{}.log", terminal_id));
-
-        // A relaunched terminal starts from what it showed before: its saved screen, or the
-        // raw log when an older Quay saved none
-        let earlier = match screen::load_screen(&log_dir, &terminal_id) {
-            Some(saved) => saved.data,
-            None => super::manager::read_log_tail(&log_path),
-        };
-        let initial_data = if earlier.is_empty() { String::new() } else { format!("{}\r\n", earlier) };
-
-        let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
-        let current_size = Arc::new(Mutex::new((rows, cols)));
         let is_alive = Arc::new(AtomicBool::new(true));
-        let screen = Arc::new(ScreenKeeper::new(
-            &log_dir,
-            &terminal_id,
-            rows,
-            cols,
-            (!earlier.is_empty()).then_some(earlier.as_str()),
-        ));
-
         // Background thread for reading PTY output
         {
-            let app_handle = app_handle.clone();
+            let events = events.clone();
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
             let output_buffer = output_buffer.clone();
@@ -986,10 +1065,10 @@ impl PtySession {
                             }
 
                             // Buffer recent output for newly-mounting xterm instances,
-                            // capped at 256KB to avoid unbounded memory usage
-                            let seq = append_output(&mut output_buffer.lock(), &text, 256 * 1024);
+                            // capped to avoid unbounded memory usage
+                            let seq = append_output(&mut output_buffer.lock(), &text, OUTPUT_BUFFER_LIMIT);
 
-                            let _ = app_handle.emit(
+                            events.emit(
                                 "pty-output",
                                 PtyOutputPayload {
                                     terminal_id: terminal_id.clone(),
@@ -1024,7 +1103,7 @@ impl PtySession {
 
         // Background thread for watching process exit
         {
-            let app_handle = app_handle.clone();
+            let events = events.clone();
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
             let log_path_exit = log_path.clone();
@@ -1059,14 +1138,7 @@ impl PtySession {
                     Err(_) => None,
                 };
 
-                on_exit(exit_code);
-                let _ = app_handle.emit(
-                    "terminal-exited",
-                    PtyExitPayload {
-                        terminal_id,
-                        exit_code,
-                    },
-                );
+                report_exit(on_exit, &events, terminal_id, exit_code);
 
                 // ConPTY can keep the reader blocked after the process ends, until the
                 // session is dropped, so the reader's own save may be a long way off. Give
@@ -1076,27 +1148,6 @@ impl PtySession {
             });
         }
 
-        let name = request.name.unwrap_or_else(|| match request.run_kind {
-            RunKind::Claude => "claude".to_string(),
-            RunKind::Antigravity => "agy".to_string(),
-            RunKind::Codex => "codex".to_string(),
-            RunKind::Pi => "pi".to_string(),
-            RunKind::Gemini => "gemini".to_string(),
-            RunKind::Grok => "grok".to_string(),
-            RunKind::Aider => "aider".to_string(),
-            RunKind::Kiro => "kiro".to_string(),
-            RunKind::Copilot => "copilot".to_string(),
-            RunKind::OpenCode => "opencode".to_string(),
-            RunKind::Pig => "pig".to_string(),
-            RunKind::PowerShell => "pwsh".to_string(),
-            RunKind::Command => request
-                .command_text
-                .as_deref()
-                .unwrap_or("cmd")
-                .to_string(),
-            RunKind::Archon => "archon".to_string(),
-        });
-
         Ok(Self {
             id: terminal_id,
             name,
@@ -1104,13 +1155,13 @@ impl PtySession {
             run_kind: request.run_kind,
             permission_mode: perm,
             launch: None,
-            master: pair.master,
-            writer,
+            pty: Some(PtyEnds { master: pair.master, writer }),
             output_buffer,
             current_size,
             is_alive,
             screen,
             sidecar,
+            exit_report: None,
         })
     }
 
@@ -1145,8 +1196,19 @@ impl PtySession {
         self.launch == Some(launch)
     }
 
+    /// What reports the end of a session that runs no process (see `spawn`), for its starter to
+    /// run once the terminal is listed: an exit reported before then moves no status (see
+    /// `PtyManager::exit_launch`). `None` for a session with a process, whose exit watcher
+    /// reports its end, and on every call after the first.
+    pub fn take_exit_report(&mut self) -> Option<ExitReport> {
+        self.exit_report.take()
+    }
+
     pub fn write(&self, data: &str) -> Result<(), String> {
-        let mut writer = self.writer.lock();
+        let Some(pty) = &self.pty else {
+            return Err(format!("Terminal {} has no process to write to", self.id));
+        };
+        let mut writer = pty.writer.lock();
         writer
             .write_all(data.as_bytes())
             .map_err(|e| format!("Failed to write to PTY: {}", e))?;
@@ -1167,7 +1229,11 @@ impl PtySession {
             *size = (rows, cols);
         }
         self.screen.resize(rows, cols);
-        self.master
+        // A session without a process has no PTY to resize, and nothing that would repaint
+        let Some(pty) = &self.pty else {
+            return Ok(());
+        };
+        pty.master
             .resize(PtySize {
                 rows,
                 cols,
@@ -2116,28 +2182,120 @@ mod tests {
         }
     }
 
+    /// The events a session sent, by name and payload.
+    fn recorded_events() -> (WebviewEvents, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        (WebviewEvents::to(move |event, payload| log.lock().push((event.to_string(), payload))), sent)
+    }
+
+    /// The `pty-output` chunks among `sent`, as their seq and text.
+    fn output_chunks(sent: &[(String, serde_json::Value)]) -> Vec<(u64, String)> {
+        sent.iter()
+            .filter(|(event, _)| event == "pty-output")
+            .map(|(_, payload)| (payload["seq"].as_u64().unwrap(), payload["data"].as_str().unwrap().to_string()))
+            .collect()
+    }
+
+    /// What a terminal whose CLI couldn't start showed and how it ended: started as `opencode`
+    /// at 24 x 80 after output numbered up to 5, resized three times, then ended by its report.
+    struct MessageTerminal {
+        /// The `pty-output` chunks it sent, as their seq and text.
+        chunks: Vec<(u64, String)>,
+        replay: TerminalOutputPayload,
+        ran_first_output: bool,
+        ran_a_process: bool,
+        took_input: bool,
+        /// The exit code `on_exit` had before the report ran, and after.
+        exit_before_report: Option<Option<i32>>,
+        exit_after_report: Option<Option<i32>>,
+        /// The `terminal-exited` payloads it sent.
+        ends: Vec<serde_json::Value>,
+    }
+
+    fn message_terminal(mut request: SpawnTerminalRequest, terminal_id: &str, opencode: Option<OpenCodeLaunch>) -> MessageTerminal {
+        request.rows = Some(24);
+        request.cols = Some(80);
+        let launch = LaunchRef { terminal_id: terminal_id.to_string(), launch: 7 };
+        let (events, sent) = recorded_events();
+        let first_output = Arc::new(AtomicBool::new(false));
+        let printed = first_output.clone();
+        let (exited, exit_code) = std::sync::mpsc::channel();
+        let mut session = PtySession::spawn(
+            request,
+            launch,
+            5,
+            4321,
+            "tok-1".to_string(),
+            opencode,
+            events,
+            Box::new(move || printed.store(true, Ordering::SeqCst)),
+            None,
+            Box::new(move |code| exited.send(code).unwrap()),
+        )
+        .unwrap();
+        for (rows, cols) in [(30, 100), (20, 60), (40, 160)] {
+            session.resize(rows, cols).unwrap();
+        }
+        let ran_a_process = session.is_alive();
+        let took_input = session.write("\r").is_ok();
+        let exit_before_report = exit_code.try_recv().ok();
+        let report = session.take_exit_report().expect("a session without a process reports its own end");
+        assert!(session.take_exit_report().is_none(), "it reports its end once");
+        report();
+        let sent = sent.lock();
+        MessageTerminal {
+            chunks: output_chunks(&sent),
+            replay: session.get_output(),
+            ran_first_output: first_output.load(Ordering::SeqCst),
+            ran_a_process,
+            took_input,
+            exit_before_report,
+            exit_after_report: exit_code.try_recv().ok(),
+            ends: sent.iter().filter(|(event, _)| event == "terminal-exited").map(|(_, payload)| payload.clone()).collect(),
+        }
+    }
+
+    /// Asserts that `shown` sent one chunk, numbered on from seq 5, holding `phrase` once and
+    /// replayed as it was sent, and ended Exited with code 1 only when its report ran.
+    fn assert_shown_once_and_ended(shown: &MessageTerminal, terminal_id: &str, phrase: &str) {
+        let seqs: Vec<u64> = shown.chunks.iter().map(|(seq, _)| *seq).collect();
+        assert_eq!(seqs, [6], "one chunk, numbered on from the seq it started at");
+        let sent: String = shown.chunks.iter().map(|(_, text)| text.as_str()).collect();
+        assert_eq!(sent.matches(phrase).count(), 1, "{:?}", sent);
+        assert!(sent.ends_with("\r\n"), "{:?}", sent);
+        assert_eq!(shown.replay.data, sent);
+        assert_eq!((shown.replay.last_seq, shown.replay.rows, shown.replay.cols), (6, Some(40), Some(160)));
+        assert!(shown.ran_first_output, "the message is the terminal's first output");
+        assert!(!shown.ran_a_process);
+        assert!(!shown.took_input);
+        assert_eq!(shown.exit_before_report, None, "its end waits for the report");
+        assert_eq!(shown.exit_after_report, Some(Some(1)));
+        assert_eq!(shown.ends, [serde_json::json!({ "terminal_id": terminal_id, "exit_code": 1 })]);
+    }
+
     #[test]
-    fn a_pig_terminal_without_pig_prints_how_to_install_it_and_nothing_else() {
-        let installs = PigInstalls::new("missing");
+    fn a_pig_terminal_without_pig_shows_its_message_once_across_resizes_and_replay_and_ends_as_a_failure() {
+        let installs = PigInstalls::new("message-once");
         let mut request = installs.request();
         request.custom_flags = Some("--model opus".to_string());
         request.initial_prompt = Some("Get-ChildItem; exit".to_string());
-        let args = argv(&build_command(&request, "term-pig-missing", 4321, "tok-1", Some(4567)));
-        assert!(args.iter().all(|arg| !arg.contains("opus") && !arg.contains("Get-ChildItem")), "{:?}", args);
+        let shown = message_terminal(request, "term-pig-message-once", None);
+        assert_shown_once_and_ended(&shown, "term-pig-message-once", "PiG isn't installed.");
+        assert_eq!(shown.replay.data, format!("{}\r\n", PIG_NOT_INSTALLED), "the message and nothing else");
+    }
 
-        #[cfg(windows)]
-        {
-            assert_eq!(args[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
-            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
-            assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), PIG_NOT_INSTALLED);
-            assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
-        }
-        #[cfg(not(windows))]
-        {
-            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
-            assert_eq!(String::from_utf8_lossy(&out.stdout), format!("{}\n", PIG_NOT_INSTALLED));
-            assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
-        }
+    #[test]
+    fn an_opencode_2_terminal_whose_server_cannot_start_shows_why_once_and_ends_as_a_failure() {
+        let installs = PigInstalls::new("opencode-message-once");
+        let mut request = installs.request();
+        request.run_kind = RunKind::OpenCode;
+        // No folder to start in, so `opencode serve` fails before anything runs
+        request.project_path = installs.root.join("no-such-project").to_string_lossy().to_string();
+        let server = OpenCodeServer::for_tests(4567);
+        let shown = message_terminal(request, "term-oc2-message-once", Some(OpenCodeLaunch::Server(server)));
+        assert_shown_once_and_ended(&shown, "term-oc2-message-once", "Quay couldn't start OpenCode's server");
+        assert!(shown.replay.data.starts_with("Quay couldn't start OpenCode's server (`opencode serve`): "));
     }
 
     #[test]
