@@ -16,7 +16,7 @@ const EXITED: TerminalInfo = {
   id: "t1",
   name: "notice",
   project_path: "C:/work/repo",
-  run_kind: "shell",
+  run_kind: "powershell",
   permission_mode: "normal",
   live_mode: "normal",
   claude_status: "exited",
