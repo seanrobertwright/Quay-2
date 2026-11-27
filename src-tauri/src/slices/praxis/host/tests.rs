@@ -67,12 +67,15 @@ impl Harness {
         std::fs::write(root.join("sdk").join("engine").join("src").join("praxis.mjs"), FAKE).unwrap();
         let project = root.join("project");
         std::fs::create_dir_all(&project).unwrap();
-        let cli = PraxisCli::with(root.join("praxis-cli.json"), bounds, LookupEnv::from_process);
-        cli.write_settings(PraxisCliSettings { checkout: Some(root.join("sdk").to_string_lossy().into_owned()), installation: None }).unwrap();
         let changes = Arc::new(Mutex::new(Vec::new()));
-        let sink = changes.clone();
-        cli.on_condition_changed(move |change| sink.lock().unwrap().push(change.clone()));
+        let cli = runner(&root, bounds, &changes);
+        cli.write_settings(PraxisCliSettings { checkout: Some(root.join("sdk").to_string_lossy().into_owned()), installation: None }).unwrap();
         Self { root, project, cli, changes, _dir: dir }
+    }
+
+    /// Runs the calls that follow under `bounds`, through a new runner over the same settings.
+    fn rebound(&mut self, bounds: CallBounds) {
+        self.cli = runner(&self.root, bounds, &self.changes);
     }
 
     fn src(&self) -> PathBuf {
@@ -100,6 +103,23 @@ impl Harness {
     fn condition(&self) -> HostCondition {
         self.cli.condition(&self.project)
     }
+}
+
+/// A runner with its settings in `root`, under `bounds`, that records each condition change in `changes`.
+fn runner(root: &Path, bounds: CallBounds, changes: &Arc<Mutex<Vec<ConditionChange>>>) -> PraxisCli {
+    let cli = PraxisCli::with(root.join("praxis-cli.json"), bounds, LookupEnv::from_process);
+    let sink = changes.clone();
+    cli.on_condition_changed(move |change| sink.lock().unwrap().push(change.clone()));
+    cli
+}
+
+/// A bound for a call the test needs killed after the fake has started: the runner's own
+/// allowance for node to start and answer `--version`, which is how long the runner waits for
+/// node at all. The fake writes what such a test reads back (the pending creation, its child's
+/// id) before its delay, after only a few small file writes, so the bound has to cover little
+/// more than node's start (#796).
+fn until_the_fake_has_started() -> Duration {
+    CallBounds::default().node_check
 }
 
 #[test]
@@ -311,7 +331,8 @@ fn child_pid(src: &Path) -> u32 {
 
 #[test]
 fn a_timeout_kills_the_whole_tree() {
-    let h = Harness::with_bounds(CallBounds { read: Duration::from_secs(3), ..CallBounds::default() });
+    // The fake starts its child and writes its id before its delay, so it is killed once that is done.
+    let h = Harness::with_bounds(CallBounds { read: until_the_fake_has_started(), ..CallBounds::default() });
     h.scenario(json!({ "child": true, "delayMs": 120000 }));
     let started = Instant::now();
     assert_eq!(h.call(Verb::Status, &["status", "wo-1"]), CallOutcome::TimedOut);
@@ -571,7 +592,8 @@ fn a_repeated_run_while_one_is_in_flight_joins_the_same_process() {
 
 #[test]
 fn a_creation_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
-    let h = Harness::with_bounds(CallBounds { write: Duration::from_secs(2), ..CallBounds::default() });
+    // The fake records the creation as pending before its delay, so it is killed once that is saved.
+    let mut h = Harness::with_bounds(CallBounds { write: until_the_fake_has_started(), ..CallBounds::default() });
     let created = fixture("WorkflowRunResult");
     h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
     assert_eq!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::TimedOut);
@@ -581,6 +603,8 @@ fn a_creation_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() 
     // Quay ran praxis once and didn't run it again by itself.
     assert_eq!(h.calls().len(), 1);
 
+    // The run that resumes it has to finish, so it gets the write bound Quay gives every creation.
+    h.rebound(CallBounds::default());
     h.scenario(json!({ "stdout": created, "profile": true }));
     let CallOutcome::Record { record, .. } = h.call(Verb::Run, &["run", "review-code"]) else { panic!("the next run didn't finish") };
     assert_eq!(record["requestId"], pending, "the next run resumed the pending creation");
@@ -1056,7 +1080,8 @@ fn a_repeated_graph_run_while_one_is_in_flight_joins_the_same_process() {
 
 #[test]
 fn a_graph_run_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
-    let h = Harness::with_bounds(CallBounds { write: Duration::from_secs(2), ..CallBounds::default() });
+    // The fake records the creation as pending before its delay, so it is killed once that is saved.
+    let mut h = Harness::with_bounds(CallBounds { write: until_the_fake_has_started(), ..CallBounds::default() });
     let created = recorded("run: created")["stdout"].clone();
     h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
     assert_eq!(h.call(Verb::GraphRun, &["run", "nightly-build"]), CallOutcome::TimedOut);
@@ -1065,6 +1090,8 @@ fn a_graph_run_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it()
     assert!(pending.is_string(), "the killed creation is still pending: {profile}");
     assert_eq!(h.calls().len(), 1);
 
+    // The run that resumes it has to finish, so it gets the write bound Quay gives every creation.
+    h.rebound(CallBounds::default());
     h.scenario(json!({ "stdout": created, "profile": true }));
     let CallOutcome::Record { record, .. } = h.call(Verb::GraphRun, &["run", "nightly-build"]) else { panic!("the next run didn't finish") };
     assert_eq!(record["requestId"], pending, "the next run resumed the pending creation");

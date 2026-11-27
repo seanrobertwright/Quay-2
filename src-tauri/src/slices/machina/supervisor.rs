@@ -1820,9 +1820,11 @@ mod tests {
         } else {
             "touch gate-started.txt && sleep 30"
         };
+        // The gate allows each check this long before it kills it.
+        let timeout_sec = 120;
         let (root, repo) = test_repo(&format!(
-            r#"{{ "tier1": [{{ "name": "slow", "run": "{}" }}], "timeoutSec": 120 }}"#,
-            slow
+            r#"{{ "tier1": [{{ "name": "slow", "run": "{}" }}], "timeoutSec": {} }}"#,
+            slow, timeout_sec
         ));
         let mgr = MachinaManager::with_paths(root.join("state.json"), root.join("vault"));
         submit_test_order(&mgr, &repo);
@@ -1834,11 +1836,11 @@ mod tests {
         let marker = wt.join("gate-started.txt");
         mgr.start_gate("WO-1", None).unwrap();
         // The gate runs git before the check, which is slow while other tests run git too, so
-        // the kill is timed from when the check started, not from the gate.
-        for _ in 0..600 {
-            if marker.exists() {
-                break;
-            }
+        // the kill is timed from when the check started, not from the gate. The wait for the
+        // check to start is capped at the config's timeoutSec, the time the gate itself gives a
+        // check: a gate that needs longer than that just to start one is stuck, not slow (#796).
+        let waiting = std::time::Instant::now();
+        while !marker.exists() && waiting.elapsed() < Duration::from_secs(timeout_sec) {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert!(marker.exists(), "the slow check never started");
