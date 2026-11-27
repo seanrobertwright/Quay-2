@@ -86,7 +86,7 @@ async function startRust(): Promise<void> {
   };
   fakeInvoke(async (cmd, args) => {
     calls.push({ cmd, args });
-    if (Object.hasOwn(more, cmd)) return more[cmd](args);
+    if (Object.prototype.hasOwnProperty.call(more, cmd)) return more[cmd](args);
     if (Object.prototype.hasOwnProperty.call(answers, cmd)) return answers[cmd](args);
     if (cmd.startsWith("surface_")) return null;
     throw new Error(`${cmd} is not faked`);
@@ -372,3 +372,24 @@ for (const [how, close] of [
     assert.equal(document.activeElement === link, true, "the focus outside the resolver stays where it was");
   });
 }
+
+test("Back to the graph in the conflict resolver, with the focus on it, opens the diff that waited for it and leaves the focus in Topos, not under the diff", async () => {
+  operation = MERGING;
+  shown = [B_CONFLICTED, TURNS];
+  const { container, review } = await draw();
+  await clickFileLink(container, review);
+  await until(() => resolverBack(container) !== undefined, "the resolver never opened");
+  await escape();
+  await clickFileLink(container, review);
+  await until(() => container.querySelector('[aria-label="Topos notifications"] li p') !== null, "nothing said why the file waits");
+  const back = resolverBack(container)!;
+  await act(async () => back.focus());
+  await act(async () => back.click());
+  await until(() => diff(container) !== null, "the diff did not open as the resolver closed");
+  await settle();
+
+  const focused = document.activeElement;
+  assert.equal(focused !== null && focused !== document.body, true, "the focus fell to the page");
+  assert.equal(focused?.closest("[inert]"), null, "the focus is left under the diff, in the inert graph");
+  assert.equal(focused === container.querySelector('[data-topos-layer] section[aria-labelledby]'), true, "the focus is on Topos's panel");
+});

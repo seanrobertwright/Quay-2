@@ -307,21 +307,21 @@ export const Topos: React.FC<ToposProps> = ({
   // A diff that closes with the focus in it hands the focus to the graph once the graph shows again,
   // so it doesn't fall to the page as the diff unmounts (#792). Focus elsewhere stays where it is.
   const diffSlot = useRef<HTMLDivElement | null>(null);
-  const [graphFocusRequest, setGraphFocusRequest] = useState(0);
+  // A file that waited for the resolver covers the graph as the resolver closes, so the focus goes to
+  // Topos's panel instead, where opening Topos puts it (#812).
+  const [focusRequest, setFocusRequest] = useState<{ count: number; to: "graph" | "panel" }>({ count: 0, to: "graph" });
   useEffect(() => {
-    if (graphFocusRequest > 0) focusGraph();
-  }, [graphFocusRequest, focusGraph]);
+    if (focusRequest.count === 0) return;
+    if (focusRequest.to === "graph") focusGraph();
+    else panel.current?.focus({ preventScroll: true });
+  }, [focusRequest, focusGraph]);
+  const requestFocus = useCallback((to: "graph" | "panel") => setFocusRequest(({ count }) => ({ count: count + 1, to })), []);
   const closeDiff = useCallback(() => {
     const heldFocus = diffSlot.current?.contains(document.activeElement) === true;
     setStagingFile(null);
     setCommitFile(null);
-    if (heldFocus) setGraphFocusRequest((n) => n + 1);
-  }, []);
-  // The resolver hands the focus on the same way as it closes (#812).
-  const closeResolver = useCallback((heldFocus: boolean) => {
-    setResolving(null);
-    if (heldFocus) setGraphFocusRequest((n) => n + 1);
-  }, []);
+    if (heldFocus) requestFocus("graph");
+  }, [requestFocus]);
   const openCommitFile = useCallback(
     (file: CommitFile) => {
       const shown = details.shown;
@@ -482,7 +482,7 @@ export const Topos: React.FC<ToposProps> = ({
   // A file that waits for the open resolver says so in a toast, which its live region speaks too (#772).
   const showToast = refActions.toast;
   const toastWaiting = useCallback((text: string) => showToast({ tone: "done", text }), [showToast]);
-  useFileRequest({
+  const fileWaits = useFileRequest({
     ready: showsProject,
     request: fileRequest,
     conflicts: conflictPaths,
@@ -491,6 +491,14 @@ export const Topos: React.FC<ToposProps> = ({
     openResolver: setResolving,
     announce: toastWaiting,
   });
+  // The resolver hands the focus on as it closes, the same way a diff does (#812).
+  const closeResolver = useCallback(
+    (heldFocus: boolean) => {
+      setResolving(null);
+      if (heldFocus) requestFocus(fileWaits() ? "panel" : "graph");
+    },
+    [fileWaits, requestFocus]
+  );
   const newBranchAtHead = useCallback(() => newBranch("HEAD"), [newBranch]);
   const watch = graph.feed?.watch ?? null;
   // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.

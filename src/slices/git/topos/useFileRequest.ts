@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ChangeSide } from "../fileDiffRequest.ts";
 import type { OpenFile } from "./useFileDiff.ts";
 
@@ -27,15 +27,19 @@ export interface FileRequestState {
 /**
  * Opens a requested file once, when Topos can show it: a conflicted one in the resolver, any other in
  * the diff view. An open resolver may hold unsaved edits, so the file waits until it closes, and
- * the operator is told so once for each request.
+ * the operator is told so once for each request. It returns a check, for when the resolver closes,
+ * of whether a file waits for it and so opens next.
  */
-export function useFileRequest({ ready, request, conflicts, resolving, openDiff, openResolver, announce }: FileRequestState): void {
+export function useFileRequest({ ready, request, conflicts, resolving, openDiff, openResolver, announce }: FileRequestState): () => boolean {
   const handled = useRef(0);
   const toldSeq = useRef(0);
+  const waiting = useRef(false);
   useEffect(() => {
     if (!ready || request === null || request.seq === handled.current) return;
     const { path, side, seq } = request;
+    waiting.current = false;
     const tellWaiting = () => {
+      waiting.current = true;
       if (toldSeq.current === seq) return;
       toldSeq.current = seq;
       announce(`Close the conflict resolver on ${resolving} to open ${path}.`);
@@ -50,4 +54,5 @@ export function useFileRequest({ ready, request, conflicts, resolving, openDiff,
     }
     handled.current = seq;
   }, [ready, request, conflicts, resolving, openDiff, openResolver, announce]);
+  return useCallback(() => waiting.current, []);
 }
