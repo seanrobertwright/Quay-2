@@ -11,6 +11,7 @@ import { SidePickerCard } from "./SidePickerCard";
 import { useConflictResolver, type ConflictSide } from "./useConflictResolver";
 import type { HandToAgent } from "./useHandToAgent";
 import type { Staging } from "./useStaging";
+import { holdsFocus } from "./holdsFocus";
 
 /** The most rows the file list renders; a note counts the rest. */
 const FILE_ROWS = 200;
@@ -63,7 +64,6 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const heldWords = held === null ? null : `With ${held.agentName}. Take it back to change it here.`;
   const busy = staging.busy !== null;
   const section = useRef<HTMLElement>(null);
-  const holdsFocus = () => section.current?.contains(document.activeElement) === true;
   const saving = staging.busy?.action === "resolve";
 
   // A file staged elsewhere, by the inspector or an agent, leaves the list; move to the next one.
@@ -73,7 +73,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   useEffect(() => {
     if (listed) return;
     if (first !== null) onPath(first);
-    else onClose(section.current?.contains(document.activeElement) === true);
+    else onClose(holdsFocus(section.current));
   }, [listed, first, onPath, onClose]);
 
   /** Runs `go` now, or after a confirm when it would drop unsaved edits. */
@@ -153,8 +153,8 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
         <div className="h-9 px-3 shrink-0 flex items-center gap-2 border-b border-[#30363d] bg-[#161b22]">
           <button type="button" onClick={() => {
               // Noted now: by the time a confirm runs this, the focus is on the confirm.
-              const held = holdsFocus();
-              leaving("Leave the resolver?", () => onClose(held));
+              const hadFocus = holdsFocus(section.current);
+              leaving("Leave the resolver?", () => onClose(hadFocus));
             }} aria-label="Back to the graph" title="Back to the graph" className="p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d]">
             <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
           </button>

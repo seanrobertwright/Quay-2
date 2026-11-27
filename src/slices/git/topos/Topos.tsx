@@ -46,6 +46,7 @@ import { CommitInspector, CompareInspector } from "./CommitInspector";
 import { selectCommits, selectionOids, type CommitSelection } from "./commitSelection";
 import { CommitFileDiffView } from "./CommitFileDiffView";
 import type { CommitFile } from "./commitDetails";
+import { holdsFocus } from "./holdsFocus";
 import {
   filesOfPair,
   isPairFile,
@@ -317,7 +318,7 @@ export const Topos: React.FC<ToposProps> = ({
   }, [focusRequest, focusGraph]);
   const requestFocus = useCallback((to: "graph" | "panel") => setFocusRequest(({ count }) => ({ count: count + 1, to })), []);
   const closeDiff = useCallback(() => {
-    const heldFocus = diffSlot.current?.contains(document.activeElement) === true;
+    const heldFocus = holdsFocus(diffSlot.current);
     setStagingFile(null);
     setCommitFile(null);
     if (heldFocus) requestFocus("graph");
