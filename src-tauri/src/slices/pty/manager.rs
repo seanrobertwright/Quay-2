@@ -427,14 +427,28 @@ impl PtyManager {
     }
 
     /// Opens a terminal from `request`, whose environment variables are the terminal's own, with
-    /// the workspace's added to them (see `launch_env`).
+    /// the workspace's added to them (see `launch_env`). It fails, and leaves the terminal as it
+    /// was, when `request` names the id of a terminal already listed or running.
     pub fn spawn(
+        &self,
+        request: SpawnTerminalRequest,
+        workspace_env: Option<HashMap<String, String>>,
+        bridge_port: u16,
+        bridge_token: String,
+        app_handle: AppHandle,
+    ) -> Result<TerminalInfo, String> {
+        let webview = WebviewEvents::to_app(app_handle);
+        self.spawn_to(request, workspace_env, bridge_port, bridge_token, webview)
+    }
+
+    /// `spawn`, with the new session's events sent to `webview`.
+    fn spawn_to(
         &self,
         mut request: SpawnTerminalRequest,
         workspace_env: Option<HashMap<String, String>>,
         bridge_port: u16,
         bridge_token: String,
-        app_handle: AppHandle,
+        webview: WebviewEvents,
     ) -> Result<TerminalInfo, String> {
         let own_env = non_empty(request.env_vars.take());
         request.env_vars = launch_env(own_env.as_ref(), workspace_env);
@@ -442,11 +456,15 @@ impl PtyManager {
             .id
             .clone()
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
+        // Spawning over a terminal would replace its session without draining it; `relaunch`
+        // restarts one
+        if self.terminals_info.lock().contains_key(&terminal_id) || self.sessions.lock().contains_key(&terminal_id) {
+            return Err(format!("Terminal {} is already open; relaunch it instead", terminal_id));
+        }
 
         let start_seq = self.last_seq(&terminal_id);
         let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
-        let webview = WebviewEvents::to_app(app_handle);
         let on_first_output = self.first_output_hook(launch_ref.clone(), webview.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
@@ -2970,6 +2988,40 @@ mod tests {
         manager.kill(&id).unwrap();
         assert!(!super::super::screen::screen_path(&dir, &id).exists());
         assert!(!dir.join(format!("{}.log", id)).exists());
+    }
+
+    /// A request to open a Command terminal under `id` that runs `command`.
+    fn command_request(id: &str, command: &str) -> SpawnTerminalRequest {
+        SpawnTerminalRequest {
+            id: Some(id.to_string()),
+            name: None,
+            project_path: ".".to_string(),
+            run_kind: RunKind::Command,
+            permission_mode: None,
+            command_text: Some(command.to_string()),
+            rows: None,
+            cols: None,
+            env_vars: None,
+            custom_flags: None,
+            initial_prompt: None,
+        }
+    }
+
+    #[test]
+    fn a_spawn_under_a_listed_terminals_id_is_refused_and_leaves_it_as_it_was() {
+        let id = unique_id("spawn-taken");
+        let manager = PtyManager::new();
+        let listed = test_terminal(&id, RunKind::Codex, ClaudeStatus::Idle);
+        manager.insert_test_terminal(listed.clone());
+        let launch = manager.begin_launch(&id, RunKind::Codex);
+
+        let spawned = manager.spawn_to(command_request(&id, "exit"), None, 4321, "tok-1".to_string(), WebviewEvents::to(|_, _| ()));
+
+        assert!(spawned.is_err(), "a terminal already listed under the id is restarted with relaunch");
+        assert_eq!(format!("{:?}", manager.get_info(&id)), format!("{:?}", Some(listed)));
+        assert!(manager.launch_current(&launch), "the listed terminal keeps its launch");
+        assert!(!manager.sessions.lock().contains_key(&id));
+        manager.kill(&id).unwrap();
     }
 
     #[cfg(windows)]
