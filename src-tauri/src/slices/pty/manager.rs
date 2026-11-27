@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use uuid::Uuid;
 
 use super::handshake::Handshake;
@@ -446,8 +446,8 @@ impl PtyManager {
         let start_seq = self.last_seq(&terminal_id);
         let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
-        let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
-        let webview = WebviewEvents::to_app(app_handle.clone());
+        let webview = WebviewEvents::to_app(app_handle);
+        let on_first_output = self.first_output_hook(launch_ref.clone(), webview.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
         let mut session = PtySession::spawn(
@@ -512,6 +512,21 @@ impl PtyManager {
         workspace_env: Option<HashMap<String, String>>,
         app_handle: AppHandle,
     ) -> Result<TerminalInfo, String> {
+        let webview = WebviewEvents::to_app(app_handle);
+        self.relaunch_to(terminal_id, rows, cols, bridge_port, bridge_token, workspace_env, webview)
+    }
+
+    /// `relaunch`, with the new session's events sent to `webview`.
+    fn relaunch_to(
+        &self,
+        terminal_id: &str,
+        rows: Option<u16>,
+        cols: Option<u16>,
+        bridge_port: u16,
+        bridge_token: String,
+        workspace_env: Option<HashMap<String, String>>,
+        webview: WebviewEvents,
+    ) -> Result<TerminalInfo, String> {
         let info = {
             let info_map = self.terminals_info.lock();
             info_map.get(terminal_id).cloned().ok_or_else(|| {
@@ -539,8 +554,7 @@ impl PtyManager {
             None => self.last_seq(terminal_id),
         };
 
-        let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
-        let webview = WebviewEvents::to_app(app_handle.clone());
+        let on_first_output = self.first_output_hook(launch_ref.clone(), webview.clone());
         let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
         let mut session = PtySession::spawn(
@@ -973,13 +987,13 @@ impl PtyManager {
     fn first_output_hook(
         &self,
         launch: LaunchRef,
-        app_handle: AppHandle,
+        webview: WebviewEvents,
     ) -> Box<dyn FnOnce() + Send> {
         let manager = self.clone();
         Box::new(move || {
             let starts_clock = manager.note_first_output(&launch, Instant::now());
             if let Some(status) = manager.apply_first_output_status(&launch) {
-                let _ = app_handle.emit("terminal-status", status);
+                webview.emit("terminal-status", status);
             }
             if !starts_clock {
                 return;
@@ -987,7 +1001,7 @@ impl PtyManager {
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(PLUGIN_SILENCE).await;
                 if let Some(status) = manager.check_plugin_silence(&launch, Instant::now()) {
-                    let _ = app_handle.emit("terminal-status", status);
+                    webview.emit("terminal-status", status);
                     manager.notify_status_watcher(&launch.terminal_id);
                 }
             });
@@ -2956,5 +2970,72 @@ mod tests {
         manager.kill(&id).unwrap();
         assert!(!super::super::screen::screen_path(&dir, &id).exists());
         assert!(!dir.join(format!("{}.log", id)).exists());
+    }
+
+    #[cfg(windows)]
+    /// The `pty-output` chunks among `sent`, in the order they were sent, as their seq and text.
+    fn output_chunks(sent: &[(String, serde_json::Value)]) -> Vec<(u64, String)> {
+        sent.iter()
+            .filter(|(event, _)| event == "pty-output")
+            .map(|(_, payload)| (payload["seq"].as_u64().unwrap(), payload["data"].as_str().unwrap().to_string()))
+            .collect()
+    }
+
+    #[cfg(windows)]
+    /// Waits up to 30 seconds for `done` to hold.
+    fn wait_until(what: &str, done: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !done() {
+            assert!(Instant::now() < deadline, "timed out waiting until {}", what);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_relaunched_terminal_numbers_its_output_above_everything_its_old_session_sent_as_it_closed() {
+        // The `\e[6n` cursor query ConPTY opens every session with, which the pane must answer
+        // before the process can start
+        const CURSOR_QUERY: &str = "\x1b[6n";
+        let id = unique_id("relaunch-seq");
+        let mut info = test_terminal(&id, RunKind::Command, ClaudeStatus::Exited);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit".to_string());
+        let manager = PtyManager::new();
+        manager.terminals_info.lock().insert(id.clone(), info);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| log.lock().push((event.to_string(), payload)));
+        let queries = |sent: &Mutex<Vec<(String, serde_json::Value)>>| {
+            output_chunks(&sent.lock()).iter().filter(|(_, text)| text.contains(CURSOR_QUERY)).count()
+        };
+
+        manager.relaunch_to(&id, None, None, 4321, "tok-1".to_string(), None, webview.clone()).unwrap();
+        wait_until("the first session asks for the cursor", || queries(&sent) == 1);
+        manager.write(&id, "\x1b[1;1R").unwrap();
+        // The operator typed `exit`: the process is over, and its PTY still open
+        wait_until("the first session exits", || {
+            manager.get_info(&id).is_some_and(|info| info.claude_status == ClaudeStatus::Exited)
+        });
+        let before_relaunch = output_chunks(&sent.lock()).len();
+
+        manager.relaunch_to(&id, None, None, 4321, "tok-1".to_string(), None, webview).unwrap();
+        wait_until("the relaunched session asks for the cursor", || queries(&sent) == 2);
+
+        let chunks = output_chunks(&sent.lock());
+        let new_query = chunks.iter().rposition(|(_, text)| text.contains(CURSOR_QUERY)).unwrap();
+        assert!(
+            new_query > before_relaunch,
+            "ConPTY sends a chunk as the old PTY closes, before the new session's first: {:?}",
+            chunks
+        );
+        // The pane keeps only a chunk numbered above every one it has seen, so it keeps them all,
+        // the new session's cursor query included
+        assert!(
+            chunks.windows(2).all(|pair| pair[1].0 > pair[0].0),
+            "every chunk is numbered above every chunk sent before it: {:?}",
+            chunks
+        );
+        manager.kill(&id).unwrap();
     }
 }
