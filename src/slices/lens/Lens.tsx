@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { usePopupLayer } from "../overlay/useOverlay.ts";
-import { isOnStage } from "../stage/stageElements.ts";
+import { LENS_MARK, isOnStage } from "../stage/stageElements.ts";
 import { focusTerminal } from "../terminal/terminalRequests.ts";
 
 interface LensProps {
@@ -23,7 +23,8 @@ interface LensProps {
  * back to the selected terminal. Where that terminal can't take it, because it isn't drawn or a stage
  * tab covers it, the focus goes back to what had it when the lens opened, such as a review's file
  * link, if that can still take it. Its host renders it inside a positioned stage wrapper and closes
- * it on a click on a readiness cell. Nothing underneath it changes while it is open.
+ * it on a click on a readiness cell. Nothing underneath it changes while it is open, and Ctrl+F leaves
+ * the search of a terminal it covers as it was.
  */
 export const Lens = ({ label, title, terminalId, onClose, replyStrip, children }: LensProps) => {
   const frame = useRef<HTMLElement>(null);
@@ -46,7 +47,7 @@ export const Lens = ({ label, title, terminalId, onClose, replyStrip, children }
     <section
       ref={frame}
       aria-label={label}
-      data-lens
+      {...LENS_MARK}
       className="absolute inset-0 z-30 flex flex-col bg-[#0b0f14] border-r-2 border-[#58a6ff]"
     >
       <header className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-[#30363d] bg-[#161b22] text-xs">

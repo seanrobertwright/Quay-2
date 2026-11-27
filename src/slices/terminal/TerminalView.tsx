@@ -16,6 +16,7 @@ import { onTerminalRequest } from "./terminalRequests";
 import { useTerminalMenu } from "./useTerminalMenu";
 import { bodyRightClick, copySelection, pasteClipboard, type BodyTerminal } from "./terminalBody";
 import { useContextMenu } from "../overlay/useContextMenu";
+import { isCoveredOnStage } from "../stage/stageElements.ts";
 import {
   Maximize2,
   X,
@@ -187,13 +188,15 @@ export const TerminalView: FC<TerminalViewProps> = ({
     [terminalId, repaintTerminal, startRename]
   );
 
-  // Hotkey listener for Ctrl+F when pane is focused. A stage tab over the pane makes it inert.
+  // Ctrl+F on the window toggles the selected pane's search, unless what has the focus, such as
+  // Topos's find, already handled the key, or a stage tab or a lens covers the pane.
   useEffect(() => {
     if (!isVisible || !isFocused) return;
 
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.ctrlKey && e.key.toLowerCase() === "f") {
-        if (containerRef.current?.closest("[inert]")) return;
+        if (e.defaultPrevented) return;
+        if (containerRef.current && isCoveredOnStage(containerRef.current)) return;
         e.preventDefault();
         e.stopPropagation();
         setIsSearchOpen((prev) => !prev);

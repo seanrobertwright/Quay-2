@@ -179,13 +179,35 @@ const press = (key: string, ctrl = false) =>
 /** Opens Topos's find with Ctrl+F from inside Topos, and waits for its field to take the focus. */
 async function openFind(container: HTMLElement): Promise<void> {
   await act(async () => graphList(container)!.focus());
-  // Topos takes the key first; past it, the terminal's own Ctrl+F on the window would open the terminal's search too.
-  const stop = (e: Event) => e.stopPropagation();
-  layer(container).addEventListener("keydown", stop);
   await press("f", true);
-  layer(container).removeEventListener("keydown", stop);
   await until(() => document.activeElement === findField(container), "the find never took the focus");
 }
+
+/** Whether the terminal's "Find in terminal..." bar is open. */
+const terminalSearchOpen = (container: HTMLElement) => container.querySelector('[data-pie-terminal="t1"] input') !== null;
+
+test("Ctrl+F in Topos in the companion opens Topos's find only, with the focus in its field", async () => {
+  const container = await draw();
+  await openFind(container);
+  await settleFocus();
+  assert.equal(terminalSearchOpen(container), false, "the terminal's search bar stays closed");
+  assert.equal(focused(container), "Topos's find field, over the companion");
+});
+
+test("Ctrl+F in the Topos lens opens Topos's find only, and no terminal search bar is open once the lens closes", async () => {
+  const container = await draw();
+  await openLens(container);
+  await openFind(container);
+  await settleFocus();
+  assert.equal(terminalSearchOpen(container), false, "the terminal's search bar stays closed");
+  assert.equal(focused(container), "Topos's find field, over the lens");
+
+  await press("Escape");
+  await press("Escape");
+  await settleFocus();
+  assert.equal(lens(container) !== null, false, "the second Escape closes the lens");
+  assert.equal(terminalSearchOpen(container), false, "no terminal search bar is open after the lens closes");
+});
 
 const wideToggle = (container: HTMLElement) => button(container.querySelector("[data-companion]")!, "Wide")!;
 
