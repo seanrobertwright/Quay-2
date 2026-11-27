@@ -10,6 +10,13 @@ const list = (...rules: string[]): string => rules.map((rule) => `- ${rule}`).jo
 export const OPENING =
   "How to write a call of quay_surface: A2UI 1.0 messages in Quay's own catalog, which is not the standard's basic one. quay_ask asks questions, quay_review shows a plan or findings and quay_board shows progress with far less to write. Use them where they do.";
 
+export const SHAPE = list(
+  "Change its texts, ids and title, and add components from the lines below.",
+  'Each message is `{"version": "1.0"}` with one kind of message. `components` is one flat list, and exactly one component in it has the id `root`.',
+  "A parent names its children by id, in `children` or a Button's `child`. Each child is a component of its own in the list, never written inside its parent.",
+  "When the operator presses the Button, its `event` is sent to you: the call waits for it.",
+);
+
 export const CALL = list(
   'A call is `{"place", "title", "messages"}`. `messages` is a list of one or more messages, written out in the call and never left empty.',
   'A message is `{"version": "1.0"}` with one of `createSurface: {surfaceId, dataModel?, components}`, `updateComponents: {surfaceId, components}`, `updateDataModel: {surfaceId, path?, value}` and `deleteSurface: {surfaceId}`. Any other message is rejected.',

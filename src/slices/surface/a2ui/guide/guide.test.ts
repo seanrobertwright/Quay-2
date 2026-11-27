@@ -61,20 +61,30 @@ function accepted(call: Call, surfaceId: string, held: HeldSurface[] = []): Acce
   return verdict.surfaces;
 }
 
+test("the guide opens with a whole call to copy, before any rule", () => {
+  const [opening, first] = committed.split("\n## ");
+  assert.ok(!opening.includes("```"), "nothing to copy before the first section");
+  assert.ok(first.startsWith("A call to copy\n"), first.slice(0, 40));
+  assert.ok(first.includes("```json\n"), "the first section holds the first call");
+  const [copy] = examples;
+  assert.deepEqual(Object.keys(copy).sort(), ["messages", "place", "title"]);
+  assert.deepEqual(copy.messages.map((message) => Object.keys(message).sort()), [["createSurface", "version"]]);
+});
+
 test("each example is accepted by the check that a call of it is held to, made after the ones before it", () => {
-  assert.equal(examples.length, 5);
-  const [form, report, status, update, replace] = examples;
+  assert.equal(examples.length, 6);
+  const [copy, form, report, status, update, replace] = examples;
   const importing = accepted(status, "import");
   const held: HeldSurface = { state: importing[0].state, place: "strip" };
-  const made = [accepted(form, "release"), accepted(report, "report"), importing, accepted(update, "", [held]), accepted(replace, "import")];
+  const made = [accepted(copy, "confirm"), accepted(form, "release"), accepted(report, "report"), importing, accepted(update, "", [held]), accepted(replace, "import")];
   assert.deepEqual(
     made.map((surfaces) => surfaces.map(({ surface_id, asks }) => [surface_id, asks])),
-    [[["release", true]], [["report", false]], [["import", false]], [["import", false]], [["import", false]]],
+    [[["confirm", true]], [["release", true]], [["report", false]], [["import", false]], [["import", false]], [["import", false]]],
   );
 });
 
 test("the examples show every place and every message", () => {
-  assert.deepEqual(examples.map(({ place }) => place), ["companion", "tab", "strip", undefined, "strip"]);
+  assert.deepEqual(examples.map(({ place }) => place), ["companion", "companion", "tab", "strip", undefined, "strip"]);
   const keys = new Set(examples.flatMap(({ messages }) => messages.flatMap((message) => Object.keys(message))));
   assert.deepEqual([...keys].sort(), ["createSurface", "deleteSurface", "updateComponents", "updateDataModel", "version"]);
 });
