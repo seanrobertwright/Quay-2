@@ -2184,6 +2184,36 @@ mod tests {
         assert_eq!(env_of(&cmd, "QUAY_LAUNCH_PROMPT").as_deref(), Some(MULTI_LINE_PROMPT));
     }
 
+    /// The version probe runs npm's shim on the terminal's PATH, not an OpenCode on Quay's.
+    /// A probe that can't run reads as 2.x too, so the 1.x shim is what shows it ran.
+    #[cfg(windows)]
+    #[test]
+    fn the_version_probe_runs_the_opencode_shim_on_the_terminals_path() {
+        let probed = |version: &str| {
+            let root = TempDir::new("opencode-shim-probe");
+            let npm = root.join("npm");
+            let home = root.join("home");
+            std::fs::create_dir_all(&npm).unwrap();
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::write(npm.join("opencode.cmd"), format!("@echo {version}\r\n")).unwrap();
+            let mut path = vec![npm];
+            path.extend(std::env::var_os("PATH").iter().flat_map(std::env::split_paths));
+            let mut request = spawn_request(RunKind::OpenCode);
+            request.env_vars = Some(
+                [
+                    (PATH_NAME.to_string(), std::env::join_paths(path).unwrap().to_string_lossy().to_string()),
+                    ("USERPROFILE".to_string(), home.to_string_lossy().to_string()),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            opencode_launch(&request, 4567)
+        };
+
+        assert!(matches!(probed("2.4.1"), OpenCodeLaunch::Server(server) if server.port() == 4567));
+        assert!(matches!(probed("1.4.0"), OpenCodeLaunch::Tui(4567)));
+    }
+
     /// How the platform spells the variable `terminal_path` reads.
     const PATH_NAME: &str = if cfg!(windows) { "Path" } else { "PATH" };
 
