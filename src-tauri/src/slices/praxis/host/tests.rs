@@ -59,6 +59,12 @@ impl Harness {
         Self::with_bounds(CallBounds::default())
     }
 
+    /// A harness whose next creation is killed once the fake has saved it as pending, which the
+    /// fake does before its delay. Call `rebound` before a call that has to finish.
+    fn killed_on_write() -> Self {
+        Self::with_bounds(CallBounds { write: until_the_fake_has_started(), ..CallBounds::default() })
+    }
+
     fn with_bounds(bounds: CallBounds) -> Self {
         let dir = TempDir::new("praxis-cli");
         std::fs::create_dir_all(dir.join("sdk").join("engine").join("src")).unwrap();
@@ -596,8 +602,7 @@ fn a_repeated_run_while_one_is_in_flight_joins_the_same_process() {
 
 #[test]
 fn a_creation_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
-    // The fake records the creation as pending before its delay, so it is killed once that is saved.
-    let mut h = Harness::with_bounds(CallBounds { write: until_the_fake_has_started(), ..CallBounds::default() });
+    let mut h = Harness::killed_on_write();
     let created = fixture("WorkflowRunResult");
     h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
     assert_eq!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::TimedOut);
@@ -1084,8 +1089,7 @@ fn a_repeated_graph_run_while_one_is_in_flight_joins_the_same_process() {
 
 #[test]
 fn a_graph_run_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
-    // The fake records the creation as pending before its delay, so it is killed once that is saved.
-    let mut h = Harness::with_bounds(CallBounds { write: until_the_fake_has_started(), ..CallBounds::default() });
+    let mut h = Harness::killed_on_write();
     let created = recorded("run: created")["stdout"].clone();
     h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
     assert_eq!(h.call(Verb::GraphRun, &["run", "nightly-build"]), CallOutcome::TimedOut);
