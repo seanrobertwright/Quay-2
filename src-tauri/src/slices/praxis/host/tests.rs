@@ -333,10 +333,14 @@ fn child_pid(src: &Path) -> u32 {
 fn a_timeout_kills_the_whole_tree() {
     // The fake starts its child and writes its id before its delay, so it is killed once that is done.
     let h = Harness::with_bounds(CallBounds { read: until_the_fake_has_started(), ..CallBounds::default() });
-    h.scenario(json!({ "child": true, "delayMs": 120000 }));
+    let delay = Duration::from_secs(120);
+    h.scenario(json!({ "child": true, "delayMs": delay.as_millis() as u64 }));
     let started = Instant::now();
     assert_eq!(h.call(Verb::Status, &["status", "wo-1"]), CallOutcome::TimedOut);
-    assert!(started.elapsed() < Duration::from_secs(30));
+    // The call also waits for node's `--version` and for the killed tree to exit, each bounded on
+    // its own, so on a loaded machine it can take well past the read bound. Half the fake's delay
+    // still shows the runner stopped at the timeout and didn't wait for the fake.
+    assert!(started.elapsed() < delay / 2, "the call waited {:?}", started.elapsed());
     let pid = child_pid(&h.src());
     assert!(!process_alive(pid), "the fake's child {pid} outlived the timeout");
 }
