@@ -420,18 +420,39 @@ fn opencode_file_name() -> &'static str {
     name
 }
 
-/// The program an OpenCode terminal starts. When a folder on `path`, the terminal's `PATH`,
-/// holds OpenCode, that is the bare name, which the spawn looks up on the same `PATH`.
-/// Otherwise it is bun's install, `.bun/bin` under `home`, when that exists, and failing
-/// that the bare name again, so the spawn error names it.
+/// The file names OpenCode is looked for under in one folder, in the order a lookup tries
+/// them. On Windows that is `PATHEXT`'s order: the executable, then the `.cmd` shim npm installs.
+fn opencode_file_names() -> &'static [&'static str] {
+    #[cfg(windows)]
+    let names: &[&str] = &["opencode.exe", "opencode.cmd"];
+    #[cfg(not(windows))]
+    let names: &[&str] = &["opencode"];
+    names
+}
+
+/// The program an OpenCode terminal starts, by its full path: the first OpenCode in the
+/// absolute folders of `path`, the terminal's `PATH`, in order, and failing that bun's install,
+/// `.bun/bin` under `home`. A spawn given a bare name would look it up on Quay's own `PATH`,
+/// not the terminal's. When there is none it is the bare name, so the spawn error names it.
 fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Path>) -> String {
-    let name = opencode_file_name();
-    if path.is_some_and(|path| std::env::split_paths(path).any(|dir| dir.join(name).is_file())) {
-        return name.to_string();
-    }
-    home.map(|home| home.join(".bun").join("bin").join(name))
-        .filter(|bun| bun.is_file())
-        .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
+    let on_path = path
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .filter(|dir| dir.is_absolute());
+    let bun = home.map(|home| home.join(".bun").join("bin"));
+    on_path
+        .chain(bun)
+        .flat_map(|dir| opencode_file_names().iter().map(move |name| dir.join(name)))
+        .find(|candidate| candidate.is_file())
+        .map_or_else(|| opencode_file_name().to_string(), |found| found.to_string_lossy().to_string())
+}
+
+/// Whether `program` is a Windows batch file, such as npm's `opencode.cmd` shim, which a PTY
+/// can only start through `cmd.exe /c`.
+fn is_cmd_shim(program: &str) -> bool {
+    Path::new(program)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd"))
 }
 
 /// How long `opencode --version` may take before an OpenCode terminal is launched as 2.x.
@@ -2062,13 +2083,46 @@ mod tests {
 
         // Not on the PATH: bun's install
         assert_eq!(opencode_program(Some(&path), Some(&home)), bun.to_string_lossy());
-        // On the PATH: the bare name, which the spawn finds there
+        // On the PATH: its full path there, since a spawn looks a bare name up on Quay's own PATH
         std::fs::write(on_path.join(name), b"").unwrap();
-        assert_eq!(opencode_program(Some(&path), Some(&home)), name);
+        assert_eq!(opencode_program(Some(&path), Some(&home)), on_path.join(name).to_string_lossy());
+        // A relative folder on the PATH is never looked in
+        let relative = std::env::join_paths([std::path::PathBuf::from("bin")]).unwrap();
+        assert_eq!(opencode_program(Some(&relative), Some(&root.join("nobody"))), name);
         // Neither: the bare name, so the spawn error names it
         assert_eq!(opencode_program(None, Some(&root.join("nobody"))), name);
         assert_eq!(opencode_program(None, None), name);
 
+    }
+
+    /// npm installs OpenCode on Windows as an `opencode.cmd` shim, with no `opencode.exe`.
+    #[cfg(windows)]
+    #[test]
+    fn opencodes_npm_shim_on_the_terminals_path_is_found_by_its_full_path() {
+        let root = TempDir::new("opencode-shim");
+        let on_path = root.join("npm");
+        let home = root.join("home");
+        let bun_bin = home.join(".bun").join("bin");
+        std::fs::create_dir_all(&on_path).unwrap();
+        std::fs::create_dir_all(&bun_bin).unwrap();
+        std::fs::write(bun_bin.join("opencode.exe"), b"").unwrap();
+        let shim = on_path.join("opencode.cmd");
+        std::fs::write(&shim, b"").unwrap();
+        let path = std::env::join_paths([root.join("empty"), on_path.clone()]).unwrap();
+
+        // The terminal's PATH wins over bun's install
+        assert_eq!(opencode_program(Some(&path), Some(&home)), shim.to_string_lossy());
+        // In one folder the executable wins over the shim, as `PATHEXT` orders them
+        let exe = on_path.join("opencode.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(opencode_program(Some(&path), Some(&home)), exe.to_string_lossy());
+        // A shim in bun's folder is found when nothing on the PATH is
+        std::fs::remove_file(bun_bin.join("opencode.exe")).unwrap();
+        std::fs::write(bun_bin.join("opencode.cmd"), b"").unwrap();
+        assert_eq!(
+            opencode_program(None, Some(&home)),
+            bun_bin.join("opencode.cmd").to_string_lossy()
+        );
     }
 
     /// How the platform spells the variable `terminal_path` reads.
