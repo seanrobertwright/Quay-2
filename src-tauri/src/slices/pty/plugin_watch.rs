@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use super::handshake::Handshake;
-use super::models::{ClaudeStatus, RunKind, TerminalInfo};
+use super::models::{ClaudeStatus, RunKind};
 use super::osc7501::TurnReport;
 use crate::dates::now_ms;
 
@@ -210,14 +210,9 @@ impl PluginWatch {
         self.handshake = false;
     }
 
-    /// Shows `info` Exited with the launch's exit code, if its process has exited. Returns
-    /// whether it has.
-    pub fn show_exit(&self, info: &mut TerminalInfo) -> bool {
-        if self.exited {
-            info.claude_status = ClaudeStatus::Exited;
-            info.exit_code = self.exit_code;
-        }
-        self.exited
+    /// The exit code the launch's process exited with, `None` while it runs or when it gave none.
+    pub fn exit_code(&self) -> Option<i32> {
+        self.exit_code
     }
 
     /// Keeps the plugin hint away for the rest of this launch.

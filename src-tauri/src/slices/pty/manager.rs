@@ -324,6 +324,20 @@ fn settle_after_first_output(info: &mut TerminalInfo) -> bool {
     }
 }
 
+/// Shows `info` as far as the launch `watch` tracks got before the terminal was listed: out of
+/// Starting once it has printed, then Exited with its exit code once its process has exited,
+/// which wins. Returns whether it has exited, so the caller tells the status watcher.
+fn show_launch_so_far(watch: &PluginWatch, info: &mut TerminalInfo) -> bool {
+    if watch.has_output() {
+        settle_after_first_output(info);
+    }
+    if watch.exited() {
+        info.claude_status = ClaudeStatus::Exited;
+        info.exit_code = watch.exit_code();
+    }
+    watch.exited()
+}
+
 /// Shows a terminal a message reached as Working (see `TerminalInfo::shows_working_on_delivery`).
 fn show_delivered(info: &mut TerminalInfo) {
     if info.shows_working_on_delivery() {
@@ -1040,11 +1054,8 @@ impl PtyManager {
     /// listed Exited with its exit code (see `exit_launch`) and the status watcher told.
     pub fn insert_launched(&self, launch: &LaunchRef, mut info: TerminalInfo) -> TerminalInfo {
         let mut watches = self.plugin_watches.lock();
-        let watch = launch.current_in(&mut watches);
-        if watch.as_ref().is_some_and(|watch| watch.has_output()) {
-            settle_after_first_output(&mut info);
-        }
-        let exited = watch.is_some_and(|watch| watch.show_exit(&mut info));
+        let exited =
+            launch.current_in(&mut watches).is_some_and(|watch| show_launch_so_far(watch, &mut info));
         self.terminals_info.lock().insert(info.id.clone(), info.clone());
         drop(watches);
         self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
@@ -1072,10 +1083,7 @@ impl PtyManager {
         let Some(watch) = launch.current_in(&mut watches) else {
             return Err(attach);
         };
-        if watch.has_output() {
-            settle_after_first_output(&mut info);
-        }
-        let exited = watch.show_exit(&mut info);
+        let exited = show_launch_so_far(watch, &mut info);
         if !self.terminals_info.lock().contains_key(&launch.terminal_id) {
             // Closed before this launch began, so the launch is the closed terminal's last trace
             watches.remove(&launch.terminal_id);
