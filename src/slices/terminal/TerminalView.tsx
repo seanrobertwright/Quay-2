@@ -1,5 +1,5 @@
 import { neonPart } from "../../lib/neon.ts";
-import { FC, CSSProperties, MouseEvent, ReactNode, useState, useEffect, useCallback } from "react";
+import { FC, CSSProperties, MouseEvent, ReactNode, useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
@@ -157,6 +157,19 @@ export const TerminalView: FC<TerminalViewProps> = ({
     onOpenMenu: openBodyMenuBelow,
   });
 
+  // The open search bar's element; null while it is closed.
+  const searchBar = useRef<HTMLDivElement | null>(null);
+  // The bar leaves the page when it closes, and the focus it held would fall to the page body, so that
+  // focus goes to the terminal's key field first (#810). Focus anywhere else stays where it is.
+  const closeSearch = useCallback(() => {
+    if (searchBar.current?.contains(document.activeElement)) focusTerminal();
+    setIsSearchOpen(false);
+  }, [focusTerminal]);
+  const toggleSearch = useCallback(() => {
+    if (searchBar.current) closeSearch();
+    else setIsSearchOpen(true);
+  }, [closeSearch]);
+
   // What the pane's own items do, in its header's menu and its body's menu alike.
   const paneHandlers: Partial<TerminalMenuHandlers> = {
     rename: startRename,
@@ -196,13 +209,13 @@ export const TerminalView: FC<TerminalViewProps> = ({
         if (containerRef.current?.closest("[inert]")) return;
         e.preventDefault();
         e.stopPropagation();
-        setIsSearchOpen((prev) => !prev);
+        toggleSearch();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isVisible, isFocused, containerRef]);
+  }, [isVisible, isFocused, containerRef, toggleSearch]);
 
   const renderIcon = () => {
     return <AgentIcon kind={terminal?.run_kind} className="w-3.5 h-3.5 shrink-0" />;
@@ -314,7 +327,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsSearchOpen((prev) => !prev);
+                  toggleSearch();
                 }}
                 className={`p-1 rounded transition-colors cursor-pointer ${
                   isSearchOpen
@@ -385,7 +398,8 @@ export const TerminalView: FC<TerminalViewProps> = ({
             onFindNext={findNext}
             onFindPrevious={findPrevious}
             onClear={clearSearch}
-            onClose={() => setIsSearchOpen(false)}
+            onClose={closeSearch}
+            barRef={searchBar}
             onGetScrollback={exportScrollback}
           />
 
