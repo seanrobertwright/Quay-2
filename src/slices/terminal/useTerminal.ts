@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type IWindowsPty } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, ISearchOptions } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,10 +12,33 @@ import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
 import { repaintTerminalScreen, syncTerminalSize } from "./terminalResize";
+import { paneTerminalOptions, parseWindowsBuildNumber, windowsPtyFor } from "./terminalOptions";
 
 let globalTerminalCols = 160;
 let globalTerminalRows = 40;
 const fittedTerminalDimensions = new Map<string, { cols: number; rows: number }>();
+
+let windowsPty: IWindowsPty | undefined;
+let windowsPtyLoad: Promise<IWindowsPty | undefined> | null = null;
+
+/** The `windowsPty` option as far as it is known: without the build number until it is read. */
+function knownWindowsPty(): IWindowsPty | undefined {
+  return windowsPty ?? windowsPtyFor(navigator.userAgent, null);
+}
+
+/**
+ * Reads the Windows build number once for every pane. A build number that can't be read leaves
+ * the option naming only the ConPTY backend (terminalOptions.ts `windowsPtyFor`).
+ */
+function loadWindowsPty(): Promise<IWindowsPty | undefined> {
+  windowsPtyLoad ??= invoke<unknown>("windows_build_number")
+    .catch((err) => {
+      console.error("Failed to read the Windows build number:", err);
+      return null;
+    })
+    .then((build) => (windowsPty = windowsPtyFor(navigator.userAgent, parseWindowsBuildNumber(build))));
+  return windowsPtyLoad;
+}
 
 /**
  * Returns the most recent fitted terminal dimensions across active panes so newly
@@ -100,40 +123,8 @@ export function useTerminal(
     if (!containerRef.current) return;
     lastPtySizeRef.current = { rows: 0, cols: 0 };
 
-    // Initialize xterm.js instance with Quay dark palette
-    const term = new Terminal({
-      cursorBlink: true,
-      fontFamily: "'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace",
-      fontSize: 14,
-      lineHeight: 1.2,
-      theme: {
-        background: "#0d1117",
-        foreground: "#c9d1d9",
-        cursor: "#58a6ff",
-        cursorAccent: "#0d1117",
-        selectionBackground: "#1f6feb40",
-        black: "#484f58",
-        red: "#ff7b72",
-        green: "#3fb950",
-        yellow: "#d29922",
-        blue: "#58a6ff",
-        magenta: "#bc8cff",
-        cyan: "#39c5cf",
-        white: "#b1bac4",
-        brightBlack: "#6e7681",
-        brightRed: "#ffa198",
-        brightGreen: "#56d364",
-        brightYellow: "#e3b341",
-        brightBlue: "#79c0ff",
-        brightMagenta: "#d2a8ff",
-        brightCyan: "#56d4dd",
-        brightWhite: "#f0f6fc",
-      },
-      allowTransparency: true,
-      scrollback: 5000,
-      // `term.unicode` is a proposed API; without this the width provider below never registers
-      allowProposedApi: true,
-    });
+    // A pane that mounts before the build number is read gets it before the replay is written
+    const term = new Terminal(paneTerminalOptions(knownWindowsPty()));
 
     // Register custom Unicode width provider so "⚙️" (U+2699 U+FE0F) and emojis match ConPTY
     registerClaudeUnicodeProvider(term);
@@ -211,11 +202,13 @@ export function useTerminal(
       }
     });
 
-    // Fetch initial buffer once on mount
-    invoke<TerminalOutputPayload>("get_terminal_output", { terminalId })
-      .then((res) => {
+    // Fetch initial buffer once on mount. The build number is read alongside it, so the replay
+    // after a window reload is written with the same windowsPty option as live output.
+    Promise.all([invoke<TerminalOutputPayload>("get_terminal_output", { terminalId }), loadWindowsPty()])
+      .then(([res, readWindowsPty]) => {
         // The pane unmounted before the snapshot came back; the next mount fetches its own
         if (disposed) return;
+        if (readWindowsPty) term.options.windowsPty = readWindowsPty;
         syncPtySize();
         // A pane that mounts hidden can't be fitted, so xterm would stay at its default 80x24
         // and lay out the replay and every live chunk for the wrong size. Give it the PTY's
