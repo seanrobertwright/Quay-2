@@ -6,6 +6,7 @@
 // timers, so each check waits them out.
 import "../../test-support/bundlerImports.ts";
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { settleFocus, terminalKeys as keysOf, terminalSearchOpen as searchOpenOf, until } from "../../test-support/terminalPane.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -15,7 +16,6 @@ import type { TerminalInfo } from "../terminal/types.ts";
 const { Stage } = await import("../stage/Stage.tsx");
 const { Lens } = await import("./Lens.tsx");
 
-const { setTimeout: later } = globalThis;
 const noop = () => {};
 const PROJECT = "E:/alpha";
 const TERMINAL: TerminalInfo = {
@@ -38,17 +38,6 @@ afterEach(async () => {
   }
   mounted = null;
 });
-
-/** Lets the page run for `ms` of real time: what was promised, its frames and its timers. */
-const wait = (ms: number) => act(async () => void (await new Promise((done) => later(done, ms))));
-/** Waits out a terminal's timed focus, whose last try runs half a second after it was asked. */
-const settleFocus = () => wait(700);
-
-/** Waits, for up to two seconds, until `holds`. */
-async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await wait(20);
-  assert.ok(holds(), what);
-}
 
 let setLensOpen: (open: boolean) => void = noop;
 
@@ -114,14 +103,13 @@ async function draw(): Promise<HTMLElement> {
   return container;
 }
 
-const terminalKeys = (container: HTMLElement) =>
-  container.querySelector<HTMLTextAreaElement>('[data-pie-terminal="t1"] .xterm-helper-textarea');
+const terminalKeys = (container: HTMLElement) => keysOf(container, TERMINAL.id);
+/** Whether the terminal's "Find in terminal..." bar is open. */
+const terminalSearchOpen = (container: HTMLElement) => searchOpenOf(container, TERMINAL.id);
 const lens = (container: HTMLElement) => container.querySelector('section[aria-label="Diff lens"]');
 const answer = (container: HTMLElement) => container.querySelector<HTMLInputElement>('[data-companion] input[aria-label="Answer"]')!;
 const lensItem = (container: HTMLElement) =>
   [...lens(container)!.querySelectorAll("button")].find((b) => b.textContent === "src/app.ts")!;
-/** Whether the terminal's "Find in terminal..." bar is open. */
-const searchOpen = (container: HTMLElement) => container.querySelector('[data-pie-terminal="t1"] input') !== null;
 
 /** What has the focus, by name, so a failed check says where it went. */
 function focused(container: HTMLElement): string {
@@ -153,7 +141,7 @@ for (const [where, focus, name] of [
     await act(async () => focus(container));
     await ctrlF();
     await settleFocus();
-    assert.equal(searchOpen(container), false, "the covered terminal's search bar stays closed");
+    assert.equal(terminalSearchOpen(container), false, "the covered terminal's search bar stays closed");
     assert.equal(focused(container), name);
   });
 }
@@ -164,32 +152,32 @@ test("with a lens open and the focus left in the covered terminal, Ctrl+F leaves
   await act(async () => terminalKeys(container)!.focus());
   await ctrlF();
   await settleFocus();
-  assert.equal(searchOpen(container), false, "the covered terminal's search bar stays closed");
+  assert.equal(terminalSearchOpen(container), false, "the covered terminal's search bar stays closed");
 });
 
 test("a terminal search open before a lens opened stays open under it through Ctrl+F", async () => {
   const container = await draw();
   await act(async () => answer(container).focus());
   await ctrlF();
-  await until(() => searchOpen(container), "Ctrl+F from the companion never opened the search");
+  await until(() => terminalSearchOpen(container), "Ctrl+F from the companion never opened the search");
   await openLens(container);
   await act(async () => lensItem(container).focus());
   await ctrlF();
   await settleFocus();
-  assert.equal(searchOpen(container), true, "the search bar is still open");
+  assert.equal(terminalSearchOpen(container), true, "the search bar is still open");
 });
 
 test("with no lens open, Ctrl+F from the terminal and from a field that does not handle it toggles the terminal's search", async () => {
   const container = await draw();
   await act(async () => terminalKeys(container)!.focus());
   await ctrlF();
-  await until(() => searchOpen(container), "Ctrl+F from the terminal never opened the search");
+  await until(() => terminalSearchOpen(container), "Ctrl+F from the terminal never opened the search");
 
   await act(async () => answer(container).focus());
   await ctrlF();
-  await until(() => !searchOpen(container), "Ctrl+F from the companion never closed the search");
+  await until(() => !terminalSearchOpen(container), "Ctrl+F from the companion never closed the search");
   await ctrlF();
-  await until(() => searchOpen(container), "Ctrl+F from the companion never opened the search");
+  await until(() => terminalSearchOpen(container), "Ctrl+F from the companion never opened the search");
 });
 
 test("a Ctrl+F that what has the focus already handled leaves the terminal's search closed", async () => {
@@ -202,6 +190,6 @@ test("a Ctrl+F that what has the focus already handled leaves the terminal's sea
   await ctrlF();
   await settleFocus();
   field.removeEventListener("keydown", claim);
-  assert.equal(searchOpen(container), false, "the terminal's search bar stays closed");
+  assert.equal(terminalSearchOpen(container), false, "the terminal's search bar stays closed");
   assert.equal(focused(container), "Answer");
 });
