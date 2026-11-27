@@ -260,7 +260,6 @@ export const Topos: React.FC<ToposProps> = ({
   // The conflicted file open in the three-pane resolver (#390), in place of the graph and inspector.
   const [resolving, setResolving] = useState<string | null>(null);
   useEffect(() => setResolving(null), [selectedPath]);
-  const closeResolver = useCallback(() => setResolving(null), []);
   const continueRef = useRef<HTMLButtonElement>(null);
   const goToContinue = useCallback(() => continueRef.current?.focus(), []);
   const otherSideHasChanges = useMemo(() => {
@@ -316,6 +315,11 @@ export const Topos: React.FC<ToposProps> = ({
     const heldFocus = diffSlot.current?.contains(document.activeElement) === true;
     setStagingFile(null);
     setCommitFile(null);
+    if (heldFocus) setGraphFocusRequest((n) => n + 1);
+  }, []);
+  // The resolver hands the focus on the same way as it closes (#812).
+  const closeResolver = useCallback((heldFocus: boolean) => {
+    setResolving(null);
     if (heldFocus) setGraphFocusRequest((n) => n + 1);
   }, []);
   const openCommitFile = useCallback(
