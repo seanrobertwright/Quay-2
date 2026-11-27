@@ -28,6 +28,9 @@ const SCREEN_SAVE_POLL: std::time::Duration = std::time::Duration::from_millis(5
 /// still in flight.
 const EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(300);
 
+/// How long `PtySession::end` waits for the reader to send what the PTY writes as it closes.
+const TEARDOWN_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// How much recent output a session keeps for a pane that mounts, in bytes.
 const OUTPUT_BUFFER_LIMIT: usize = 256 * 1024;
 
@@ -71,6 +74,10 @@ pub struct PtySession {
     sidecar: Option<Sidecar>,
     /// The end of a session that runs no process, until `take_exit_report` takes it.
     exit_report: Option<ExitReport>,
+    /// Set once `end` has read the last seq: the session sends no output after it.
+    output_closed: Arc<AtomicBool>,
+    /// Hangs up when the PTY reader is done, for a session with a process.
+    reader_done: Option<std::sync::mpsc::Receiver<()>>,
 }
 
 /// The two ends of a PTY Quay holds: the master, which takes its size, and the writer into it.
@@ -97,6 +104,7 @@ struct OutputSink {
     log_path: PathBuf,
     output_buffer: Arc<Mutex<(String, u64)>>,
     screen: Arc<ScreenKeeper>,
+    output_closed: Arc<AtomicBool>,
 }
 
 impl OutputSink {
@@ -106,16 +114,25 @@ impl OutputSink {
     }
 
     /// Writes `text`, one chunk, to `log` and the screen, runs `before_send` with it, then
-    /// buffers it under the next seq and sends it as `pty-output`.
+    /// buffers it under the next seq and sends it as `pty-output`. Once the session's output is
+    /// closed (see `PtySession::end`), it drops the chunk.
     fn write(&self, log: Option<&mut std::fs::File>, text: String, before_send: impl FnOnce(&str)) {
+        if self.output_closed.load(Ordering::SeqCst) {
+            return;
+        }
         if let Some(file) = log {
             let _ = file.write_all(text.as_bytes());
         }
         self.screen.feed(&text, std::time::Instant::now());
         before_send(&text);
         // Buffer recent output for newly-mounting xterm instances, capped to avoid unbounded
-        // memory usage
-        let seq = append_output(&mut self.output_buffer.lock(), &text, OUTPUT_BUFFER_LIMIT);
+        // memory usage. The chunk is sent under the buffer's lock, so a replay and the sent
+        // chunks agree, and `PtySession::end` returns only after the last one is sent.
+        let mut buffer = self.output_buffer.lock();
+        if self.output_closed.load(Ordering::SeqCst) {
+            return;
+        }
+        let seq = append_output(&mut buffer, &text, OUTPUT_BUFFER_LIMIT);
         self.events.emit(
             "pty-output",
             PtyOutputPayload {
@@ -1010,12 +1027,14 @@ impl PtySession {
             (!earlier.is_empty()).then_some(earlier.as_str()),
         ));
 
+        let output_closed = Arc::new(AtomicBool::new(false));
         let sink = OutputSink {
             terminal_id: terminal_id.clone(),
             events: events.clone(),
             log_path: log_path.clone(),
             output_buffer: output_buffer.clone(),
             screen: screen.clone(),
+            output_closed: output_closed.clone(),
         };
         // The session as it is with no process; a launch that runs one adds its PTY
         let without_process = Self {
@@ -1032,6 +1051,8 @@ impl PtySession {
             screen: screen.clone(),
             sidecar: None,
             exit_report: None,
+            output_closed,
+            reader_done: None,
         };
 
         let (cmd, sidecar) = match launched {
@@ -1075,12 +1096,15 @@ impl PtySession {
         })?));
 
         let is_alive = Arc::new(AtomicBool::new(true));
+        let (reader_running, reader_done) = std::sync::mpsc::channel::<()>();
         // Background thread for reading PTY output
         {
             let is_alive = is_alive.clone();
             let screen = screen.clone();
 
             std::thread::spawn(move || {
+                // Dropped as the thread ends, which tells `end` the reader is done
+                let _reader_running = reader_running;
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
                 let mut on_first_output = Some(on_first_output);
@@ -1182,6 +1206,7 @@ impl PtySession {
             pty: Some(PtyEnds { master: pair.master, writer }),
             is_alive,
             sidecar,
+            reader_done: Some(reader_done),
             ..without_process
         })
     }
@@ -1285,6 +1310,29 @@ impl PtySession {
     /// The seq of the last output chunk this session sent.
     pub fn last_seq(&self) -> u64 {
         self.output_buffer.lock().1
+    }
+
+    /// Ends this session, and its process with it, and returns the seq of its last output chunk,
+    /// for the session that takes its place to number on from. Closing a PTY can write output
+    /// of its own, as ConPTY writes a mode reset: the reader has up to `TEARDOWN_DRAIN` to send
+    /// it, and the session sends nothing after that. So every chunk it sent is numbered at or
+    /// below the seq returned, and was sent before `end` returns. It blocks while it waits, so
+    /// call it holding no lock.
+    pub fn end(mut self) -> u64 {
+        let reader_done = self.reader_done.take();
+        let output_buffer = self.output_buffer.clone();
+        let output_closed = self.output_closed.clone();
+        let terminal_id = self.id.clone();
+        // Closes the PTY, which ends the process and, once the PTY's last output is read, the reader
+        drop(self);
+        if let Some(done) = reader_done {
+            if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = done.recv_timeout(TEARDOWN_DRAIN) {
+                tracing::debug!("PTY reader for {} still running after its session ended", terminal_id);
+            }
+        }
+        let buffer = output_buffer.lock();
+        output_closed.store(true, Ordering::SeqCst);
+        buffer.1
     }
 }
 
