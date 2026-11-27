@@ -325,6 +325,11 @@ async fn from_the_third_rejection_in_a_row_the_advice_changes_and_an_accepted_ca
 /// it: none for a mistake that is not made often. `rawRejected.test.ts` holds the check to these errors.
 const MISTAKES: &str = include_str!("raw_mistakes.fixture.json");
 
+/// The `next` of a rejected `quay_surface` call that names `fixes`.
+fn told_to(fixes: &[&str]) -> String {
+    format!("Nothing was changed. {} Correct the call and send all of it again.", fixes.join(" "))
+}
+
 #[tokio::test]
 async fn a_common_mistake_is_told_its_fix_and_the_errors_as_the_check_gave_them() {
     let mistakes: Vec<Value> = serde_json::from_str(MISTAKES).unwrap();
@@ -335,7 +340,7 @@ async fn a_common_mistake_is_told_its_fix_and_the_errors_as_the_check_gave_them(
         let (errors, next) = told(call).await;
         assert_eq!(errors, mistake["errors"], "{}", mistake["mistake"]);
         let expected = match mistake["fix"].as_str() {
-            Some(fix) => format!("Nothing was changed. {fix} Correct the call and send all of it again."),
+            Some(fix) => told_to(&[fix]),
             None => NEXT.to_string(),
         };
         assert_eq!(next, expected, "{}", mistake["mistake"]);
@@ -352,7 +357,7 @@ async fn each_fix_is_named_once_in_the_order_found_and_from_the_third_rejection_
     let errors: Vec<Value> = [bare, nested, other, bare].iter().map(|one| one["errors"][0].clone()).collect();
     let stop = "Stop guessing. Call quay_surface_guide first, or use quay_ask, quay_review or quay_board, or say it in the terminal.";
     let fix = |mistake: &Value| mistake["fix"].as_str().unwrap().to_string();
-    let both = format!("Nothing was changed. {} {} Correct the call and send all of it again.", fix(bare), fix(nested));
+    let both = told_to(&[&fix(bare), &fix(nested)]);
     for next in [both.as_str(), &both, stop] {
         let call = cli.call("quay_surface", plan("plan", "companion"));
         seam.surfaces.verdict(webview.next_check().await.call, rejected(json!(errors)));

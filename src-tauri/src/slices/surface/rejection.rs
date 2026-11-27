@@ -100,10 +100,12 @@ fn next(tool: &str, run: u32, errors: &[CallError]) -> Cow<'static, str> {
         return "Stop guessing. Call quay_surface_guide first, or use quay_ask, quay_review or quay_board, or say it in the terminal.".into();
     }
     match tool {
-        "quay_surface" => match fixes(errors).join(" ") {
-            fixes if fixes.is_empty() => "Nothing was changed. Correct the call and send all of it again. quay_surface_guide lists the components, their properties and examples.".into(),
-            fixes => format!("Nothing was changed. {fixes} Correct the call and send all of it again.").into(),
-        },
+        "quay_surface" => {
+            let fixes = fixes(errors);
+            let guide = if fixes.is_empty() { " quay_surface_guide lists the components, their properties and examples." } else { "" };
+            let fixes: String = fixes.iter().map(|fix| format!(" {fix}")).collect();
+            format!("Nothing was changed.{fixes} Correct the call and send all of it again.{guide}").into()
+        }
         "quay_surface_read" => "Nothing was changed. Correct the call and send it again.".into(),
         _ => "Nothing was shown. Correct the call and send it again.".into(),
     }
