@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use super::handshake::Handshake;
-use super::models::{ClaudeStatus, RunKind};
+use super::models::{ClaudeStatus, RunKind, TerminalInfo};
 use super::osc7501::TurnReport;
 use crate::dates::now_ms;
 
@@ -79,6 +79,8 @@ pub struct PluginWatch {
     handshake: bool,
     /// Whether the launch's process has exited.
     exited: bool,
+    /// The exit code its process ended with, once it has exited.
+    exit_code: Option<i32>,
 }
 
 impl PluginWatch {
@@ -100,6 +102,7 @@ impl PluginWatch {
             prompted_at: None,
             handshake: false,
             exited: false,
+            exit_code: None,
         }
     }
 
@@ -200,10 +203,21 @@ impl PluginWatch {
         self.exited
     }
 
-    /// Marks the launch's process exited and clears its CLI's handshake.
-    pub fn exit(&mut self) {
+    /// Marks the launch's process exited with `exit_code` and clears its CLI's handshake.
+    pub fn exit(&mut self, exit_code: Option<i32>) {
         self.exited = true;
+        self.exit_code = exit_code;
         self.handshake = false;
+    }
+
+    /// Shows `info` Exited with the launch's exit code, if its process has exited. Returns
+    /// whether it has.
+    pub fn show_exit(&self, info: &mut TerminalInfo) -> bool {
+        if self.exited {
+            info.claude_status = ClaudeStatus::Exited;
+            info.exit_code = self.exit_code;
+        }
+        self.exited
     }
 
     /// Keeps the plugin hint away for the rest of this launch.
