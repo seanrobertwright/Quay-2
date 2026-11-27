@@ -61,9 +61,14 @@ async function mountPane(terminal: TerminalInfo, onRelaunch?: () => void): Promi
   return pane;
 }
 
+/** The ribbon's "Session Inactive" label in the pane, if it shows one. */
+function inactiveLabel(pane: HTMLElement): HTMLSpanElement | undefined {
+  return [...pane.querySelectorAll("span")].find((span) => span.textContent === "Session Inactive");
+}
+
 /** The ribbon's own box: the nearest element around its "Session Inactive" text that also holds its action. */
 function ribbonOf(pane: HTMLElement): HTMLElement {
-  const label = [...pane.querySelectorAll("span")].find((span) => span.textContent === "Session Inactive");
+  const label = inactiveLabel(pane);
   assert.ok(label, "the pane shows Session Inactive");
   let box = label.parentElement;
   while (box && !box.textContent?.includes("Scrollback restored from disk")) box = box.parentElement;
@@ -101,5 +106,5 @@ test("the ribbon's relaunch button relaunches the terminal", async () => {
 
 test("a running terminal shows no Session Inactive ribbon", async () => {
   const pane = await mountPane({ ...EXITED, claude_status: "idle" });
-  assert.ok(![...pane.querySelectorAll("span")].some((span) => span.textContent === "Session Inactive"));
+  assert.equal(inactiveLabel(pane), undefined);
 });
