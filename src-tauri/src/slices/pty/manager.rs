@@ -519,9 +519,6 @@ impl PtyManager {
             })?
         };
 
-        // Read before the old session goes: its pane stays mounted and has seen up to this seq
-        let start_seq = self.last_seq(terminal_id);
-
         let request = relaunch_request(&info, rows, cols, workspace_env);
         let opencode = opencode_launch_for(&request)?;
         // Begin the new launch before the old session goes, so the old process's exit, which
@@ -529,12 +526,18 @@ impl PtyManager {
         let launch_ref = self.begin_launch(terminal_id, info.run_kind);
 
         // If an active session is running, terminate it before relaunching. Its screen is
-        // saved first and it saves nothing after, so the new session starts from it.
+        // saved first and it saves nothing after, so the new session starts from it. Its pane
+        // stays mounted and sees every chunk it sends, the one its PTY writes as it closes
+        // included, so the new session numbers on from the last of them (see `PtySession::end`).
         let old_session = self.sessions.lock().remove(terminal_id);
-        if let Some(old_session) = old_session {
-            old_session.save_screen();
-            old_session.discard_screen();
-        }
+        let start_seq = match old_session {
+            Some(old_session) => {
+                old_session.save_screen();
+                old_session.discard_screen();
+                old_session.end()
+            }
+            None => self.last_seq(terminal_id),
+        };
 
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let webview = WebviewEvents::to_app(app_handle.clone());
@@ -687,7 +690,9 @@ impl PtyManager {
     }
 
     /// The last output seq sent under `terminal_id`, from its session or its dormant buffer
-    /// (0 when there is neither). A session that replaces it numbers its output above this.
+    /// (0 when there is neither). A session started for a terminal with no session numbers its
+    /// output above this; one that replaces a session numbers on from that session's
+    /// `PtySession::end`, since a session can still send output as it ends.
     fn last_seq(&self, terminal_id: &str) -> u64 {
         if let Some(session) = self.sessions.lock().get(terminal_id) {
             return session.last_seq();
