@@ -27,8 +27,9 @@ export interface FileRequestState {
 /**
  * Opens a requested file once, when Topos can show it: a conflicted one in the resolver, any other in
  * the diff view. An open resolver may hold unsaved edits, so the file waits until it closes, and
- * the operator is told so once for each request. It returns a check, for when the resolver closes,
- * of whether a file waits for it and so opens next.
+ * the operator is told so once for each request.
+ *
+ * Returns `fileWaits()`: true while a requested file waits for the open resolver to close.
  */
 export function useFileRequest({ ready, request, conflicts, resolving, openDiff, openResolver, announce }: FileRequestState): () => boolean {
   const handled = useRef(0);
