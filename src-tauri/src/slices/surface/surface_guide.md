@@ -54,7 +54,7 @@ How to write a call of quay_surface: A2UI 1.0 messages in Quay's own catalog, wh
 
 ## Errors
 
-A rejected call returns an error, `{"errors": [{"code", "surfaceId", "path", "message"}], "next"}`. `path` is a JSON Pointer into your call. Nothing in the call was done, not even the messages that were right: correct it and send all of it again.
+A rejected call returns an error, `{"errors": [{"code", "surfaceId", "path", "message"}], "next"}`. `path` is a JSON Pointer into your call. Nothing in the call was done, not even the messages that were right: correct it and send all of it again. For a mistake made often, `next` says how to fix it.
 
 ## Types
 

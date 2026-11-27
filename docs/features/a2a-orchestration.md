@@ -276,7 +276,7 @@ Shows you what the other tools can't: a [raw surface](../guide/surfaces.md#a-raw
 
 ### `quay_surface_guide`
 
-Returns how to write a `quay_surface` call: the rules, every component and function of Quay's catalog, and examples.
+Returns how to write a `quay_surface` call: first a whole call to copy, then the rules, every component and function of Quay's catalog, and more examples.
 
 - **Parameters**: none.
 - **Response**: the guide as text.
@@ -294,7 +294,7 @@ Reads where one of the terminal's own surfaces stands, for an answer the agent d
 - **No answer yet**: `{"surface_id", "state": "no_answer_yet", "next"}`, where `next` tells the agent to end its turn.
 - **Taken back, or the terminal exited, during the wait**: `{"surface_id", "state"}`, with `withdrawn` or `ended`.
 - **Dismissed**: `{"dismissed": true}`.
-- **Rejected**: an error result, `{"errors": [{"code", "surfaceId", "path", "message"}], "more", "next"}`, where `path` points into the call and `surfaceId` is left out of an error that is about no surface. `errors` lists the first 10 errors at most: `more` is the number of the rest, and is left out when there are none. Nothing of the call was done. From the third rejection in a row of one tool, `next` tells the agent to stop guessing.
+- **Rejected**: an error result, `{"errors": [{"code", "surfaceId", "path", "message"}], "more", "next"}`, where `path` points into the call and `surfaceId` is left out of an error that is about no surface. `errors` lists the first 10 errors at most: `more` is the number of the rest, and is left out when there are none. Nothing of the call was done. For a `quay_surface` call with a mistake agents make often, such as no component with the id `root` or a child written inside its parent instead of named by its id, `next` says how to fix it. From the third rejection in a row of one tool, `next` tells the agent to stop guessing.
 - **Quay couldn't show it**: an error result in words, which says that the call wasn't at fault.
 
 ---

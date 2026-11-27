@@ -17,7 +17,7 @@ A **surface** is one piece of UI that an agent describes to Quay through a tool 
 
 An agent has two more tools. `quay_surface_guide` returns how to write a raw surface, and `quay_surface_read` returns where one of the terminal's surfaces stands. [The surface tools](../features/a2a-orchestration.md#the-surface-tools) lists what each one takes.
 
-Quay checks each call before it draws anything. A call with something wrong in it is rejected whole, and you see nothing of it.
+Quay checks each call before it draws anything. A call with something wrong in it is rejected whole, and you see nothing of it. The agent is told what was wrong, and for the mistakes agents make most often in a raw surface, how to fix them. The guide that `quay_surface_guide` returns opens with a whole call for the agent to copy.
 
 ### A Question
 
