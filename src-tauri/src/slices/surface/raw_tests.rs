@@ -321,6 +321,45 @@ async fn from_the_third_rejection_in_a_row_the_advice_changes_and_an_accepted_ca
     assert_eq!(told(call).await.1, NEXT);
 }
 
+/// Calls with a mistake, what the webview's check finds wrong with each, and the fix that `next` names for
+/// it: none for a mistake that is not made often. `rawRejected.test.ts` holds the check to these errors.
+const MISTAKES: &str = include_str!("raw_mistakes.fixture.json");
+
+#[tokio::test]
+async fn a_common_mistake_is_told_its_fix_and_the_errors_as_the_check_gave_them() {
+    let mistakes: Vec<Value> = serde_json::from_str(MISTAKES).unwrap();
+    for mistake in mistakes {
+        let (seam, mut webview) = start(Timing::default()).await;
+        let call = seam.cli("term-a").call("quay_surface", mistake["arguments"].clone());
+        seam.surfaces.verdict(webview.next_check().await.call, rejected(mistake["errors"].clone()));
+        let (errors, next) = told(call).await;
+        assert_eq!(errors, mistake["errors"], "{}", mistake["mistake"]);
+        let expected = match mistake["fix"].as_str() {
+            Some(fix) => format!("Nothing was changed. {fix} Correct the call and send all of it again."),
+            None => NEXT.to_string(),
+        };
+        assert_eq!(next, expected, "{}", mistake["mistake"]);
+    }
+}
+
+#[tokio::test]
+async fn each_fix_is_named_once_in_the_order_found_and_from_the_third_rejection_in_a_row_stop_guessing_replaces_them() {
+    let (seam, mut webview) = start(Timing::default()).await;
+    let cli = seam.cli("term-a");
+    let mistakes: Vec<Value> = serde_json::from_str(MISTAKES).unwrap();
+    let of = |mistake: &str| mistakes.iter().find(|one| one["mistake"] == mistake).unwrap();
+    let (bare, nested, other) = (of("checks is written without the @"), of("A Button's child is written inside it"), of("A cycle"));
+    let errors: Vec<Value> = [bare, nested, other, bare].iter().map(|one| one["errors"][0].clone()).collect();
+    let stop = "Stop guessing. Call quay_surface_guide first, or use quay_ask, quay_review or quay_board, or say it in the terminal.";
+    let fix = |mistake: &Value| mistake["fix"].as_str().unwrap().to_string();
+    let both = format!("Nothing was changed. {} {} Correct the call and send all of it again.", fix(bare), fix(nested));
+    for next in [both.as_str(), &both, stop] {
+        let call = cli.call("quay_surface", plan("plan", "companion"));
+        seam.surfaces.verdict(webview.next_check().await.call, rejected(json!(errors)));
+        assert_eq!(told(call).await, (json!(errors), next.to_string()));
+    }
+}
+
 #[tokio::test]
 async fn a_call_with_no_verdict_is_quays_failure_unless_rust_rejects_it() {
     let (seam, mut webview) = start(Timing { verdict: Duration::from_millis(20), ..Timing::default() }).await;

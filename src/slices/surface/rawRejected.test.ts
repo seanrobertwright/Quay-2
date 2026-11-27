@@ -3,8 +3,9 @@
 import "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { CheckError } from "./surfaceTypes.ts";
-import { startRust, unloadSurfaces } from "./fixtures/fakeRust.ts";
+import { startRust, unloadSurfaces, verdictOn, verdicts } from "./fixtures/fakeRust.ts";
 import { button, column, create, errorsIn, EVENT, oneButton, text, told, verdictOnCall, verdictOnRaw, type Component } from "./fixtures/rawFixtures.ts";
 
 beforeEach(() => startRust({ surface_list: () => [], surface_checks: () => [] }));
@@ -175,4 +176,15 @@ test("a call that creates nothing is told what is wrong with it, or nothing", as
   const found = await only([odd]);
   assert.deepEqual("errors" in found && where(found.errors), [["VALIDATION_FAILED", "/messages/0/deleteSurface/why"]]);
   assert.deepEqual(where(await errorsIn([odd, create(column(text("said", "x")))])), [["VALIDATION_FAILED", "/messages/0/deleteSurface/why"]]);
+});
+
+/** Calls with a mistake that agents make often, and what the check finds wrong with each. Rust names the fix for these errors. */
+const mistakes = JSON.parse(readFileSync(new URL("../../../src-tauri/src/slices/surface/raw_mistakes.fixture.json", import.meta.url), "utf8")) as { mistake: string; arguments: unknown; errors: CheckError[] }[];
+
+test("a call with a mistake made often is rejected for the errors that Rust names a fix for", async () => {
+  assert.ok(mistakes.length > 0);
+  for (const { mistake, arguments: args, errors } of mistakes) {
+    const verdict = await verdictOn({ call: verdicts().length + 1, tool: "quay_surface", surface_id: "plan", arguments: args as never });
+    assert.deepEqual(verdict, { errors, more: 0 }, `${mistake}: if the check is right, change raw_mistakes.fixture.json and the fix Rust names to match`);
+  }
 });

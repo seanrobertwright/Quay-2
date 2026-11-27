@@ -1,0 +1,184 @@
+[
+  {
+    "mistake": "No component has the id root",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "main", "component": "Text", "text": "x"}]}}
+      ]
+    },
+    "errors": [
+      {"code": "INTEGRITY_ERROR", "surfaceId": "plan", "path": "/messages/0/createSurface", "message": "Missing root component: No component has id='root'"}
+    ],
+    "fix": "Give one component of the surface the id `root`."
+  },
+  {
+    "mistake": "A child is written inside its parent's children",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Column", "children": [{"id": "said", "component": "Text", "text": "x"}]}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/children", "message": "Validation failed for component 'Column' (root): children.0: Expected string, received object; children: Expected object, received array"}
+    ],
+    "fix": "Name each child by its id in `children` or `child`, and write the child as a component of its own in `components`."
+  },
+  {
+    "mistake": "A Button's child is written inside it",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Button", "child": {"id": "label", "component": "Text", "text": "Go"}, "action": {"event": {"name": "go", "context": {}}}}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/child", "message": "Validation failed for component 'Button' (root): child: Expected string, received object"}
+    ],
+    "fix": "Name each child by its id in `children` or `child`, and write the child as a component of its own in `components`."
+  },
+  {
+    "mistake": "A component is not in Quay's catalog",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Column", "children": ["head"]}, {"id": "head", "component": "Heading", "text": "Plan"}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/1/component", "message": "Unknown component type 'Heading' not found in catalog 'urn:quay:a2ui:catalog:v1'. The catalog's components are Button, Card, CheckBox, ChoicePicker, Column, DateTimeInput, Divider, FileLink, Icon, Image, List, Progress, Row, Slider, Stat, Steps, Tabs, Text, TextField."}
+    ],
+    "fix": "Set `component` to one of the components of Quay's catalog that the error lists."
+  },
+  {
+    "mistake": "A property is not on the component's line",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Text", "text": "Plan", "colour": "red"}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/colour", "message": "Validation failed for component 'Text' (root): root: Unrecognized key(s) in object: 'colour'"}
+    ],
+    "fix": "Give each component only the properties on its line in quay_surface_guide, each of the type the line gives: where it says string, 3 is \"3\"."
+  },
+  {
+    "mistake": "A property has the wrong type",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Text", "text": 3}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/text", "message": "Validation failed for component 'Text' (root): text: Expected string, received number; text: Expected object, received number; text: Expected object, received number; text: Expected object, received number"}
+    ],
+    "fix": "Give each component only the properties on its line in quay_surface_guide, each of the type the line gives: where it says string, 3 is \"3\"."
+  },
+  {
+    "mistake": "A Button is given a label of its own",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Button", "label": "Go", "action": {"event": {"name": "go", "context": {}}}}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0", "message": "Validation failed for component 'Button' (root): child: Expected string, received undefined, root: Unrecognized key(s) in object: 'label'"}
+    ],
+    "fix": "Give each component only the properties on its line in quay_surface_guide, each of the type the line gives: where it says string, 3 is \"3\"."
+  },
+  {
+    "mistake": "A message has no version",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Text", "text": "x"}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/version", "message": "Quay accepts A2UI 1.0 only. This message says no version."}
+    ],
+    "fix": "Give each message `\"version\": \"1.0\"`."
+  },
+  {
+    "mistake": "A message has an earlier version",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "0.9", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Text", "text": "x"}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/version", "message": "Quay accepts A2UI 1.0 only. This message says \"0.9\"."}
+    ],
+    "fix": "Give each message `\"version\": \"1.0\"`."
+  },
+  {
+    "mistake": "checks is written without the @",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Text", "text": "x", "checks": []}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/checks", "message": "A2UI 1.0 spells this `@checks`."}
+    ],
+    "fix": "Write `checks` as `@checks`, with the @."
+  },
+  {
+    "mistake": "accessibility is written without the @",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Text", "text": "x", "accessibility": {"label": "Plan"}}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/accessibility", "message": "A2UI 1.0 spells this `@accessibility`."}
+    ],
+    "fix": "Write `accessibility` as `@accessibility`, with the @."
+  },
+  {
+    "mistake": "A cycle",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Column", "children": ["root"]}]}}
+      ]
+    },
+    "errors": [
+      {"code": "RECURSION_LIMIT_EXCEEDED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0", "message": "Circular reference detected: Component 'root' references itself in field 'children[0]' (Self-reference detected)"}
+    ],
+    "fix": null
+  },
+  {
+    "mistake": "A child is named that is not there",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": "Column", "children": ["nowhere"]}]}}
+      ]
+    },
+    "errors": [
+      {"code": "INTEGRITY_ERROR", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0", "message": "Component 'root' references non-existent component 'nowhere' in field 'children[0]' (Dangling reference 'nowhere' in component 'root')"}
+    ],
+    "fix": null
+  }
+]
