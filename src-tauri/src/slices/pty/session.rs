@@ -79,6 +79,54 @@ struct PtyEnds {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
 }
 
+/// How a terminal's launch goes: a process in a PTY, or, for a CLI that can't start, no
+/// process and the message that says why.
+enum Launch {
+    /// The command its PTY runs, and the OpenCode 2.x server that command connects to, if any.
+    Process(CommandBuilder, Option<Sidecar>),
+    /// What its pane shows in place of its CLI.
+    Message(String),
+}
+
+/// Where each chunk of a session's output goes: its log, its saved screen, its buffer for a
+/// pane that mounts, and the pane itself as `pty-output`.
+#[derive(Clone)]
+struct OutputSink {
+    terminal_id: String,
+    events: WebviewEvents,
+    log_path: PathBuf,
+    output_buffer: Arc<Mutex<(String, u64)>>,
+    screen: Arc<ScreenKeeper>,
+}
+
+impl OutputSink {
+    /// The terminal's log, opened to append, or `None` when it can't be opened.
+    fn open_log(&self) -> Option<std::fs::File> {
+        std::fs::OpenOptions::new().create(true).append(true).open(&self.log_path).ok()
+    }
+
+    /// Writes `text`, one chunk, to `log` and the screen, runs `before_send` with it, then
+    /// buffers it under the next seq and sends it as `pty-output`.
+    fn write(&self, log: Option<&mut std::fs::File>, text: String, before_send: impl FnOnce(&str)) {
+        if let Some(file) = log {
+            let _ = file.write_all(text.as_bytes());
+        }
+        self.screen.feed(&text, std::time::Instant::now());
+        before_send(&text);
+        // Buffer recent output for newly-mounting xterm instances, capped to avoid unbounded
+        // memory usage
+        let seq = append_output(&mut self.output_buffer.lock(), &text, OUTPUT_BUFFER_LIMIT);
+        self.events.emit(
+            "pty-output",
+            PtyOutputPayload {
+                terminal_id: self.terminal_id.clone(),
+                data: text,
+                seq,
+            },
+        );
+    }
+}
+
 /// What reports the end of a session: its `on_exit`, then `terminal-exited`.
 pub type ExitReport = Box<dyn FnOnce() + Send>;
 
@@ -446,11 +494,16 @@ fn message_output(message: &str) -> String {
     message.lines().map(|line| format!("{}\r\n", line)).collect()
 }
 
+/// The PiG executable `request`'s terminal starts, looked for on its own `PATH` and home (see
+/// `pig_program`), or `None` when PiG isn't installed there.
+fn pig_launch(request: &SpawnTerminalRequest) -> Option<PathBuf> {
+    pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref())
+}
+
 /// What a terminal's pane shows in place of its CLI when the CLI isn't installed, or `None`
 /// when it can start. Only PiG is looked for before its launch.
 fn missing_cli_message(request: &SpawnTerminalRequest) -> Option<&'static str> {
-    let pig = || pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
-    (request.run_kind == RunKind::Pig && pig().is_none()).then_some(PIG_NOT_INSTALLED)
+    (request.run_kind == RunKind::Pig && pig_launch(request).is_none()).then_some(PIG_NOT_INSTALLED)
 }
 
 /// The home folder a terminal's process gets: its `USERPROFILE`, or failing that its `HOME`.
@@ -748,8 +801,7 @@ pub(crate) fn build_command(
         RunKind::Pig => {
             // Without PiG this is its bare name, so a spawn error names it; `PtySession::spawn`
             // shows `PIG_NOT_INSTALLED` instead and starts nothing (see `missing_cli_message`)
-            let program = pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref())
-                .unwrap_or_else(|| PathBuf::from(pig_file_name()));
+            let program = pig_launch(request).unwrap_or_else(|| PathBuf::from(pig_file_name()));
             // Quay's extension registers Quay's MCP server and reports PiG's turns, from the
             // terminal's `QUAY_*` variables. Explicit `-e` paths load even with
             // `--no-extensions` in the custom flags.
@@ -924,12 +976,14 @@ impl PtySession {
         let launched = match opencode {
             Some(OpenCodeLaunch::Server(server)) => {
                 let (serve, tui) = build_serve(&request, &launch, bridge_port, &bridge_token, &server);
-                Sidecar::start(serve, &server, &mcp_url(bridge_port, &launch), SIDECAR_PATIENCE)
-                    .map(|sidecar| (tui, Some(sidecar)))
+                match Sidecar::start(serve, &server, &mcp_url(bridge_port, &launch), SIDECAR_PATIENCE) {
+                    Ok(sidecar) => Launch::Process(tui, Some(sidecar)),
+                    Err(why) => Launch::Message(why),
+                }
             }
             opencode => match missing_cli_message(&request) {
-                Some(message) => Err(message.to_string()),
-                None => Ok((build_command(&request, &launch, bridge_port, &bridge_token, opencode), None)),
+                Some(message) => Launch::Message(message.to_string()),
+                None => Launch::Process(build_command(&request, &launch, bridge_port, &bridge_token, opencode), None),
             },
         };
         let terminal_id = launch.terminal_id;
@@ -956,38 +1010,40 @@ impl PtySession {
             (!earlier.is_empty()).then_some(earlier.as_str()),
         ));
 
+        let sink = OutputSink {
+            terminal_id: terminal_id.clone(),
+            events: events.clone(),
+            log_path: log_path.clone(),
+            output_buffer: output_buffer.clone(),
+            screen: screen.clone(),
+        };
+        // The session as it is with no process; a launch that runs one adds its PTY
+        let without_process = Self {
+            id: terminal_id.clone(),
+            name,
+            project_path: request.project_path,
+            run_kind: request.run_kind,
+            permission_mode: perm,
+            launch: None,
+            pty: None,
+            output_buffer,
+            current_size,
+            is_alive: Arc::new(AtomicBool::new(false)),
+            screen: screen.clone(),
+            sidecar: None,
+            exit_report: None,
+        };
+
         let (cmd, sidecar) = match launched {
-            Ok(launched) => launched,
+            Launch::Process(cmd, sidecar) => (cmd, sidecar),
             // No process and no PTY: Quay writes the message into the terminal's output itself,
             // as the reader writes a chunk, so nothing is left to repaint it on a resize
-            Err(message) => {
-                let text = message_output(&message);
-                if let Ok(mut log_file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                    let _ = log_file.write_all(text.as_bytes());
-                }
-                screen.feed(&text, std::time::Instant::now());
-                on_first_output();
-                let seq = append_output(&mut output_buffer.lock(), &text, OUTPUT_BUFFER_LIMIT);
-                events.emit("pty-output", PtyOutputPayload { terminal_id: terminal_id.clone(), data: text, seq });
+            Launch::Message(message) => {
+                sink.write(sink.open_log().as_mut(), message_output(&message), |_| on_first_output());
                 screen.save_now();
-                let exited = terminal_id.clone();
                 let exit_report: ExitReport =
-                    Box::new(move || report_exit(on_exit, &events, exited, Some(MESSAGE_EXIT_CODE)));
-                return Ok(Self {
-                    id: terminal_id,
-                    name,
-                    project_path: request.project_path,
-                    run_kind: request.run_kind,
-                    permission_mode: perm,
-                    launch: None,
-                    pty: None,
-                    output_buffer,
-                    current_size,
-                    is_alive: Arc::new(AtomicBool::new(false)),
-                    screen,
-                    sidecar: None,
-                    exit_report: Some(exit_report),
-                });
+                    Box::new(move || report_exit(on_exit, &events, terminal_id, Some(MESSAGE_EXIT_CODE)));
+                return Ok(Self { exit_report: Some(exit_report), ..without_process });
             }
         };
         let sidecar_ender = sidecar.as_ref().map(Sidecar::ender);
@@ -1021,11 +1077,7 @@ impl PtySession {
         let is_alive = Arc::new(AtomicBool::new(true));
         // Background thread for reading PTY output
         {
-            let events = events.clone();
-            let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
-            let output_buffer = output_buffer.clone();
-            let log_path_clone = log_path.clone();
             let screen = screen.clone();
 
             std::thread::spawn(move || {
@@ -1033,11 +1085,7 @@ impl PtySession {
                 let mut pending_utf8 = Vec::with_capacity(8);
                 let mut on_first_output = Some(on_first_output);
                 let mut osc7501 = on_osc7501.map(|hook| (Osc7501Scanner::default(), hook));
-                let mut log_file = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&log_path_clone)
-                    .ok();
+                let mut log_file = sink.open_log();
 
                 while is_alive.load(Ordering::SeqCst) {
                     match reader.read(&mut buf) {
@@ -1048,37 +1096,19 @@ impl PtySession {
                                 continue;
                             }
 
-                            if let Some(ref mut file) = log_file {
-                                use std::io::Write;
-                                let _ = file.write_all(text.as_bytes());
-                            }
-                            screen.feed(&text, std::time::Instant::now());
-
-                            if let Some(hook) = on_first_output.take() {
-                                hook();
-                            }
-
-                            if let Some((scanner, hook)) = osc7501.as_mut() {
-                                for seq in scanner.feed(&text) {
-                                    hook(seq);
+                            sink.write(log_file.as_mut(), text, |text| {
+                                if let Some(hook) = on_first_output.take() {
+                                    hook();
                                 }
-                            }
-
-                            // Buffer recent output for newly-mounting xterm instances,
-                            // capped to avoid unbounded memory usage
-                            let seq = append_output(&mut output_buffer.lock(), &text, OUTPUT_BUFFER_LIMIT);
-
-                            events.emit(
-                                "pty-output",
-                                PtyOutputPayload {
-                                    terminal_id: terminal_id.clone(),
-                                    data: text,
-                                    seq,
-                                },
-                            );
+                                if let Some((scanner, hook)) = osc7501.as_mut() {
+                                    for seq in scanner.feed(text) {
+                                        hook(seq);
+                                    }
+                                }
+                            });
                         }
                         Err(e) => {
-                            tracing::debug!("PTY reader ended for {}: {}", terminal_id, e);
+                            tracing::debug!("PTY reader ended for {}: {}", sink.terminal_id, e);
                             break;
                         }
                     }
@@ -1149,19 +1179,10 @@ impl PtySession {
         }
 
         Ok(Self {
-            id: terminal_id,
-            name,
-            project_path: request.project_path,
-            run_kind: request.run_kind,
-            permission_mode: perm,
-            launch: None,
             pty: Some(PtyEnds { master: pair.master, writer }),
-            output_buffer,
-            current_size,
             is_alive,
-            screen,
             sidecar,
-            exit_report: None,
+            ..without_process
         })
     }
 
