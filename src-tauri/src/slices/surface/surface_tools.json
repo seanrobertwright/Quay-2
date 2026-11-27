@@ -149,7 +149,7 @@
   },
   {
     "name": "quay_surface_guide",
-    "description": "How to write quay_surface calls: the rules, every component and function, and examples. Read it before your first, and when one is rejected.",
+    "description": "How to write quay_surface calls: a call to copy, the rules, every component and function, and examples. Read it before your first, and when one is rejected.",
     "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
   },
   {
