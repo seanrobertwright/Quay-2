@@ -27,6 +27,7 @@ mod place;
 mod plain_line;
 mod raw;
 mod raw_changes;
+mod raw_fixes;
 mod read;
 mod rejection;
 mod review;

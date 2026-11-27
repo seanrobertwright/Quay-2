@@ -2,6 +2,22 @@
 
 How to write a call of quay_surface: A2UI 1.0 messages in Quay's own catalog, which is not the standard's basic one. quay_ask asks questions, quay_review shows a plan or findings and quay_board shows progress with far less to write. Use them where they do.
 
+## A call to copy
+
+```json
+{"place":"companion","title":"Run the migration","messages":[
+{"version":"1.0","createSurface":{"surfaceId":"confirm","components":[
+{"id":"root","component":"Column","children":["ask","run"]},
+{"id":"ask","component":"Text","text":"Run the migration on the **staging** database now?"},
+{"id":"run","component":"Button","variant":"primary","child":"run_label","action":{"event":{"name":"run","context":{}}}},
+{"id":"run_label","component":"Text","text":"Run it"}]}}]}
+```
+
+- Change its texts, ids and title, and add components from the lines below.
+- Each message is `{"version": "1.0"}` with one kind of message. `components` is one flat list, and exactly one component in it has the id `root`.
+- A parent names its children by id, in `children` or a Button's `child`. Each child is a component of its own in the list, never written inside its parent.
+- When the operator presses the Button, its `event` is sent to you: the call waits for it.
+
 ## The call
 
 - A call is `{"place", "title", "messages"}`. `messages` is a list of one or more messages, written out in the call and never left empty.
@@ -38,7 +54,7 @@ How to write a call of quay_surface: A2UI 1.0 messages in Quay's own catalog, wh
 
 ## Errors
 
-A rejected call returns an error, `{"errors": [{"code", "surfaceId", "path", "message"}], "next"}`. `path` is a JSON Pointer into your call. Nothing in the call was done, not even the messages that were right: correct it and send all of it again.
+A rejected call returns an error, `{"errors": [{"code", "surfaceId", "path", "message"}], "next"}`. `path` is a JSON Pointer into your call. Nothing in the call was done, not even the messages that were right: correct it and send all of it again. For a mistake made often, `next` says how to fix it.
 
 ## Types
 

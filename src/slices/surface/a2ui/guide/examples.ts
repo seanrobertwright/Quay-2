@@ -1,4 +1,4 @@
-// The guide's worked examples: calls of quay_surface, each made after the ones before it.
+// The guide's calls of quay_surface: the one to copy, and the worked examples, each made after the ones before it.
 import type { JsonObject } from "../../json.ts";
 import type { SurfacePlace } from "../../surfaceTypes.ts";
 
@@ -23,6 +23,23 @@ const text = (id: string, said: unknown, more: JsonObject = {}): JsonObject => (
 const needed = (path: string, message: string) => ({ "@checks": [{ condition: { "@call": "required", args: { value: at(path) } }, message }] });
 
 const message = (key: string, body: JsonObject): JsonObject => ({ version: "1.0", [key]: body });
+
+/** The call the guide gives first, for a model to copy and change: the least that waits for an answer. */
+export const COPY: Call = {
+  place: "companion",
+  title: "Run the migration",
+  messages: [
+    message("createSurface", {
+      surfaceId: "confirm",
+      components: [
+        { id: "root", component: "Column", children: ["ask", "run"] },
+        text("ask", "Run the migration on the **staging** database now?"),
+        { id: "run", component: "Button", variant: "primary", child: "run_label", action: { event: { name: "run", context: {} } } },
+        text("run_label", "Run it"),
+      ],
+    }),
+  ],
+};
 
 const ASK: Example = {
   heading: "A form that waits for the operator. The Button has the check too, or it would send an empty branch.",
