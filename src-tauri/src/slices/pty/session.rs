@@ -624,12 +624,20 @@ fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
 /// Turns a `cmd.exe /c <cli> <args>` command into a pwsh one that reads the launch prompt
 /// from an env var. cmd.exe ends a command line at its first newline and an npm `.cmd`
 /// shim re-parses its arguments, so a multi-line prompt can't survive that route; pwsh
-/// runs the CLI's `.ps1` shim, which hands each argument on intact.
+/// runs the CLI's `.ps1` shim, which hands each argument on intact. pwsh finds that shim for
+/// a bare name; for a `.cmd` shim named by its path it is the `.ps1` beside it, when there is one.
 fn start_through_pwsh(cmd: &mut CommandBuilder, form: Option<LaunchPromptForm>, prompt: &str) {
     let mut script = String::from("&");
-    for arg in cmd.get_argv().iter().skip(2) {
+    for (i, arg) in cmd.get_argv().iter().skip(2).enumerate() {
+        let mut arg = arg.to_string_lossy().to_string();
+        if i == 0 && is_cmd_shim(&arg) {
+            let ps1 = Path::new(&arg).with_extension("ps1");
+            if ps1.is_file() {
+                arg = ps1.to_string_lossy().to_string();
+            }
+        }
         script.push(' ');
-        script.push_str(&pwsh_literal(&arg.to_string_lossy()));
+        script.push_str(&pwsh_literal(&arg));
     }
     if let Some(LaunchPromptForm::Flag(flag)) = form {
         script.push(' ');
@@ -813,7 +821,14 @@ pub(crate) fn build_command(
         RunKind::OpenCode => {
             let program =
                 opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
-            let mut c = CommandBuilder::new(program);
+            let mut c = if is_cmd_shim(&program) {
+                let mut c = CommandBuilder::new("cmd.exe");
+                c.arg("/c");
+                c.arg(program);
+                c
+            } else {
+                CommandBuilder::new(program)
+            };
             match &opencode {
                 // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
                 None | Some(OpenCodeLaunch::Tui(_)) => {
@@ -2123,6 +2138,50 @@ mod tests {
             opencode_program(None, Some(&home)),
             bun_bin.join("opencode.cmd").to_string_lossy()
         );
+    }
+
+    /// A PTY starts npm's shim through `cmd.exe /c`; `opencode serve` runs the shim itself.
+    #[cfg(windows)]
+    #[test]
+    fn an_opencode_shim_on_the_terminals_path_starts_its_tui_through_cmd_and_its_server_directly() {
+        let root = TempDir::new("opencode-shim-launch");
+        let shim = root.join("opencode.cmd");
+        std::fs::write(&shim, b"").unwrap();
+        let shim = shim.to_string_lossy().to_string();
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.env_vars =
+            Some([(PATH_NAME.to_string(), root.to_string_lossy().to_string())].into_iter().collect());
+
+        let cmd = build_command(&request, "term-oc-shim", 4321, "tok-1", Some(4567));
+        assert_eq!(argv(&cmd)[..5], ["cmd.exe", "/c", shim.as_str(), "--port", "4567"]);
+
+        let (serve, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
+        assert_eq!(serve.get_program().to_string_lossy(), shim);
+        assert_eq!(argv(&tui)[..5], ["cmd.exe", "/c", shim.as_str(), "--server", "http://127.0.0.1:4567"]);
+    }
+
+    /// cmd.exe would cut a multi-line prompt short, so pwsh runs the `.ps1` shim npm puts
+    /// beside the `.cmd` one, which hands the prompt on intact.
+    #[cfg(windows)]
+    #[test]
+    fn an_opencode_shims_launch_prompt_goes_through_pwsh_to_its_ps1_sibling() {
+        let root = TempDir::new("opencode-shim-prompt");
+        std::fs::write(root.join("opencode.cmd"), b"").unwrap();
+        let ps1 = root.join("opencode.ps1");
+        std::fs::write(&ps1, b"").unwrap();
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+        request.env_vars =
+            Some([(PATH_NAME.to_string(), root.to_string_lossy().to_string())].into_iter().collect());
+
+        let cmd = build_command(&request, "term-oc-shim", 4321, "tok-1", Some(4567));
+
+        assert_eq!(argv(&cmd)[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
+        assert_eq!(
+            argv(&cmd)[4],
+            format!("& '{}' '--port' '4567' '--auto' '--prompt' $env:QUAY_LAUNCH_PROMPT", ps1.to_string_lossy())
+        );
+        assert_eq!(env_of(&cmd, "QUAY_LAUNCH_PROMPT").as_deref(), Some(MULTI_LINE_PROMPT));
     }
 
     /// How the platform spells the variable `terminal_path` reads.
