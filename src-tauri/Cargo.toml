@@ -58,6 +58,9 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Threading",
     "Win32_System_ProcessStatus",
     "Win32_System_LibraryLoader",
+    # RtlGetVersion and OSVERSIONINFOW: the Windows build xterm's windowsPty option names (#813).
+    "Win32_System_SystemInformation",
+    "Wdk_System_SystemServices",
 ] }
 # The WebView2 bindings Tauri's own webview is built on, at its versions, for its ProcessFailed event (#799)
 webview2-com = "0.39.1"

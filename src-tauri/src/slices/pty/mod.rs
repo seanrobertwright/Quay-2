@@ -12,9 +12,11 @@ pub mod osc7501;
 pub mod plugin_watch;
 pub mod screen;
 pub mod session;
+pub mod windows_build;
 #[cfg(test)]
 mod surface_launch_tests;
 
 pub use commands::*;
 pub use manager::PtyManager;
 pub use models::*;
+pub use windows_build::windows_build_number;
