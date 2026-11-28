@@ -62,7 +62,8 @@ use slices::praxis::host::{
 };
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
-    rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,
+    rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, windows_build_number, write_pty,
+    PtyManager,
 };
 use slices::redirection_guard::{
     dismiss_redirection_guard_warning, get_redirection_guard_warning, RedirectionGuardState,
@@ -225,6 +226,7 @@ pub fn run() {
             save_terminal_screens,
             dismiss_plugin_hint,
             get_pig_tested_version,
+            windows_build_number,
             terminal_handshake,
             list_projects,
             add_project,

@@ -10,6 +10,8 @@ const NESTED: &str =
 
 const NOT_IN_CATALOG: &str = "Set `component` to one of the components of Quay's catalog that the error lists.";
 
+const NOT_A_NAME: &str = "Write `component` as the component's name, such as `\"Column\"`, with its properties beside it.";
+
 const NOT_ON_ITS_LINE: &str =
     "Give each component only the properties on its line in quay_surface_guide, each of the type the line gives: where it says string, 3 is \"3\".";
 
@@ -44,6 +46,7 @@ fn fix(error: &CallError) -> Option<&'static str> {
     match in_component(&error.path)?.as_slice() {
         ["children"] | ["child"] => Some(NESTED),
         ["children", child] if is_index(child) => Some(NESTED),
+        ["component"] if error.message.ends_with("component: Expected string, received object") => Some(NOT_A_NAME),
         ["component"] => Some(NOT_IN_CATALOG),
         ["checks"] => Some(BARE_CHECKS),
         ["accessibility"] => Some(BARE_ACCESSIBILITY),

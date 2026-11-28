@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useRef, KeyboardEvent } from "react";
+import { useState, useEffect, useRef, type Dispatch, type FC, type KeyboardEvent, type ReactNode, type Ref, type SetStateAction } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -10,6 +10,7 @@ import {
   Check,
   Search,
 } from "lucide-react";
+import { scrollbackFileName } from "./scrollbackExport.ts";
 
 interface TerminalSearchBarProps {
   isOpen: boolean;
@@ -24,8 +25,32 @@ interface TerminalSearchBarProps {
     options: { caseSensitive: boolean; regex: boolean; wholeWord: boolean }
   ) => void;
   onClear: () => void;
+  /** Closes the bar. Escape anywhere in it, or its Close button, asks for this. */
   onClose: () => void;
   onGetScrollback: () => string;
+  /** The bar's element while it is open. */
+  barRef?: Ref<HTMLDivElement>;
+}
+
+/** What a screen reader hears for the counter badge: "3 of 12 matches", "1 of 1 match" or "No matches". */
+function matchCountLabel(index: number, count: number): string {
+  if (count === 0) return "No matches";
+  return `${index} of ${count} ${count === 1 ? "match" : "matches"}`;
+}
+
+const TOGGLE_ACTIVE = "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40";
+const TOGGLE_INACTIVE = "text-[#8b949e] hover:text-white hover:bg-[#21262d]";
+
+/** One search-option toggle: its button and its Alt shortcut both come from this entry. */
+interface SearchToggle {
+  /** The letter that toggles it with Alt, lowercase. */
+  key: string;
+  label: string;
+  title: string;
+  pressed: boolean;
+  setPressed: Dispatch<SetStateAction<boolean>>;
+  className: string;
+  content: ReactNode;
 }
 
 export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
@@ -37,6 +62,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   onClear,
   onClose,
   onGetScrollback,
+  barRef,
 }) => {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -69,6 +95,36 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
 
   if (!isOpen) return null;
 
+  const toggles: SearchToggle[] = [
+    {
+      key: "c",
+      label: "Match case",
+      title: "Match Case (Alt+C)",
+      pressed: caseSensitive,
+      setPressed: setCaseSensitive,
+      className: "p-1",
+      content: <CaseSensitive className="w-3.5 h-3.5" />,
+    },
+    {
+      key: "r",
+      label: "Use regular expression",
+      title: "Use Regular Expression (Alt+R)",
+      pressed: regex,
+      setPressed: setRegex,
+      className: "p-1",
+      content: <Regex className="w-3.5 h-3.5" />,
+    },
+    {
+      key: "w",
+      label: "Match whole word",
+      title: "Match Whole Word (Alt+W)",
+      pressed: wholeWord,
+      setPressed: setWholeWord,
+      className: "px-1 py-0.5 text-[10px] font-mono font-bold",
+      content: <span aria-hidden="true">\b</span>,
+    },
+  ];
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -77,10 +133,21 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
       } else {
         onFindNext(query, { caseSensitive, regex, wholeWord });
       }
-    } else if (e.key === "Escape") {
+    }
+  };
+
+  // Escape closes the bar and Alt+C, Alt+R, Alt+W toggle options from anywhere in the bar.
+  const handleBarKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
       e.preventDefault();
       onClose();
+      return;
     }
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const toggle = toggles.find((t) => t.key === e.key.toLowerCase());
+    if (!toggle) return;
+    e.preventDefault();
+    toggle.setPressed((prev) => !prev);
   };
 
   const handleCopy = () => {
@@ -95,10 +162,8 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const safeName = terminalName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const date = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `${safeName}-${date}.log`;
+    a.download = scrollbackFileName(terminalName, Date.now());
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -109,8 +174,11 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   const resultIndex = (searchResult?.index ?? -1) + 1;
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Escape closes the bar and Alt+C, Alt+R and Alt+W toggle from any control in the bar; every control inside is native
     <div
+      ref={barRef}
       data-no-terminal-focus
+      onKeyDown={handleBarKeyDown}
       className="absolute top-2 right-3 z-30 flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl px-2.5 py-1.5 text-xs text-[#c9d1d9] animate-in fade-in slide-in-from-top-1 select-none"
     >
       <Search className="w-3.5 h-3.5 text-[#8b949e] shrink-0" />
@@ -123,59 +191,37 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
+          aria-label="Find in terminal"
           placeholder="Find in terminal..."
           className="w-44 px-2 py-1 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white placeholder:text-[#6e7681] focus:outline-hidden focus:border-(--quay-accent)"
         />
 
-        {/* Counter Badge */}
-        {query && (
-          <span className="absolute right-2 text-[10px] font-mono text-[#8b949e]">
-            {resultCount > 0 ? `${resultIndex}/${resultCount}` : "0/0"}
-          </span>
-        )}
+        {/* Counter Badge. The live region stays mounted while the field is empty so the first count
+            is announced; the "3/12" shorthand is hidden from screen readers, which hear the phrase. */}
+        <span role="status" aria-live="polite" aria-atomic="true" className="absolute right-2 text-[10px] font-mono text-[#8b949e]">
+          {query && (
+            <>
+              <span aria-hidden="true">{resultCount > 0 ? `${resultIndex}/${resultCount}` : "0/0"}</span>
+              <span className="sr-only">{matchCountLabel(resultIndex, resultCount)}</span>
+            </>
+          )}
+        </span>
       </div>
 
-      {/* Match Case Toggle */}
-      <button
-        type="button"
-        onClick={() => setCaseSensitive((prev) => !prev)}
-        className={`p-1 rounded transition-colors cursor-pointer ${
-          caseSensitive
-            ? "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40"
-            : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-        }`}
-        title="Match Case (Alt+C)"
-      >
-        <CaseSensitive className="w-3.5 h-3.5" />
-      </button>
-
-      {/* Regex Toggle */}
-      <button
-        type="button"
-        onClick={() => setRegex((prev) => !prev)}
-        className={`p-1 rounded transition-colors cursor-pointer ${
-          regex
-            ? "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40"
-            : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-        }`}
-        title="Use Regular Expression (Alt+R)"
-      >
-        <Regex className="w-3.5 h-3.5" />
-      </button>
-
-      {/* Whole Word Toggle */}
-      <button
-        type="button"
-        onClick={() => setWholeWord((prev) => !prev)}
-        className={`px-1 py-0.5 rounded transition-colors text-[10px] font-mono font-bold cursor-pointer ${
-          wholeWord
-            ? "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40"
-            : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-        }`}
-        title="Match Whole Word (Alt+W)"
-      >
-        \b
-      </button>
+      {/* Match Case, Regex and Whole Word toggles */}
+      {toggles.map((toggle) => (
+        <button
+          key={toggle.key}
+          type="button"
+          onClick={() => toggle.setPressed((prev) => !prev)}
+          className={`${toggle.className} rounded transition-colors cursor-pointer ${toggle.pressed ? TOGGLE_ACTIVE : TOGGLE_INACTIVE}`}
+          aria-label={toggle.label}
+          aria-pressed={toggle.pressed}
+          title={toggle.title}
+        >
+          {toggle.content}
+        </button>
+      ))}
 
       {/* Previous Match */}
       <button
@@ -183,6 +229,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
         disabled={!query || resultCount === 0}
         onClick={() => onFindPrevious(query, { caseSensitive, regex, wholeWord })}
         className="p-1 text-[#8b949e] hover:text-white hover:bg-[#21262d] disabled:opacity-30 rounded transition-colors cursor-pointer"
+        aria-label="Previous match"
         title="Previous Match (Shift+Enter)"
       >
         <ArrowUp className="w-3.5 h-3.5" />
@@ -194,6 +241,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
         disabled={!query || resultCount === 0}
         onClick={() => onFindNext(query, { caseSensitive, regex, wholeWord })}
         className="p-1 text-[#8b949e] hover:text-white hover:bg-[#21262d] disabled:opacity-30 rounded transition-colors cursor-pointer"
+        aria-label="Next match"
         title="Next Match (Enter)"
       >
         <ArrowDown className="w-3.5 h-3.5" />
@@ -206,6 +254,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
         type="button"
         onClick={handleCopy}
         className="p-1 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded transition-colors cursor-pointer"
+        aria-label="Copy scrollback"
         title="Copy full terminal scrollback to clipboard"
       >
         {copied ? (
@@ -220,6 +269,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
         type="button"
         onClick={handleDownload}
         className="p-1 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded transition-colors cursor-pointer"
+        aria-label="Export scrollback as a log file"
         title="Export scrollback as .log file"
       >
         <Download className="w-3.5 h-3.5" />
@@ -230,6 +280,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
         type="button"
         onClick={onClose}
         className="p-1 text-[#8b949e] hover:text-[#ff7b72] hover:bg-[#21262d] rounded transition-colors cursor-pointer"
+        aria-label="Close search"
         title="Close (Esc)"
       >
         <X className="w-3.5 h-3.5" />

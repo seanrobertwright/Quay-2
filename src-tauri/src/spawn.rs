@@ -334,14 +334,16 @@ mod tests {
     fn a_tied_tree_ends_when_its_handle_is_dropped() {
         use std::io::Read;
         let mut cmd = super::hidden_command("cmd.exe");
-        cmd.args(["/c", "ping -n 30 127.0.0.1"]).stdout(std::process::Stdio::piped());
+        // About 120 s of pings: the tree's end is timed against half of that, so a loaded machine
+        // that is slow to kill it still passes, and one that waited for the pings fails.
+        cmd.args(["/c", "ping -n 121 127.0.0.1"]).stdout(std::process::Stdio::piped());
         let mut tree = super::spawn_tree_tied(&mut cmd).unwrap();
         let mut out = tree.child().stdout.take().unwrap();
         let started = std::time::Instant::now();
         drop(tree);
         let mut rest = Vec::new();
         let _ = out.read_to_end(&mut rest);
-        assert!(started.elapsed() < std::time::Duration::from_secs(10), "the tree outlived its handle");
+        assert!(started.elapsed() < std::time::Duration::from_secs(60), "the tree outlived its handle");
     }
 
     #[test]

@@ -46,6 +46,7 @@ import { CommitInspector, CompareInspector } from "./CommitInspector";
 import { selectCommits, selectionOids, type CommitSelection } from "./commitSelection";
 import { CommitFileDiffView } from "./CommitFileDiffView";
 import type { CommitFile } from "./commitDetails";
+import { holdsFocus } from "./holdsFocus";
 import {
   filesOfPair,
   isPairFile,
@@ -260,7 +261,13 @@ export const Topos: React.FC<ToposProps> = ({
   // The conflicted file open in the three-pane resolver (#390), in place of the graph and inspector.
   const [resolving, setResolving] = useState<string | null>(null);
   useEffect(() => setResolving(null), [selectedPath]);
-  const closeResolver = useCallback(() => setResolving(null), []);
+  // The operation the open resolver shows: the newest read, or the last one that read while a read
+  // fails, so a failed read leaves the resolver and its unsaved Result where they are (#823).
+  const resolverOp = resolving === null ? null : operation.lastOp;
+  // The one condition for drawing the resolver and for turning off what it covers, so the graph and
+  // the inspector are never inert with nothing over them.
+  const resolverShown = resolving !== null && resolverOp !== null;
+  const opReadFailure = resolverShown && operation.read.state === "failed" ? operation.read.message : null;
   const continueRef = useRef<HTMLButtonElement>(null);
   const goToContinue = useCallback(() => continueRef.current?.focus(), []);
   const otherSideHasChanges = useMemo(() => {
@@ -308,16 +315,21 @@ export const Topos: React.FC<ToposProps> = ({
   // A diff that closes with the focus in it hands the focus to the graph once the graph shows again,
   // so it doesn't fall to the page as the diff unmounts (#792). Focus elsewhere stays where it is.
   const diffSlot = useRef<HTMLDivElement | null>(null);
-  const [graphFocusRequest, setGraphFocusRequest] = useState(0);
+  // A file that waited for the resolver covers the graph as the resolver closes, so the focus goes to
+  // Topos's panel instead, where opening Topos puts it (#812).
+  const [focusRequest, setFocusRequest] = useState<{ count: number; to: "graph" | "panel" }>({ count: 0, to: "graph" });
   useEffect(() => {
-    if (graphFocusRequest > 0) focusGraph();
-  }, [graphFocusRequest, focusGraph]);
+    if (focusRequest.count === 0) return;
+    if (focusRequest.to === "graph") focusGraph();
+    else panel.current?.focus({ preventScroll: true });
+  }, [focusRequest, focusGraph]);
+  const requestFocus = useCallback((to: "graph" | "panel") => setFocusRequest(({ count }) => ({ count: count + 1, to })), []);
   const closeDiff = useCallback(() => {
-    const heldFocus = diffSlot.current?.contains(document.activeElement) === true;
+    const heldFocus = holdsFocus(diffSlot.current);
     setStagingFile(null);
     setCommitFile(null);
-    if (heldFocus) setGraphFocusRequest((n) => n + 1);
-  }, []);
+    if (heldFocus) requestFocus("graph");
+  }, [requestFocus]);
   const openCommitFile = useCallback(
     (file: CommitFile) => {
       const shown = details.shown;
@@ -478,7 +490,7 @@ export const Topos: React.FC<ToposProps> = ({
   // A file that waits for the open resolver says so in a toast, which its live region speaks too (#772).
   const showToast = refActions.toast;
   const toastWaiting = useCallback((text: string) => showToast({ tone: "done", text }), [showToast]);
-  useFileRequest({
+  const fileWaits = useFileRequest({
     ready: showsProject,
     request: fileRequest,
     conflicts: conflictPaths,
@@ -487,6 +499,14 @@ export const Topos: React.FC<ToposProps> = ({
     openResolver: setResolving,
     announce: toastWaiting,
   });
+  // The resolver hands the focus on as it closes, the same way a diff does (#812).
+  const closeResolver = useCallback(
+    (heldFocus: boolean) => {
+      setResolving(null);
+      if (heldFocus) requestFocus(fileWaits() ? "panel" : "graph");
+    },
+    [fileWaits, requestFocus]
+  );
   const newBranchAtHead = useCallback(() => newBranch("HEAD"), [newBranch]);
   const watch = graph.feed?.watch ?? null;
   // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.
@@ -500,7 +520,7 @@ export const Topos: React.FC<ToposProps> = ({
 
   // Find's keys work anywhere in Topos while the graph shows (#399), but not in a dialog drawn over
   // it, nor while a diff or the conflict resolver covers the graph and its find field.
-  const graphCovered = openFile !== null || commitFile !== null || resolving !== null;
+  const graphCovered = openFile !== null || commitFile !== null || resolverShown;
   useEffect(() => {
     const el = panel.current;
     if (!el || graphCovered) return;
@@ -652,11 +672,12 @@ export const Topos: React.FC<ToposProps> = ({
               </div>
             ) : graph.feed ? (
               <div className="relative flex-1 flex min-h-0">
-                {resolving !== null && operation.op !== null && (
+                {resolverShown && (
                   <ConflictResolver
                     key={target.path}
                     worktreePath={target.path}
-                    op={operation.op}
+                    op={resolverOp}
+                    opReadFailure={opReadFailure}
                     path={resolving}
                     onPath={setResolving}
                     onClose={closeResolver}
@@ -665,7 +686,7 @@ export const Topos: React.FC<ToposProps> = ({
                     handToAgent={handToAgent}
                   />
                 )}
-                <div className="relative flex-1 min-w-0 flex flex-col" inert={resolving !== null}>
+                <div className="relative flex-1 min-w-0 flex flex-col" inert={resolverShown}>
                   {/* The graph stays mounted under an open diff, keeping its scroll and selection. Its own
                       stacking context keeps its raised parts, such as the column handle, under the diff. */}
                   <div className="isolate flex-1 min-h-0 flex flex-col" inert={openFile !== null || commitFile !== null}>
@@ -733,7 +754,7 @@ export const Topos: React.FC<ToposProps> = ({
                   </div>
                 </div>
                 {inspectorOpen && inspectorMode === "details" && graphRepo !== null && comparing && (
-                  <div className="contents" inert={resolving !== null}>
+                  <div className="contents" inert={resolverShown}>
                     <CompareInspector
                       id={inspectorId}
                       compare={compare}
@@ -749,7 +770,7 @@ export const Topos: React.FC<ToposProps> = ({
                   </div>
                 )}
                 {inspectorOpen && inspectorMode === "details" && graphRepo !== null && !comparing && (
-                  <div className="contents" inert={resolving !== null}>
+                  <div className="contents" inert={resolverShown}>
                     <CommitInspector
                       id={inspectorId}
                       repoPath={graphRepo}
@@ -772,7 +793,7 @@ export const Topos: React.FC<ToposProps> = ({
                 )}
                 {stagingShown && (
                   // Under the resolver, the inspector keeps its state but takes no focus.
-                  <div className="contents" inert={resolving !== null}>
+                  <div className="contents" inert={resolverShown}>
                   <StagingInspector
                     id={inspectorId}
                     staging={staging}

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { FrameNotice } from "./FrameNotice.tsx";
 import { LinksContext, type SurfaceLinks } from "./links.ts";
-import { surfaceEffects } from "./surfaceEffects.ts";
+import { surfaceEffects, type Notice } from "./surfaceEffects.ts";
 
 /** The link the pointer or the focus is on, and where it leads. */
 interface Pointed {
@@ -19,12 +19,12 @@ interface SurfaceLinksProviderProps {
   children: ReactNode;
 }
 
-/** What a frame holds, with the foot that says where its links lead and why a click did nothing. */
+/** What a frame holds, with the foot that says where its links lead, and why a click did nothing or what it did out of sight. */
 export const SurfaceLinksProvider = ({ terminalId, id, focusFrame, children }: SurfaceLinksProviderProps) => {
   const footId = useId();
   const [count, setCount] = useState(0);
   const [pointed, setPointed] = useState<{ pointer: Pointed | null; focus: Pointed | null }>({ pointer: null, focus: null });
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   // Which effect is the latest; zero once the frame is gone, so an answer that comes then is dropped.
   const latest = useRef(0);
   useEffect(
@@ -38,8 +38,8 @@ export const SurfaceLinksProvider = ({ terminalId, id, focusFrame, children }: S
       effects: surfaceEffects({ terminal_id: terminalId, id }, (effect) => {
         const mine = (latest.current += 1);
         setNotice(null);
-        void effect.then((why) => {
-          if (latest.current === mine) setNotice(why);
+        void effect.then((said) => {
+          if (latest.current === mine) setNotice(said);
         });
       }),
       footId,
@@ -61,12 +61,13 @@ export const SurfaceLinksProvider = ({ terminalId, id, focusFrame, children }: S
       {children}
       {notice !== null && (
         <FrameNotice
+          kind={notice.kind}
           onDismiss={() => {
             focusFrame?.();
             setNotice(null);
           }}
         >
-          {notice}
+          {notice.text}
         </FrameNotice>
       )}
       {count > 0 && (

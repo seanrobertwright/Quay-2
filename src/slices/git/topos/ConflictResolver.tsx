@@ -11,6 +11,7 @@ import { SidePickerCard } from "./SidePickerCard";
 import { useConflictResolver, type ConflictSide } from "./useConflictResolver";
 import type { HandToAgent } from "./useHandToAgent";
 import type { Staging } from "./useStaging";
+import { holdsFocus } from "./holdsFocus";
 
 /** The most rows the file list renders; a note counts the rest. */
 const FILE_ROWS = 200;
@@ -19,9 +20,15 @@ export interface ConflictResolverProps {
   worktreePath: string;
   /** The operation under way, whose conflicts the file list shows and whose labels name the sides. */
   op: OpState;
+  /** Why the newest read of the operation failed, while `op` is the last one read (#823); null when it read. */
+  opReadFailure: string | null;
   path: string;
   onPath: (path: string) => void;
-  onClose: () => void;
+  /**
+   * Closes the resolver. `heldFocus` says whether the focus was in it, or on a confirm asked from
+   * it, so Topos can move the focus on before the resolver unmounts and drops it to the page.
+   */
+  onClose: (heldFocus: boolean) => void;
   staging: Staging;
   /** Opens a terminal in `cwd`; absent when Topos has no way to. */
   onOpenTerminal?: (cwd: string) => void;
@@ -40,7 +47,7 @@ export interface ConflictResolverProps {
  * agent holds it, every control that writes is disabled, the backend refuses those writes too, and
  * Take back returns it. Every text here is untrusted and shown only as text.
  */
-export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, path, onPath, onClose, staging, onOpenTerminal, handToAgent }) => {
+export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, opReadFailure, path, onPath, onClose, staging, onOpenTerminal, handToAgent }) => {
   const titleId = useId();
   const listId = useId();
   const resolver = useConflictResolver(worktreePath, path, staging);
@@ -58,6 +65,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const held = handToAgent.held.get(path) ?? null;
   const heldWords = held === null ? null : `With ${held.agentName}. Take it back to change it here.`;
   const busy = staging.busy !== null;
+  const section = useRef<HTMLElement>(null);
   const saving = staging.busy?.action === "resolve";
 
   // A file staged elsewhere, by the inspector or an agent, leaves the list; move to the next one.
@@ -67,7 +75,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   useEffect(() => {
     if (listed) return;
     if (first !== null) onPath(first);
-    else onClose();
+    else onClose(holdsFocus(section.current));
   }, [listed, first, onPath, onClose]);
 
   /** Runs `go` now, or after a confirm when it would drop unsaved edits. */
@@ -142,10 +150,14 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const moreFiles = op.conflictsTotal - shownFiles.length;
 
   return (
-    <section aria-labelledby={titleId} className="absolute inset-0 z-20 flex min-h-0 bg-[#0d1117]">
+    <section ref={section} aria-labelledby={titleId} className="absolute inset-0 z-20 flex min-h-0 bg-[#0d1117]">
       <nav aria-labelledby={listId} className="w-60 shrink-0 flex flex-col min-h-0 border-r border-[#30363d]">
         <div className="h-9 px-3 shrink-0 flex items-center gap-2 border-b border-[#30363d] bg-[#161b22]">
-          <button type="button" onClick={() => leaving("Leave the resolver?", onClose)} aria-label="Back to the graph" title="Back to the graph" className="p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d]">
+          <button type="button" onClick={() => {
+              // Noted now: by the time a confirm runs this, the focus is on the confirm.
+              const hadFocus = holdsFocus(section.current);
+              leaving("Leave the resolver?", () => onClose(hadFocus));
+            }} aria-label="Back to the graph" title="Back to the graph" className="p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d]">
             <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
           <h4 id={listId} className="text-[11px] font-semibold uppercase tracking-wide text-[#ff7b72]">
@@ -246,6 +258,13 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
             )}
           </div>
         </div>
+
+        {opReadFailure !== null && (
+          <div role="alert" className="px-3 py-1.5 shrink-0 flex items-center gap-2 text-[11px] text-[#ff7b72] bg-[#f85149]/10 border-b border-[#f85149]/30">
+            <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 break-words">Couldn't refresh the operation under way: {opReadFailure}</span>
+          </div>
+        )}
 
         {held !== null && (
           <div role="status" className="px-3 py-1.5 shrink-0 flex items-center gap-2 text-[11px] text-[#d2a8ff] bg-[#8957e5]/10 border-b border-[#8957e5]/30">

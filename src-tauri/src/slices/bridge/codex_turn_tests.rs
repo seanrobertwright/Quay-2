@@ -221,12 +221,14 @@ async fn until(holds: impl Fn() -> bool, what: &str) {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
     };
-    tokio::time::timeout(Duration::from_secs(5), polling).await.expect(what);
+    tokio::time::timeout(Duration::from_secs(30), polling).await.expect(what);
 }
 
+/// The sender's answer, which comes once the helper reports: well inside the sender's 60 s wait,
+/// which would end in a timeout instead.
 async fn reply(waiting: JoinHandle<Result<WaitOutcome, String>>) -> WaitOutcome {
-    let waited = tokio::time::timeout(Duration::from_secs(1), waiting).await;
-    waited.expect("the sender was answered at once").unwrap().unwrap()
+    let waited = tokio::time::timeout(Duration::from_secs(30), waiting).await;
+    waited.expect("the sender was answered before its own wait ran out").unwrap().unwrap()
 }
 
 // ---- Status

@@ -74,7 +74,7 @@ Quay draws a **frame** around every surface. What the agent wrote is clipped to 
 
 - **The header bar** shows an icon for the kind of surface, the CLI's icon, the terminal's name and the CLI's name. The dismiss and move controls are there.
 - **The line under the header** is Quay's: that the surface was answered, done, failed, ended, withdrawn or reopened, and when. On a locked surface it is tinted in the colour of how it ended, with the time at its right.
-- **The foot** shows where a link leads, in full, while the pointer or the focus is on it. It is also where Quay says why a click did nothing, or why your answer, a dismissal or a move was not taken. The **×** on that notice takes it away and leaves the surface as it was. A web link in the text has its host beside it as well.
+- **The foot** shows where a link leads, in full, while the pointer or the focus is on it. It is also where Quay says why a click did nothing, that the file manager shows a file you clicked, or why your answer, a dismissal or a move was not taken. The **×** on that notice takes it away and leaves the surface as it was. A web link in the text has its host beside it as well.
 
 ---
 
@@ -99,7 +99,7 @@ Showing a surface runs nothing and makes no network request. All that Quay reads
 | On your click | What happens |
 | :--- | :--- |
 | A web link or button | Your browser opens it. Only `http` and `https` addresses open |
-| A file link or button | The file manager shows the file in its folder, or the diff view opens in the Topos lens when the file has uncommitted changes. While Topos's conflict resolver is open, the file waits until you close it, and a Topos notification says so. In the lens, `Esc` goes back from the diff to the graph, then closes the lens. The file's own program never starts |
+| A file link or button | The file manager shows the file in its folder, and a blue notice at the surface's foot names the file, since its window can open behind Quay's. The file manager cannot go to a line, so when the link names one the notice says so. Or the diff view opens in the Topos lens when the file has uncommitted changes. While Topos's conflict resolver is open, the file waits until you close it, and a Topos notification says so. In the lens, `Esc` goes back from the diff to the graph, then closes the lens. The file's own program never starts |
 | A button that shows a terminal | Quay selects that terminal, in the same project only |
 | A button that copies | The text goes to the clipboard |
 
