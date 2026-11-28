@@ -228,7 +228,7 @@ async fn until(holds: impl Fn() -> bool, what: &str) {
 /// which would end in a timeout instead.
 async fn reply(waiting: JoinHandle<Result<WaitOutcome, String>>) -> WaitOutcome {
     let waited = tokio::time::timeout(Duration::from_secs(30), waiting).await;
-    waited.expect("the sender was answered at once").unwrap().unwrap()
+    waited.expect("the sender was answered before its own wait ran out").unwrap().unwrap()
 }
 
 // ---- Status

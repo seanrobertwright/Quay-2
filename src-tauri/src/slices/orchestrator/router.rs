@@ -1423,10 +1423,10 @@ mod tests {
 
     /// Runs `wait`, failing the test if it takes more than 30 s: long enough for a loaded machine,
     /// and half the 60 s each of these waits would otherwise spend.
-    async fn at_once<F: std::future::Future>(wait: F) -> F::Output {
+    async fn before_the_wait_ends<F: std::future::Future>(wait: F) -> F::Output {
         tokio::time::timeout(Duration::from_secs(30), wait)
             .await
-            .expect("the wait answered at once")
+            .expect("the wait answered before its own 60 s wait would have ended")
     }
 
     #[tokio::test]
@@ -1437,7 +1437,7 @@ mod tests {
             ("term-lvl-gemini", RunKind::Gemini, ClaudeStatus::Starting),
         ]);
 
-        let outcome = at_once(router.dispatch_and_wait(
+        let outcome = before_the_wait_ends(router.dispatch_and_wait(
             peer_message("term-lvl-asker", "term-lvl-gemini"),
             Some(&pty),
             60,
@@ -1468,7 +1468,7 @@ mod tests {
             ("term-lvl-silent", RunKind::Claude, ClaudeStatus::Unknown),
         ]);
 
-        let outcome = at_once(router.dispatch_and_wait(
+        let outcome = before_the_wait_ends(router.dispatch_and_wait(
             peer_message("term-lvl-asker2", "term-lvl-silent"),
             Some(&pty),
             60,
@@ -1492,7 +1492,7 @@ mod tests {
             ("term-lvl-pig", RunKind::Pig, ClaudeStatus::Unknown),
         ]);
 
-        let outcome = at_once(router.dispatch_and_wait(
+        let outcome = before_the_wait_ends(router.dispatch_and_wait(
             peer_message("term-lvl-asker4", "term-lvl-pig"),
             Some(&pty),
             60,
@@ -1535,7 +1535,7 @@ mod tests {
         assert!(!waiting.is_finished(), "a Starting Claude terminal is still a full peer");
         pty.update_status("term-lvl-goes-silent", ClaudeStatus::Unknown);
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         let WaitOutcome::NoReply(answer) = outcome else {
             panic!("the wait ends once the terminal is Unknown: {outcome:?}");
         };
@@ -1568,7 +1568,7 @@ mod tests {
         end_turn(&router, &pty, "term-lvl-starting");
         answer_turn(&router, "term-lvl-starting", "4");
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
     }
 
@@ -1597,7 +1597,7 @@ mod tests {
         assert_eq!(pty.get_info("term-oc-busy").unwrap().claude_status, ClaudeStatus::Working);
         answer_turn(&router, "term-oc-busy", "4");
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
     }
 
@@ -1628,7 +1628,7 @@ mod tests {
 
         answer_turn(&router, "term-q-midturn", "4");
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
     }
 
@@ -1712,7 +1712,7 @@ mod tests {
             ("term-tm-answerer", RunKind::Claude, ClaudeStatus::Idle),
         ]);
 
-        let err = at_once(router.dispatch_and_wait(
+        let err = before_the_wait_ends(router.dispatch_and_wait(
             peer_message("term-tm-asker", "claude"),
             Some(&pty),
             60,
@@ -1776,7 +1776,7 @@ mod tests {
             ("term-ex-gone", RunKind::Claude, ClaudeStatus::Exited),
         ]);
 
-        let err = at_once(router.dispatch_and_wait(
+        let err = before_the_wait_ends(router.dispatch_and_wait(
             peer_message("term-ex-asker", "term-ex-gone"),
             Some(&pty),
             60,
@@ -1823,7 +1823,7 @@ mod tests {
         assert!(!waiting.is_finished(), "a live Claude terminal is waited on");
         pty.update_status("term-ex-exits", ClaudeStatus::Exited);
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         let WaitOutcome::NoReply(answer) = outcome else {
             panic!("the wait ends once the terminal exits: {outcome:?}");
         };
@@ -2177,7 +2177,7 @@ mod tests {
 
         answer_turn(&router, "term-tp-running", "4");
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
     }
 
@@ -2271,7 +2271,7 @@ mod tests {
         let completed = codex_turn(&router, &pty, "term-cx-codex", &[&typed], "4").unwrap();
 
         assert_eq!(completed.status, A2AMessageStatus::Completed);
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
     }
 
@@ -2436,7 +2436,7 @@ Confirm your role in one line, then wait.";
         agy.says(&pty, "state=working:app=antigravity");
         agy.says(&pty, &format!("state=done:app=antigravity:msg={}", base64("4")));
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
         assert_eq!(pty.get_info("term-agy").unwrap().claude_status, ClaudeStatus::Idle);
     }
@@ -2456,7 +2456,7 @@ Confirm your role in one line, then wait.";
         let approve = base64("Approve RunCommand: python -c \"print(2+2)\"");
         agy.says(&pty, &format!("state=blocked:kind=permission:app=antigravity:msg={}", approve));
 
-        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let outcome = before_the_wait_ends(waiting).await.unwrap().unwrap();
         assert_eq!(
             outcome,
             WaitOutcome::Reply("blocked (permission): Approve RunCommand: python -c \"print(2+2)\"".to_string())
@@ -2479,7 +2479,7 @@ Confirm your role in one line, then wait.";
         agy.says(&pty, "state=working");
         agy.says(&pty, &format!("state=done:msg={}", base64(&cut)));
 
-        let WaitOutcome::Reply(reply) = at_once(waiting).await.unwrap().unwrap() else {
+        let WaitOutcome::Reply(reply) = before_the_wait_ends(waiting).await.unwrap().unwrap() else {
             panic!("no reply");
         };
         assert!(reply.starts_with(&cut), "{}", reply);
@@ -2542,7 +2542,7 @@ Confirm your role in one line, then wait.";
 
     /// Waits up to a second for the trail listener to have heard `count` changes.
     async fn heard(events: &Mutex<Vec<(String, A2AMessageStatus)>>, count: usize) -> Vec<(String, A2AMessageStatus)> {
-        at_once(async {
+        before_the_wait_ends(async {
             loop {
                 if events.lock().len() >= count {
                     return events.lock().clone();
@@ -2591,7 +2591,7 @@ Confirm your role in one line, then wait.";
         assert!(!waiting.is_finished(), "the entry shows before the reply lands");
 
         answer_turn(&router, "term-ev-answerer", "4");
-        assert_eq!(at_once(waiting).await.unwrap().unwrap(), WaitOutcome::Reply("4".to_string()));
+        assert_eq!(before_the_wait_ends(waiting).await.unwrap().unwrap(), WaitOutcome::Reply("4".to_string()));
         assert_eq!(
             *events.lock(),
             [
@@ -2639,7 +2639,7 @@ Confirm your role in one line, then wait.";
         ]);
         let events = trail_events(&router);
 
-        at_once(router.dispatch_and_wait(peer_message("term-ev-asker3", "term-ev-gemini"), Some(&pty), 60))
+        before_the_wait_ends(router.dispatch_and_wait(peer_message("term-ev-asker3", "term-ev-gemini"), Some(&pty), 60))
             .await
             .unwrap();
 
@@ -2734,7 +2734,7 @@ Confirm your role in one line, then wait.";
         };
         tokio::time::sleep(Duration::from_millis(100)).await;
         answer_turn(&router, "term-wt-c", "4");
-        at_once(waiting).await.unwrap().unwrap();
+        before_the_wait_ends(waiting).await.unwrap().unwrap();
 
         assert!(!sent.waited, "a no-wait send");
         let waited = router.get_messages().into_iter().find(|m| m.to_terminal == "term-wt-c").unwrap();
@@ -2769,7 +2769,7 @@ Confirm your role in one line, then wait.";
         };
         tokio::time::sleep(Duration::from_millis(100)).await;
         pty.update_status("term-wt-ex-exits", ClaudeStatus::Exited);
-        at_once(waiting).await.unwrap().unwrap();
+        before_the_wait_ends(waiting).await.unwrap().unwrap();
 
         assert!(!router.get_messages()[0].waited);
     }
@@ -2791,7 +2791,7 @@ Confirm your role in one line, then wait.";
             ("term-wt-gemini", RunKind::Gemini, ClaudeStatus::Idle),
         ]);
 
-        let outcome = at_once(router.dispatch_and_wait(
+        let outcome = before_the_wait_ends(router.dispatch_and_wait(
             peer_message("term-wt-asker", "term-wt-gemini"),
             Some(&pty),
             60,
