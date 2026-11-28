@@ -22,6 +22,7 @@ This document captures the strategic features, architectural proposals, and futu
 * **Error Logs & Panic Capture**: Quay writes daily `quay.*.log` files to the `logs` folder in its data folder, keeping the newest seven, and a panic hook records the panic to `crash.log` before the release build aborts. **Open logs folder** in the command palette opens them (#498). This covers notebook idea 6 below.
 * **Attention Queue**: One list of every session waiting on the user, with a badge, a drawer, answer-in-place permission prompts, and **Next Waiting Terminal** (`Ctrl+Shift+B q`). Spec #527, tickets #529 to #533. This covers notebook idea 11 below.
 * **Context Menus & Open-Project Double-Click**: One shared context menu for Rail project, worktree and terminal rows, pane headers and the terminal body, with no browser menu elsewhere (spec #506, tickets #507 to #511). In the Open Project dialog, double-clicking goes into a folder and only **Open** opens the project (#512). This covers notebook ideas 7 and 8 below.
+* **Source Control Follows the Selected Repository**: Switching to a project in another repository clears the previous repository's lists, name and errors at once, shows "Loading ... for <project>" with a spinner until each list answers, and starts loading even while the module is closed. Every `gh` read behind the module runs under a time limit (#845). This covers enhancement 10 and priority P1 below.
 
 ---
 
@@ -148,9 +149,9 @@ Beyond the three strategic features above, several tactical enhancements have em
 * **Current Behavior**: Quay shows no files. Seeing a project's folders means opening VS Code or Explorer.
 * **Proposed Enhancement**: A file icon at the top of the side panel, in the Projects panel header, that opens the selected project's folder as a folder and file tree. Folders load their contents only when expanded, so a large repository stays fast, and long folders are capped or paged. Files that git ignores, such as `node_modules`, are hidden or dimmed. Picking a file could open it in VS Code or in the companion; the tree could later show each file's git status.
 
-### 10. Source control follows the selected project at once (critical)
-* **Current Behavior**: Switching projects often leaves the Source control module showing the previous repository for a long time. Each switch starts three fresh `gh` processes (repo info, pull requests, issues) with no cache, the previous repository's lists stay on screen until the new answers arrive, and nothing loads while the module is closed.
-* **Proposed Enhancement**: On every project switch, clear the previous repository's lists at once and show a loading message with the new repository's name and a spinner until fresh data arrives; never show one repository's lists under another's name. Start loading on the switch itself, even while the module is closed. The spinner is a ThinkingOrbs orb (enhancement 12); a plain spinner stands in until that port lands.
+### 10. Source control follows the selected project at once [COMPLETED ✅]
+* **Implementation**: Done in #845. A change of the selected repository clears the previous repository's lists, header name, errors, search text and label filter at once; moving between worktrees of one repository changes nothing. Each list shows a spinner and "Loading pull requests for <project>" (or issues) until its own first page answers, and a failure reads "Couldn't read GitHub for <project>" with **Retry**. Late answers for the earlier repository never show under the new one. Loading starts once the repository has stayed selected for 300 ms, even while the module is closed, and at once if the module is open. Every `gh` read behind the module runs under a time limit, so a hung call ends in an error.
+* **Still open**: The spinner is plain; a ThinkingOrbs orb replaces it (enhancement 12). There is no list cache, so each switch still reads GitHub afresh; that belongs to enhancement 11.
 
 ### 11. GitHub views update themselves, with a refresh button as backup
 * **Goal**: Every part of Quay that shows GitHub data (the Source control lists, the open pull request count, the companion's issue and pull request views, the Projects panel's ticket pipeline lanes) updates by itself when an issue closes, a pull request merges, or commits are pushed to GitHub. Only the selected project stays live; other projects refresh when you switch to them.
@@ -218,14 +219,15 @@ Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
 ## 5. Priority Recommendation
 
 Re-prioritized 2026-11-28, after the attention queue, context menus and
-open-project double-click were done. P1 comes first because it is critical
-and small. The next items are the quickest to build: each is a small first
-step on code that already exists. The rest are ranked by value against
-effort. Effort is S, M or L.
+open-project double-click were done. P1 came first because it was critical
+and small; it was done the same day in #845 and keeps its row so the other
+numbers stay the same. P2 is next. The next items are the quickest to build:
+each is a small first step on code that already exists. The rest are ranked
+by value against effort. Effort is S, M or L.
 
 | Priority | Feature | Effort | Why this rank |
 | :--- | :--- | :--- | :--- |
-| **P1** | **Source control follows the selected project** (enhancement 10) | S | Critical: today the module can show the wrong repository for a long time. Clear the old lists at once, show a loading message with the new repository's name, and start loading on the switch even while the module is closed. A plain spinner stands in until P9's orbs land. |
+| **P1** ✅ | **Source control follows the selected project** (enhancement 10) | S | **Done in #845.** The module clears the old lists at once, shows a loading message with the new repository's name, and starts loading on the switch even while the module is closed. A plain spinner stands in until P9's orbs land. |
 | **P2** | **Start the app maximized** (enhancement 5) | S | A one-line window setting in `src-tauri/tauri.conf.json`. Remembering the last size and position comes later. |
 | **P3** | **Wider side panel minimum** (first step of enhancement 8) | S | Fixes the cut-off **Add** button today. One constant, `PANEL_WIDTH`, goes from 280 px to the recommended 340 px. |
 | **P4** | **Refresh button on every GitHub view** (part of enhancement 11) | S | The backup for automatic updates, and useful on its own before they exist. Each view already has a load function to call. |
