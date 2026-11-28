@@ -8,13 +8,15 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { fakeInvoke } from "../../test-support/dom.ts";
+import type { Channel } from "@tauri-apps/api/core";
+import { emitEvent, fakeInvoke } from "../../test-support/dom.ts";
 import { calls, called, loadSurfaces, settle, unloadSurfaces, until } from "../surface/fixtures/fakeRust.ts";
 import type { SurfaceRecord } from "../surface/surfaceTypes.ts";
 import type { ToposTarget } from "../git/topos/Topos.tsx";
 import type { OpState } from "../git/topos/operation.ts";
 import type { FileDiffRequest } from "../git/fileDiffRequest.ts";
 import type { StatusEntry } from "../git/topos/stagingLists.ts";
+import type { ConflictFile } from "../git/topos/useConflictResolver.ts";
 
 /** How Rust showed a file, as `surface_show_file` answers. */
 type Shown = { kind: "diff" } & Omit<FileDiffRequest, "terminalId">;
@@ -38,6 +40,25 @@ const MERGING: OpState = {
   conflictsTotal: 1,
 };
 
+/** `b.ts` as `git_conflict_open` reads it mid-merge: editable text with one conflict. */
+const CONFLICTED_B: ConflictFile = {
+  path: "b.ts",
+  xy: "UU",
+  kind: "bothModified",
+  onDisk: true,
+  leftOid: "1111111",
+  rightOid: "2222222",
+  token: "t1",
+  editable: true,
+  reason: null,
+  left: "const b = 1;\n",
+  right: "const b = 2;\n",
+  result: "<<<<<<< HEAD\nconst b = 1;\n=======\nconst b = 2;\n>>>>>>> fix\n",
+  eol: "lf",
+  bom: false,
+  markerSize: 7,
+};
+
 /** Where Rust says a link to `src/turns.ts:12` leads: the file's unstaged diff. */
 const TURNS: Shown = { kind: "diff", worktree: "E:/alpha", path: "src/turns.ts", side: "unstaged", line: 12 };
 /** What git status reports when `src/turns.ts` has unstaged changes, so the staging inspector lists it. */
@@ -46,6 +67,10 @@ const TURNS_CHANGED: StatusEntry[] = [{ path: "src/turns.ts", xy: ".M", kind: "t
 let mounted: { root: Root; container: HTMLElement } | null = null;
 /** The operation git reports in the worktree. */
 let operation: OpState;
+/** The message reading the operation fails with, or null when it reads. */
+let operationFails: string | null;
+/** Whether the graph opens a walk, so the live updates run; otherwise its open fails. */
+let graphOpens: boolean;
 /** Where each click on a file link leads, in turn; the last stays. */
 let shown: Shown[];
 /** The changes git status reports in the worktree, or null when the status read fails. */
@@ -54,6 +79,8 @@ beforeEach(() => {
   operation = NO_OPERATION;
   shown = [TURNS];
   changes = null;
+  operationFails = null;
+  graphOpens = false;
 });
 afterEach(async () => {
   if (mounted) {
@@ -65,7 +92,7 @@ afterEach(async () => {
   unloadSurfaces();
 });
 
-/** Rust for the review and for Topos: a file link leads where `shown` says; what Topos reads beyond git's version, the operation and the `changes` fails. */
+/** Rust for the review and for Topos: a file link leads where `shown` says; what Topos reads beyond git's version, the operation, `b.ts`'s conflict, the `changes` and, when `graphOpens`, the graph's walk fails. */
 async function startRust(): Promise<void> {
   let list: SurfaceRecord[] = [];
   const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -74,7 +101,18 @@ async function startRust(): Promise<void> {
     surface_open_page: () => ({ page: 1, unsent: [] }),
     surface_show_file: () => (shown.length > 1 ? shown.shift()! : shown[0]),
     git_version_check: () => ({ status: "ok" }),
-    git_operation_state: () => operation,
+    git_operation_state: () => {
+      // Rust rejects with its error's message.
+      if (operationFails !== null) return Promise.reject(operationFails);
+      return operation;
+    },
+    git_conflict_open: () => CONFLICTED_B,
+    git_graph_open: ({ onEvent }) => {
+      if (!graphOpens) throw new Error("git_graph_open is not faked");
+      // The walk starts and finds no commits; the live updates need only the started session.
+      (onEvent as Channel<unknown>).onmessage({ event: "started", sessionId: 1 });
+      return 1;
+    },
     git_status: ({ requestId }) => {
       if (changes === null) throw new Error("git_status is not faked");
       return { requestId, entries: changes, total: changes.length, truncated: false };
@@ -277,4 +315,52 @@ test("a review's file link that waits for the open resolver says so once in a To
   await act(async () => resolverBack()!.click());
   await until(() => diff(container) !== null, "the diff did not open as the resolver closed");
   assert.equal(toasts().length, 1, "said again as it opened");
+});
+
+test("a failed operation read under the open resolver keeps it, with its unsaved Result, says so, and closing it frees the graph", async () => {
+  operation = MERGING;
+  graphOpens = true;
+  shown = [{ kind: "diff", worktree: "E:/alpha", path: "b.ts", side: "conflicted", line: null }];
+  const EDITED = "const b = 3;\n";
+  const { container, review } = await draw();
+  const layer = container.querySelector("[data-topos-layer]")!;
+  const resolver = () => layer.querySelector('section[aria-labelledby] nav')?.closest("section") ?? null;
+  const resolverBack = () => button(container, "Back to the graph");
+  await clickFileLink(container, review);
+  await until(() => resolverBack() !== undefined, "the resolver never opened");
+  const editor = () => layer.querySelector<HTMLElement>('[aria-label="Result for b.ts, editable"]');
+  await until(() => editor() !== null, "the Result never showed");
+  const { EditorView } = await import("@codemirror/view");
+  const view = EditorView.findFromDOM(editor()!)!;
+  await act(async () => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: EDITED }, userEvent: "input.type" }));
+  const unsaved = () => resolver()?.querySelector("h3")?.textContent === "b.ts(unsaved)";
+  assert.equal(unsaved(), true, "the edit is unsaved");
+  const opened = resolver();
+
+  // The next read of the operation fails, as git's index lock or a gone .git may make it.
+  operationFails = "could not read MERGE_HEAD";
+  const reads = called("git_operation_state").length;
+  emitEvent("git-repo-changed", {
+    repoRoot: "E:/alpha",
+    worktreePath: "E:/alpha",
+    dirty: { refs: false, head: false, index: true, worktree: false, operation: true },
+    inOperation: false,
+  });
+  await until(() => called("git_operation_state").length > reads, "the operation was not read again");
+  await settle();
+
+  assert.equal(resolver() !== null && resolver() === opened, true, "the resolver stays, the one that was open");
+  assert.equal(unsaved(), true, "the unsaved Result is kept");
+  assert.equal(EditorView.findFromDOM(editor()!)?.state.doc.toString(), EDITED, "the Result keeps the edit");
+  const notice = [...resolver()!.querySelectorAll('[role="alert"]')].map((n) => n.textContent ?? "");
+  assert.deepEqual(notice, ["Couldn't refresh the operation under way: could not read MERGE_HEAD"]);
+
+  // Leaving drops the edit after a confirm, and the graph and inspector take clicks and keys again.
+  await act(async () => resolverBack()!.click());
+  const drop = () => button(container, "Drop my edits");
+  await until(() => drop() !== undefined, "leaving asked nothing");
+  await act(async () => drop()!.click());
+  await settle();
+  assert.equal(resolverBack(), undefined, "the resolver closed");
+  assert.deepEqual([...layer.querySelectorAll("[inert]")].length, 0, "nothing in Topos is inert with no resolver over it");
 });
