@@ -2540,7 +2540,8 @@ Confirm your role in one line, then wait.";
         events
     }
 
-    /// Waits up to a second for the trail listener to have heard `count` changes.
+    /// Waits for the trail listener to have heard `count` changes, as long as
+    /// [`before_the_wait_ends`] allows.
     async fn heard(events: &Mutex<Vec<(String, A2AMessageStatus)>>, count: usize) -> Vec<(String, A2AMessageStatus)> {
         before_the_wait_ends(async {
             loop {
