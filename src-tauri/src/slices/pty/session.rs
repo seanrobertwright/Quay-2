@@ -411,27 +411,47 @@ fn claude_program() -> &'static str {
     program
 }
 
-/// The OpenCode executable's file name for this platform.
-fn opencode_file_name() -> &'static str {
+/// The file names OpenCode is looked for under in one folder, in the order a lookup tries
+/// them. On Windows that is `PATHEXT`'s order: the executable, then the `.cmd` shim npm installs.
+fn opencode_file_names() -> &'static [&'static str] {
     #[cfg(windows)]
-    let name = "opencode.exe";
+    let names: &[&str] = &["opencode.exe", "opencode.cmd"];
     #[cfg(not(windows))]
-    let name = "opencode";
-    name
+    let names: &[&str] = &["opencode"];
+    names
 }
 
-/// The program an OpenCode terminal starts. When a folder on `path`, the terminal's `PATH`,
-/// holds OpenCode, that is the bare name, which the spawn looks up on the same `PATH`.
-/// Otherwise it is bun's install, `.bun/bin` under `home`, when that exists, and failing
-/// that the bare name again, so the spawn error names it.
-fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Path>) -> String {
-    let name = opencode_file_name();
-    if path.is_some_and(|path| std::env::split_paths(path).any(|dir| dir.join(name).is_file())) {
-        return name.to_string();
-    }
-    home.map(|home| home.join(".bun").join("bin").join(name))
-        .filter(|bun| bun.is_file())
-        .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
+/// The OpenCode executable's file name for this platform: the first name a lookup tries.
+fn opencode_file_name() -> &'static str {
+    opencode_file_names()[0]
+}
+
+/// The program an OpenCode terminal starts, by its full path: the first OpenCode in the
+/// absolute folders of `path`, the terminal's `PATH`, in order, and failing that bun's install,
+/// `.bun/bin` under `home` when `home` is absolute. A spawn given a bare name would look it up
+/// on Quay's own `PATH`, not the terminal's. When there is none it is the bare name, so the
+/// spawn error names it.
+fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&Path>) -> PathBuf {
+    let on_path = path
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .filter(|dir| dir.is_absolute());
+    let bun = home
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join(".bun").join("bin"));
+    on_path
+        .chain(bun)
+        .flat_map(|dir| opencode_file_names().iter().map(move |name| dir.join(name)))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| PathBuf::from(opencode_file_name()))
+}
+
+/// Whether `program` is a Windows batch file, such as npm's `opencode.cmd` shim, which a PTY
+/// can only start through `cmd.exe /c` (see `through_cmd`).
+fn is_cmd_shim(program: &Path) -> bool {
+    program
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd"))
 }
 
 /// How long `opencode --version` may take before an OpenCode terminal is launched as 2.x.
@@ -594,6 +614,15 @@ fn pwsh_literal(text: &str) -> String {
     quoted
 }
 
+/// A command that starts `cli` through `cmd.exe /c`, the route npm's Windows `.cmd` shims need,
+/// since a PTY can't start a batch file itself. `starts_through_cmd` recognises it.
+fn through_cmd(cli: impl AsRef<std::ffi::OsStr>) -> CommandBuilder {
+    let mut c = CommandBuilder::new("cmd.exe");
+    c.arg("/c");
+    c.arg(cli);
+    c
+}
+
 /// Whether `cmd` starts its CLI as `cmd.exe /c <cli>`, as the npm-shim CLIs do.
 fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
     let argv = cmd.get_argv();
@@ -603,12 +632,20 @@ fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
 /// Turns a `cmd.exe /c <cli> <args>` command into a pwsh one that reads the launch prompt
 /// from an env var. cmd.exe ends a command line at its first newline and an npm `.cmd`
 /// shim re-parses its arguments, so a multi-line prompt can't survive that route; pwsh
-/// runs the CLI's `.ps1` shim, which hands each argument on intact.
+/// runs the CLI's `.ps1` shim, which hands each argument on intact. pwsh finds that shim for
+/// a bare name; for a `.cmd` shim named by its path it is the `.ps1` beside it, when there is one.
 fn start_through_pwsh(cmd: &mut CommandBuilder, form: Option<LaunchPromptForm>, prompt: &str) {
     let mut script = String::from("&");
-    for arg in cmd.get_argv().iter().skip(2) {
+    for (i, arg) in cmd.get_argv().iter().skip(2).enumerate() {
+        let mut arg = arg.to_string_lossy().to_string();
+        if i == 0 && is_cmd_shim(Path::new(&arg)) {
+            let ps1 = Path::new(&arg).with_extension("ps1");
+            if ps1.is_file() {
+                arg = ps1.to_string_lossy().to_string();
+            }
+        }
         script.push(' ');
-        script.push_str(&pwsh_literal(&arg.to_string_lossy()));
+        script.push_str(&pwsh_literal(&arg));
     }
     if let Some(LaunchPromptForm::Flag(flag)) = form {
         script.push(' ');
@@ -722,18 +759,8 @@ pub(crate) fn build_command(
             }
             c
         }
-        RunKind::Pi => {
-            let mut c = CommandBuilder::new("cmd.exe");
-            c.arg("/c");
-            c.arg("pi");
-            c
-        }
-        RunKind::Gemini => {
-            let mut c = CommandBuilder::new("cmd.exe");
-            c.arg("/c");
-            c.arg("gemini");
-            c
-        }
+        RunKind::Pi => through_cmd("pi"),
+        RunKind::Gemini => through_cmd("gemini"),
         RunKind::Grok => {
             // Check if user has ~/.grok/bin/agent.exe installed
             let grok_path = std::env::var("USERPROFILE")
@@ -792,7 +819,11 @@ pub(crate) fn build_command(
         RunKind::OpenCode => {
             let program =
                 opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
-            let mut c = CommandBuilder::new(program);
+            // Unlike PiG (see `pig_program`), OpenCode's npm shim is started as it is, through
+            // `cmd.exe` like Pi's and Gemini's, rather than by the binary behind it. That route
+            // re-parses arguments, so a launch prompt goes through pwsh and the shim's `.ps1`
+            // instead (see `start_through_pwsh`).
+            let mut c = if is_cmd_shim(&program) { through_cmd(program) } else { CommandBuilder::new(program) };
             match &opencode {
                 // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
                 None | Some(OpenCodeLaunch::Tui(_)) => {
@@ -2061,14 +2092,128 @@ mod tests {
         let path = std::env::join_paths([root.join("empty"), on_path.clone()]).unwrap();
 
         // Not on the PATH: bun's install
-        assert_eq!(opencode_program(Some(&path), Some(&home)), bun.to_string_lossy());
-        // On the PATH: the bare name, which the spawn finds there
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), bun.to_string_lossy());
+        // On the PATH: its full path there, since a spawn looks a bare name up on Quay's own PATH
         std::fs::write(on_path.join(name), b"").unwrap();
-        assert_eq!(opencode_program(Some(&path), Some(&home)), name);
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), on_path.join(name).to_string_lossy());
+        // A relative folder on the PATH is never looked in
+        let relative = std::env::join_paths([std::path::PathBuf::from("bin")]).unwrap();
+        assert_eq!(opencode_program(Some(&relative), Some(&root.join("nobody"))).to_string_lossy(), name);
         // Neither: the bare name, so the spawn error names it
-        assert_eq!(opencode_program(None, Some(&root.join("nobody"))), name);
-        assert_eq!(opencode_program(None, None), name);
+        assert_eq!(opencode_program(None, Some(&root.join("nobody"))).to_string_lossy(), name);
+        assert_eq!(opencode_program(None, None).to_string_lossy(), name);
+        // A relative home is never looked in, even when bun's folder under it exists
+        let relative_home = std::path::PathBuf::from(format!("opencode-relative-home-{}", std::process::id()));
+        std::fs::create_dir_all(relative_home.join(".bun").join("bin")).unwrap();
+        std::fs::write(relative_home.join(".bun").join("bin").join(name), b"").unwrap();
+        let found = opencode_program(None, Some(&relative_home));
+        std::fs::remove_dir_all(&relative_home).unwrap();
+        assert_eq!(found, std::path::Path::new(name));
 
+    }
+
+    /// npm installs OpenCode on Windows as an `opencode.cmd` shim, with no `opencode.exe`.
+    #[cfg(windows)]
+    #[test]
+    fn opencodes_npm_shim_on_the_terminals_path_is_found_by_its_full_path() {
+        let root = TempDir::new("opencode-shim");
+        let on_path = root.join("npm");
+        let home = root.join("home");
+        let bun_bin = home.join(".bun").join("bin");
+        std::fs::create_dir_all(&on_path).unwrap();
+        std::fs::create_dir_all(&bun_bin).unwrap();
+        std::fs::write(bun_bin.join("opencode.exe"), b"").unwrap();
+        let shim = on_path.join("opencode.cmd");
+        std::fs::write(&shim, b"").unwrap();
+        let path = std::env::join_paths([root.join("empty"), on_path.clone()]).unwrap();
+
+        // The terminal's PATH wins over bun's install
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), shim.to_string_lossy());
+        // In one folder the executable wins over the shim, as `PATHEXT` orders them
+        let exe = on_path.join("opencode.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), exe.to_string_lossy());
+        // A shim in bun's folder is found when nothing on the PATH is
+        std::fs::remove_file(bun_bin.join("opencode.exe")).unwrap();
+        std::fs::write(bun_bin.join("opencode.cmd"), b"").unwrap();
+        assert_eq!(
+            opencode_program(None, Some(&home)).to_string_lossy(),
+            bun_bin.join("opencode.cmd").to_string_lossy()
+        );
+    }
+
+    /// A PTY starts npm's shim through `cmd.exe /c`; `opencode serve` runs the shim itself.
+    #[cfg(windows)]
+    #[test]
+    fn an_opencode_shim_on_the_terminals_path_starts_its_tui_through_cmd_and_its_server_directly() {
+        let root = TempDir::new("opencode-shim-launch");
+        let shim = root.join("opencode.cmd");
+        std::fs::write(&shim, b"").unwrap();
+        let shim = shim.to_string_lossy().to_string();
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.env_vars =
+            Some([(PATH_NAME.to_string(), root.to_string_lossy().to_string())].into_iter().collect());
+
+        let cmd = build_command(&request, "term-oc-shim", 4321, "tok-1", Some(4567));
+        assert_eq!(argv(&cmd)[..5], ["cmd.exe", "/c", shim.as_str(), "--port", "4567"]);
+
+        let (serve, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
+        assert_eq!(serve.get_program().to_string_lossy(), shim);
+        assert_eq!(argv(&tui)[..5], ["cmd.exe", "/c", shim.as_str(), "--server", "http://127.0.0.1:4567"]);
+    }
+
+    /// cmd.exe would cut a multi-line prompt short, so pwsh runs the `.ps1` shim npm puts
+    /// beside the `.cmd` one, which hands the prompt on intact.
+    #[cfg(windows)]
+    #[test]
+    fn an_opencode_shims_launch_prompt_goes_through_pwsh_to_its_ps1_sibling() {
+        let root = TempDir::new("opencode-shim-prompt");
+        std::fs::write(root.join("opencode.cmd"), b"").unwrap();
+        let ps1 = root.join("opencode.ps1");
+        std::fs::write(&ps1, b"").unwrap();
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+        request.env_vars =
+            Some([(PATH_NAME.to_string(), root.to_string_lossy().to_string())].into_iter().collect());
+
+        let cmd = build_command(&request, "term-oc-shim", 4321, "tok-1", Some(4567));
+
+        assert_eq!(argv(&cmd)[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
+        assert_eq!(
+            argv(&cmd)[4],
+            format!("& '{}' '--port' '4567' '--auto' '--prompt' $env:QUAY_LAUNCH_PROMPT", ps1.to_string_lossy())
+        );
+        assert_eq!(env_of(&cmd, "QUAY_LAUNCH_PROMPT").as_deref(), Some(MULTI_LINE_PROMPT));
+    }
+
+    /// The version probe runs npm's shim on the terminal's PATH, not an OpenCode on Quay's.
+    /// A probe that can't run reads as 2.x too, so the 1.x shim is what shows it ran.
+    #[cfg(windows)]
+    #[test]
+    fn the_version_probe_runs_the_opencode_shim_on_the_terminals_path() {
+        let probed = |version: &str| {
+            let root = TempDir::new("opencode-shim-probe");
+            let npm = root.join("npm");
+            let home = root.join("home");
+            std::fs::create_dir_all(&npm).unwrap();
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::write(npm.join("opencode.cmd"), format!("@echo {version}\r\n")).unwrap();
+            let mut path = vec![npm];
+            path.extend(std::env::var_os("PATH").iter().flat_map(std::env::split_paths));
+            let mut request = spawn_request(RunKind::OpenCode);
+            request.env_vars = Some(
+                [
+                    (PATH_NAME.to_string(), std::env::join_paths(path).unwrap().to_string_lossy().to_string()),
+                    ("USERPROFILE".to_string(), home.to_string_lossy().to_string()),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            opencode_launch(&request, 4567)
+        };
+
+        assert!(matches!(probed("2.4.1"), OpenCodeLaunch::Server(server) if server.port() == 4567));
+        assert!(matches!(probed("1.4.0"), OpenCodeLaunch::Tui(4567)));
     }
 
     /// How the platform spells the variable `terminal_path` reads.
