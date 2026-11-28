@@ -1,5 +1,5 @@
 import { neonPart } from "../../lib/neon.ts";
-import { FC, CSSProperties, MouseEvent, ReactNode, useState, useEffect, useCallback } from "react";
+import { FC, CSSProperties, MouseEvent, ReactNode, useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
@@ -16,6 +16,7 @@ import { onTerminalRequest } from "./terminalRequests";
 import { useTerminalMenu } from "./useTerminalMenu";
 import { bodyRightClick, copySelection, pasteClipboard, type BodyTerminal } from "./terminalBody";
 import { useContextMenu } from "../overlay/useContextMenu";
+import { isCoveredOnStage } from "../stage/stageElements.ts";
 import {
   Maximize2,
   X,
@@ -157,6 +158,19 @@ export const TerminalView: FC<TerminalViewProps> = ({
     onOpenMenu: openBodyMenuBelow,
   });
 
+  // The open search bar's element; null while it is closed.
+  const searchBar = useRef<HTMLDivElement | null>(null);
+  // The bar leaves the page when it closes, and the focus it held would fall to the page body, so that
+  // focus goes to the terminal's key field first (#810). Focus anywhere else stays where it is.
+  const closeSearch = useCallback(() => {
+    if (searchBar.current?.contains(document.activeElement)) focusTerminal();
+    setIsSearchOpen(false);
+  }, [focusTerminal]);
+  const toggleSearch = useCallback(() => {
+    if (searchBar.current) closeSearch();
+    else setIsSearchOpen(true);
+  }, [closeSearch]);
+
   // What the pane's own items do, in its header's menu and its body's menu alike.
   const paneHandlers: Partial<TerminalMenuHandlers> = {
     rename: startRename,
@@ -187,22 +201,24 @@ export const TerminalView: FC<TerminalViewProps> = ({
     [terminalId, repaintTerminal, startRename]
   );
 
-  // Hotkey listener for Ctrl+F when pane is focused. A stage tab over the pane makes it inert.
+  // Ctrl+F on the window toggles the selected pane's search, unless what has the focus, such as
+  // Topos's find, already handled the key, or a stage tab or a lens covers the pane.
   useEffect(() => {
     if (!isVisible || !isFocused) return;
 
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.ctrlKey && e.key.toLowerCase() === "f") {
-        if (containerRef.current?.closest("[inert]")) return;
+        if (e.defaultPrevented) return;
+        if (containerRef.current && isCoveredOnStage(containerRef.current)) return;
         e.preventDefault();
         e.stopPropagation();
-        setIsSearchOpen((prev) => !prev);
+        toggleSearch();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isVisible, isFocused, containerRef]);
+  }, [isVisible, isFocused, containerRef, toggleSearch]);
 
   const renderIcon = () => {
     return <AgentIcon kind={terminal?.run_kind} className="w-3.5 h-3.5 shrink-0" />;
@@ -314,7 +330,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsSearchOpen((prev) => !prev);
+                  toggleSearch();
                 }}
                 className={`p-1 rounded transition-colors cursor-pointer ${
                   isSearchOpen
@@ -373,6 +389,29 @@ export const TerminalView: FC<TerminalViewProps> = ({
           />
         )}
 
+        {/* Restored Dormant / Exited Session Ribbon: a row of its own above the terminal, so it covers none of its rows */}
+        {terminal?.claude_status === "exited" && (
+          <div className="mx-2 mt-2 shrink-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
+            <div className="flex items-center gap-2 text-[#8b949e]">
+              <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
+              <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
+              <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
+            </div>
+            {onRelaunch && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRelaunch();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                <Play className="w-3 h-3 fill-white" />
+                <span>{relaunchLabel(terminal?.run_kind)}</span>
+              </button>
+            )}
+          </div>
+        )}
         {note}
 
         {/* Terminal Viewport */}
@@ -385,7 +424,8 @@ export const TerminalView: FC<TerminalViewProps> = ({
             onFindNext={findNext}
             onFindPrevious={findPrevious}
             onClear={clearSearch}
-            onClose={() => setIsSearchOpen(false)}
+            onClose={closeSearch}
+            barRef={searchBar}
             onGetScrollback={exportScrollback}
           />
 
@@ -417,30 +457,6 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
-              </div>
-            )}
-
-            {/* Restored Dormant / Exited Session Ribbon */}
-            {terminal?.claude_status === "exited" && (
-              <div className="pointer-events-auto mx-2 mt-2 shrink-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
-                <div className="flex items-center gap-2 text-[#8b949e]">
-                  <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
-                  <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
-                  <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
-                </div>
-                {onRelaunch && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRelaunch();
-                    }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
-                  >
-                    <Play className="w-3 h-3 fill-white" />
-                    <span>{relaunchLabel(terminal?.run_kind)}</span>
-                  </button>
-                )}
               </div>
             )}
           </div>

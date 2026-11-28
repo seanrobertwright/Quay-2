@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Dispatch, type FC, type KeyboardEvent, type ReactNode, type SetStateAction } from "react";
+import { useState, useEffect, useRef, type Dispatch, type FC, type KeyboardEvent, type ReactNode, type Ref, type SetStateAction } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -10,6 +10,7 @@ import {
   Check,
   Search,
 } from "lucide-react";
+import { scrollbackFileName } from "./scrollbackExport.ts";
 
 interface TerminalSearchBarProps {
   isOpen: boolean;
@@ -24,8 +25,11 @@ interface TerminalSearchBarProps {
     options: { caseSensitive: boolean; regex: boolean; wholeWord: boolean }
   ) => void;
   onClear: () => void;
+  /** Closes the bar. Escape anywhere in it, or its Close button, asks for this. */
   onClose: () => void;
   onGetScrollback: () => string;
+  /** The bar's element while it is open. */
+  barRef?: Ref<HTMLDivElement>;
 }
 
 /** What a screen reader hears for the counter badge: "3 of 12 matches", "1 of 1 match" or "No matches". */
@@ -58,6 +62,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   onClear,
   onClose,
   onGetScrollback,
+  barRef,
 }) => {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -128,14 +133,16 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
       } else {
         onFindNext(query, { caseSensitive, regex, wholeWord });
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
   };
 
-  // Alt+C, Alt+R and Alt+W, which the toggles' titles name, from anywhere in the bar.
-  const handleToggleKeys = (e: KeyboardEvent<HTMLElement>) => {
+  // Escape closes the bar and Alt+C, Alt+R, Alt+W toggle options from anywhere in the bar.
+  const handleBarKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const toggle = toggles.find((t) => t.key === e.key.toLowerCase());
     if (!toggle) return;
@@ -155,10 +162,8 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const safeName = terminalName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const date = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `${safeName}-${date}.log`;
+    a.download = scrollbackFileName(terminalName, Date.now());
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -169,10 +174,11 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   const resultIndex = (searchResult?.index ?? -1) + 1;
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Alt+C, Alt+R and Alt+W toggle from any control in the bar; every control inside is native
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Escape closes the bar and Alt+C, Alt+R and Alt+W toggle from any control in the bar; every control inside is native
     <div
+      ref={barRef}
       data-no-terminal-focus
-      onKeyDown={handleToggleKeys}
+      onKeyDown={handleBarKeyDown}
       className="absolute top-2 right-3 z-30 flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl px-2.5 py-1.5 text-xs text-[#c9d1d9] animate-in fade-in slide-in-from-top-1 select-none"
     >
       <Search className="w-3.5 h-3.5 text-[#8b949e] shrink-0" />

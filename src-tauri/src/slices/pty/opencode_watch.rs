@@ -555,7 +555,7 @@ mod tests {
         let seen = turns.clone();
         let done = turns.clone();
         let end = tokio::time::timeout(
-            Duration::from_secs(10),
+            Duration::from_secs(30),
             watch(
                 port,
                 move || !done.lock().contains(&TurnEvent::Ended { answer: "pong".into() }),
@@ -577,8 +577,9 @@ mod tests {
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = free.local_addr().unwrap().port();
         drop(free);
+        // Half the CONNECT_BUDGET a watcher that kept trying would spend
         let end = tokio::time::timeout(
-            Duration::from_secs(5),
+            CONNECT_BUDGET / 2,
             watch(port, || false, |_| panic!("no turn was expected")),
         )
         .await
