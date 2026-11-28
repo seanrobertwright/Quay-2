@@ -31,6 +31,9 @@ const EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(300);
 /// How long `PtySession::end` waits for the reader to send what the PTY writes as it closes.
 const TEARDOWN_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// How big a log may grow before its process's exit cuts it to its tail, in bytes.
+const LOG_COMPACT_BYTES: u64 = 2 * 1024 * 1024;
+
 /// How much recent output a session keeps for a pane that mounts, in bytes.
 const OUTPUT_BUFFER_LIMIT: usize = 256 * 1024;
 
@@ -74,8 +77,9 @@ pub struct PtySession {
     sidecar: Option<Sidecar>,
     /// The end of a session that runs no process, until `take_exit_report` takes it.
     exit_report: Option<ExitReport>,
-    /// Set once `end` has read the last seq: the session sends no output after it.
-    output_closed: Arc<AtomicBool>,
+    /// Where its output goes. Closed once `end` has read the last seq, or `close_output` has
+    /// run: the session logs and sends no output after that.
+    sink: OutputSink,
     /// Hangs up when the PTY reader is done, for a session with a process.
     reader_done: Option<std::sync::mpsc::Receiver<()>>,
 }
@@ -102,36 +106,75 @@ struct OutputSink {
     terminal_id: String,
     events: WebviewEvents,
     log_path: PathBuf,
+    /// The terminal's log. Opened, written and shut only under `output_buffer`'s lock.
+    log: Arc<Mutex<LogFile>>,
     output_buffer: Arc<Mutex<(String, u64)>>,
     screen: Arc<ScreenKeeper>,
     output_closed: Arc<AtomicBool>,
 }
 
+/// A session's log, which its first chunk opens.
+enum LogFile {
+    /// No chunk has been logged yet.
+    Unopened,
+    /// Open to append.
+    Open(std::fs::File),
+    /// Shut, or never opened because it couldn't be.
+    Shut,
+}
+
 impl OutputSink {
-    /// The terminal's log, opened to append, or `None` when it can't be opened.
-    fn open_log(&self) -> Option<std::fs::File> {
-        std::fs::OpenOptions::new().create(true).append(true).open(&self.log_path).ok()
+    /// The sink for `terminal_id`'s output, open, with its log at `log_path`.
+    fn new(
+        terminal_id: String,
+        events: WebviewEvents,
+        log_path: PathBuf,
+        output_buffer: Arc<Mutex<(String, u64)>>,
+        screen: Arc<ScreenKeeper>,
+    ) -> Self {
+        Self {
+            terminal_id,
+            events,
+            log_path,
+            log: Arc::new(Mutex::new(LogFile::Unopened)),
+            output_buffer,
+            screen,
+            output_closed: Arc::new(AtomicBool::new(false)),
+        }
     }
 
-    /// Writes `text`, one chunk, to `log` and the screen, runs `before_send` with it, then
-    /// buffers it under the next seq and sends it as `pty-output`. Once the session's output is
-    /// closed (see `PtySession::end`), it drops the chunk.
-    fn write(&self, log: Option<&mut std::fs::File>, text: String, before_send: impl FnOnce(&str)) {
+    /// Appends `text` to the log, opening it first if no chunk has yet. Call it holding
+    /// `output_buffer`'s lock with the output open.
+    fn log(&self, text: &str) {
+        let mut log = self.log.lock();
+        if let LogFile::Unopened = *log {
+            *log = match std::fs::OpenOptions::new().create(true).append(true).open(&self.log_path) {
+                Ok(file) => LogFile::Open(file),
+                Err(_) => LogFile::Shut,
+            };
+        }
+        if let LogFile::Open(file) = &mut *log {
+            let _ = file.write_all(text.as_bytes());
+        }
+    }
+
+    /// Writes `text`, one chunk, to the screen, runs `before_send` with it, then logs it,
+    /// buffers it under the next seq and sends it as `pty-output`. Once the output is closed
+    /// (see `close`), it drops the chunk.
+    fn write(&self, text: String, before_send: impl FnOnce(&str)) {
         if self.output_closed.load(Ordering::SeqCst) {
             return;
-        }
-        if let Some(file) = log {
-            let _ = file.write_all(text.as_bytes());
         }
         self.screen.feed(&text, std::time::Instant::now());
         before_send(&text);
         // Buffer recent output for newly-mounting xterm instances, capped to avoid unbounded
-        // memory usage. The chunk is sent under the buffer's lock, so a replay and the sent
-        // chunks agree, and `PtySession::end` returns only after the last one is sent.
+        // memory usage. The chunk is logged and sent under the buffer's lock, so a replay and the
+        // sent chunks agree, and `close` returns only after the last one is logged and sent.
         let mut buffer = self.output_buffer.lock();
         if self.output_closed.load(Ordering::SeqCst) {
             return;
         }
+        self.log(&text);
         let seq = append_output(&mut buffer, &text, OUTPUT_BUFFER_LIMIT);
         self.events.emit(
             "pty-output",
@@ -141,6 +184,30 @@ impl OutputSink {
                 seq,
             },
         );
+    }
+
+    /// Closes the output: no chunk is logged or sent after this returns, and the log is shut.
+    /// It waits only for a chunk being logged and sent right then, never for the reader. Returns
+    /// the seq of the last chunk sent.
+    fn close(&self) -> u64 {
+        let buffer = self.output_buffer.lock();
+        self.output_closed.store(true, Ordering::SeqCst);
+        *self.log.lock() = LogFile::Shut;
+        buffer.1
+    }
+
+    /// Cuts the log to its tail once it has grown past `LOG_COMPACT_BYTES`, unless the output is
+    /// closed, when the log may be gone and must not come back.
+    fn compact_log(&self) {
+        let _buffer = self.output_buffer.lock();
+        if self.output_closed.load(Ordering::SeqCst) {
+            return;
+        }
+        if std::fs::metadata(&self.log_path).is_ok_and(|metadata| metadata.len() > LOG_COMPACT_BYTES) {
+            if let Ok(bytes) = std::fs::read(&self.log_path) {
+                let _ = std::fs::write(&self.log_path, super::manager::log_tail(&bytes));
+            }
+        }
     }
 }
 
@@ -1027,15 +1094,7 @@ impl PtySession {
             (!earlier.is_empty()).then_some(earlier.as_str()),
         ));
 
-        let output_closed = Arc::new(AtomicBool::new(false));
-        let sink = OutputSink {
-            terminal_id: terminal_id.clone(),
-            events: events.clone(),
-            log_path: log_path.clone(),
-            output_buffer: output_buffer.clone(),
-            screen: screen.clone(),
-            output_closed: output_closed.clone(),
-        };
+        let sink = OutputSink::new(terminal_id.clone(), events.clone(), log_path, output_buffer.clone(), screen.clone());
         // The session as it is with no process; a launch that runs one adds its PTY
         let without_process = Self {
             id: terminal_id.clone(),
@@ -1051,7 +1110,7 @@ impl PtySession {
             screen: screen.clone(),
             sidecar: None,
             exit_report: None,
-            output_closed,
+            sink: sink.clone(),
             reader_done: None,
         };
 
@@ -1060,7 +1119,7 @@ impl PtySession {
             // No process and no PTY: Quay writes the message into the terminal's output itself,
             // as the reader writes a chunk, so nothing is left to repaint it on a resize
             Launch::Message(message) => {
-                sink.write(sink.open_log().as_mut(), message_output(&message), |_| on_first_output());
+                sink.write(message_output(&message), |_| on_first_output());
                 screen.save_now();
                 let exit_report: ExitReport =
                     Box::new(move || report_exit(on_exit, &events, terminal_id, Some(MESSAGE_EXIT_CODE)));
@@ -1101,6 +1160,7 @@ impl PtySession {
         {
             let is_alive = is_alive.clone();
             let screen = screen.clone();
+            let sink = sink.clone();
 
             std::thread::spawn(move || {
                 // Dropped as the thread ends, which tells `end` the reader is done
@@ -1109,7 +1169,6 @@ impl PtySession {
                 let mut pending_utf8 = Vec::with_capacity(8);
                 let mut on_first_output = Some(on_first_output);
                 let mut osc7501 = on_osc7501.map(|hook| (Osc7501Scanner::default(), hook));
-                let mut log_file = sink.open_log();
 
                 while is_alive.load(Ordering::SeqCst) {
                     match reader.read(&mut buf) {
@@ -1120,7 +1179,7 @@ impl PtySession {
                                 continue;
                             }
 
-                            sink.write(log_file.as_mut(), text, |text| {
+                            sink.write(text, |text| {
                                 if let Some(hook) = on_first_output.take() {
                                     hook();
                                 }
@@ -1160,7 +1219,7 @@ impl PtySession {
             let events = events.clone();
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
-            let log_path_exit = log_path.clone();
+            let sink = sink.clone();
             let screen = screen.clone();
 
             std::thread::spawn(move || {
@@ -1171,14 +1230,8 @@ impl PtySession {
                     ender.end();
                 }
 
-                // Compact log file if it exceeds 2MB to keep disk space bounded
-                if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
-                    if metadata.len() > 2 * 1024 * 1024 {
-                        if let Ok(bytes) = std::fs::read(&log_path_exit) {
-                            let _ = std::fs::write(&log_path_exit, super::manager::log_tail(&bytes));
-                        }
-                    }
-                }
+                // Keeps disk space bounded
+                sink.compact_log();
 
                 let exit_code = match exit_status {
                     Ok(status) => {
@@ -1219,6 +1272,22 @@ impl PtySession {
     /// Stops this session saving its screen, for a terminal being closed or relaunched.
     pub fn discard_screen(&self) {
         self.screen.discard();
+    }
+
+    /// Closes this session's output, for a terminal being closed: it logs and sends nothing from
+    /// here on, so its reader finishing can't bring back a log the close deletes. Unlike `end`,
+    /// it never waits for the reader.
+    pub fn close_output(&self) {
+        self.sink.close();
+    }
+
+    /// What runs `close_output`, for closing this session's output once the session itself has
+    /// moved somewhere it can't be reached.
+    pub fn output_closer(&self) -> impl Fn() + Send + 'static {
+        let sink = self.sink.clone();
+        move || {
+            sink.close();
+        }
     }
 
     /// What ends this session's OpenCode server, if it has one.
@@ -1320,8 +1389,7 @@ impl PtySession {
     /// call it holding no lock.
     pub fn end(mut self) -> u64 {
         let reader_done = self.reader_done.take();
-        let output_buffer = self.output_buffer.clone();
-        let output_closed = self.output_closed.clone();
+        let sink = self.sink.clone();
         let terminal_id = self.id.clone();
         // Closes the PTY, which ends the process and, once the PTY's last output is read, the reader
         drop(self);
@@ -1330,9 +1398,7 @@ impl PtySession {
                 tracing::debug!("PTY reader for {} still running after its session ended", terminal_id);
             }
         }
-        let buffer = output_buffer.lock();
-        output_closed.store(true, Ordering::SeqCst);
-        buffer.1
+        sink.close()
     }
 }
 

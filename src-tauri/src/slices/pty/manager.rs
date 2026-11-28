@@ -600,6 +600,7 @@ impl PtyManager {
         updated_info.plugin_hint = false;
 
         let new_screen = session.screen_keeper();
+        let close_new_output = session.output_closer();
         let sessions = self.sessions.clone();
         let id = terminal_id.to_string();
         let attach = move || {
@@ -609,8 +610,10 @@ impl PtyManager {
             Ok(info) => info,
             Err(unattached) => {
                 // Dropping the session ends its process. Its reader may have written a
-                // new log, or saved a screen, after the close deleted the old ones.
+                // new log, or saved a screen, after the close deleted the old ones; from here
+                // it writes neither.
                 new_screen.discard();
+                close_new_output();
                 drop(unattached);
                 if self.get_info(terminal_id).is_none() {
                     remove_saved_output(terminal_id);
@@ -773,11 +776,14 @@ impl PtyManager {
         self.plugin_watches.lock().remove(terminal_id);
         self.submit_locks.lock().remove(terminal_id);
 
-        // 2. Terminate running session process if active. It saves no screen from here on,
-        //    so its reader finishing can't bring back the file step 4 deletes.
+        // 2. Terminate running session process if active. It saves no screen and logs and sends
+        //    no output from here on, so its reader finishing, which can take a chunk the PTY
+        //    writes as it closes, can't bring back the files step 4 deletes. The close waits
+        //    for no reader.
         let session = self.sessions.lock().remove(terminal_id);
         if let Some(session) = session {
             session.discard_screen();
+            session.close_output();
         }
 
         // 3. Remove from terminals_info and dormant_buffers
@@ -1480,6 +1486,8 @@ mod tests {
         ALL_RUN_KINDS,
     };
     use crate::test_support::TempDir;
+    #[cfg(windows)]
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     fn temp_sessions_file() -> (TempDir, PathBuf) {
         let dir = TempDir::new("sessions");
@@ -3041,6 +3049,66 @@ mod tests {
             assert!(Instant::now() < deadline, "timed out waiting until {}", what);
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[cfg(windows)]
+    const SLOW_DELIVERY: Duration = Duration::from_millis(300);
+
+    #[cfg(windows)]
+    /// Starts `id`, a Command terminal that runs `exit`, with its events recorded, answers the
+    /// cursor query ConPTY opens it with, and waits for its process to exit, which leaves its PTY
+    /// open, so closing the PTY sends a chunk of its own. Returns the manager, the recorder and
+    /// what was sent. Once `slow` is set, each event takes `SLOW_DELIVERY` to be recorded, as
+    /// though the reader were still busy with it.
+    fn exited_command_terminal(
+        id: &str,
+        slow: Arc<AtomicBool>,
+    ) -> (PtyManager, WebviewEvents, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
+        let mut info = test_terminal(id, RunKind::Command, ClaudeStatus::Exited);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit".to_string());
+        let manager = PtyManager::new();
+        manager.terminals_info.lock().insert(id.to_string(), info);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| {
+            if slow.load(Ordering::SeqCst) {
+                std::thread::sleep(SLOW_DELIVERY);
+            }
+            log.lock().push((event.to_string(), payload))
+        });
+        manager.relaunch_to(id, None, None, 4321, "tok-1".to_string(), None, webview.clone()).unwrap();
+        wait_until("the session asks for the cursor", || {
+            output_chunks(&sent.lock()).iter().any(|(_, text)| text.contains("\x1b[6n"))
+        });
+        manager.write(id, "\x1b[1;1R").unwrap();
+        wait_until("the session exits", || {
+            manager.get_info(id).is_some_and(|info| info.claude_status == ClaudeStatus::Exited)
+        });
+        (manager, webview, sent)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_closed_terminal_leaves_no_saved_output_and_sends_nothing_after_its_close() {
+        let id = unique_id("kill-teardown");
+        let slow = Arc::new(AtomicBool::new(false));
+        let (manager, _webview, sent) = exited_command_terminal(&id, slow.clone());
+        let dir = get_sessions_dir();
+        assert!(dir.join(format!("{}.log", id)).exists(), "the session logs its output");
+
+        slow.store(true, Ordering::SeqCst);
+        let closing = Instant::now();
+        manager.kill(&id).unwrap();
+        // The 2 s a relaunch waits for the old PTY's last chunk
+        assert!(closing.elapsed() < Duration::from_secs(2), "the close waits for no teardown output");
+        let sent_by_close = output_chunks(&sent.lock()).len();
+
+        // Long enough for the closed PTY's reader to take and drop its last chunk
+        std::thread::sleep(Duration::from_secs(3));
+        assert_eq!(output_chunks(&sent.lock()).len(), sent_by_close, "no output after the close");
+        assert!(!dir.join(format!("{}.log", id)).exists(), "no log after the close");
+        assert!(!super::super::screen::screen_path(&dir, &id).exists(), "no saved screen after the close");
     }
 
     #[cfg(windows)]
