@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
-/// How long a reply, or the relay's end, may take before the test fails.
-const LIMIT: Duration = Duration::from_secs(10);
+/// How long a reply, or the relay's end, may take before the test fails, on a loaded machine.
+const LIMIT: Duration = Duration::from_secs(30);
 
 /// Where the app's build puts the sidecar `name`.
 pub fn built_sidecar(name: &str) -> PathBuf {

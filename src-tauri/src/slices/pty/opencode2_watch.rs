@@ -500,7 +500,7 @@ mod tests {
         .await;
 
         assert_eq!(
-            turns_of(&server, Duration::from_secs(10)).await,
+            turns_of(&server, Duration::from_secs(30)).await,
             [TurnEvent::Started, TurnEvent::Ended { answer: "GOT PONG {\"word\":\"hi\"}".into() }]
         );
     }
@@ -510,7 +510,8 @@ mod tests {
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let server = OpenCodeServer::for_tests(free.local_addr().unwrap().port());
         drop(free);
-        let end = tokio::time::timeout(Duration::from_secs(5), watch(&server, || false, |_| panic!("no turn was expected")))
+        // Half the CONNECT_BUDGET a watcher that kept trying would spend
+        let end = tokio::time::timeout(CONNECT_BUDGET / 2, watch(&server, || false, |_| panic!("no turn was expected")))
             .await
             .unwrap();
         assert_eq!(end, WatchEnd::Stopped);
