@@ -3038,4 +3038,37 @@ mod tests {
         );
         manager.kill(&id).unwrap();
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_relaunched_terminal_that_showed_output_starts_its_console_on_a_clean_viewport() {
+        let id = unique_id("relaunch-clean");
+        let earlier = "\x1b[0mold line 1\r\nold line 2\x1b[0m";
+        let snapshot = super::super::screen::ScreenSnapshot { rows: 24, cols: 80, data: earlier.to_string() };
+        super::super::screen::save_screen(&get_sessions_dir(), &id, &snapshot).unwrap();
+        let mut info = test_terminal(&id, RunKind::Command, ClaudeStatus::Exited);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit".to_string());
+        let manager = PtyManager::new();
+        manager.terminals_info.lock().insert(id.clone(), info);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| log.lock().push((event.to_string(), payload)));
+
+        manager.relaunch_to(&id, Some(24), Some(80), 4321, "tok-1".to_string(), None, webview).unwrap();
+        wait_until("the console asks for the cursor", || {
+            output_chunks(&sent.lock()).iter().any(|(_, text)| text.contains("\x1b[6n"))
+        });
+        let replay = manager.get_output(&id).unwrap();
+        let chunks = output_chunks(&sent.lock());
+
+        // One line end per row scrolls what the pane shows into its scrollback, and the cursor
+        // goes home, so the console's first row is the pane's first row
+        let clean = format!("{}\x1b[H", "\r\n".repeat(24));
+        assert_eq!(chunks[0], (1, clean), "the first chunk, before anything the console sends");
+        let replayed: String =
+            chunks.iter().filter(|(seq, _)| *seq <= replay.last_seq).map(|(_, text)| text.as_str()).collect();
+        assert_eq!(replay.data, format!("{earlier}{replayed}"), "a pane that mounts sees the same");
+        manager.kill(&id).unwrap();
+    }
 }

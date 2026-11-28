@@ -1,0 +1,45 @@
+{
+  "about": "What a new ConPTY wrote, through portable-pty 0.9.0 at 24x80 on Windows 11 build 26200, for `cmd.exe /d /k` printing row-1-of-5 to row-5-of-5 with PROMPT set to `$G`. Its cursor query was answered with row 1, column 1, and the PTY was then resized to 30x100, 20x60 and 24x80.",
+  "cursorReply": "\u001b[1;1R",
+  "events": [
+    {
+      "out": "\u001b[6n"
+    },
+    {
+      "out": "\u001b[?9001h\u001b[?1004h"
+    },
+    {
+      "out": "\u001b[m\u001b]0;C:\\WINDOWS\\system32\\cmd.exe\u0007\u001b[?25h"
+    },
+    {
+      "out": "\u001b[?25lrow-1-of-5\r\nrow-2-of-5\r\nrow-3-of-5\r\nrow-4-of-5\r\nrow-5-of-5\u001b[7;1H>\u001b[?25h"
+    },
+    {
+      "resize": {
+        "rows": 30,
+        "cols": 100
+      }
+    },
+    {
+      "out": "\u001b[?25l\u001b[8;30;100t\u001b[Hrow-1-of-5\u001b[K\r\nrow-2-of-5\u001b[K\r\nrow-3-of-5\u001b[K\r\nrow-4-of-5\u001b[K\r\nrow-5-of-5\u001b[K\r\n\u001b[K\r\n>\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\u001b[7;2H\u001b[?25h"
+    },
+    {
+      "resize": {
+        "rows": 20,
+        "cols": 60
+      }
+    },
+    {
+      "out": "\u001b[?25l\u001b[Hrow-1-of-5\u001b[K\r\nrow-2-of-5\u001b[K\r\nrow-3-of-5\u001b[K\r\nrow-4-of-5\u001b[K\r\nrow-5-of-5\u001b[K\r\n\u001b[K\r\n>\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\u001b[7;2H\u001b[?25h"
+    },
+    {
+      "resize": {
+        "rows": 24,
+        "cols": 80
+      }
+    },
+    {
+      "out": "\u001b[?25l\u001b[Hrow-1-of-5\u001b[K\r\nrow-2-of-5\u001b[K\r\nrow-3-of-5\u001b[K\r\nrow-4-of-5\u001b[K\r\nrow-5-of-5\u001b[K\r\n\u001b[K\r\n>\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\u001b[7;2H\u001b[?25h"
+    }
+  ]
+}
