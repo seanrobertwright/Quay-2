@@ -46,6 +46,11 @@ The column beside the module bar that shows the open module. Clicking the open m
 folds it.
 _Avoid_: drawer, sidebar; and "node panel", which is the run canvas's panel
 
+**Selected repository**:
+The root repository of the selected project; for a worktree, the repository it was made from. The
+Source control module shows it. Selecting another worktree of the same repository does not change it.
+_Avoid_: active repo, current project, when the repository is meant
+
 **Terminal status list**:
 The column of status dots under the Projects icon, one per terminal, shown whichever panel is open.
 _Avoid_: badges, terminal chips

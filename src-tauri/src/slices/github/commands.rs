@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::process::Command;
 
+use super::gh::GH_TIMEOUT;
 use crate::spawn::hidden_command;
 
 use super::models::{
@@ -100,10 +101,10 @@ fn fetch_blocked_by(repo_path: &str, numbers: &[u32]) -> HashMap<u32, BlockerInf
         "-f",
         &format!("query={}", query),
     ]);
-    let output = match cmd.output() {
+    let output = match output_within(&mut cmd, GH_TIMEOUT) {
         Ok(o) => o,
         Err(e) => {
-            tracing::warn!("gh api graphql (blockedBy) failed to start: {}", e);
+            tracing::warn!("gh api graphql (blockedBy) failed: {}", e);
             return HashMap::new();
         }
     };
@@ -113,7 +114,7 @@ fn fetch_blocked_by(repo_path: &str, numbers: &[u32]) -> HashMap<u32, BlockerInf
         Err(_) => {
             tracing::warn!(
                 "gh api graphql (blockedBy) returned no JSON: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
+                output.stderr.trim()
             );
             HashMap::new()
         }
@@ -217,15 +218,9 @@ fn run_page_query(
     if let Some(since) = since {
         cmd.args(["-f", &format!("since={}", since)]);
     }
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to execute gh api graphql: {}", e))?;
-    serde_json::from_slice::<serde_json::Value>(&output.stdout).map_err(|_| {
-        format!(
-            "gh api graphql failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-    })
+    let output = output_within(&mut cmd, GH_TIMEOUT)?;
+    serde_json::from_slice::<serde_json::Value>(&output.stdout)
+        .map_err(|_| format!("gh api graphql failed: {}", output.stderr.trim()))
 }
 
 /// Turns a GraphQL connection's `{ nodes: [...] }` into a plain array.
@@ -319,46 +314,29 @@ pub async fn check_gh_cli_installed()-> Result<bool, String> {
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// The GitHub repository behind the folder at `repo_path`, or None when `gh` fails, times out
+/// under `GH_TIMEOUT`, or names no repository.
 #[tauri::command]
 pub async fn get_github_repo_info(repo_path: String) -> Result<Option<GithubRepoInfo>, String> {
     tokio::task::spawn_blocking(move || {
         let mut cmd = create_gh_command(&repo_path);
         cmd.args(["repo", "view", "--json", "owner,name"]);
-        let output = match cmd.output() {
-            Ok(o) => o,
-            Err(_) => return Ok(None),
-        };
-
-        if !output.status.success() {
-            return Ok(None);
+        match output_within(&mut cmd, GH_TIMEOUT) {
+            Ok(out) if out.success => Ok(parse_repo_info(&out.stdout)),
+            _ => Ok(None),
         }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed: serde_json::Value = match serde_json::from_str(&stdout) {
-            Ok(v) => v,
-            Err(_) => return Ok(None),
-        };
-
-        let owner = parsed["owner"]["login"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let name = parsed["name"].as_str().unwrap_or("").to_string();
-
-        if owner.is_empty() || name.is_empty() {
-            return Ok(None);
-        }
-
-        let nwo = format!("{}/{}", owner, name);
-        Ok(Some(GithubRepoInfo {
-            owner,
-            name,
-            nwo,
-            is_authenticated: true,
-        }))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// The repository `gh repo view --json owner,name` printed, or None when it lacks an owner or name.
+fn parse_repo_info(stdout: &[u8]) -> Option<GithubRepoInfo> {
+    let parsed: serde_json::Value = serde_json::from_slice(stdout).ok()?;
+    let owner = parsed["owner"]["login"].as_str().filter(|s| !s.is_empty())?.to_string();
+    let name = parsed["name"].as_str().filter(|s| !s.is_empty())?.to_string();
+    let nwo = format!("{owner}/{name}");
+    Some(GithubRepoInfo { owner, name, nwo, is_authenticated: true })
 }
 
 /// How long reading the signed-in login may take before `gh` is killed.
@@ -447,13 +425,10 @@ pub async fn get_github_issue(
             "number,title,body,state,author,labels,assignees,updatedAt,url",
         ]);
 
-        let output = cmd
-            .output()
-            .map_err(|e| format!("Failed to execute gh issue view: {}", e))?;
+        let output = output_within(&mut cmd, GH_TIMEOUT)?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("gh issue view failed: {}", stderr.trim()));
+        if !output.success {
+            return Err(format!("gh issue view failed: {}", output.stderr.trim()));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -602,6 +577,27 @@ pub async fn count_open_github_prs(repo_path: String) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_repo_info_reads_owner_and_name_and_refuses_partial_answers() {
+        let info = parse_repo_info(br#"{"owner":{"login":"octocat"},"name":"hello"}"#).expect("a repository");
+        assert_eq!((info.owner.as_str(), info.name.as_str(), info.nwo.as_str()), ("octocat", "hello", "octocat/hello"));
+        assert!(parse_repo_info(br#"{"owner":{"login":""},"name":"hello"}"#).is_none());
+        assert!(parse_repo_info(br#"{"name":"hello"}"#).is_none());
+        assert!(parse_repo_info(b"not json").is_none());
+    }
+
+    /// The repo-info read runs through `output_within`, so a hung `gh repo view` ends (#845).
+    #[cfg(windows)]
+    #[test]
+    fn output_within_kills_a_command_that_outlasts_its_timeout() {
+        let mut cmd = crate::spawn::hidden_command("ping");
+        cmd.args(["-n", "30", "127.0.0.1"]);
+        let started = std::time::Instant::now();
+        let err = output_within(&mut cmd, std::time::Duration::from_secs(1)).err().expect("a timeout");
+        assert!(err.contains("did not answer within 1 s"), "{err}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "took {:?}", started.elapsed());
+    }
 
     #[test]
     fn parse_open_prs_count_reads_the_total() {

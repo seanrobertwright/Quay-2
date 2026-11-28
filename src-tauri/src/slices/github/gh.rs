@@ -3,7 +3,7 @@
 //! GitHub's JSON and errors.
 
 /// How long one `gh` call may take before it is killed.
-const GH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+pub(super) const GH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 pub(super) fn count(value: &serde_json::Value) -> u32 {
     value.as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0)
