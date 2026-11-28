@@ -10,6 +10,7 @@ import {
   Check,
   Search,
 } from "lucide-react";
+import { scrollbackFileName } from "./scrollbackExport.ts";
 
 interface TerminalSearchBarProps {
   isOpen: boolean;
@@ -95,10 +96,8 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const safeName = terminalName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const date = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `${safeName}-${date}.log`;
+    a.download = scrollbackFileName(terminalName, Date.now());
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
