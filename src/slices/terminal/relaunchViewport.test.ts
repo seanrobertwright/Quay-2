@@ -48,7 +48,7 @@ function lineCounts(term: XTerm): Map<string, number> {
 
 for (const prior of [23, 40]) {
   test(`a relaunched pane that held ${prior} lines keeps them and all of the new console's lines across resizes`, async () => {
-    // As the pane is created on Windows once #813 lands
+    // A pane on Windows, with xterm told it sits on ConPTY
     const term = new Terminal({
       cols: COLS,
       rows: ROWS,

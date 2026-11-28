@@ -3063,7 +3063,8 @@ mod tests {
         let chunks = output_chunks(&sent.lock());
 
         // One line end per row scrolls what the pane shows into its scrollback, and the cursor
-        // goes home, so the console's first row is the pane's first row
+        // goes home, so the console's first row is the pane's first row. Spelled out rather than
+        // taken from `screen::clean_viewport`, so this pins the bytes the pane receives
         let clean = format!("{}\x1b[H", "\r\n".repeat(24));
         assert_eq!(chunks[0], (1, clean), "the first chunk, before anything the console sends");
         let replayed: String =
