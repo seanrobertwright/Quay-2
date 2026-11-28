@@ -434,25 +434,30 @@ fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Pat
         .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
 }
 
-/// How long `opencode --version` may take before an OpenCode terminal is launched as 2.x.
-const VERSION_PATIENCE: std::time::Duration = std::time::Duration::from_secs(3);
+/// How long each run of `opencode --version` may take. One that doesn't finish is run once
+/// more, and an OpenCode terminal whose second run doesn't finish either is launched as 2.x. A
+/// cold start of OpenCode can take some seconds on a busy machine, as a sidecar's can.
+const VERSION_PATIENCE: std::time::Duration = SIDECAR_PATIENCE;
 
 /// How long an OpenCode 2.x terminal's server may take to be ready. A cold start of OpenCode
 /// can take some seconds on a busy machine.
 const SIDECAR_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How the OpenCode terminal of `request` is launched on loopback `port`, by what its CLI's
-/// `--version` prints (see `opencode_serve::launch_of`). The probe runs the program the
-/// terminal would, with the request's variables, and blocks for at most `VERSION_PATIENCE`, so
-/// call it on a thread that may block, holding no lock.
+/// `--version` prints (see `opencode_serve::launch_of` and `opencode_serve::read_version`). The
+/// probe runs the program the terminal would, with the request's variables, and blocks for at
+/// most twice `VERSION_PATIENCE`, so call it on a thread that may block, holding no lock.
 pub(crate) fn opencode_launch(request: &SpawnTerminalRequest, port: u16) -> OpenCodeLaunch {
     let program = opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
-    let mut cmd = crate::spawn::hidden_command(program);
-    cmd.arg("--version");
-    if let Some(envs) = &request.env_vars {
-        cmd.envs(envs);
-    }
-    opencode_serve::launch_of(opencode_serve::probe_version(cmd, VERSION_PATIENCE).as_deref(), port)
+    let version = || {
+        let mut cmd = crate::spawn::hidden_command(&program);
+        cmd.arg("--version");
+        if let Some(envs) = &request.env_vars {
+            cmd.envs(envs);
+        }
+        cmd
+    };
+    opencode_serve::launch_of(opencode_serve::read_version(version, VERSION_PATIENCE).as_deref(), port)
 }
 
 /// The PiG executable's file name for this platform.

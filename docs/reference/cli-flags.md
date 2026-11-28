@@ -83,7 +83,7 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 Quay starts `opencode.exe` (`opencode` on macOS and Linux) by name, so the terminal's `PATH` finds it, and a workspace's own `PATH` variable can point it at another copy. Only when no folder on that `PATH` holds one does Quay fall back to bun's install, `%USERPROFILE%\.bun\bin\opencode.exe`.
 
-Before each launch, a relaunch included, Quay runs `opencode.exe --version`, with the terminal's variables, and gives it 3 seconds. A version below 2 gets the OpenCode 1.x launch. Any other version gets the 2.x launch, and so does a probe that prints no version or doesn't finish in time.
+Before each launch, a relaunch included, Quay runs `opencode.exe --version`, with the terminal's variables, and gives it 10 seconds. A run that doesn't finish in that time, as a cold start on a busy machine may not, is run once more with another 10 seconds. A copy that can't be started isn't run again. A version below 2 gets the OpenCode 1.x launch. Any other version gets the 2.x launch, and so does a probe that prints no version, can't start, or doesn't finish either run in time.
 
 ### OpenCode 1.x {#opencode-1x}
 
