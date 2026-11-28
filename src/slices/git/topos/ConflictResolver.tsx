@@ -20,6 +20,8 @@ export interface ConflictResolverProps {
   worktreePath: string;
   /** The operation under way, whose conflicts the file list shows and whose labels name the sides. */
   op: OpState;
+  /** Why the newest read of the operation failed, while `op` is the last one read (#823); null when it read. */
+  opReadFailure: string | null;
   path: string;
   onPath: (path: string) => void;
   /**
@@ -45,7 +47,7 @@ export interface ConflictResolverProps {
  * agent holds it, every control that writes is disabled, the backend refuses those writes too, and
  * Take back returns it. Every text here is untrusted and shown only as text.
  */
-export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, path, onPath, onClose, staging, onOpenTerminal, handToAgent }) => {
+export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, opReadFailure, path, onPath, onClose, staging, onOpenTerminal, handToAgent }) => {
   const titleId = useId();
   const listId = useId();
   const resolver = useConflictResolver(worktreePath, path, staging);
@@ -256,6 +258,13 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
             )}
           </div>
         </div>
+
+        {opReadFailure !== null && (
+          <div role="alert" className="px-3 py-1.5 shrink-0 flex items-center gap-2 text-[11px] text-[#ff7b72] bg-[#f85149]/10 border-b border-[#f85149]/30">
+            <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 break-words">Couldn't refresh the operation under way: {opReadFailure}</span>
+          </div>
+        )}
 
         {held !== null && (
           <div role="status" className="px-3 py-1.5 shrink-0 flex items-center gap-2 text-[11px] text-[#d2a8ff] bg-[#8957e5]/10 border-b border-[#8957e5]/30">
