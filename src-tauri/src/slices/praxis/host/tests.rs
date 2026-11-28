@@ -323,23 +323,26 @@ fn process_alive(pid: u32) -> bool {
     }
 }
 
-/// The id of the fake's sleeping child, once it has written it.
+/// The id of the fake's sleeping child, once it has written it. A loaded machine can take tens of
+/// seconds to start node twice.
 fn child_pid(src: &Path) -> u32 {
     let started = Instant::now();
     loop {
         if let Some(pid) = std::fs::read_to_string(src.join("child.pid")).ok().and_then(|s| s.trim().parse().ok()) {
             return pid;
         }
-        assert!(started.elapsed() < Duration::from_secs(30), "the fake never started its child");
+        assert!(started.elapsed() < Duration::from_secs(120), "the fake never started its child");
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
 #[test]
 fn a_timeout_kills_the_whole_tree() {
-    // The fake starts its child and writes its id before its delay, so it is killed once that is done.
-    let h = Harness::with_bounds(CallBounds { read: until_the_fake_has_started(), ..CallBounds::default() });
-    let delay = Duration::from_secs(120);
+    // The fake starts its child and writes its id before its delay, so it is killed once that is
+    // done. Starting node twice can take a loaded machine past `until_the_fake_has_started`, and a
+    // kill before the child's id is written leaves the test nothing to check (#818).
+    let h = Harness::with_bounds(CallBounds { read: Duration::from_secs(60), ..CallBounds::default() });
+    let delay = Duration::from_secs(600);
     h.scenario(json!({ "child": true, "delayMs": delay.as_millis() as u64 }));
     let started = Instant::now();
     assert_eq!(h.call(Verb::Status, &["status", "wo-1"]), CallOutcome::TimedOut);
@@ -378,7 +381,9 @@ fn stdout_past_its_cap_stops_the_call_and_stderr_keeps_its_tail() {
 
 #[test]
 fn a_cancelled_caller_returns_at_once_and_the_last_one_kills_the_process() {
-    let h = Harness::new();
+    // Only the cancels may end the process: a read bound that a loaded machine's slow node start
+    // ran past would kill it while the second caller still waits (#818).
+    let h = Harness::with_bounds(CallBounds { read: Duration::from_secs(300), ..CallBounds::default() });
     h.scenario(json!({ "child": true, "delayMs": 120000 }));
     let (first, second) = (Uuid::new_v4(), Uuid::new_v4());
     let args = vec!["status".to_string(), "wo-1".to_string()];
@@ -386,6 +391,13 @@ fn a_cancelled_caller_returns_at_once_and_the_last_one_kills_the_process() {
         let a = scope.spawn(|| h.cli.call(&h.project, Verb::Status, &args, first));
         let b = scope.spawn(|| h.cli.call(&h.project, Verb::Status, &args, second));
         let pid = child_pid(&h.src());
+        // A caller that hasn't joined yet would leave `first` the only one waiting, whose cancel
+        // then rightly kills the process.
+        let started = Instant::now();
+        while h.cli.waiting() < 2 {
+            assert!(started.elapsed() < Duration::from_secs(30), "the second caller never joined the first's call");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         h.cli.cancel(first);
         assert_eq!(a.join().unwrap(), CallOutcome::Cancelled);
         assert!(process_alive(pid), "one caller's cancel killed a process another is waiting on");
