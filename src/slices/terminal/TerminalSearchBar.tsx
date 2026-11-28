@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FC, type KeyboardEvent } from "react";
+import { useState, useEffect, useRef, type Dispatch, type FC, type KeyboardEvent, type ReactNode, type SetStateAction } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -26,6 +26,27 @@ interface TerminalSearchBarProps {
   onClear: () => void;
   onClose: () => void;
   onGetScrollback: () => string;
+}
+
+/** What a screen reader hears for the counter badge: "3 of 12 matches", "1 of 1 match" or "No matches". */
+function matchCountLabel(index: number, count: number): string {
+  if (count === 0) return "No matches";
+  return `${index} of ${count} ${count === 1 ? "match" : "matches"}`;
+}
+
+const TOGGLE_ACTIVE = "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40";
+const TOGGLE_INACTIVE = "text-[#8b949e] hover:text-white hover:bg-[#21262d]";
+
+/** One search-option toggle: its button and its Alt shortcut both come from this entry. */
+interface SearchToggle {
+  /** The letter that toggles it with Alt, lowercase. */
+  key: string;
+  label: string;
+  title: string;
+  pressed: boolean;
+  setPressed: Dispatch<SetStateAction<boolean>>;
+  className: string;
+  content: ReactNode;
 }
 
 export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
@@ -69,6 +90,36 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
 
   if (!isOpen) return null;
 
+  const toggles: SearchToggle[] = [
+    {
+      key: "c",
+      label: "Match case",
+      title: "Match Case (Alt+C)",
+      pressed: caseSensitive,
+      setPressed: setCaseSensitive,
+      className: "p-1",
+      content: <CaseSensitive className="w-3.5 h-3.5" />,
+    },
+    {
+      key: "r",
+      label: "Use regular expression",
+      title: "Use Regular Expression (Alt+R)",
+      pressed: regex,
+      setPressed: setRegex,
+      className: "p-1",
+      content: <Regex className="w-3.5 h-3.5" />,
+    },
+    {
+      key: "w",
+      label: "Match whole word",
+      title: "Match Whole Word (Alt+W)",
+      pressed: wholeWord,
+      setPressed: setWholeWord,
+      className: "px-1 py-0.5 text-[10px] font-mono font-bold",
+      content: <span aria-hidden="true">\b</span>,
+    },
+  ];
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -86,10 +137,10 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   // Alt+C, Alt+R and Alt+W, which the toggles' titles name, from anywhere in the bar.
   const handleToggleKeys = (e: KeyboardEvent<HTMLElement>) => {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
-    const toggle = { c: setCaseSensitive, r: setRegex, w: setWholeWord }[e.key.toLowerCase()];
+    const toggle = toggles.find((t) => t.key === e.key.toLowerCase());
     if (!toggle) return;
     e.preventDefault();
-    toggle((prev) => !prev);
+    toggle.setPressed((prev) => !prev);
   };
 
   const handleCopy = () => {
@@ -118,10 +169,9 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   const resultIndex = (searchResult?.index ?? -1) + 1;
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Alt+C, Alt+R and Alt+W toggle from any control in the bar; every control inside is native
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Alt+C, Alt+R and Alt+W toggle from any control in the bar; every control inside is native
     <div
       data-no-terminal-focus
-      role="search"
       onKeyDown={handleToggleKeys}
       className="absolute top-2 right-3 z-30 flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl px-2.5 py-1.5 text-xs text-[#c9d1d9] animate-in fade-in slide-in-from-top-1 select-none"
     >
@@ -146,61 +196,26 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
           {query && (
             <>
               <span aria-hidden="true">{resultCount > 0 ? `${resultIndex}/${resultCount}` : "0/0"}</span>
-              <span className="sr-only">
-                {resultCount > 0 ? `${resultIndex} of ${resultCount} ${resultCount === 1 ? "match" : "matches"}` : "No matches"}
-              </span>
+              <span className="sr-only">{matchCountLabel(resultIndex, resultCount)}</span>
             </>
           )}
         </span>
       </div>
 
-      {/* Match Case Toggle */}
-      <button
-        type="button"
-        onClick={() => setCaseSensitive((prev) => !prev)}
-        className={`p-1 rounded transition-colors cursor-pointer ${
-          caseSensitive
-            ? "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40"
-            : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-        }`}
-        aria-label="Match case"
-        aria-pressed={caseSensitive}
-        title="Match Case (Alt+C)"
-      >
-        <CaseSensitive className="w-3.5 h-3.5" />
-      </button>
-
-      {/* Regex Toggle */}
-      <button
-        type="button"
-        onClick={() => setRegex((prev) => !prev)}
-        className={`p-1 rounded transition-colors cursor-pointer ${
-          regex
-            ? "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40"
-            : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-        }`}
-        aria-label="Use regular expression"
-        aria-pressed={regex}
-        title="Use Regular Expression (Alt+R)"
-      >
-        <Regex className="w-3.5 h-3.5" />
-      </button>
-
-      {/* Whole Word Toggle */}
-      <button
-        type="button"
-        onClick={() => setWholeWord((prev) => !prev)}
-        className={`px-1 py-0.5 rounded transition-colors text-[10px] font-mono font-bold cursor-pointer ${
-          wholeWord
-            ? "bg-[#58a6ff]/20 text-[#58a6ff] border border-[#58a6ff]/40"
-            : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-        }`}
-        aria-label="Match whole word"
-        aria-pressed={wholeWord}
-        title="Match Whole Word (Alt+W)"
-      >
-        <span aria-hidden="true">\b</span>
-      </button>
+      {/* Match Case, Regex and Whole Word toggles */}
+      {toggles.map((toggle) => (
+        <button
+          key={toggle.key}
+          type="button"
+          onClick={() => toggle.setPressed((prev) => !prev)}
+          className={`${toggle.className} rounded transition-colors cursor-pointer ${toggle.pressed ? TOGGLE_ACTIVE : TOGGLE_INACTIVE}`}
+          aria-label={toggle.label}
+          aria-pressed={toggle.pressed}
+          title={toggle.title}
+        >
+          {toggle.content}
+        </button>
+      ))}
 
       {/* Previous Match */}
       <button
