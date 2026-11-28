@@ -389,6 +389,29 @@ export const TerminalView: FC<TerminalViewProps> = ({
           />
         )}
 
+        {/* Restored Dormant / Exited Session Ribbon: a row of its own above the terminal, so it covers none of its rows */}
+        {terminal?.claude_status === "exited" && (
+          <div className="mx-2 mt-2 shrink-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
+            <div className="flex items-center gap-2 text-[#8b949e]">
+              <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
+              <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
+              <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
+            </div>
+            {onRelaunch && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRelaunch();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                <Play className="w-3 h-3 fill-white" />
+                <span>{relaunchLabel(terminal?.run_kind)}</span>
+              </button>
+            )}
+          </div>
+        )}
         {note}
 
         {/* Terminal Viewport */}
@@ -434,30 +457,6 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
-              </div>
-            )}
-
-            {/* Restored Dormant / Exited Session Ribbon */}
-            {terminal?.claude_status === "exited" && (
-              <div className="pointer-events-auto mx-2 mt-2 shrink-0 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
-                <div className="flex items-center gap-2 text-[#8b949e]">
-                  <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
-                  <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
-                  <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
-                </div>
-                {onRelaunch && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRelaunch();
-                    }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
-                  >
-                    <Play className="w-3 h-3 fill-white" />
-                    <span>{relaunchLabel(terminal?.run_kind)}</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
