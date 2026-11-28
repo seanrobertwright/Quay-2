@@ -548,11 +548,16 @@ export function darkAppTheme(regQuery: string): boolean | null {
   return value === undefined ? null : Number.parseInt(value, 16) === 0;
 }
 
+/** The width in CSS px of Quay's window once restored down, as `tauri.conf.json` sizes it. */
+export const CAPTURE_WIDTH = 1280;
+
 /** What is not pinned on the capture machine, as the capture page reports it; empty when all is. */
 export function checkCaptureMachine(facts: MachineFacts): string[] {
   const problems: string[] = [];
   if (facts.devicePixelRatio !== 2) problems.push(`set Windows display scaling to 200%; the webview reports ${facts.devicePixelRatio * 100}% (device pixel ratio ${facts.devicePixelRatio})`);
-  if (facts.innerWidth !== 1280) problems.push(`Quay must open 1280 px wide; it opened ${facts.innerWidth} px wide (is the screen too small at 200%?)`);
+  if (facts.innerWidth !== CAPTURE_WIDTH) {
+    problems.push(`Quay's window, restored down, must be ${CAPTURE_WIDTH} px wide; it is ${facts.innerWidth} px wide (is the screen too small at 200%?)`);
+  }
   if (!facts.cascadiaCode) problems.push('install Cascadia Code, the terminal font, on the capture machine');
   if (facts.darkAppTheme === null) problems.push('the Windows app theme could not be read from the registry; set it to dark');
   else if (!facts.darkAppTheme) problems.push('set the Windows app theme to dark (Settings > Personalization > Colors)');

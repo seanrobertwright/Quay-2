@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
+use tauri::utils::config::WindowConfig;
 
 /// The label of Quay's main window, as `tauri.conf.json` names it.
 pub const MAIN_WINDOW: &str = "main";
@@ -255,6 +256,16 @@ fn build_retries() -> impl Iterator<Item = Duration> {
     })
 }
 
+/// The config a new main window is built from. The config opens the window maximized, which
+/// suits one built with no old window to follow. One that is `placed` where the old one was starts
+/// unmaximized, so it takes the old one's position and size before it is shown, and its state after.
+fn rebuilt_window(mut config: WindowConfig, placed: bool) -> WindowConfig {
+    if placed {
+        config.maximized = false;
+    }
+    config
+}
+
 #[cfg(windows)]
 pub use platform::watch;
 
@@ -277,7 +288,9 @@ mod platform {
     use webview2_com::ProcessFailedEventHandler;
     use windows_core::{Interface, PWSTR};
 
-    use super::{build_retries, Commit, FailedProcess, Failure, Recovery, WebviewRecovery, MAIN_WINDOW};
+    use super::{
+        build_retries, rebuilt_window, Commit, FailedProcess, Failure, Recovery, WebviewRecovery, MAIN_WINDOW,
+    };
 
     /// Watches `window`'s webview for failed processes, and recovers the main window from them.
     pub fn watch(window: &WebviewWindow) {
@@ -489,6 +502,7 @@ mod platform {
     fn build_main(app: &AppHandle, geometry: Option<Geometry>) {
         let recovery = app.state::<WebviewRecovery>();
         let config = app.config().app.windows.iter().find(|window| window.label == MAIN_WINDOW).cloned();
+        let config = config.map(|config| rebuilt_window(config, geometry.is_some()));
         let mut retries = build_retries();
         loop {
             let built = config
@@ -558,6 +572,13 @@ mod tests {
         );
         let bare = Failure { process: FailedProcess::Other(11), reason: None, exit_code: None, description: None, commit: None };
         assert_eq!(bare.describe("the page goes on"), "WebView2 kind 11 process failed; the page goes on");
+    }
+
+    #[test]
+    fn a_window_put_back_where_the_old_one_was_is_not_built_maximized() {
+        let config = WindowConfig { maximized: true, ..WindowConfig::default() };
+        assert!(!rebuilt_window(config.clone(), true).maximized);
+        assert!(rebuilt_window(config, false).maximized);
     }
 
     #[test]
