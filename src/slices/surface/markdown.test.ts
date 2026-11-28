@@ -325,7 +325,7 @@ const notice = () => mounted!.container.querySelector('[role="alert"]')?.textCon
 test("a Markdown link to a local path shows the file on a click, in the surface's own terminal", async () => {
   fakeInvoke(async (cmd, args) => {
     calls.push({ cmd, args });
-    return { kind: "revealed" };
+    return { kind: "revealed", path: (args as { path: string }).path, line: null };
   });
   const content = await drawText(
     "[a](src/a.ts:12) [b](README.md:3) [c](<C:/Program Files/x y.txt>) [d](docs/a%20b.md) [e](../up.txt) [f](//host/share/x) [g](file://host/x) [h](<\\\\\\\\host\\\\x>)",
@@ -341,7 +341,7 @@ test("a Markdown link to a local path shows the file on a click, in the surface'
     await point(link, "mouseout");
   }
   assert.deepEqual(caused().map(({ cmd, args }) => [cmd, args]), paths.map((path) => [SHOW_FILE, { terminalId: "t1", path, line: null }]));
-  assert.equal(notice(), null);
+  assert.equal(notice(), "Shown in the file manager: \\\\host\\x.");
 });
 
 test("a link to a path with characters nobody sees is text", async () => {
@@ -387,6 +387,47 @@ test("a file with uncommitted changes opens the diff view of its worktree", asyn
   // Nothing in the window takes the request
   await act(async () => links(content)[0].click());
   assert.equal(notice(), "Not opened: the diff view is not there for src/a.ts. Select its terminal and try again.");
+});
+
+/** Rust's answer that the file manager shows `path`, which the link named `line` of. */
+const revealed = (path: string, line: number | null = null) => async () => ({ kind: "revealed", path, line });
+/** The notice's element, which tells what kind of notice it is. */
+const noticeBox = () => mounted!.container.querySelector<HTMLElement>('[role="alert"]');
+
+test("a file the file manager shows says so at the frame's foot, as information", async () => {
+  fakeInvoke(revealed("a.txt"));
+  const content = await drawText("[a](a.txt) [b](gone.ts)");
+  await act(async () => links(content)[0].click());
+  assert.equal(notice(), "Shown in the file manager: a.txt.");
+  assert.equal(noticeBox()?.dataset.notice, "information");
+
+  fakeInvoke(() => Promise.reject("Not opened: there is no gone.ts."));
+  await act(async () => links(content)[1].click());
+  assert.equal(notice(), "Not opened: there is no gone.ts.", "a later effect replaces it");
+  assert.equal(noticeBox()?.dataset.notice, "refusal");
+
+  fakeInvoke(revealed("a.txt"));
+  await act(async () => links(content)[0].click());
+  assert.equal(notice(), "Shown in the file manager: a.txt.", "it replaces a refusal");
+  await act(async () => noticeBox()!.querySelector<HTMLElement>('button[aria-label="Dismiss this notice"]')!.click());
+  assert.equal(notice(), null, "its × takes it away");
+  assert.equal(document.activeElement, mounted!.container.querySelector("section[data-surface]"), "as a refusal's does");
+});
+
+test("a file the file manager shows at a line says that it cannot go to the line", async () => {
+  fakeInvoke(revealed("a.txt", 2));
+  const content = await drawText("[a](a.txt:2)");
+  await act(async () => links(content)[0].click());
+  assert.equal(notice(), "Shown in the file manager: a.txt. It cannot go to line 2.");
+});
+
+test("the name of a file the file manager shows is plain text, cut where it is long", async () => {
+  const long = `<b>x</b>‮${"y".repeat(300)}`;
+  fakeInvoke(revealed(long));
+  const content = await drawText("[a](a.txt)");
+  await act(async () => links(content)[0].click());
+  assert.equal(notice(), `Shown in the file manager: <b>x</b> ${"y".repeat(191)}….`);
+  assert.equal(noticeBox()?.querySelector("b"), null);
 });
 
 test("a path that is not opened says so at the frame's foot, until the next click", async () => {

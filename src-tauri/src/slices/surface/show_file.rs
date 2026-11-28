@@ -13,15 +13,17 @@ use crate::slices::git::file_change::{file_change, ChangeSide, FileChange};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::workspace::WorkspaceManager;
 
-/// The most characters of a path a refusal quotes.
+/// The most characters of a path a refusal or a reveal quotes.
 const MOST_QUOTED: usize = 200;
 
 /// How a file was shown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Shown {
-    /// The file manager shows it in its folder.
-    Revealed,
+    /// The file manager shows it in its folder. `path` is the path as the agent wrote it, without its
+    /// line, made a plain line no longer than a refusal quotes. `line` is the line the agent named, which
+    /// the file manager cannot go to.
+    Revealed { path: String, line: Option<u32> },
     /// Nothing is shown yet: the webview is to open the diff view on `path`, in the worktree whose root
     /// is `worktree`. `line` is the line the agent named.
     Diff { worktree: String, path: String, side: ChangeSide, line: Option<u32> },
@@ -53,7 +55,7 @@ pub fn show_file(
         return Ok(Shown::Diff { worktree, path, side, line: line.or(written_line) });
     }
     match reveal(path) {
-        Ok(()) => Ok(Shown::Revealed),
+        Ok(()) => Ok(Shown::Revealed { path: plain_line(&written, MOST_QUOTED), line: line.or(written_line) }),
         Err(error) => Err(format!("Not opened: the file manager could not show {} ({error}).", plain_line(&written, MOST_QUOTED))),
     }
 }
