@@ -56,6 +56,20 @@
     "fix": "Set `component` to one of the components of Quay's catalog that the error lists."
   },
   {
+    "mistake": "A component is written nested, as in A2UI 0.8",
+    "arguments": {
+      "place": "companion",
+      "title": "Migration plan",
+      "messages": [
+        {"version": "1.0", "createSurface": {"surfaceId": "plan", "components": [{"id": "root", "component": {"Column": {"children": ["said"]}}}, {"id": "said", "component": "Text", "text": "x"}]}}
+      ]
+    },
+    "errors": [
+      {"code": "VALIDATION_FAILED", "surfaceId": "plan", "path": "/messages/0/createSurface/components/0/component", "message": "Invalid 1.0 message: createSurface.components.0.component: Expected string, received object"}
+    ],
+    "fix": "Write `component` as the component's name, such as `\"Column\"`, with its properties beside it."
+  },
+  {
     "mistake": "A property is not on the component's line",
     "arguments": {
       "place": "companion",
