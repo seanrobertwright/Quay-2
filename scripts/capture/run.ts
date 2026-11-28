@@ -18,6 +18,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright-core
 import { formatDateStamp } from '../../src/lib/dates.ts';
 import {
   buildSidecar,
+  CAPTURE_WIDTH,
   capturePaths,
   checkCaptureMachine,
   darkAppTheme,
@@ -276,6 +277,34 @@ function exeVersion(exe: string): string {
   }).trim();
 }
 
+/**
+ * Restores Quay's window down from maximized, which is how Quay opens, to the size its config
+ * gives it. Done from outside Quay, with `ShowWindow`, so nothing for the capture ships in Quay.
+ * Waits for the window first, since Quay has only just started.
+ */
+function restoreQuayWindow(quay: ChildProcess) {
+  const script = [
+    "$user32 = Add-Type -Name User32 -Namespace QuayCapture -PassThru -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr window, int command);'",
+    '$deadline = (Get-Date).AddSeconds(60)',
+    'do {',
+    '  $window = (Get-Process -Id $env:QUAY_CAPTURE_PID -ErrorAction Stop).MainWindowHandle',
+    '  if ($window -ne [IntPtr]::Zero) { break }',
+    '  Start-Sleep -Milliseconds 200',
+    '} while ((Get-Date) -lt $deadline)',
+    "if ($window -eq [IntPtr]::Zero) { throw 'Quay opened no window' }",
+    '[void]$user32::ShowWindow($window, 9)', // SW_RESTORE
+  ].join('\n');
+  try {
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      encoding: 'utf8',
+      env: { ...process.env, QUAY_CAPTURE_PID: String(quay.pid) },
+    });
+  } catch (error) {
+    throw new Error(`could not restore Quay's window down: ${((error as { stderr?: string }).stderr ?? String(error)).trim()}`);
+  }
+}
+
 /** The Windows app theme, read from the registry; null when it can't be. */
 function windowsDarkAppTheme(): boolean | null {
   const key = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize';
@@ -513,6 +542,7 @@ async function main() {
     quay = spawn(args.exe, [], { env, stdio: 'ignore' });
     const capturedOn = formatDateStamp(Date.now());
     let version: string;
+    if (args.byHand) restoreQuayWindow(quay);
     if (args.byHand) version = await captureByHand(plan, replayState, setState, paths.stills, join(work, 'by-hand'));
     else version = await captureOverCdp(plan, replayState, setState, paths.stills, join(work, 'clip'), quay);
     const sidecar = buildSidecar({ tutorial: slug, quayVersion: version, capturedOn, recordings });
@@ -551,6 +581,10 @@ async function captureOverCdp(plan: PlannedStep[], stateDir: string, setState: S
   try {
     const page = await appPage(browser);
     await page.evaluate(() => document.fonts.ready);
+    restoreQuayWindow(quay);
+    // The page takes its new width a moment after the window does. A window that never gets
+    // there is the machine check's to report, with the width it has.
+    await page.waitForFunction((width) => window.innerWidth === width, CAPTURE_WIDTH, { timeout: 5000 }).catch(() => undefined);
     const problems = checkCaptureMachine(await machineFacts(page));
     if (problems.length > 0) throw new Error(['the capture machine is not pinned:', ...problems].join('\n  '));
     const version = await quayVersion(page);

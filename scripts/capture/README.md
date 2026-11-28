@@ -62,9 +62,11 @@ argument. A failed capture keeps its fixture folder and prints where it is.
 The script checks these before the first shot and stops with a list of what is off:
 
 - **Windows display scaling at 200%.** Shots are taken at the device pixel ratio, an integer 2,
-  and never resized. Quay opens 1280 px wide in CSS pixels, so a still is 2560 px wide.
-- **Quay opens 1280 px wide.** A screen too small for 2560 × 1600 physical pixels shrinks the
-  window.
+  and never resized. Quay's window, restored down, is 1280 px wide in CSS pixels, so a still is
+  2560 px wide.
+- **Quay's window is 1280 px wide once restored down.** Quay opens maximized, and the script
+  [restores its window down](#what-the-script-sets-up) to the 1280 × 800 its config gives it. A
+  screen too small for 2560 × 1600 physical pixels shrinks the window.
 - **Cascadia Code installed.** It is the first font in the terminal's font stack.
 - **The Windows app theme set to dark.** The script reads it from the registry's
   `AppsUseLightTheme`. The webview's `prefers-color-scheme` does not follow the app theme: on a
@@ -90,6 +92,11 @@ that variable for every terminal. Quay builds each terminal's environment from t
 then applies a project's `env_vars`, so this is the only way the fake CLIs reach its
 terminals. The fake CLIs are copies of `quay-record-replay.exe` named after each CLI the
 recordings were made with.
+
+Quay opens maximized, so once its window is up the script restores it down, to the 1280 × 800
+that `src-tauri/tauri.conf.json` gives the main window. It does that from outside Quay, with
+Win32's `ShowWindow` on the window of the process it started, in a scripted capture and in one
+by hand alike. `src/mainWindow.test.ts` holds the config to that size.
 
 The project folder is emptied and the tutorial's starter is copied into it. The script marks a
 folder it made with a `<folder>.quay-capture` file beside it, outside the project Quay opens,

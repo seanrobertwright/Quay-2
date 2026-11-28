@@ -354,7 +354,7 @@ test('the capture machine must be pinned: 200% scaling, a 1280 px window, Cascad
   const problems = checkCaptureMachine({ devicePixelRatio: 2.5, innerWidth: 1024, cascadiaCode: false, darkAppTheme: false });
   assert.equal(problems.length, 4);
   assert.match(problems[0], /200%.*2\.5/);
-  assert.match(problems[1], /1280.*1024/);
+  assert.match(problems[1], /restored down.*1280.*1024/);
   assert.match(problems[2], /Cascadia Code/);
   assert.match(problems[3], /dark/);
   assert.match(checkCaptureMachine({ ...pinned, darkAppTheme: null })[0], /theme/);

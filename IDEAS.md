@@ -23,6 +23,7 @@ This document captures the strategic features, architectural proposals, and futu
 * **Attention Queue**: One list of every session waiting on the user, with a badge, a drawer, answer-in-place permission prompts, and **Next Waiting Terminal** (`Ctrl+Shift+B q`). Spec #527, tickets #529 to #533. This covers notebook idea 11 below.
 * **Context Menus & Open-Project Double-Click**: One shared context menu for Rail project, worktree and terminal rows, pane headers and the terminal body, with no browser menu elsewhere (spec #506, tickets #507 to #511). In the Open Project dialog, double-clicking goes into a folder and only **Open** opens the project (#512). This covers notebook ideas 7 and 8 below.
 * **Source Control Follows the Selected Repository**: Switching to a project in another repository clears the previous repository's lists, name and errors at once, shows "Loading ... for <project>" with a spinner until each list answers, and starts loading even while the module is closed. Every `gh` read behind the module runs under a time limit (#845). This covers enhancement 10 and priority P1 below.
+* **Opens Maximized**: Quay's main window opens maximized on every launch and restores down to 1280 × 800 (#848). This covers enhancement 5 and priority P2 below.
 
 ---
 
@@ -124,9 +125,9 @@ Beyond the three strategic features above, several tactical enhancements have em
 * **Current Behavior**: Live token spend meter tracks cumulative cost and displays it in the Rail.
 * **Proposed Enhancement**: Allow setting a per-day spending limit (e.g., $10.00/day). First step: when the day's spend crosses the limit, Quay raises an alert, for example an attention queue item and a chime. Later: per-session limits, and pausing a session that nears its cap.
 
-### 5. Start the app maximized
-* **Current Behavior**: The main window opens at 1280 × 800 (`src-tauri/tauri.conf.json`), and Quay does not remember the window's size or position between launches.
-* **Proposed Enhancement**: Open the main window maximized. A later step could remember the last size, position and maximized state instead.
+### 5. Start the app maximized [COMPLETED ✅]
+* **Implementation**: Done in #848. The main window opens maximized on every launch, in every build, and restores down to 1280 × 800 (`src-tauri/tauri.conf.json`). A window rebuilt after its WebView2 browser process died comes back with the old one's position, size and state. The tutorial capture restores the window down itself, so its stills keep their size.
+* **Still open**: Quay does not remember the window's size, position or maximized state between launches.
 
 ### 6. Status bar at the bottom of the window (like Orca's)
 * **Current Behavior**: Quay has no status bar. The shell redesign removed the old status strip; pane headers and the module bar badges carry its signals now.
@@ -220,15 +221,16 @@ Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
 
 Re-prioritized 2026-11-28, after the attention queue, context menus and
 open-project double-click were done. P1 came first because it was critical
-and small; it was done the same day in #845 and keeps its row so the other
-numbers stay the same. P2 is next. The next items are the quickest to build:
-each is a small first step on code that already exists. The rest are ranked
-by value against effort. Effort is S, M or L.
+and small; it was done the same day in #845, and P2 after it in #848. Both
+keep their rows so the other numbers stay the same. P3 is next. The next
+items are the quickest to build: each is a small first step on code that
+already exists. The rest are ranked by value against effort. Effort is S, M
+or L.
 
 | Priority | Feature | Effort | Why this rank |
 | :--- | :--- | :--- | :--- |
 | **P1** ✅ | **Source control follows the selected project** (enhancement 10) | S | **Done in #845.** The module clears the old lists at once, shows a loading message with the new repository's name, and starts loading on the switch even while the module is closed. A plain spinner stands in until P9's orbs land. |
-| **P2** | **Start the app maximized** (enhancement 5) | S | A one-line window setting in `src-tauri/tauri.conf.json`. Remembering the last size and position comes later. |
+| **P2** ✅ | **Start the app maximized** (enhancement 5) | S | **Done in #848.** A one-line window setting in `src-tauri/tauri.conf.json`. Remembering the last size and position comes later. |
 | **P3** | **Wider side panel minimum** (first step of enhancement 8) | S | Fixes the cut-off **Add** button today. One constant, `PANEL_WIDTH`, goes from 280 px to the recommended 340 px. |
 | **P4** | **Refresh button on every GitHub view** (part of enhancement 11) | S | The backup for automatic updates, and useful on its own before they exist. Each view already has a load function to call. |
 | **P5** | **Daily spend alert** (first step of spend budget caps, enhancement 4) | S | The spend meter already totals cost per day. Add one limit setting and raise an attention queue item and a chime when the day's total crosses it. Per-session caps and pausing come later. |
