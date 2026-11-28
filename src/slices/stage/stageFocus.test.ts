@@ -455,7 +455,7 @@ test("Escape on any of a terminal's search bar buttons closes the bar and gives 
   const field = await openSearch(container);
   // The previous and next match buttons are disabled with nothing to find, and take no focus.
   const names = [...field.closest("[data-no-terminal-focus]")!.querySelectorAll("button")].filter((b) => !b.disabled).map(nameOf);
-  assert.ok(names.includes("Close (Esc)"), "the bar's buttons are found");
+  assert.ok(names.includes("Close search"), "the bar's buttons are found");
   await escape(field);
   for (const name of names) {
     await openSearch(container);
@@ -470,12 +470,12 @@ test("Escape on any of a terminal's search bar buttons closes the bar and gives 
 test("a terminal's search bar Close button, pressed by keyboard or clicked, closes the bar and gives the terminal the focus", async () => {
   const { container } = await mountStage();
   await openSearch(container);
-  await press(container, "Close (Esc)");
+  await press(container, "Close search");
   assertBarClosed(container, "the keyboard closes the bar");
   assert.equal(focused(), "terminal a", "after the keyboard");
 
   await openSearch(container);
-  const close = button(container, "Close (Esc)");
+  const close = button(container, "Close search");
   // A click focuses the button it lands on, and the pane's own mousedown leaves the bar's focus alone.
   await act(async () => {
     close.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
