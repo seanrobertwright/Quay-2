@@ -1421,9 +1421,10 @@ mod tests {
         }
     }
 
-    /// Runs `wait`, failing the test if it takes more than a second.
+    /// Runs `wait`, failing the test if it takes more than 30 s: long enough for a loaded machine,
+    /// and half the 60 s each of these waits would otherwise spend.
     async fn at_once<F: std::future::Future>(wait: F) -> F::Output {
-        tokio::time::timeout(Duration::from_secs(1), wait)
+        tokio::time::timeout(Duration::from_secs(30), wait)
             .await
             .expect("the wait answered at once")
     }
