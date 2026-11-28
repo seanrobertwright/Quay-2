@@ -362,6 +362,9 @@ pub struct PtyManager {
     plugin_watches: Arc<Mutex<HashMap<String, PluginWatch>>>,
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    /// One lock per terminal, held through a relaunch, so a second relaunch starts only once the
+    /// first is done, and numbers on from the session it put in place. `kill` never takes it.
+    relaunch_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     /// Held while a status is read and sent (see `send_status`). Lock before any other lock here.
     status_sending: Arc<Mutex<()>>,
@@ -382,6 +385,7 @@ impl PtyManager {
             dormant_buffers: Arc::new(Mutex::new(HashMap::new())),
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
+            relaunch_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
             status_sending: Arc::new(Mutex::new(())),
             server_watcher: Arc::new(Mutex::new(None)),
@@ -441,14 +445,28 @@ impl PtyManager {
     }
 
     /// Opens a terminal from `request`, whose environment variables are the terminal's own, with
-    /// the workspace's added to them (see `launch_env`).
+    /// the workspace's added to them (see `launch_env`). It fails, and leaves the terminal as it
+    /// was, when `request` names the id of a terminal already listed or running.
     pub fn spawn(
+        &self,
+        request: SpawnTerminalRequest,
+        workspace_env: Option<HashMap<String, String>>,
+        bridge_port: u16,
+        bridge_token: String,
+        app_handle: AppHandle,
+    ) -> Result<TerminalInfo, String> {
+        let webview = WebviewEvents::to_app(app_handle);
+        self.spawn_to(request, workspace_env, bridge_port, bridge_token, webview)
+    }
+
+    /// `spawn`, with the new session's events sent to `webview`.
+    fn spawn_to(
         &self,
         mut request: SpawnTerminalRequest,
         workspace_env: Option<HashMap<String, String>>,
         bridge_port: u16,
         bridge_token: String,
-        app_handle: AppHandle,
+        webview: WebviewEvents,
     ) -> Result<TerminalInfo, String> {
         let own_env = non_empty(request.env_vars.take());
         request.env_vars = launch_env(own_env.as_ref(), workspace_env);
@@ -456,11 +474,15 @@ impl PtyManager {
             .id
             .clone()
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
+        // Spawning over a terminal would replace its session without draining it; `relaunch`
+        // restarts one.
+        if self.terminals_info.lock().contains_key(&terminal_id) || self.sessions.lock().contains_key(&terminal_id) {
+            return Err(format!("Terminal {} is already open; relaunch it instead", terminal_id));
+        }
 
         let start_seq = self.last_seq(&terminal_id);
         let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
-        let webview = WebviewEvents::to_app(app_handle);
         let on_first_output = self.first_output_hook(launch_ref.clone(), webview.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
@@ -541,6 +563,11 @@ impl PtyManager {
         workspace_env: Option<HashMap<String, String>>,
         webview: WebviewEvents,
     ) -> Result<TerminalInfo, String> {
+        // Held to the end, so a second relaunch of this terminal finds this one's session in
+        // place, ends it, and numbers on from the last chunk it sent. Without it, the second
+        // would find no session while this one ends the old, and number from the dormant seq.
+        let relaunch_lock = self.relaunch_locks.lock().entry(terminal_id.to_string()).or_default().clone();
+        let _relaunching = relaunch_lock.lock();
         let info = {
             let info_map = self.terminals_info.lock();
             info_map.get(terminal_id).cloned().ok_or_else(|| {
@@ -596,6 +623,7 @@ impl PtyManager {
         updated_info.plugin_hint = false;
 
         let new_screen = session.screen_keeper();
+        let close_new_output = session.output_closer();
         let sessions = self.sessions.clone();
         let id = terminal_id.to_string();
         let attach = move || {
@@ -605,8 +633,10 @@ impl PtyManager {
             Ok(info) => info,
             Err(unattached) => {
                 // Dropping the session ends its process. Its reader may have written a
-                // new log, or saved a screen, after the close deleted the old ones.
+                // new log, or saved a screen, after the close deleted the old ones; from here
+                // it writes neither.
                 new_screen.discard();
+                close_new_output();
                 drop(unattached);
                 if self.get_info(terminal_id).is_none() {
                     remove_saved_output(terminal_id);
@@ -768,12 +798,16 @@ impl PtyManager {
         //    closed and never lists it or its session again (see `relist_launched`)
         self.plugin_watches.lock().remove(terminal_id);
         self.submit_locks.lock().remove(terminal_id);
+        self.relaunch_locks.lock().remove(terminal_id);
 
-        // 2. Terminate running session process if active. It saves no screen from here on,
-        //    so its reader finishing can't bring back the file step 4 deletes.
+        // 2. Terminate running session process if active. It saves no screen and logs and sends
+        //    no output from here on, so its reader finishing, which can take a chunk the PTY
+        //    writes as it closes, can't bring back the files step 4 deletes. The close waits
+        //    for no reader.
         let session = self.sessions.lock().remove(terminal_id);
         if let Some(session) = session {
             session.discard_screen();
+            session.close_output();
         }
 
         // 3. Remove from terminals_info and dormant_buffers
@@ -1479,6 +1513,8 @@ mod tests {
         ALL_RUN_KINDS,
     };
     use crate::test_support::TempDir;
+    #[cfg(windows)]
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     fn temp_sessions_file() -> (TempDir, PathBuf) {
         let dir = TempDir::new("sessions");
@@ -3083,6 +3119,40 @@ mod tests {
         assert!(!dir.join(format!("{}.log", id)).exists());
     }
 
+    /// A request to open a Command terminal under `id` that runs `command`.
+    fn command_request(id: &str, command: &str) -> SpawnTerminalRequest {
+        SpawnTerminalRequest {
+            id: Some(id.to_string()),
+            name: None,
+            project_path: ".".to_string(),
+            run_kind: RunKind::Command,
+            permission_mode: None,
+            command_text: Some(command.to_string()),
+            rows: None,
+            cols: None,
+            env_vars: None,
+            custom_flags: None,
+            initial_prompt: None,
+        }
+    }
+
+    #[test]
+    fn a_spawn_under_a_listed_terminals_id_is_refused_and_leaves_it_as_it_was() {
+        let id = unique_id("spawn-taken");
+        let manager = PtyManager::new();
+        let listed = test_terminal(&id, RunKind::Codex, ClaudeStatus::Idle);
+        manager.insert_test_terminal(listed.clone());
+        let launch = manager.begin_launch(&id, RunKind::Codex);
+
+        let spawned = manager.spawn_to(command_request(&id, "exit"), None, 4321, "tok-1".to_string(), WebviewEvents::to(|_, _| ()));
+
+        assert!(spawned.is_err(), "a terminal already listed under the id is restarted with relaunch");
+        assert_eq!(format!("{:?}", manager.get_info(&id)), format!("{:?}", Some(listed)));
+        assert!(manager.launch_current(&launch), "the listed terminal keeps its launch");
+        assert!(!manager.sessions.lock().contains_key(&id));
+        manager.kill(&id).unwrap();
+    }
+
     #[cfg(windows)]
     /// The `pty-output` chunks among `sent`, in the order they were sent, as their seq and text.
     fn output_chunks(sent: &[(String, serde_json::Value)]) -> Vec<(u64, String)> {
@@ -3100,6 +3170,113 @@ mod tests {
             assert!(Instant::now() < deadline, "timed out waiting until {}", what);
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[cfg(windows)]
+    /// Starts `id`, a Command terminal that runs `exit`, with its events recorded, answers the
+    /// cursor query ConPTY opens it with, and waits for its process to exit, which leaves its PTY
+    /// open, so closing the PTY sends a chunk of its own. Returns the manager, the recorder and
+    /// what was sent. The recorder runs `delivering` with each event's name before it records it.
+    fn exited_command_terminal(
+        id: &str,
+        delivering: impl Fn(&str) + Send + Sync + 'static,
+    ) -> (PtyManager, WebviewEvents, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
+        let mut info = test_terminal(id, RunKind::Command, ClaudeStatus::Exited);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit".to_string());
+        let manager = PtyManager::new();
+        manager.terminals_info.lock().insert(id.to_string(), info);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| {
+            delivering(event);
+            log.lock().push((event.to_string(), payload))
+        });
+        manager.relaunch_to(id, None, None, 4321, "tok-1".to_string(), None, webview.clone()).unwrap();
+        wait_until("the session asks for the cursor", || {
+            output_chunks(&sent.lock()).iter().any(|(_, text)| text.contains("\x1b[6n"))
+        });
+        manager.write(id, "\x1b[1;1R").unwrap();
+        wait_until("the session exits", || {
+            manager.get_info(id).is_some_and(|info| info.claude_status == ClaudeStatus::Exited)
+        });
+        (manager, webview, sent)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_closed_terminal_leaves_no_saved_output_and_sends_nothing_after_its_close() {
+        let id = unique_id("kill-teardown");
+        // Once set, each event takes a while to be recorded, as though the reader were still
+        // busy with it as the close runs
+        let slow = Arc::new(AtomicBool::new(false));
+        let slowed = slow.clone();
+        let (manager, _webview, sent) = exited_command_terminal(&id, move |_| {
+            if slowed.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        });
+        let dir = get_sessions_dir();
+        assert!(dir.join(format!("{}.log", id)).exists(), "the session logs its output");
+
+        slow.store(true, Ordering::SeqCst);
+        let closing = Instant::now();
+        manager.kill(&id).unwrap();
+        // The 2 s a relaunch waits for the old PTY's last chunk
+        assert!(closing.elapsed() < Duration::from_secs(2), "the close waits for no teardown output");
+        let sent_by_close = output_chunks(&sent.lock()).len();
+
+        // Long enough for the closed PTY's reader to take and drop its last chunk
+        std::thread::sleep(Duration::from_secs(3));
+        assert_eq!(output_chunks(&sent.lock()).len(), sent_by_close, "no output after the close");
+        assert!(!dir.join(format!("{}.log", id)).exists(), "no log after the close");
+        assert!(!super::super::screen::screen_path(&dir, &id).exists(), "no saved screen after the close");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn two_relaunches_of_one_terminal_at_once_number_the_surviving_sessions_output_above_all_before_it() {
+        let id = unique_id("relaunch-twice");
+        // Once `hold` is set, the next chunk sent waits to be delivered until `release` is: the
+        // first relaunch is then still ending the old session when the second one begins
+        let hold = Arc::new(AtomicBool::new(false));
+        let held = Arc::new(AtomicBool::new(false));
+        let release = Arc::new(AtomicBool::new(false));
+        let (holding, holder, released) = (hold.clone(), held.clone(), release.clone());
+        let (manager, webview, sent) = exited_command_terminal(&id, move |event| {
+            if event == "pty-output" && holding.swap(false, Ordering::SeqCst) {
+                holder.store(true, Ordering::SeqCst);
+                let deadline = Instant::now() + Duration::from_secs(30);
+                while !released.load(Ordering::SeqCst) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        });
+        let relaunching = |manager: &PtyManager, webview: &WebviewEvents| {
+            let (manager, webview, id) = (manager.clone(), webview.clone(), id.clone());
+            std::thread::spawn(move || manager.relaunch_to(&id, None, None, 4321, "tok-1".to_string(), None, webview))
+        };
+
+        hold.store(true, Ordering::SeqCst);
+        let first = relaunching(&manager, &webview);
+        wait_until("the old PTY's closing chunk is on its way", || held.load(Ordering::SeqCst));
+        let second = relaunching(&manager, &webview);
+        // As long as the second relaunch could take to start a session, were it not to wait
+        std::thread::sleep(Duration::from_millis(500));
+        release.store(true, Ordering::SeqCst);
+        let relaunched = [first.join().unwrap(), second.join().unwrap()];
+        assert!(relaunched.iter().any(Result::is_ok), "a relaunch finishes: {:?}", relaunched.map(|r| r.err()));
+        // Long enough for every ended session's reader to send its last chunk
+        std::thread::sleep(Duration::from_secs(3));
+
+        let chunks = output_chunks(&sent.lock());
+        // The pane keeps only a chunk numbered above every one it has seen
+        assert!(
+            chunks.windows(2).all(|pair| pair[1].0 > pair[0].0),
+            "every chunk is numbered above every chunk sent before it: {:?}",
+            chunks
+        );
+        manager.kill(&id).unwrap();
     }
 
     #[cfg(windows)]
