@@ -349,7 +349,7 @@ pub struct PtyManager {
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     /// One lock per terminal, held through a relaunch, so a second relaunch starts only once the
-    /// first has its session in place and numbers on from it. `kill` never takes it.
+    /// first is done, and numbers on from the session it put in place. `kill` never takes it.
     relaunch_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     /// Held while a status is read and sent (see `send_status`). Lock before any other lock here.
