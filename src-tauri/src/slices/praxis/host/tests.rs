@@ -326,12 +326,20 @@ fn process_alive(pid: u32) -> bool {
 /// The id of the fake's sleeping child, once it has written it. A loaded machine can take tens of
 /// seconds to start node twice.
 fn child_pid(src: &Path) -> u32 {
+    poll_until(Duration::from_secs(120), "the fake never started its child", || {
+        std::fs::read_to_string(src.join("child.pid")).ok().and_then(|s| s.trim().parse().ok())
+    })
+}
+
+/// Polls `found` every 20 ms until it gives a value, failing the test with `what` once `limit`
+/// has passed.
+fn poll_until<T>(limit: Duration, what: &str, mut found: impl FnMut() -> Option<T>) -> T {
     let started = Instant::now();
     loop {
-        if let Some(pid) = std::fs::read_to_string(src.join("child.pid")).ok().and_then(|s| s.trim().parse().ok()) {
-            return pid;
+        if let Some(value) = found() {
+            return value;
         }
-        assert!(started.elapsed() < Duration::from_secs(120), "the fake never started its child");
+        assert!(started.elapsed() < limit, "{what}");
         std::thread::sleep(Duration::from_millis(20));
     }
 }
@@ -393,11 +401,9 @@ fn a_cancelled_caller_returns_at_once_and_the_last_one_kills_the_process() {
         let pid = child_pid(&h.src());
         // A caller that hasn't joined yet would leave `first` the only one waiting, whose cancel
         // then rightly kills the process.
-        let started = Instant::now();
-        while h.cli.waiting() < 2 {
-            assert!(started.elapsed() < Duration::from_secs(30), "the second caller never joined the first's call");
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        poll_until(Duration::from_secs(30), "the second caller never joined the first's call", || {
+            (h.cli.waiting() >= 2).then_some(())
+        });
         h.cli.cancel(first);
         assert_eq!(a.join().unwrap(), CallOutcome::Cancelled);
         assert!(process_alive(pid), "one caller's cancel killed a process another is waiting on");
