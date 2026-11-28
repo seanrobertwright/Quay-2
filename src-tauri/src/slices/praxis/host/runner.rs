@@ -149,6 +149,13 @@ impl PraxisCli {
         }
     }
 
+    /// How many callers are waiting on the calls in flight, counted as [`leave`](Self::leave)
+    /// counts them, so a test can tell when every caller has joined.
+    #[cfg(test)]
+    pub(super) fn waiting(&self) -> usize {
+        lock(&self.inner.calls).values().map(|flight| *lock(&flight.waiting)).sum()
+    }
+
     /// How to start `praxis`, and the `--state` folder to pass, under the current settings.
     pub fn launch(&self) -> Result<(Launch, Option<PathBuf>), String> {
         let settings = self.inner.settings.read();

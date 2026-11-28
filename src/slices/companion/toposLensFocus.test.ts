@@ -7,6 +7,7 @@
 // faked. The terminal's own focus runs on its real timers, so each check waits them out.
 import "../../test-support/bundlerImports.ts";
 import { fakeInvoke } from "../../test-support/dom.ts";
+import { settleFocus, terminalKeys as keysOf, terminalSearchOpen as searchOpenOf, until } from "../../test-support/terminalPane.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -18,7 +19,6 @@ const { Stage } = await import("../stage/Stage.tsx");
 const { useToposDock, ToposLens, ToposLayer, ToposViewSlot } = await import("./ToposDock.tsx");
 const { Topos } = await import("../git/topos/Topos.tsx");
 
-const { setTimeout: later } = globalThis;
 const noop = () => {};
 const PROJECT = "E:/alpha";
 const OWN: ToposTarget = { path: PROJECT, name: "Alpha", repoPath: PROJECT };
@@ -56,17 +56,6 @@ function startRust(): void {
     if (cmd.startsWith("git_") || cmd.startsWith("topos_")) throw new Error(`${cmd} is not faked`);
     return null;
   });
-}
-
-/** Lets the page run for `ms` of real time: what was promised, its frames and its timers. */
-const wait = (ms: number) => act(async () => void (await new Promise((done) => later(done, ms))));
-/** Waits out a terminal's timed focus, whose last try runs half a second after it was asked. */
-const settleFocus = () => wait(700);
-
-/** Waits, for up to two seconds, until `holds`. */
-async function until(holds: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 100 && !holds(); i += 1) await wait(20);
-  assert.ok(holds(), what);
 }
 
 /** The stage with the terminal and a Swarm tab, the companion's Topos view, the Topos lens and Topos, wired as the app wires them. */
@@ -150,8 +139,9 @@ async function draw(): Promise<HTMLElement> {
   return container;
 }
 
-const terminalKeys = (container: HTMLElement) =>
-  container.querySelector<HTMLTextAreaElement>('[data-pie-terminal="t1"] .xterm-helper-textarea');
+const terminalKeys = (container: HTMLElement) => keysOf(container, TERMINAL.id);
+/** Whether the terminal's "Find in terminal..." bar is open. */
+const terminalSearchOpen = (container: HTMLElement) => searchOpenOf(container, TERMINAL.id);
 const lens = (container: HTMLElement) => container.querySelector('section[aria-label="Topos lens"]');
 const layer = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-topos-layer]")!;
 const graphList = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-topos-layer] [role="listbox"][aria-label="Commits"]');
@@ -179,13 +169,33 @@ const press = (key: string, ctrl = false) =>
 /** Opens Topos's find with Ctrl+F from inside Topos, and waits for its field to take the focus. */
 async function openFind(container: HTMLElement): Promise<void> {
   await act(async () => graphList(container)!.focus());
-  // Topos takes the key first; past it, the terminal's own Ctrl+F on the window would open the terminal's search too.
-  const stop = (e: Event) => e.stopPropagation();
-  layer(container).addEventListener("keydown", stop);
   await press("f", true);
-  layer(container).removeEventListener("keydown", stop);
   await until(() => document.activeElement === findField(container), "the find never took the focus");
 }
+
+
+test("Ctrl+F in Topos in the companion opens Topos's find only, with the focus in its field", async () => {
+  const container = await draw();
+  await openFind(container);
+  await settleFocus();
+  assert.equal(terminalSearchOpen(container), false, "the terminal's search bar stays closed");
+  assert.equal(focused(container), "Topos's find field, over the companion");
+});
+
+test("Ctrl+F in the Topos lens opens Topos's find only, and no terminal search bar is open once the lens closes", async () => {
+  const container = await draw();
+  await openLens(container);
+  await openFind(container);
+  await settleFocus();
+  assert.equal(terminalSearchOpen(container), false, "the terminal's search bar stays closed");
+  assert.equal(focused(container), "Topos's find field, over the lens");
+
+  await press("Escape");
+  await press("Escape");
+  await settleFocus();
+  assert.equal(lens(container) !== null, false, "the second Escape closes the lens");
+  assert.equal(terminalSearchOpen(container), false, "no terminal search bar is open after the lens closes");
+});
 
 const wideToggle = (container: HTMLElement) => button(container.querySelector("[data-companion]")!, "Wide")!;
 

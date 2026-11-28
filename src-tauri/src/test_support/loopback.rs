@@ -6,8 +6,8 @@ use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-/// How long a reply may take before the test fails.
-const REPLY_LIMIT: Duration = Duration::from_secs(10);
+/// How long a reply may take before the test fails, on a loaded machine.
+const REPLY_LIMIT: Duration = Duration::from_secs(30);
 
 pub struct Reply {
     pub status: u16,

@@ -69,7 +69,7 @@ fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
 }
 
 /// How an OpenCode `request` is launched, on a free loopback port, from a probe of its version
-/// (see `opencode_launch`), which blocks for a few seconds at most. `None` for other CLIs,
+/// (see `opencode_launch`), which can block for some seconds on a busy machine. `None` for other CLIs,
 /// which aren't probed.
 fn opencode_launch_for(request: &SpawnTerminalRequest) -> Result<Option<OpenCodeLaunch>, String> {
     Ok(server_port_for(request.run_kind)?.map(|port| opencode_launch(request, port)))
@@ -324,6 +324,20 @@ fn settle_after_first_output(info: &mut TerminalInfo) -> bool {
     }
 }
 
+/// Shows `info` as far as the launch `watch` tracks got before the terminal was listed: out of
+/// Starting once it has printed, then Exited with its exit code once its process has exited,
+/// which wins. Returns whether it has exited, so the caller tells the status watcher.
+fn show_launch_so_far(watch: &PluginWatch, info: &mut TerminalInfo) -> bool {
+    if watch.has_output() {
+        settle_after_first_output(info);
+    }
+    if watch.exited() {
+        info.claude_status = ClaudeStatus::Exited;
+        info.exit_code = watch.exit_code();
+    }
+    watch.exited()
+}
+
 /// Shows a terminal a message reached as Working (see `TerminalInfo::shows_working_on_delivery`).
 fn show_delivered(info: &mut TerminalInfo) {
     if info.shows_working_on_delivery() {
@@ -348,6 +362,9 @@ pub struct PtyManager {
     plugin_watches: Arc<Mutex<HashMap<String, PluginWatch>>>,
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    /// One lock per terminal, held through a relaunch, so a second relaunch starts only once the
+    /// first is done, and numbers on from the session it put in place. `kill` never takes it.
+    relaunch_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     /// Held while a status is read and sent (see `send_status`). Lock before any other lock here.
     status_sending: Arc<Mutex<()>>,
@@ -368,6 +385,7 @@ impl PtyManager {
             dormant_buffers: Arc::new(Mutex::new(HashMap::new())),
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
+            relaunch_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
             status_sending: Arc::new(Mutex::new(())),
             server_watcher: Arc::new(Mutex::new(None)),
@@ -427,14 +445,28 @@ impl PtyManager {
     }
 
     /// Opens a terminal from `request`, whose environment variables are the terminal's own, with
-    /// the workspace's added to them (see `launch_env`).
+    /// the workspace's added to them (see `launch_env`). It fails, and leaves the terminal as it
+    /// was, when `request` names the id of a terminal already listed or running.
     pub fn spawn(
+        &self,
+        request: SpawnTerminalRequest,
+        workspace_env: Option<HashMap<String, String>>,
+        bridge_port: u16,
+        bridge_token: String,
+        app_handle: AppHandle,
+    ) -> Result<TerminalInfo, String> {
+        let webview = WebviewEvents::to_app(app_handle);
+        self.spawn_to(request, workspace_env, bridge_port, bridge_token, webview)
+    }
+
+    /// `spawn`, with the new session's events sent to `webview`.
+    fn spawn_to(
         &self,
         mut request: SpawnTerminalRequest,
         workspace_env: Option<HashMap<String, String>>,
         bridge_port: u16,
         bridge_token: String,
-        app_handle: AppHandle,
+        webview: WebviewEvents,
     ) -> Result<TerminalInfo, String> {
         let own_env = non_empty(request.env_vars.take());
         request.env_vars = launch_env(own_env.as_ref(), workspace_env);
@@ -442,11 +474,15 @@ impl PtyManager {
             .id
             .clone()
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
+        // Spawning over a terminal would replace its session without draining it; `relaunch`
+        // restarts one.
+        if self.terminals_info.lock().contains_key(&terminal_id) || self.sessions.lock().contains_key(&terminal_id) {
+            return Err(format!("Terminal {} is already open; relaunch it instead", terminal_id));
+        }
 
         let start_seq = self.last_seq(&terminal_id);
         let opencode = opencode_launch_for(&request)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
-        let webview = WebviewEvents::to_app(app_handle);
         let on_first_output = self.first_output_hook(launch_ref.clone(), webview.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, webview.clone());
         let on_exit = self.exit_hook(launch_ref.clone());
@@ -527,6 +563,11 @@ impl PtyManager {
         workspace_env: Option<HashMap<String, String>>,
         webview: WebviewEvents,
     ) -> Result<TerminalInfo, String> {
+        // Held to the end, so a second relaunch of this terminal finds this one's session in
+        // place, ends it, and numbers on from the last chunk it sent. Without it, the second
+        // would find no session while this one ends the old, and number from the dormant seq.
+        let relaunch_lock = self.relaunch_locks.lock().entry(terminal_id.to_string()).or_default().clone();
+        let _relaunching = relaunch_lock.lock();
         let info = {
             let info_map = self.terminals_info.lock();
             info_map.get(terminal_id).cloned().ok_or_else(|| {
@@ -582,6 +623,7 @@ impl PtyManager {
         updated_info.plugin_hint = false;
 
         let new_screen = session.screen_keeper();
+        let close_new_output = session.output_closer();
         let sessions = self.sessions.clone();
         let id = terminal_id.to_string();
         let attach = move || {
@@ -591,8 +633,10 @@ impl PtyManager {
             Ok(info) => info,
             Err(unattached) => {
                 // Dropping the session ends its process. Its reader may have written a
-                // new log, or saved a screen, after the close deleted the old ones.
+                // new log, or saved a screen, after the close deleted the old ones; from here
+                // it writes neither.
                 new_screen.discard();
+                close_new_output();
                 drop(unattached);
                 if self.get_info(terminal_id).is_none() {
                     remove_saved_output(terminal_id);
@@ -754,12 +798,16 @@ impl PtyManager {
         //    closed and never lists it or its session again (see `relist_launched`)
         self.plugin_watches.lock().remove(terminal_id);
         self.submit_locks.lock().remove(terminal_id);
+        self.relaunch_locks.lock().remove(terminal_id);
 
-        // 2. Terminate running session process if active. It saves no screen from here on,
-        //    so its reader finishing can't bring back the file step 4 deletes.
+        // 2. Terminate running session process if active. It saves no screen and logs and sends
+        //    no output from here on, so its reader finishing, which can take a chunk the PTY
+        //    writes as it closes, can't bring back the files step 4 deletes. The close waits
+        //    for no reader.
         let session = self.sessions.lock().remove(terminal_id);
         if let Some(session) = session {
             session.discard_screen();
+            session.close_output();
         }
 
         // 3. Remove from terminals_info and dormant_buffers
@@ -1035,24 +1083,25 @@ impl PtyManager {
     }
 
     /// Lists `info` as the terminal `launch` started, and returns it as listed. The PTY reader
-    /// can print before the terminal is listed, so a launch that already has output is moved
-    /// out of Starting here.
+    /// can print, and the process can exit, before the terminal is listed, so a launch that
+    /// already has output is moved out of Starting here, and one whose process has exited is
+    /// listed Exited with its exit code (see `exit_launch`) and the status watcher told.
     pub fn insert_launched(&self, launch: &LaunchRef, mut info: TerminalInfo) -> TerminalInfo {
         let mut watches = self.plugin_watches.lock();
-        if launch
-            .current_in(&mut watches)
-            .is_some_and(|watch| watch.has_output())
-        {
-            settle_after_first_output(&mut info);
-        }
+        let exited =
+            launch.current_in(&mut watches).is_some_and(|watch| show_launch_so_far(watch, &mut info));
         self.terminals_info.lock().insert(info.id.clone(), info.clone());
         drop(watches);
         self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
+        if exited {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
         info
     }
 
     /// Lists `info` again as the terminal `launch` restarted, running `attach` in the same step
-    /// to put the new session in place, and returns it as listed. A terminal closed while it
+    /// to put the new session in place, and returns it as listed, out of Starting or Exited as
+    /// `insert_launched` lists it. A terminal closed while it
     /// relaunched stays closed: when it is no longer listed, or `launch` is no longer its
     /// current launch, nothing is listed and `attach` comes back unrun, for the caller to drop
     /// outside this manager's locks. `kill` ends the launch before it removes the session and
@@ -1068,14 +1117,11 @@ impl PtyManager {
         let Some(watch) = launch.current_in(&mut watches) else {
             return Err(attach);
         };
-        let has_output = watch.has_output();
+        let exited = show_launch_so_far(watch, &mut info);
         if !self.terminals_info.lock().contains_key(&launch.terminal_id) {
             // Closed before this launch began, so the launch is the closed terminal's last trace
             watches.remove(&launch.terminal_id);
             return Err(attach);
-        }
-        if has_output {
-            settle_after_first_output(&mut info);
         }
         attach();
         let mut info_map = self.terminals_info.lock();
@@ -1087,6 +1133,9 @@ impl PtyManager {
         drop(info_map);
         drop(watches);
         self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
+        if exited {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
         Ok(info)
     }
 
@@ -1343,14 +1392,16 @@ impl PtyManager {
     /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
     /// `launch` is still current, clears its handshake with Quay's MCP server, and tells the launch
     /// watchers, and the status watcher, so held messages fail rather than wait. An earlier launch that
-    /// a relaunch ended, or a closed terminal, changes nothing. Returns whether the terminal moved.
+    /// a relaunch ended, or a closed terminal, changes nothing. A launch whose terminal isn't listed
+    /// yet keeps its exit, and its terminal is listed Exited (see `insert_launched` and
+    /// `relist_launched`). Returns whether a listed terminal moved.
     pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
         {
             let mut watches = self.plugin_watches.lock();
             let Some(watch) = launch.current_in(&mut watches) else {
                 return false;
             };
-            watch.exit();
+            watch.exit(exit_code);
             let mut info_map = self.terminals_info.lock();
             let Some(info) = info_map.get_mut(&launch.terminal_id) else {
                 return false;
@@ -1462,6 +1513,8 @@ mod tests {
         ALL_RUN_KINDS,
     };
     use crate::test_support::TempDir;
+    #[cfg(windows)]
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     fn temp_sessions_file() -> (TempDir, PathBuf) {
         let dir = TempDir::new("sessions");
@@ -2591,6 +2644,100 @@ mod tests {
     }
 
     #[test]
+    fn a_process_that_exits_before_its_terminal_is_listed_is_listed_exited() {
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch("term-exit-early", RunKind::Codex);
+        // The exit watcher can see the process end before spawn has listed the terminal
+        assert!(!manager.exit_launch(&launch, Some(3)), "nothing listed moved yet");
+
+        let listed = manager.insert_launched(&launch, test_terminal("term-exit-early", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(3)));
+        let info = manager.get_info("term-exit-early").unwrap();
+        assert_eq!((info.claude_status, info.exit_code), (ClaudeStatus::Exited, Some(3)));
+    }
+
+    #[test]
+    fn the_status_watcher_hears_a_terminal_listed_exited_and_not_one_listed_starting() {
+        let manager = PtyManager::new();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+        let exited = manager.begin_launch("term-watch-exit-early", RunKind::Codex);
+        manager.exit_launch(&exited, Some(1));
+        let starting = manager.begin_launch("term-watch-starting", RunKind::Codex);
+        launched(&manager, "term-watch-relaunch", RunKind::Codex);
+        let info = manager.get_info("term-watch-relaunch").unwrap();
+        let relaunch = manager.begin_launch("term-watch-relaunch", RunKind::Codex);
+        manager.exit_launch(&relaunch, Some(1));
+        seen.lock().clear();
+
+        manager.insert_launched(&exited, test_terminal("term-watch-exit-early", RunKind::Codex, ClaudeStatus::Starting));
+        manager.insert_launched(&starting, test_terminal("term-watch-starting", RunKind::Codex, ClaudeStatus::Starting));
+        assert!(manager.relist_launched(&relaunch, info, || ()).is_ok());
+
+        assert_eq!(*seen.lock(), ["term-watch-exit-early", "term-watch-relaunch"]);
+    }
+
+    #[test]
+    fn a_process_that_prints_then_exits_before_its_terminal_is_listed_is_listed_exited() {
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch("term-print-exit-early", RunKind::Codex);
+        assert!(first_output(&manager, &launch).is_none());
+        manager.exit_launch(&launch, Some(0));
+
+        let listed = manager.insert_launched(&launch, test_terminal("term-print-exit-early", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(0)));
+    }
+
+    #[test]
+    fn a_command_that_exits_before_its_terminal_is_listed_is_listed_exited() {
+        let manager = PtyManager::new();
+        for (id, printed) in [("term-command-quiet", false), ("term-command-printed", true)] {
+            let launch = manager.begin_launch(id, RunKind::Command);
+            if printed {
+                first_output(&manager, &launch);
+            }
+            manager.exit_launch(&launch, Some(1));
+
+            let listed = manager.insert_launched(&launch, test_terminal(id, RunKind::Command, ClaudeStatus::Unknown));
+
+            assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(1)), "{id}");
+        }
+    }
+
+    #[test]
+    fn an_exit_of_a_launch_a_later_one_replaced_before_listing_is_not_listed() {
+        let manager = PtyManager::new();
+        let earlier = manager.begin_launch("term-exit-replaced", RunKind::Codex);
+        let later = manager.begin_launch("term-exit-replaced", RunKind::Codex);
+        manager.exit_launch(&earlier, Some(1));
+
+        let listed = manager.insert_launched(&later, test_terminal("term-exit-replaced", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Starting, None));
+    }
+
+    #[test]
+    fn a_process_that_exits_before_its_relaunched_terminal_is_listed_again_is_listed_exited() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-exit", RunKind::Codex);
+        let mut info = manager.get_info("term-relist-exit").unwrap();
+        let relaunch = manager.begin_launch("term-relist-exit", RunKind::Codex);
+        manager.exit_launch(&relaunch, Some(2));
+        // What relaunch lists: the terminal starting again
+        info.claude_status = ClaudeStatus::Starting;
+        info.exit_code = None;
+
+        let listed = manager.relist_launched(&relaunch, info, || ()).ok().expect("relisted");
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(2)));
+        let info = manager.get_info("term-relist-exit").unwrap();
+        assert_eq!((info.claude_status, info.exit_code), (ClaudeStatus::Exited, Some(2)));
+    }
+
+    #[test]
     fn dismissing_the_hint_hides_it_for_the_launch_and_leaves_the_terminal_unknown() {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-dismissed", RunKind::Claude);
@@ -2972,6 +3119,40 @@ mod tests {
         assert!(!dir.join(format!("{}.log", id)).exists());
     }
 
+    /// A request to open a Command terminal under `id` that runs `command`.
+    fn command_request(id: &str, command: &str) -> SpawnTerminalRequest {
+        SpawnTerminalRequest {
+            id: Some(id.to_string()),
+            name: None,
+            project_path: ".".to_string(),
+            run_kind: RunKind::Command,
+            permission_mode: None,
+            command_text: Some(command.to_string()),
+            rows: None,
+            cols: None,
+            env_vars: None,
+            custom_flags: None,
+            initial_prompt: None,
+        }
+    }
+
+    #[test]
+    fn a_spawn_under_a_listed_terminals_id_is_refused_and_leaves_it_as_it_was() {
+        let id = unique_id("spawn-taken");
+        let manager = PtyManager::new();
+        let listed = test_terminal(&id, RunKind::Codex, ClaudeStatus::Idle);
+        manager.insert_test_terminal(listed.clone());
+        let launch = manager.begin_launch(&id, RunKind::Codex);
+
+        let spawned = manager.spawn_to(command_request(&id, "exit"), None, 4321, "tok-1".to_string(), WebviewEvents::to(|_, _| ()));
+
+        assert!(spawned.is_err(), "a terminal already listed under the id is restarted with relaunch");
+        assert_eq!(format!("{:?}", manager.get_info(&id)), format!("{:?}", Some(listed)));
+        assert!(manager.launch_current(&launch), "the listed terminal keeps its launch");
+        assert!(!manager.sessions.lock().contains_key(&id));
+        manager.kill(&id).unwrap();
+    }
+
     #[cfg(windows)]
     /// The `pty-output` chunks among `sent`, in the order they were sent, as their seq and text.
     fn output_chunks(sent: &[(String, serde_json::Value)]) -> Vec<(u64, String)> {
@@ -2989,6 +3170,162 @@ mod tests {
             assert!(Instant::now() < deadline, "timed out waiting until {}", what);
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[cfg(windows)]
+    /// Starts `id`, a Command terminal that runs `exit`, with its events recorded, answers the
+    /// cursor query ConPTY opens it with, and waits for its process to exit, which leaves its PTY
+    /// open, so closing the PTY sends a chunk of its own. Returns the manager, the recorder and
+    /// what was sent. The recorder runs `delivering` with each event's name before it records it.
+    fn exited_command_terminal(
+        id: &str,
+        delivering: impl Fn(&str) + Send + Sync + 'static,
+    ) -> (PtyManager, WebviewEvents, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
+        let mut info = test_terminal(id, RunKind::Command, ClaudeStatus::Exited);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit".to_string());
+        let manager = PtyManager::new();
+        manager.terminals_info.lock().insert(id.to_string(), info);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| {
+            delivering(event);
+            log.lock().push((event.to_string(), payload))
+        });
+        manager.relaunch_to(id, None, None, 4321, "tok-1".to_string(), None, webview.clone()).unwrap();
+        wait_until("the session asks for the cursor", || {
+            output_chunks(&sent.lock()).iter().any(|(_, text)| text.contains("\x1b[6n"))
+        });
+        manager.write(id, "\x1b[1;1R").unwrap();
+        wait_until("the session exits", || {
+            manager.get_info(id).is_some_and(|info| info.claude_status == ClaudeStatus::Exited)
+        });
+        (manager, webview, sent)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_closed_terminal_leaves_no_saved_output_and_sends_nothing_after_its_close() {
+        let id = unique_id("kill-teardown");
+        // Once set, each event takes a while to be recorded, as though the reader were still
+        // busy with it as the close runs
+        let slow = Arc::new(AtomicBool::new(false));
+        let slowed = slow.clone();
+        let (manager, _webview, sent) = exited_command_terminal(&id, move |_| {
+            if slowed.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        });
+        let dir = get_sessions_dir();
+        assert!(dir.join(format!("{}.log", id)).exists(), "the session logs its output");
+
+        slow.store(true, Ordering::SeqCst);
+        let closing = Instant::now();
+        manager.kill(&id).unwrap();
+        // The 2 s a relaunch waits for the old PTY's last chunk
+        assert!(closing.elapsed() < Duration::from_secs(2), "the close waits for no teardown output");
+        let sent_by_close = output_chunks(&sent.lock()).len();
+
+        // Long enough for the closed PTY's reader to take and drop its last chunk
+        std::thread::sleep(Duration::from_secs(3));
+        assert_eq!(output_chunks(&sent.lock()).len(), sent_by_close, "no output after the close");
+        assert!(!dir.join(format!("{}.log", id)).exists(), "no log after the close");
+        assert!(!super::super::screen::screen_path(&dir, &id).exists(), "no saved screen after the close");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn two_relaunches_of_one_terminal_at_once_number_the_surviving_sessions_output_above_all_before_it() {
+        let id = unique_id("relaunch-twice");
+        // Once `hold` is set, the next chunk sent waits to be delivered until `release` is: the
+        // first relaunch is then still ending the old session when the second one begins
+        let hold = Arc::new(AtomicBool::new(false));
+        let held = Arc::new(AtomicBool::new(false));
+        let release = Arc::new(AtomicBool::new(false));
+        let (holding, holder, released) = (hold.clone(), held.clone(), release.clone());
+        let (manager, webview, sent) = exited_command_terminal(&id, move |event| {
+            if event == "pty-output" && holding.swap(false, Ordering::SeqCst) {
+                holder.store(true, Ordering::SeqCst);
+                let deadline = Instant::now() + Duration::from_secs(30);
+                while !released.load(Ordering::SeqCst) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        });
+        let relaunching = |manager: &PtyManager, webview: &WebviewEvents| {
+            let (manager, webview, id) = (manager.clone(), webview.clone(), id.clone());
+            std::thread::spawn(move || manager.relaunch_to(&id, None, None, 4321, "tok-1".to_string(), None, webview))
+        };
+
+        hold.store(true, Ordering::SeqCst);
+        let first = relaunching(&manager, &webview);
+        wait_until("the old PTY's closing chunk is on its way", || held.load(Ordering::SeqCst));
+        let second = relaunching(&manager, &webview);
+        // As long as the second relaunch could take to start a session, were it not to wait
+        std::thread::sleep(Duration::from_millis(500));
+        release.store(true, Ordering::SeqCst);
+        let relaunched = [first.join().unwrap(), second.join().unwrap()];
+        assert!(relaunched.iter().any(Result::is_ok), "a relaunch finishes: {:?}", relaunched.map(|r| r.err()));
+        // Long enough for every ended session's reader to send its last chunk
+        std::thread::sleep(Duration::from_secs(3));
+
+        let chunks = output_chunks(&sent.lock());
+        // The pane keeps only a chunk numbered above every one it has seen
+        assert!(
+            chunks.windows(2).all(|pair| pair[1].0 > pair[0].0),
+            "every chunk is numbered above every chunk sent before it: {:?}",
+            chunks
+        );
+        manager.kill(&id).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_process_that_exits_before_its_terminal_is_listed_ends_exited_with_its_exit_code() {
+        const CURSOR_QUERY: &str = "\x1b[6n";
+        let id = unique_id("exit-before-listed");
+        let mut info = test_terminal(&id, RunKind::Command, ClaudeStatus::Unknown);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit 5".to_string());
+        let request = relaunch_request(&info, None, None, None);
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch(&id, RunKind::Command);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| log.lock().push((event.to_string(), payload)));
+        let on_exit = manager.exit_hook(launch.clone());
+        let (exited, exit_seen) = std::sync::mpsc::channel();
+        let session = PtySession::spawn(
+            request,
+            launch.clone(),
+            0,
+            4321,
+            "tok-1".to_string(),
+            None,
+            webview,
+            Box::new(|| ()),
+            None,
+            Box::new(move |code| {
+                on_exit(code);
+                let _ = exited.send(());
+            }),
+        )
+        .unwrap();
+        wait_until("the session asks for the cursor", || {
+            output_chunks(&sent.lock()).iter().any(|(_, text)| text.contains(CURSOR_QUERY))
+        });
+        session.write("\x1b[1;1R").unwrap();
+        // The process ends before the terminal is listed, as a fast exit does in `spawn`
+        exit_seen.recv_timeout(Duration::from_secs(30)).expect("the process exits");
+
+        let listed = manager.insert_launched(&launch, info);
+        manager.sessions.lock().insert(id.clone(), session);
+
+        // Quay maps every failing exit to 1
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(1)));
+        let shown = manager.get_info(&id).unwrap();
+        assert_eq!((shown.claude_status, shown.exit_code), (ClaudeStatus::Exited, Some(1)));
+        manager.kill(&id).unwrap();
     }
 
     #[cfg(windows)]

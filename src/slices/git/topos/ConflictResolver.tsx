@@ -11,6 +11,7 @@ import { SidePickerCard } from "./SidePickerCard";
 import { useConflictResolver, type ConflictSide } from "./useConflictResolver";
 import type { HandToAgent } from "./useHandToAgent";
 import type { Staging } from "./useStaging";
+import { holdsFocus } from "./holdsFocus";
 
 /** The most rows the file list renders; a note counts the rest. */
 const FILE_ROWS = 200;
@@ -23,7 +24,11 @@ export interface ConflictResolverProps {
   opReadFailure: string | null;
   path: string;
   onPath: (path: string) => void;
-  onClose: () => void;
+  /**
+   * Closes the resolver. `heldFocus` says whether the focus was in it, or on a confirm asked from
+   * it, so Topos can move the focus on before the resolver unmounts and drops it to the page.
+   */
+  onClose: (heldFocus: boolean) => void;
   staging: Staging;
   /** Opens a terminal in `cwd`; absent when Topos has no way to. */
   onOpenTerminal?: (cwd: string) => void;
@@ -60,6 +65,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const held = handToAgent.held.get(path) ?? null;
   const heldWords = held === null ? null : `With ${held.agentName}. Take it back to change it here.`;
   const busy = staging.busy !== null;
+  const section = useRef<HTMLElement>(null);
   const saving = staging.busy?.action === "resolve";
 
   // A file staged elsewhere, by the inspector or an agent, leaves the list; move to the next one.
@@ -69,7 +75,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   useEffect(() => {
     if (listed) return;
     if (first !== null) onPath(first);
-    else onClose();
+    else onClose(holdsFocus(section.current));
   }, [listed, first, onPath, onClose]);
 
   /** Runs `go` now, or after a confirm when it would drop unsaved edits. */
@@ -144,10 +150,14 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const moreFiles = op.conflictsTotal - shownFiles.length;
 
   return (
-    <section aria-labelledby={titleId} className="absolute inset-0 z-20 flex min-h-0 bg-[#0d1117]">
+    <section ref={section} aria-labelledby={titleId} className="absolute inset-0 z-20 flex min-h-0 bg-[#0d1117]">
       <nav aria-labelledby={listId} className="w-60 shrink-0 flex flex-col min-h-0 border-r border-[#30363d]">
         <div className="h-9 px-3 shrink-0 flex items-center gap-2 border-b border-[#30363d] bg-[#161b22]">
-          <button type="button" onClick={() => leaving("Leave the resolver?", onClose)} aria-label="Back to the graph" title="Back to the graph" className="p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d]">
+          <button type="button" onClick={() => {
+              // Noted now: by the time a confirm runs this, the focus is on the confirm.
+              const hadFocus = holdsFocus(section.current);
+              leaving("Leave the resolver?", () => onClose(hadFocus));
+            }} aria-label="Back to the graph" title="Back to the graph" className="p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d]">
             <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
           <h4 id={listId} className="text-[11px] font-semibold uppercase tracking-wide text-[#ff7b72]">

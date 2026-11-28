@@ -17,7 +17,7 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | `Ctrl+V` | **Paste** | Pastes the clipboard into the shell |
 | `Ctrl+Shift+C` | **Copy** | Copies the selection and never sends `^C` |
 | `Ctrl+Shift+V` | **Paste** | Pastes the clipboard into the shell |
-| `Ctrl+F` | **Search** | Opens or closes the pane's scrollback search |
+| `Ctrl+F` | **Search** | Opens or closes the selected pane's scrollback search. It leaves the search as it is while a stage tab or a lens covers the pane, and when the view with the focus, such as Topos, handles `Ctrl+F` itself |
 
 ---
 

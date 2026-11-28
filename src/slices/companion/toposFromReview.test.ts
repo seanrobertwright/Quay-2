@@ -75,12 +75,15 @@ let graphOpens: boolean;
 let shown: Shown[];
 /** The changes git status reports in the worktree, or null when the status read fails. */
 let changes: StatusEntry[] | null;
+/** Rust's answers a test adds to, or puts in place of, the ones every test has. */
+let extraAnswers: Record<string, (args: Record<string, unknown>) => unknown>;
 beforeEach(() => {
   operation = NO_OPERATION;
   shown = [TURNS];
   changes = null;
   operationFails = null;
   graphOpens = false;
+  extraAnswers = {};
 });
 afterEach(async () => {
   if (mounted) {
@@ -120,6 +123,7 @@ async function startRust(): Promise<void> {
   };
   fakeInvoke(async (cmd, args) => {
     calls.push({ cmd, args });
+    if (Object.prototype.hasOwnProperty.call(extraAnswers, cmd)) return extraAnswers[cmd](args);
     if (Object.prototype.hasOwnProperty.call(answers, cmd)) return answers[cmd](args);
     if (cmd.startsWith("surface_")) return null;
     throw new Error(`${cmd} is not faked`);
@@ -363,4 +367,113 @@ test("a failed operation read under the open resolver keeps it, with its unsaved
   await settle();
   assert.equal(resolverBack(), undefined, "the resolver closed");
   assert.deepEqual([...layer.querySelectorAll("[inert]")].length, 0, "nothing in Topos is inert with no resolver over it");
+});
+
+/** Where a review's link to the conflicted `b.ts` leads: the file, in the conflict resolver. */
+const B_CONFLICTED: Shown = { kind: "diff", worktree: "E:/alpha", path: "b.ts", side: "conflicted", line: null };
+const resolverBack = (container: HTMLElement) => button(container, "Back to the graph");
+
+/**
+ * Draws Quay's window in a merge and opens the conflicted `b.ts` in the resolver from the review's
+ * file link. `later` is how Rust shows the file link's next clicks.
+ */
+async function openResolver(later: Shown[] = []): Promise<{ container: HTMLElement; review: HTMLElement }> {
+  operation = MERGING;
+  shown = [B_CONFLICTED, ...later];
+  const drawn = await draw();
+  await clickFileLink(drawn.container, drawn.review);
+  await until(() => resolverBack(drawn.container) !== undefined, "the resolver never opened");
+  await settle();
+  return drawn;
+}
+
+test("Back to the graph in the conflict resolver, with the focus on it, puts the focus on the graph", async () => {
+  const { container } = await openResolver();
+  const back = resolverBack(container)!;
+  await act(async () => back.focus());
+  await act(async () => back.click());
+  await settle();
+
+  assert.equal(resolverBack(container), undefined, "Back to the graph closes the resolver");
+  assert.equal(document.activeElement === graphList(container), true, "the focus left in the resolver goes to the graph");
+});
+
+/** `b.ts` as `git_conflict_open` reads it when the incoming side deleted it: not text to edit, so the resolver draws the side-picker card. */
+const B_DELETED_BY_THEM: ConflictFile = {
+  path: "b.ts",
+  xy: "UD",
+  kind: "deletedByThem",
+  onDisk: true,
+  leftOid: "1111111111111111111111111111111111111111",
+  rightOid: null,
+  token: "t",
+  editable: false,
+  reason: "oneSideMissing",
+  left: null,
+  right: null,
+  result: null,
+  eol: "lf",
+  bom: false,
+  markerSize: 7,
+};
+
+/** Opens `b.ts` in the resolver as the side-picker card, where Keep modified stages it and leaves the merge with no conflict. */
+async function openSidePicker(): Promise<{ container: HTMLElement; keep: HTMLButtonElement }> {
+  changes = [];
+  extraAnswers = {
+    git_conflict_open: () => B_DELETED_BY_THEM,
+    git_conflict_mark_resolved: ({ requestId }) => {
+      operation = { ...MERGING, conflicts: [], conflictsTotal: 0 };
+      changes = [{ path: "b.ts", xy: "M.", kind: "tracked" }];
+      return { requestId, entries: changes, total: changes.length, truncated: false };
+    },
+  };
+  const { container } = await openResolver();
+  await until(() => button(container, "Keep modified") !== undefined, "the resolver drew no side-picker card");
+  return { container, keep: button(container, "Keep modified")! };
+}
+
+test("staging the last conflicted file from the resolver, with the focus on the control used, puts the focus on the graph as the resolver closes", async () => {
+  const { container, keep } = await openSidePicker();
+  await act(async () => keep.focus());
+  await act(async () => keep.click());
+  await until(() => called("git_conflict_mark_resolved").length === 1, "Keep modified staged nothing");
+  await until(() => resolverBack(container) === undefined, "the resolver stayed open with no conflict left");
+  await settle();
+
+  assert.equal(document.activeElement === graphList(container), true, "the focus left in the resolver goes to the graph");
+});
+
+for (const [how, close] of [
+  ["Back to the graph", (container: HTMLElement) => resolverBack(container)!.click()],
+  ["staging the last conflicted file", (container: HTMLElement) => button(container, "Keep modified")!.click()],
+] as const) {
+  test(`${how} closes the conflict resolver with the focus outside it, and leaves the focus where it was`, async () => {
+    const { container } = await openSidePicker();
+    const link = container.querySelector<HTMLElement>('[role="link"]')!;
+    await act(async () => link.focus());
+    assert.equal(document.activeElement === link, true, "the review's file link takes the focus");
+
+    await act(async () => close(container));
+    await until(() => resolverBack(container) === undefined, `${how} left the resolver open`);
+    await settle();
+    assert.equal(document.activeElement === link, true, "the focus outside the resolver stays where it was");
+  });
+}
+
+test("Back to the graph in the conflict resolver, with the focus on it, opens the diff that waited for it and leaves the focus in Topos, not under the diff", async () => {
+  const { container, review } = await openResolver([TURNS]);
+  await escape();
+  await clickFileLink(container, review);
+  await until(() => container.querySelector('[aria-label="Topos notifications"] li p') !== null, "nothing said why the file waits");
+  const back = resolverBack(container)!;
+  await act(async () => back.focus());
+  await act(async () => back.click());
+  await until(() => diff(container) !== null, "the diff did not open as the resolver closed");
+  await settle();
+
+  const focused = document.activeElement;
+  assert.equal(focused !== null && focused !== document.body, true, "the focus fell to the page");
+  assert.equal(focused?.closest("[inert]"), null, "the focus is left under the diff, in the inert graph");
+  assert.equal(focused === container.querySelector('[data-topos-layer] section[aria-labelledby]'), true, "the focus is on Topos's panel");
 });
