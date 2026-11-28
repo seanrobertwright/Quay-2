@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileDiff, GitGraph, GitPullRequest, RotateCw, Search, ShieldCheck, Zap } from "lucide-react";
+import { FileDiff, GitGraph, GitPullRequest, LoaderCircle, RotateCw, Search, ShieldCheck, Zap } from "lucide-react";
 import type { LinkRef, LinkSlotName } from "../terminal/types.ts";
 import { LauncherList, type PanelLauncher } from "../shell/ModulePanel.tsx";
 import type { GithubIssue, GithubPullRequest, GithubRepoInfo } from "./types.ts";
@@ -10,8 +10,10 @@ import { useLoadMoreSentinel, usePagedGithubList, type PagedGithubList } from ".
 interface SourceControlPanelProps {
   /** Whether the panel shows; it reads GitHub only while it does. */
   isOpen: boolean;
-  /** The repository whose pull requests and issues the panel lists. */
+  /** The selected repository, whose pull requests and issues the panel lists. */
   repoPath: string;
+  /** The selected repository's name in the Projects panel, shown until GitHub names it. */
+  repoName: string;
   /** The selected terminal's name, which a pick is pinned to, or null when none is selected. */
   pickTarget: string | null;
   /** Pins `ref` to the selected terminal's `slot` and opens it in the companion. */
@@ -25,6 +27,38 @@ interface SourceControlPanelProps {
 }
 
 type ListKind = "prs" | "issues";
+
+/**
+ * How long, in ms, the selected repository must stay before the closed panel loads it, so a quick
+ * run of switches starts `gh` only for the last repository. An open panel loads at once.
+ */
+export const REPO_SETTLE_MS = 300;
+
+/** Each repository's GitHub `owner/name` once read this session, by repository path. */
+const knownRepoNames = new Map<string, string>();
+
+/**
+ * Runs `load` at once while the panel is open, or once its inputs have stayed for
+ * REPO_SETTLE_MS while it is closed. A closed panel does not rerun a load it already ran for the
+ * same inputs, so closing the panel never reloads.
+ */
+function useEagerLoad(load: () => void, isOpen: boolean, repoPath: string) {
+  const ranRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!repoPath) return;
+    if (isOpen) {
+      ranRef.current = load;
+      load();
+      return;
+    }
+    if (ranRef.current === load) return;
+    const timer = setTimeout(() => {
+      ranRef.current = load;
+      load();
+    }, REPO_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [isOpen, load, repoPath]);
+}
 type StateFilter = "open" | "all";
 
 /** A row's state word when it is not simply open: Draft, Merged or Closed. */
@@ -158,11 +192,14 @@ const EMPTY = "py-8 text-center text-xs text-[#8b949e]";
  * The Source control module's panel: Topos, the repo-wide Diffs and the Pre-PR Audit, then the
  * repository's pull requests or issues: filtered by state, search and label, paged as the list
  * scrolls and capped at GITHUB_LIST_CAP. Picking a row pins it to the selected terminal, which opens
- * it in the companion.
+ * it in the companion. It shows only the selected repository's lists, name and errors: a switch
+ * clears them, and the search and label, at once, and loads the new repository even while the
+ * panel is closed.
  */
 export const SourceControlPanel = ({
   isOpen,
   repoPath,
+  repoName,
   pickTarget,
   onPick,
   onOpenTopos,
@@ -171,13 +208,21 @@ export const SourceControlPanel = ({
   onResolveConflicts,
 }: SourceControlPanelProps) => {
   const id = useId();
-  const [repoInfo, setRepoInfo] = useState<GithubRepoInfo | null>(null);
+  const [repoInfo, setRepoInfo] = useState<{ repoPath: string; info: GithubRepoInfo | null } | null>(null);
   const [kind, setKind] = useState<ListKind>("prs");
   const [prState, setPrState] = useState<StateFilter>("open");
   const [issueState, setIssueState] = useState<StateFilter>("open");
   const [search, setSearch] = useState("");
   const [label, setLabel] = useState("");
-  const [errors, setErrors] = useState<Record<ListKind, string | null>>({ prs: null, issues: null });
+  // Each list's last error, kept with the repository it came from.
+  const [errors, setErrors] = useState<Record<ListKind, { repoPath: string; message: string } | null>>({ prs: null, issues: null });
+  // A switch of repository clears the search and the label, which belong to the old one's rows.
+  const [filtersRepo, setFiltersRepo] = useState(repoPath);
+  if (filtersRepo !== repoPath) {
+    setFiltersRepo(repoPath);
+    setSearch("");
+    setLabel("");
+  }
   const prPages = usePagedGithubList<GithubPullRequest>("list_github_prs", repoPath, prState, GITHUB_LIST_CAP);
   const issuePages = usePagedGithubList<GithubIssue>("list_github_issues", repoPath, issueState, GITHUB_LIST_CAP);
   const { loadFirstPage: loadFirstPrPage } = prPages;
@@ -189,28 +234,28 @@ export const SourceControlPanel = ({
   // refetches its own list and nothing else.
   const loadRepo = useCallback(() => {
     if (!repoPath) return;
-    invoke<GithubRepoInfo | null>("get_github_repo_info", { repoPath }).then(setRepoInfo, () => setRepoInfo(null));
+    invoke<GithubRepoInfo | null>("get_github_repo_info", { repoPath }).then(
+      (info) => {
+        if (info) knownRepoNames.set(repoPath, info.nwo);
+        setRepoInfo({ repoPath, info });
+      },
+      () => setRepoInfo({ repoPath, info: null }),
+    );
   }, [repoPath]);
   const loadPrs = useCallback(() => {
     if (!repoPath) return;
     setErrors((e) => ({ ...e, prs: null }));
-    loadFirstPrPage().catch((err) => setErrors((e) => ({ ...e, prs: String(err) })));
+    loadFirstPrPage().catch((err) => setErrors((e) => ({ ...e, prs: { repoPath, message: String(err) } })));
   }, [repoPath, loadFirstPrPage]);
   const loadIssues = useCallback(() => {
     if (!repoPath) return;
     setErrors((e) => ({ ...e, issues: null }));
-    loadFirstIssuePage().catch((err) => setErrors((e) => ({ ...e, issues: String(err) })));
+    loadFirstIssuePage().catch((err) => setErrors((e) => ({ ...e, issues: { repoPath, message: String(err) } })));
   }, [repoPath, loadFirstIssuePage]);
 
-  useEffect(() => {
-    if (isOpen) loadRepo();
-  }, [isOpen, loadRepo]);
-  useEffect(() => {
-    if (isOpen) loadPrs();
-  }, [isOpen, loadPrs]);
-  useEffect(() => {
-    if (isOpen) loadIssues();
-  }, [isOpen, loadIssues]);
+  useEagerLoad(loadRepo, isOpen, repoPath);
+  useEagerLoad(loadPrs, isOpen, repoPath);
+  useEagerLoad(loadIssues, isOpen, repoPath);
 
   const query = search.trim().toLowerCase();
   const prs = useMemo(() => prPages.list.items.filter((pr) => !query || prMatches(pr, query)), [prPages.list.items, query]);
@@ -232,10 +277,11 @@ export const SourceControlPanel = ({
     issues: { state: issueState, setState: setIssueState, load: loadIssues, pages: issuePages, sentinelRef: issueSentinelRef },
   };
   const shown = lists[kind];
-  const nwo = repoInfo?.nwo ?? null;
+  const nwo = (repoInfo?.repoPath === repoPath ? repoInfo.info?.nwo : undefined) ?? knownRepoNames.get(repoPath) ?? null;
   const canPick = pickTarget !== null;
   const hintId = `${id}-hint`;
-  const shownError = errors[kind];
+  const shownError = errors[kind]?.repoPath === repoPath ? errors[kind].message : null;
+  const forRepo = repoName ? ` for ${repoName}` : "";
   const tools: PanelLauncher[] = [
     { id: "topos", label: "Topos", shortcut: "Ctrl+Shift+B c", icon: <GitGraph className="w-4 h-4 text-[#58a6ff]" />, onClick: onOpenTopos },
     { id: "diffs", label: "Diffs", shortcut: "Ctrl+Shift+B d", icon: <FileDiff className="w-4 h-4 text-[#3fb950]" />, onClick: onOpenDiffs },
@@ -246,7 +292,11 @@ export const SourceControlPanel = ({
     <div className="flex-1 min-h-0 flex flex-col select-none text-[#c9d1d9]">
       <div className="h-12 shrink-0 pl-4 pr-2 flex items-center gap-2 border-b border-[#30363d] bg-[#161b22]">
         <h2 className="shrink-0 text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">Source control</h2>
-        {nwo && <span className="min-w-0 truncate font-mono text-[11px] text-[#58a6ff]">{nwo}</span>}
+        {nwo ? (
+          <span className="min-w-0 truncate font-mono text-[11px] text-[#58a6ff]">{nwo}</span>
+        ) : (
+          repoName && <span className="min-w-0 truncate text-[11px] text-[#c9d1d9]">{repoName}</span>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -311,7 +361,7 @@ export const SourceControlPanel = ({
       <div className="flex-1 min-h-0 overflow-y-auto">
         {shownError ? (
           <div role="alert" className="p-4 space-y-2 text-center text-xs">
-            <p className="font-semibold text-white">Couldn&apos;t read GitHub</p>
+            <p className="font-semibold text-white">Couldn&apos;t read GitHub{forRepo}</p>
             <p className="text-[#8b949e] break-words">{shownError}</p>
             <button
               type="button"
@@ -320,6 +370,14 @@ export const SourceControlPanel = ({
             >
               Retry
             </button>
+          </div>
+        ) : repoPath && !shown.pages.loaded ? (
+          <div role="status" className="py-8 flex items-center justify-center gap-2 text-xs text-[#8b949e]">
+            <LoaderCircle aria-hidden="true" className="w-4 h-4 shrink-0 motion-safe:animate-spin" />
+            <span>
+              Loading {kind === "prs" ? "pull requests" : "issues"}
+              {forRepo}
+            </span>
           </div>
         ) : kind === "prs" ? (
           <ul aria-label="Pull requests" className="p-2 space-y-1">
@@ -403,7 +461,7 @@ export const SourceControlPanel = ({
             })}
           </ul>
         )}
-        {!shownError && <LoadMoreRow key={kind} pages={shown.pages} sentinelRef={shown.sentinelRef} />}
+        {!shownError && shown.pages.loaded && <LoadMoreRow key={kind} pages={shown.pages} sentinelRef={shown.sentinelRef} />}
       </div>
     </div>
   );

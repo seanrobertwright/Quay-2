@@ -10,7 +10,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { GithubIssue, GithubPullRequest } from "./types.ts";
 import type { GithubPage } from "./paging.ts";
 
-const { SourceControlPanel } = await import("./SourceControlPanel.tsx");
+const { SourceControlPanel, REPO_SETTLE_MS } = await import("./SourceControlPanel.tsx");
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
 afterEach(() => {
@@ -92,6 +92,7 @@ async function render(answer: Answer, props: Record<string, unknown> = {}) {
     createElement(SourceControlPanel, {
       isOpen: true,
       repoPath: "E:/repo",
+      repoName: "repo",
       pickTarget: "agent",
       onPick: (...args: unknown[]) => calls.push(["pick", ...args]),
       onOpenTopos: () => calls.push(["topos"]),
@@ -233,4 +234,142 @@ test("with no terminal selected a row cannot be picked, and the panel says why",
   rerender({ pickTarget: "agent" });
   assert.equal(rows(container)[0].disabled, false);
   assert.match(container.textContent ?? "", /Opens in the companion for agent/);
+});
+
+/** A GitHub whose answers wait until `release(cmd)` is called; each answer is per repository. */
+function heldGithub(byRepo: Record<string, { nwo: string; prs: GithubPullRequest[]; issues: GithubIssue[] }>) {
+  const held: { cmd: string; repoPath: string; resolve: (v: unknown) => void; reject: (e: unknown) => void }[] = [];
+  const answer: Answer = (cmd, args) =>
+    new Promise((resolve, reject) => held.push({ cmd, repoPath: String(args.repoPath), resolve, reject }));
+  const release = async (repoPath: string, cmd?: string) => {
+    for (const h of held.filter((h) => h.repoPath === repoPath && (!cmd || h.cmd === cmd))) {
+      held.splice(held.indexOf(h), 1);
+      const repo = byRepo[repoPath];
+      if (h.cmd === "get_github_repo_info") h.resolve({ owner: "o", name: "r", nwo: repo.nwo, is_authenticated: true });
+      else if (h.cmd === "list_github_prs") h.resolve(page(repo.prs));
+      else if (h.cmd === "list_github_issues") h.resolve(page(repo.issues));
+      else h.resolve(null);
+    }
+    await settle();
+  };
+  const fail = async (repoPath: string, cmd: string, message: string) => {
+    for (const h of held.filter((h) => h.repoPath === repoPath && h.cmd === cmd)) {
+      held.splice(held.indexOf(h), 1);
+      h.reject(new Error(message));
+    }
+    await settle();
+  };
+  return { answer, release, fail, held };
+}
+
+const header = (container: HTMLElement) => container.querySelector("h2")?.parentElement?.textContent ?? "";
+const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
+
+test("a repository switch clears the old lists, name and error at once and says what is loading (#845)", async () => {
+  const gh = heldGithub({
+    "E:/a": { nwo: "o/alpha", prs: [pr(1, "Alpha change")], issues: [] },
+    "E:/b": { nwo: "o/beta", prs: [pr(2, "Beta change")], issues: [] },
+  });
+  const { container, rerender } = await render(gh.answer, { repoPath: "E:/a", repoName: "alpha-folder" });
+  await gh.release("E:/a");
+  assert.match(header(container), /o\/alpha/);
+  assert.equal(rows(container).length, 1);
+
+  rerender({ repoPath: "E:/b", repoName: "beta-folder" });
+  assert.equal(rows(container).length, 0, "the old repository's rows are gone at once");
+  assert.doesNotMatch(container.textContent ?? "", /o\/alpha|Alpha change/);
+  assert.match(header(container), /beta-folder/, "the header names the project until GitHub answers");
+  assert.match(container.textContent ?? "", /Loading pull requests for beta-folder/);
+
+  // A late answer for the old repository is dropped.
+  await gh.release("E:/a");
+  assert.equal(rows(container).length, 0);
+  await gh.release("E:/b");
+  assert.match(header(container), /o\/beta/);
+  assert.match(rows(container)[0].textContent ?? "", /Beta change/);
+  assert.doesNotMatch(container.textContent ?? "", /Loading pull requests/);
+});
+
+test("an old repository's error does not show under the new one, and a new failure names the project (#845)", async () => {
+  const gh = heldGithub({
+    "E:/a": { nwo: "o/alpha", prs: [], issues: [] },
+    "E:/b": { nwo: "o/beta", prs: [], issues: [] },
+  });
+  const { container, rerender } = await render(gh.answer, { repoPath: "E:/a", repoName: "alpha-folder" });
+  await gh.fail("E:/a", "list_github_prs", "gh exploded");
+  assert.match(container.textContent ?? "", /Couldn.t read GitHub for alpha-folder/);
+  rerender({ repoPath: "E:/b", repoName: "beta-folder" });
+  assert.doesNotMatch(container.textContent ?? "", /gh exploded|Couldn.t read GitHub/);
+  await gh.fail("E:/b", "list_github_prs", "not signed in");
+  assert.match(container.textContent ?? "", /Couldn.t read GitHub for beta-folder/);
+});
+
+test("a switch clears the search and label but keeps the list and state choices (#845)", async () => {
+  const bug = { name: "bug", color: "d73a4a" };
+  const { container, rerender } = await render(
+    github([pr(1, "One")], [issue(5, "Five", { labels: [bug] })]),
+    { repoPath: "E:/a", repoName: "a" },
+  );
+  act(() => radio(container, "List", "Issues").click());
+  act(() => radio(container, "State", "All").click());
+  await settle();
+  type(field<HTMLInputElement>(container, "Filter by title, number, branch or label"), "five");
+  type(field<HTMLSelectElement>(container, "Label"), "bug");
+  rerender({ repoPath: "E:/b", repoName: "b" });
+  await settle();
+  assert.equal(field<HTMLInputElement>(container, "Filter by title, number, branch or label").value, "");
+  assert.equal(field<HTMLSelectElement>(container, "Label").value, "");
+  assert.equal(radio(container, "List", "Issues").getAttribute("aria-checked"), "true");
+  assert.equal(radio(container, "State", "All").getAttribute("aria-checked"), "true");
+});
+
+test("while closed, the panel loads a new repository once it has stayed for the settle time (#845)", async () => {
+  const { container, invoked, rerender } = await render(github([pr(1, "One")], []), {
+    isOpen: false,
+    repoPath: "E:/a",
+    repoName: "a",
+  });
+  await wait(REPO_SETTLE_MS + 50);
+  const loadsOf = (repoPath: string) => invoked.filter(([, args]) => args.repoPath === repoPath).map(([cmd]) => cmd).sort();
+  assert.deepEqual(loadsOf("E:/a"), ["get_github_repo_info", "list_github_issues", "list_github_prs"]);
+
+  // Passing through b on the way to c never loads b.
+  rerender({ repoPath: "E:/b", repoName: "b" });
+  await wait(REPO_SETTLE_MS / 3);
+  rerender({ repoPath: "E:/c", repoName: "c" });
+  await wait(REPO_SETTLE_MS + 50);
+  assert.deepEqual(loadsOf("E:/b"), []);
+  assert.equal(loadsOf("E:/c").length, 3);
+  assert.match(rows(container)[0].textContent ?? "", /One/);
+
+  // Closing the panel again does not reload what is loaded.
+  rerender({ isOpen: true });
+  await settle();
+  const afterOpen = loadsOf("E:/c").length;
+  rerender({ isOpen: false });
+  await wait(REPO_SETTLE_MS + 50);
+  assert.equal(loadsOf("E:/c").length, afterOpen);
+});
+
+test("opening the panel during the settle time loads at once (#845)", async () => {
+  const { invoked, rerender } = await render(github([], []), { isOpen: false, repoPath: "E:/a", repoName: "a" });
+  rerender({ isOpen: true });
+  await settle();
+  assert.equal(invoked.filter(([, args]) => args.repoPath === "E:/a").length, 3);
+  await wait(REPO_SETTLE_MS + 50);
+  assert.equal(invoked.filter(([, args]) => args.repoPath === "E:/a").length, 3, "the pending settle load was cancelled");
+});
+
+test("a repository visited before shows its GitHub name at once (#845)", async () => {
+  const gh = heldGithub({
+    "E:/remembered-a": { nwo: "o/alpha", prs: [], issues: [] },
+    "E:/remembered-b": { nwo: "o/beta", prs: [], issues: [] },
+  });
+  const { container, rerender } = await render(gh.answer, { repoPath: "E:/remembered-a", repoName: "alpha-folder" });
+  await gh.release("E:/remembered-a");
+  rerender({ repoPath: "E:/remembered-b", repoName: "beta-folder" });
+  await gh.release("E:/remembered-b");
+  rerender({ repoPath: "E:/remembered-a", repoName: "alpha-folder" });
+  assert.match(header(container), /o\/alpha/);
+  assert.doesNotMatch(header(container), /o\/beta/);
 });

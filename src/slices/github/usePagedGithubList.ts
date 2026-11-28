@@ -10,7 +10,10 @@ import {
 } from "./paging.ts";
 
 export interface PagedGithubList<T> {
+  /** The current repository's list; empty until its first page arrives. */
   list: PagedList<T>;
+  /** Whether a first page has arrived for the current repository. */
+  loaded: boolean;
   /** Restarts from page one. Rejects when the fetch fails, so callers can show the error. */
   loadFirstPage: () => Promise<void>;
   /** Fetches the next page; does nothing while a fetch is running, when all are loaded, or at the cap. */
@@ -19,11 +22,16 @@ export interface PagedGithubList<T> {
   loadMoreError: string | null;
 }
 
+/** The list a repository shows before its first page arrives; one value, so memos keep it. */
+const NOTHING_LOADED: PagedList<never> = emptyPagedList();
+
 /**
  * Cursor-paged issues or pull requests for one repository and state filter. A new
  * first page (refresh, filter change) supersedes any page still in flight: its
  * response is dropped instead of being appended to the new list. Paging stops once the list holds
- * `cap` items.
+ * `cap` items. The list belongs to the repository it was loaded for, so a change of `repoPath`
+ * shows an empty list at once, and a late page for the earlier repository never shows under the
+ * new one. A filter change within one repository keeps the old list until the new one arrives.
  */
 export function usePagedGithubList<T extends { number: number }>(
   command: "list_github_issues" | "list_github_prs",
@@ -31,14 +39,14 @@ export function usePagedGithubList<T extends { number: number }>(
   state: string,
   cap: number = Infinity,
 ): PagedGithubList<T> {
-  const [list, setList] = useState<PagedList<T>>(emptyPagedList);
+  const [stored, setStored] = useState<{ repoPath: string; list: PagedList<T> }>(() => ({ repoPath, list: NOTHING_LOADED }));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   // Bumped by every first-page load; a response whose run is older is stale.
   const runRef = useRef(0);
   const fetchingRef = useRef(false);
-  const listRef = useRef(list);
+  const listRef = useRef(stored.list);
   // The repo and filter the loaded list belongs to; a cursor only continues its own list.
   const loadedKeyRef = useRef<string | null>(null);
   const key = `${repoPath}\n${state}`;
@@ -60,14 +68,14 @@ export function usePagedGithubList<T extends { number: number }>(
       const next = appendPage(listRef.current, page, true);
       listRef.current = next;
       loadedKeyRef.current = key;
-      setList(next);
+      setStored({ repoPath, list: next });
     } catch (err) {
       // A superseded load's failure is no longer the list's problem
       if (run === runRef.current) throw err;
     } finally {
       if (run === runRef.current) fetchingRef.current = false;
     }
-  }, [fetchPage, key]);
+  }, [fetchPage, key, repoPath]);
 
   const loadMore = useCallback(async () => {
     const current = listRef.current;
@@ -81,7 +89,7 @@ export function usePagedGithubList<T extends { number: number }>(
       if (run !== runRef.current) return;
       const next = appendPage(listRef.current, page, false);
       listRef.current = next;
-      setList(next);
+      setStored({ repoPath, list: next });
     } catch (err) {
       if (run === runRef.current) setLoadMoreError(String(err));
     } finally {
@@ -90,9 +98,11 @@ export function usePagedGithubList<T extends { number: number }>(
         setIsLoadingMore(false);
       }
     }
-  }, [fetchPage, key, cap]);
+  }, [fetchPage, key, cap, repoPath]);
 
-  return { list, loadFirstPage, loadMore, isLoadingMore, loadMoreError };
+  const loaded = stored.repoPath === repoPath && stored.list !== NOTHING_LOADED;
+  const list = loaded ? stored.list : NOTHING_LOADED;
+  return { list, loaded, loadFirstPage, loadMore, isLoadingMore: loaded && isLoadingMore, loadMoreError: loaded ? loadMoreError : null };
 }
 
 /**

@@ -295,6 +295,11 @@ export function App() {
     () => resolveRootRepo(activeProject, projects, projectWorktrees),
     [activeProject, projects, projectWorktrees]
   );
+  // The selected repository's name as the Projects panel shows it, until GitHub names it.
+  const activeRootRepoName = useMemo(
+    () => projects.find((p) => isSamePath(p.path, activeRootRepo))?.name ?? activeRootRepo.split(/[\\/]/).filter(Boolean).pop() ?? "",
+    [projects, activeRootRepo]
+  );
 
   // The open stage tabs, in the order they opened, and the one in front of the terminals.
   const [openToolIds, setOpenToolIds] = useState<readonly string[]>([]);
@@ -1243,6 +1248,7 @@ export function App() {
             <SourceControlPanel
               isOpen={openModule === "source-control"}
               repoPath={activeRootRepo}
+              repoName={activeRootRepoName}
               pickTarget={selectedTerminal?.name ?? null}
               onPick={pickForCompanion}
               onOpenTopos={openToposView}
