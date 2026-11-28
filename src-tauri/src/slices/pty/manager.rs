@@ -69,7 +69,7 @@ fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
 }
 
 /// How an OpenCode `request` is launched, on a free loopback port, from a probe of its version
-/// (see `opencode_launch`), which blocks for a few seconds at most. `None` for other CLIs,
+/// (see `opencode_launch`), which can block for some seconds on a busy machine. `None` for other CLIs,
 /// which aren't probed.
 fn opencode_launch_for(request: &SpawnTerminalRequest) -> Result<Option<OpenCodeLaunch>, String> {
     Ok(server_port_for(request.run_kind)?.map(|port| opencode_launch(request, port)))

@@ -114,15 +114,41 @@ pub fn launch_of(printed: Option<&str>, port: u16) -> OpenCodeLaunch {
 /// The most of a probe's output that is read.
 const PROBE_OUTPUT_CAP: u64 = 64 * 1024;
 
-/// Runs `cmd`, from `hidden_command`, as `opencode --version`, and returns what it printed to
-/// stdout. It blocks for at most `patience`. Whatever happens, the process and everything it
-/// started are killed before it returns. It returns `None` when the process can't start, isn't
-/// done within `patience`, or can't be waited for.
-pub fn probe_version(mut cmd: std::process::Command, patience: Duration) -> Option<String> {
+/// What one run of `opencode --version` came to.
+enum Probe {
+    /// It exited and printed this to stdout.
+    Printed(String),
+    /// It couldn't be started, as when the CLI isn't installed.
+    Unstarted,
+    /// It started but didn't finish printing within its patience, or couldn't be waited for.
+    Unfinished,
+}
+
+/// Runs `opencode --version`, as a fresh `hidden_command` that `command` builds for each run, and
+/// returns what it printed to stdout. A run that started but didn't finish within `patience`, as
+/// a cold start on a loaded machine may not, is run once more, so it blocks for at most twice
+/// `patience`. A CLI that can't be started isn't run again. Whatever happens, each process and
+/// everything it started are killed before it returns. It returns `None` when no run printed.
+pub fn read_version(mut command: impl FnMut() -> std::process::Command, patience: Duration) -> Option<String> {
+    let probe = match probe(command(), patience) {
+        Probe::Unfinished => probe(command(), patience),
+        first => first,
+    };
+    match probe {
+        Probe::Printed(printed) => Some(printed),
+        Probe::Unstarted | Probe::Unfinished => None,
+    }
+}
+
+/// Runs `cmd` as `opencode --version`, blocking for at most `patience`, and kills it and
+/// everything it started before it returns.
+fn probe(mut cmd: std::process::Command, patience: Duration) -> Probe {
     use std::io::Read;
     use std::process::Stdio;
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut tree = crate::spawn::spawn_tree_tied(&mut cmd).ok()?;
+    let Ok(mut tree) = crate::spawn::spawn_tree_tied(&mut cmd) else {
+        return Probe::Unstarted;
+    };
     let deadline = Instant::now() + patience;
     let (tx, rx) = std::sync::mpsc::channel();
     if let Some(stdout) = tree.child().stdout.take() {
@@ -144,7 +170,7 @@ pub fn probe_version(mut cmd: std::process::Command, patience: Duration) -> Opti
         .then(|| rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).ok())
         .flatten();
     tree.kill();
-    printed.map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    printed.map_or(Probe::Unfinished, |bytes| Probe::Printed(String::from_utf8_lossy(&bytes).into_owned()))
 }
 
 /// The most of a sidecar's output that is kept, from its end, to show when it fails.
@@ -482,17 +508,71 @@ mod tests {
 
     #[test]
     fn the_version_probe_returns_what_the_cli_printed() {
-        let printed = probe_version(printing("2.4.1"), Duration::from_secs(10));
+        let printed = read_version(|| printing("2.4.1"), Duration::from_secs(10));
         assert_eq!(printed.as_deref().map(str::trim), Some("2.4.1"));
     }
 
     #[test]
-    fn a_version_probe_that_outlasts_its_patience_is_killed_and_reads_as_none() {
+    fn a_version_probe_that_outlasts_its_patience_twice_is_killed_and_reads_as_none() {
         // A probe that waited for the command to exit would take its two minutes.
         let patience = Duration::from_millis(500);
         let started = std::time::Instant::now();
-        assert_eq!(probe_version(lingering(), patience), None);
-        assert!(started.elapsed() < patience + LOADED_SLACK, "the probe waited {:?}", started.elapsed());
+        assert_eq!(read_version(lingering, patience), None);
+        assert!(started.elapsed() < 2 * (patience + LOADED_SLACK), "the probe waited {:?}", started.elapsed());
+    }
+
+    /// A stand-in CLI, a script in `root`, whose first `--version` runs for two minutes, as a
+    /// cold start on a loaded machine can seem to, and whose later ones print `text` and exit. It
+    /// marks its first run with a file beside it.
+    fn slow_at_first(root: &std::path::Path, text: &str) -> impl FnMut() -> std::process::Command {
+        let (name, script) = if cfg!(windows) {
+            let script = r#"@echo off
+if exist "%~dp0probed" (echo TEXT) else (type nul > "%~dp0probed" & ping -n 120 127.0.0.1 >nul)
+"#;
+            ("opencode.cmd", script.replace("TEXT", text))
+        } else {
+            let script = r#"d=$(dirname "$0")
+if [ -e "$d/probed" ]; then echo TEXT; else : > "$d/probed"; sleep 120; fi
+"#;
+            ("opencode.sh", script.replace("TEXT", text))
+        };
+        let path = root.join(name);
+        std::fs::write(&path, script).unwrap();
+        let path = path.to_string_lossy().to_string();
+        let unix = format!("sh '{path}'");
+        move || shell(&path, &unix)
+    }
+
+    #[test]
+    fn a_1x_cli_whose_first_version_probe_times_out_is_launched_as_1x_by_its_second() {
+        let root = crate::test_support::TempDir::new("probe-retry");
+        let printed = read_version(slow_at_first(root.path(), "1.19.4"), Duration::from_secs(5));
+        assert_eq!(launch_of(printed.as_deref(), 4567), OpenCodeLaunch::Tui(4567));
+    }
+
+    #[test]
+    fn a_cli_whose_version_probe_times_out_twice_is_launched_as_2x() {
+        let probes = std::cell::Cell::new(0);
+        let command = || {
+            probes.set(probes.get() + 1);
+            lingering()
+        };
+        let printed = read_version(command, Duration::from_millis(500));
+        assert_eq!(server_port(launch_of(printed.as_deref(), 4567)), Some(4567));
+        assert_eq!(probes.get(), 2);
+    }
+
+    #[test]
+    fn a_cli_that_cant_be_started_is_probed_once() {
+        let root = crate::test_support::TempDir::new("probe-missing");
+        let missing = root.join("no-such-opencode.exe");
+        let probes = std::cell::Cell::new(0);
+        let command = || {
+            probes.set(probes.get() + 1);
+            crate::spawn::hidden_command(&missing)
+        };
+        assert_eq!(read_version(command, Duration::from_secs(10)), None);
+        assert_eq!(probes.get(), 1);
     }
 
     const MCP_URL: &str = "http://127.0.0.1:4321/mcp/7";
