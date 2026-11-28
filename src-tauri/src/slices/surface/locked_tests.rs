@@ -229,7 +229,8 @@ fn a_later_message_for_a_dismissed_id_finds_it_dismissed_until_the_terminal_exit
 
 #[tokio::test]
 async fn a_later_message_for_a_dismissed_id_is_told_so_and_is_not_checked() {
-    let (seam, mut webview, _) = idle(Timing::default()).await;
+    let verdict = Duration::from_secs(120);
+    let (seam, mut webview, _) = idle(Timing { verdict, ..Timing::default() }).await;
     seam.asked(&mut webview, "term-a", "One?").await;
     seam.surfaces.dismiss(&key("term-a", "ask_1")).unwrap();
     let store = seam.surfaces.store();
@@ -242,8 +243,9 @@ async fn a_later_message_for_a_dismissed_id_is_told_so_and_is_not_checked() {
     let creation = Creation { tool: "quay_ask", arguments: &arguments, title: "Again?", place: Place::Companion, call };
     let refused = key("term-a", "ask_1");
     let reply = seam.surfaces.check_and_commit(&refused, creation, arguments.clone());
-    // The webview gives no verdict: a message that it would reject is told the same
-    let reply = tokio::time::timeout(Duration::from_secs(1), reply).await.expect("it waited for a verdict");
+    // The webview gives no verdict: a message that it would reject is told the same, well before
+    // the verdict limit would end a wait
+    let reply = tokio::time::timeout(verdict / 2, reply).await.expect("it waited for a verdict");
 
     let told = json!({ "content": [{ "type": "text", "text": r#"{"dismissed":true}"# }] });
     assert_eq!(reply, Err(told));

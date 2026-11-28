@@ -105,6 +105,11 @@ impl Quay {
     }
 }
 
+/// The answer that the file manager shows the file written as `path`, which the link named `line` of.
+fn revealed(path: &str, line: Option<u32>) -> Result<Shown, String> {
+    Ok(Shown::Revealed { path: path.to_string(), line })
+}
+
 #[test]
 fn a_file_is_revealed_in_its_own_terminals_folder_and_never_in_anothers() {
     let quay = Quay::new();
@@ -112,9 +117,9 @@ fn a_file_is_revealed_in_its_own_terminals_folder_and_never_in_anothers() {
     quay.write("two/src/a.rs", "two");
     quay.write("two/only.rs", "two");
 
-    assert_eq!(quay.show("one", "src/a.rs"), Ok(Shown::Revealed));
+    assert_eq!(quay.show("one", "src/a.rs"), revealed("src/a.rs", None));
     assert_eq!(quay.revealed(), [quay.file("one/src/a.rs")]);
-    assert_eq!(quay.show("two", "src/a.rs:12"), Ok(Shown::Revealed));
+    assert_eq!(quay.show("two", "src/a.rs:12"), revealed("src/a.rs", Some(12)));
     assert_eq!(quay.revealed(), [quay.file("two/src/a.rs")]);
 
     assert_eq!(quay.show("one", "only.rs"), Err("Not opened: there is no only.rs.".to_string()));
@@ -122,9 +127,9 @@ fn a_file_is_revealed_in_its_own_terminals_folder_and_never_in_anothers() {
     assert!(quay.revealed().is_empty());
     // An absolute path is allowed outside the project
     let path = quay.file("two/only.rs");
-    assert_eq!(quay.show("one", path.to_str().unwrap()), Ok(Shown::Revealed));
+    assert_eq!(quay.show("one", path.to_str().unwrap()), revealed(path.to_str().unwrap(), None));
     assert_eq!(quay.revealed(), [path]);
-    assert_eq!(quay.show("one", "src"), Ok(Shown::Revealed));
+    assert_eq!(quay.show("one", "src"), revealed("src", None));
     assert_eq!(quay.revealed(), [quay.file("one/src")]);
 }
 
@@ -133,7 +138,7 @@ fn a_file_with_uncommitted_changes_opens_the_diff_view_at_its_line() {
     let quay = Quay::new();
     quay.repository();
 
-    assert_eq!(quay.show("one", "src/a.rs"), Ok(Shown::Revealed), "nothing has changed");
+    assert_eq!(quay.show("one", "src/a.rs"), revealed("src/a.rs", None), "nothing has changed");
     quay.write("one/src/a.rs", "changed\n");
     quay.write("one/src/b.rs", "staged\n");
     quay.git("one", &["add", "src/b.rs"]);
@@ -148,9 +153,11 @@ fn a_file_with_uncommitted_changes_opens_the_diff_view_at_its_line() {
     assert_eq!(quay.show("one", quay.file("one/new/c.rs").to_str().unwrap()), quay.diff("new/c.rs", "unstaged", None));
     assert!(quay.revealed().is_empty());
 
-    assert_eq!(quay.show("one", "x.log"), Ok(Shown::Revealed), "git ignores it");
-    assert_eq!(quay.show("one", "src"), Ok(Shown::Revealed), "a folder has no diff");
-    assert_eq!(quay.show("two", quay.file("one/src/a.rs").to_str().unwrap()), Ok(Shown::Revealed), "another terminal's worktree");
+    assert_eq!(quay.show("one", "x.log"), revealed("x.log", None), "git ignores it");
+    assert_eq!(quay.show("one", "src"), revealed("src", None), "a folder has no diff");
+    let elsewhere = quay.file("one/src/a.rs");
+    let elsewhere = elsewhere.to_str().unwrap();
+    assert_eq!(quay.show("two", elsewhere), revealed(elsewhere, None), "another terminal's worktree");
     assert_eq!(quay.revealed().len(), 3);
 
     std::fs::remove_file(quay.file("one/src/a.rs")).unwrap();
@@ -215,7 +222,7 @@ fn a_changed_file_in_another_repository_opens_the_diff_view_only_when_that_is_a_
     // A program git runs where it looks for changes, as any repository can name one
     quay.git("other", &["config", "core.fsmonitor", "echo ran > ran.log; false"]);
 
-    assert_eq!(quay.show("one", "../other/src/a.rs"), Ok(Shown::Revealed));
+    assert_eq!(quay.show("one", "../other/src/a.rs"), revealed("../other/src/a.rs", None));
     assert_eq!(quay.revealed(), [quay.file("other/src/a.rs")]);
     assert!(!quay.file("other/ran.log").exists(), "git was run in it");
 
@@ -232,7 +239,7 @@ fn a_folder_that_only_claims_to_be_a_worktree_of_the_terminals_repository_has_no
     quay.repository();
     quay.write("forged/src/a.rs", "new\n");
     quay.write("forged/.git", &format!("gitdir: {}\n", quay.file("one/.git").to_str().unwrap()));
-    assert_eq!(quay.show("one", "../forged/src/a.rs"), Ok(Shown::Revealed));
+    assert_eq!(quay.show("one", "../forged/src/a.rs"), revealed("../forged/src/a.rs", None));
 }
 
 #[test]
@@ -258,4 +265,22 @@ fn what_the_file_manager_would_not_show_is_said() {
     quay.write("one/a", "a");
     let said = show_file(&quay.terminals, &quay.projects, "one", "a", None, |_| Err("no window".to_string()));
     assert_eq!(said, Err("Not opened: the file manager could not show a (no window).".to_string()));
+}
+
+#[test]
+fn a_revealed_file_is_named_as_written_in_plain_text_with_the_line_the_file_manager_cannot_go_to() {
+    let quay = Quay::new();
+    quay.write("one/a.txt", "a\nb\n");
+
+    assert_eq!(quay.show_line("one", "a.txt", Some(2)), revealed("a.txt", Some(2)));
+    assert_eq!(quay.show_line("one", "a.txt:3", Some(2)), revealed("a.txt", Some(2)), "the line given wins");
+    assert_eq!(quay.show("one", "./a.txt:2:5"), revealed("./a.txt", Some(2)));
+
+    quay.write("one/a\u{202e}txt.md", "turned");
+    assert_eq!(quay.show("one", "a\u{202e}txt.md"), revealed("a txt.md", None), "no character turns the text around it");
+
+    let long = format!("{}a.txt", "./".repeat(150));
+    let Ok(Shown::Revealed { path, line: None }) = quay.show("one", &long) else { panic!("not revealed") };
+    assert_eq!(path, format!("{}…", "./".repeat(100)), "cut as a refusal cuts it");
+    assert_eq!(quay.revealed().len(), 5);
 }

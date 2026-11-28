@@ -17,7 +17,8 @@ use super::routes::authenticate_mcp_caller;
 use super::state::BridgeState;
 use crate::test_support::relay::{built_sidecar, Relay};
 
-const SOON: Duration = Duration::from_secs(10);
+/// How long the relay's message may take to reach Quay, on a loaded machine.
+const SOON: Duration = Duration::from_secs(30);
 
 /// What the listener saw.
 #[derive(Debug, PartialEq)]

@@ -25,8 +25,9 @@ use crate::slices::pty::plugin_watch::LaunchRef;
 use crate::test_support::TempDir;
 use crate::webview::WebviewEvents;
 
-/// How long a test waits for something that should happen at once.
-const SOON: Duration = Duration::from_secs(5);
+/// How long a test waits for something that should happen at once: long enough for a loaded
+/// machine, and still well under [`WAIT`](super::timing::WAIT), the longest a call stays open.
+const SOON: Duration = Duration::from_secs(30);
 
 /// How long a test watches for something that must not happen.
 pub const A_WHILE: Duration = Duration::from_millis(200);

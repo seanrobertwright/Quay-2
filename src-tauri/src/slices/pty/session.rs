@@ -31,6 +31,9 @@ const EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(300);
 /// How long `PtySession::end` waits for the reader to send what the PTY writes as it closes.
 const TEARDOWN_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// How big a log may grow before its process's exit cuts it to its tail, in bytes.
+const LOG_COMPACT_BYTES: u64 = 2 * 1024 * 1024;
+
 /// How much recent output a session keeps for a pane that mounts, in bytes.
 const OUTPUT_BUFFER_LIMIT: usize = 256 * 1024;
 
@@ -74,8 +77,9 @@ pub struct PtySession {
     sidecar: Option<Sidecar>,
     /// The end of a session that runs no process, until `take_exit_report` takes it.
     exit_report: Option<ExitReport>,
-    /// Set once `end` has read the last seq: the session sends no output after it.
-    output_closed: Arc<AtomicBool>,
+    /// Where its output goes. Closed once `end` has read the last seq, or `close_output` has
+    /// run: the session logs and sends no output after that.
+    sink: OutputSink,
     /// Hangs up when the PTY reader is done, for a session with a process.
     reader_done: Option<std::sync::mpsc::Receiver<()>>,
 }
@@ -102,36 +106,75 @@ struct OutputSink {
     terminal_id: String,
     events: WebviewEvents,
     log_path: PathBuf,
+    /// The terminal's log. Opened, written and shut only under `output_buffer`'s lock.
+    log: Arc<Mutex<LogFile>>,
     output_buffer: Arc<Mutex<(String, u64)>>,
     screen: Arc<ScreenKeeper>,
     output_closed: Arc<AtomicBool>,
 }
 
+/// A session's log, which its first chunk opens.
+enum LogFile {
+    /// No chunk has been logged yet.
+    Unopened,
+    /// Open to append.
+    Open(std::fs::File),
+    /// Shut, or never opened because it couldn't be.
+    Shut,
+}
+
 impl OutputSink {
-    /// The terminal's log, opened to append, or `None` when it can't be opened.
-    fn open_log(&self) -> Option<std::fs::File> {
-        std::fs::OpenOptions::new().create(true).append(true).open(&self.log_path).ok()
+    /// The sink for `terminal_id`'s output, open, with its log at `log_path`.
+    fn new(
+        terminal_id: String,
+        events: WebviewEvents,
+        log_path: PathBuf,
+        output_buffer: Arc<Mutex<(String, u64)>>,
+        screen: Arc<ScreenKeeper>,
+    ) -> Self {
+        Self {
+            terminal_id,
+            events,
+            log_path,
+            log: Arc::new(Mutex::new(LogFile::Unopened)),
+            output_buffer,
+            screen,
+            output_closed: Arc::new(AtomicBool::new(false)),
+        }
     }
 
-    /// Writes `text`, one chunk, to `log` and the screen, runs `before_send` with it, then
-    /// buffers it under the next seq and sends it as `pty-output`. Once the session's output is
-    /// closed (see `PtySession::end`), it drops the chunk.
-    fn write(&self, log: Option<&mut std::fs::File>, text: String, before_send: impl FnOnce(&str)) {
+    /// Appends `text` to the log, opening it first if no chunk has yet. Call it holding
+    /// `output_buffer`'s lock with the output open.
+    fn log(&self, text: &str) {
+        let mut log = self.log.lock();
+        if let LogFile::Unopened = *log {
+            *log = match std::fs::OpenOptions::new().create(true).append(true).open(&self.log_path) {
+                Ok(file) => LogFile::Open(file),
+                Err(_) => LogFile::Shut,
+            };
+        }
+        if let LogFile::Open(file) = &mut *log {
+            let _ = file.write_all(text.as_bytes());
+        }
+    }
+
+    /// Writes `text`, one chunk, to the screen, runs `before_send` with it, then logs it,
+    /// buffers it under the next seq and sends it as `pty-output`. Once the output is closed
+    /// (see `close`), it drops the chunk.
+    fn write(&self, text: String, before_send: impl FnOnce(&str)) {
         if self.output_closed.load(Ordering::SeqCst) {
             return;
-        }
-        if let Some(file) = log {
-            let _ = file.write_all(text.as_bytes());
         }
         self.screen.feed(&text, std::time::Instant::now());
         before_send(&text);
         // Buffer recent output for newly-mounting xterm instances, capped to avoid unbounded
-        // memory usage. The chunk is sent under the buffer's lock, so a replay and the sent
-        // chunks agree, and `PtySession::end` returns only after the last one is sent.
+        // memory usage. The chunk is logged and sent under the buffer's lock, so a replay and the
+        // sent chunks agree, and `close` returns only after the last one is logged and sent.
         let mut buffer = self.output_buffer.lock();
         if self.output_closed.load(Ordering::SeqCst) {
             return;
         }
+        self.log(&text);
         let seq = append_output(&mut buffer, &text, OUTPUT_BUFFER_LIMIT);
         self.events.emit(
             "pty-output",
@@ -141,6 +184,30 @@ impl OutputSink {
                 seq,
             },
         );
+    }
+
+    /// Closes the output: no chunk is logged or sent after this returns, and the log is shut.
+    /// It waits only for a chunk being logged and sent right then, never for the reader. Returns
+    /// the seq of the last chunk sent.
+    fn close(&self) -> u64 {
+        let buffer = self.output_buffer.lock();
+        self.output_closed.store(true, Ordering::SeqCst);
+        *self.log.lock() = LogFile::Shut;
+        buffer.1
+    }
+
+    /// Cuts the log to its tail once it has grown past `LOG_COMPACT_BYTES`, unless the output is
+    /// closed, when the log may be gone and must not come back.
+    fn compact_log(&self) {
+        let _buffer = self.output_buffer.lock();
+        if self.output_closed.load(Ordering::SeqCst) {
+            return;
+        }
+        if std::fs::metadata(&self.log_path).is_ok_and(|metadata| metadata.len() > LOG_COMPACT_BYTES) {
+            if let Ok(bytes) = std::fs::read(&self.log_path) {
+                let _ = std::fs::write(&self.log_path, super::manager::log_tail(&bytes));
+            }
+        }
     }
 }
 
@@ -411,27 +478,47 @@ fn claude_program() -> &'static str {
     program
 }
 
-/// The OpenCode executable's file name for this platform.
-fn opencode_file_name() -> &'static str {
+/// The file names OpenCode is looked for under in one folder, in the order a lookup tries
+/// them. On Windows that is `PATHEXT`'s order: the executable, then the `.cmd` shim npm installs.
+fn opencode_file_names() -> &'static [&'static str] {
     #[cfg(windows)]
-    let name = "opencode.exe";
+    let names: &[&str] = &["opencode.exe", "opencode.cmd"];
     #[cfg(not(windows))]
-    let name = "opencode";
-    name
+    let names: &[&str] = &["opencode"];
+    names
 }
 
-/// The program an OpenCode terminal starts. When a folder on `path`, the terminal's `PATH`,
-/// holds OpenCode, that is the bare name, which the spawn looks up on the same `PATH`.
-/// Otherwise it is bun's install, `.bun/bin` under `home`, when that exists, and failing
-/// that the bare name again, so the spawn error names it.
-fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Path>) -> String {
-    let name = opencode_file_name();
-    if path.is_some_and(|path| std::env::split_paths(path).any(|dir| dir.join(name).is_file())) {
-        return name.to_string();
-    }
-    home.map(|home| home.join(".bun").join("bin").join(name))
-        .filter(|bun| bun.is_file())
-        .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
+/// The OpenCode executable's file name for this platform: the first name a lookup tries.
+fn opencode_file_name() -> &'static str {
+    opencode_file_names()[0]
+}
+
+/// The program an OpenCode terminal starts, by its full path: the first OpenCode in the
+/// absolute folders of `path`, the terminal's `PATH`, in order, and failing that bun's install,
+/// `.bun/bin` under `home` when `home` is absolute. A spawn given a bare name would look it up
+/// on Quay's own `PATH`, not the terminal's. When there is none it is the bare name, so the
+/// spawn error names it.
+fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&Path>) -> PathBuf {
+    let on_path = path
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .filter(|dir| dir.is_absolute());
+    let bun = home
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join(".bun").join("bin"));
+    on_path
+        .chain(bun)
+        .flat_map(|dir| opencode_file_names().iter().map(move |name| dir.join(name)))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| PathBuf::from(opencode_file_name()))
+}
+
+/// Whether `program` is a Windows batch file, such as npm's `opencode.cmd` shim, which a PTY
+/// can only start through `cmd.exe /c` (see `through_cmd`).
+fn is_cmd_shim(program: &Path) -> bool {
+    program
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cmd"))
 }
 
 /// How long each run of `opencode --version` may take. One that doesn't finish is run once
@@ -599,6 +686,15 @@ fn pwsh_literal(text: &str) -> String {
     quoted
 }
 
+/// A command that starts `cli` through `cmd.exe /c`, the route npm's Windows `.cmd` shims need,
+/// since a PTY can't start a batch file itself. `starts_through_cmd` recognises it.
+fn through_cmd(cli: impl AsRef<std::ffi::OsStr>) -> CommandBuilder {
+    let mut c = CommandBuilder::new("cmd.exe");
+    c.arg("/c");
+    c.arg(cli);
+    c
+}
+
 /// Whether `cmd` starts its CLI as `cmd.exe /c <cli>`, as the npm-shim CLIs do.
 fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
     let argv = cmd.get_argv();
@@ -608,12 +704,20 @@ fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
 /// Turns a `cmd.exe /c <cli> <args>` command into a pwsh one that reads the launch prompt
 /// from an env var. cmd.exe ends a command line at its first newline and an npm `.cmd`
 /// shim re-parses its arguments, so a multi-line prompt can't survive that route; pwsh
-/// runs the CLI's `.ps1` shim, which hands each argument on intact.
+/// runs the CLI's `.ps1` shim, which hands each argument on intact. pwsh finds that shim for
+/// a bare name; for a `.cmd` shim named by its path it is the `.ps1` beside it, when there is one.
 fn start_through_pwsh(cmd: &mut CommandBuilder, form: Option<LaunchPromptForm>, prompt: &str) {
     let mut script = String::from("&");
-    for arg in cmd.get_argv().iter().skip(2) {
+    for (i, arg) in cmd.get_argv().iter().skip(2).enumerate() {
+        let mut arg = arg.to_string_lossy().to_string();
+        if i == 0 && is_cmd_shim(Path::new(&arg)) {
+            let ps1 = Path::new(&arg).with_extension("ps1");
+            if ps1.is_file() {
+                arg = ps1.to_string_lossy().to_string();
+            }
+        }
         script.push(' ');
-        script.push_str(&pwsh_literal(&arg.to_string_lossy()));
+        script.push_str(&pwsh_literal(&arg));
     }
     if let Some(LaunchPromptForm::Flag(flag)) = form {
         script.push(' ');
@@ -727,18 +831,8 @@ pub(crate) fn build_command(
             }
             c
         }
-        RunKind::Pi => {
-            let mut c = CommandBuilder::new("cmd.exe");
-            c.arg("/c");
-            c.arg("pi");
-            c
-        }
-        RunKind::Gemini => {
-            let mut c = CommandBuilder::new("cmd.exe");
-            c.arg("/c");
-            c.arg("gemini");
-            c
-        }
+        RunKind::Pi => through_cmd("pi"),
+        RunKind::Gemini => through_cmd("gemini"),
         RunKind::Grok => {
             // Check if user has ~/.grok/bin/agent.exe installed
             let grok_path = std::env::var("USERPROFILE")
@@ -797,7 +891,11 @@ pub(crate) fn build_command(
         RunKind::OpenCode => {
             let program =
                 opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
-            let mut c = CommandBuilder::new(program);
+            // Unlike PiG (see `pig_program`), OpenCode's npm shim is started as it is, through
+            // `cmd.exe` like Pi's and Gemini's, rather than by the binary behind it. That route
+            // re-parses arguments, so a launch prompt goes through pwsh and the shim's `.ps1`
+            // instead (see `start_through_pwsh`).
+            let mut c = if is_cmd_shim(&program) { through_cmd(program) } else { CommandBuilder::new(program) };
             match &opencode {
                 // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
                 None | Some(OpenCodeLaunch::Tui(_)) => {
@@ -1032,15 +1130,7 @@ impl PtySession {
             (!earlier.is_empty()).then_some(earlier.as_str()),
         ));
 
-        let output_closed = Arc::new(AtomicBool::new(false));
-        let sink = OutputSink {
-            terminal_id: terminal_id.clone(),
-            events: events.clone(),
-            log_path: log_path.clone(),
-            output_buffer: output_buffer.clone(),
-            screen: screen.clone(),
-            output_closed: output_closed.clone(),
-        };
+        let sink = OutputSink::new(terminal_id.clone(), events.clone(), log_path, output_buffer.clone(), screen.clone());
         // The session as it is with no process; a launch that runs one adds its PTY
         let without_process = Self {
             id: terminal_id.clone(),
@@ -1056,7 +1146,7 @@ impl PtySession {
             screen: screen.clone(),
             sidecar: None,
             exit_report: None,
-            output_closed,
+            sink: sink.clone(),
             reader_done: None,
         };
 
@@ -1065,7 +1155,7 @@ impl PtySession {
             // No process and no PTY: Quay writes the message into the terminal's output itself,
             // as the reader writes a chunk, so nothing is left to repaint it on a resize
             Launch::Message(message) => {
-                sink.write(sink.open_log().as_mut(), message_output(&message), |_| on_first_output());
+                sink.write(message_output(&message), |_| on_first_output());
                 screen.save_now();
                 let exit_report: ExitReport =
                     Box::new(move || report_exit(on_exit, &events, terminal_id, Some(MESSAGE_EXIT_CODE)));
@@ -1106,6 +1196,7 @@ impl PtySession {
         {
             let is_alive = is_alive.clone();
             let screen = screen.clone();
+            let sink = sink.clone();
 
             std::thread::spawn(move || {
                 // Dropped as the thread ends, which tells `end` the reader is done
@@ -1114,7 +1205,6 @@ impl PtySession {
                 let mut pending_utf8 = Vec::with_capacity(8);
                 let mut on_first_output = Some(on_first_output);
                 let mut osc7501 = on_osc7501.map(|hook| (Osc7501Scanner::default(), hook));
-                let mut log_file = sink.open_log();
 
                 while is_alive.load(Ordering::SeqCst) {
                     match reader.read(&mut buf) {
@@ -1125,7 +1215,7 @@ impl PtySession {
                                 continue;
                             }
 
-                            sink.write(log_file.as_mut(), text, |text| {
+                            sink.write(text, |text| {
                                 if let Some(hook) = on_first_output.take() {
                                     hook();
                                 }
@@ -1165,7 +1255,7 @@ impl PtySession {
             let events = events.clone();
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
-            let log_path_exit = log_path.clone();
+            let sink = sink.clone();
             let screen = screen.clone();
 
             std::thread::spawn(move || {
@@ -1176,14 +1266,8 @@ impl PtySession {
                     ender.end();
                 }
 
-                // Compact log file if it exceeds 2MB to keep disk space bounded
-                if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
-                    if metadata.len() > 2 * 1024 * 1024 {
-                        if let Ok(bytes) = std::fs::read(&log_path_exit) {
-                            let _ = std::fs::write(&log_path_exit, super::manager::log_tail(&bytes));
-                        }
-                    }
-                }
+                // Keeps disk space bounded
+                sink.compact_log();
 
                 let exit_code = match exit_status {
                     Ok(status) => {
@@ -1224,6 +1308,22 @@ impl PtySession {
     /// Stops this session saving its screen, for a terminal being closed or relaunched.
     pub fn discard_screen(&self) {
         self.screen.discard();
+    }
+
+    /// Closes this session's output, for a terminal being closed: it logs and sends nothing from
+    /// here on, so its reader finishing can't bring back a log the close deletes. Unlike `end`,
+    /// it never waits for the reader.
+    pub fn close_output(&self) {
+        self.sink.close();
+    }
+
+    /// What runs `close_output`, for closing this session's output once the session itself has
+    /// moved somewhere it can't be reached.
+    pub fn output_closer(&self) -> impl Fn() + Send + 'static {
+        let sink = self.sink.clone();
+        move || {
+            sink.close();
+        }
     }
 
     /// What ends this session's OpenCode server, if it has one.
@@ -1325,8 +1425,7 @@ impl PtySession {
     /// call it holding no lock.
     pub fn end(mut self) -> u64 {
         let reader_done = self.reader_done.take();
-        let output_buffer = self.output_buffer.clone();
-        let output_closed = self.output_closed.clone();
+        let sink = self.sink.clone();
         let terminal_id = self.id.clone();
         // Closes the PTY, which ends the process and, once the PTY's last output is read, the reader
         drop(self);
@@ -1335,9 +1434,7 @@ impl PtySession {
                 tracing::debug!("PTY reader for {} still running after its session ended", terminal_id);
             }
         }
-        let buffer = output_buffer.lock();
-        output_closed.store(true, Ordering::SeqCst);
-        buffer.1
+        sink.close()
     }
 }
 
@@ -2066,14 +2163,128 @@ mod tests {
         let path = std::env::join_paths([root.join("empty"), on_path.clone()]).unwrap();
 
         // Not on the PATH: bun's install
-        assert_eq!(opencode_program(Some(&path), Some(&home)), bun.to_string_lossy());
-        // On the PATH: the bare name, which the spawn finds there
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), bun.to_string_lossy());
+        // On the PATH: its full path there, since a spawn looks a bare name up on Quay's own PATH
         std::fs::write(on_path.join(name), b"").unwrap();
-        assert_eq!(opencode_program(Some(&path), Some(&home)), name);
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), on_path.join(name).to_string_lossy());
+        // A relative folder on the PATH is never looked in
+        let relative = std::env::join_paths([std::path::PathBuf::from("bin")]).unwrap();
+        assert_eq!(opencode_program(Some(&relative), Some(&root.join("nobody"))).to_string_lossy(), name);
         // Neither: the bare name, so the spawn error names it
-        assert_eq!(opencode_program(None, Some(&root.join("nobody"))), name);
-        assert_eq!(opencode_program(None, None), name);
+        assert_eq!(opencode_program(None, Some(&root.join("nobody"))).to_string_lossy(), name);
+        assert_eq!(opencode_program(None, None).to_string_lossy(), name);
+        // A relative home is never looked in, even when bun's folder under it exists
+        let relative_home = std::path::PathBuf::from(format!("opencode-relative-home-{}", std::process::id()));
+        std::fs::create_dir_all(relative_home.join(".bun").join("bin")).unwrap();
+        std::fs::write(relative_home.join(".bun").join("bin").join(name), b"").unwrap();
+        let found = opencode_program(None, Some(&relative_home));
+        std::fs::remove_dir_all(&relative_home).unwrap();
+        assert_eq!(found, std::path::Path::new(name));
 
+    }
+
+    /// npm installs OpenCode on Windows as an `opencode.cmd` shim, with no `opencode.exe`.
+    #[cfg(windows)]
+    #[test]
+    fn opencodes_npm_shim_on_the_terminals_path_is_found_by_its_full_path() {
+        let root = TempDir::new("opencode-shim");
+        let on_path = root.join("npm");
+        let home = root.join("home");
+        let bun_bin = home.join(".bun").join("bin");
+        std::fs::create_dir_all(&on_path).unwrap();
+        std::fs::create_dir_all(&bun_bin).unwrap();
+        std::fs::write(bun_bin.join("opencode.exe"), b"").unwrap();
+        let shim = on_path.join("opencode.cmd");
+        std::fs::write(&shim, b"").unwrap();
+        let path = std::env::join_paths([root.join("empty"), on_path.clone()]).unwrap();
+
+        // The terminal's PATH wins over bun's install
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), shim.to_string_lossy());
+        // In one folder the executable wins over the shim, as `PATHEXT` orders them
+        let exe = on_path.join("opencode.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(opencode_program(Some(&path), Some(&home)).to_string_lossy(), exe.to_string_lossy());
+        // A shim in bun's folder is found when nothing on the PATH is
+        std::fs::remove_file(bun_bin.join("opencode.exe")).unwrap();
+        std::fs::write(bun_bin.join("opencode.cmd"), b"").unwrap();
+        assert_eq!(
+            opencode_program(None, Some(&home)).to_string_lossy(),
+            bun_bin.join("opencode.cmd").to_string_lossy()
+        );
+    }
+
+    /// A PTY starts npm's shim through `cmd.exe /c`; `opencode serve` runs the shim itself.
+    #[cfg(windows)]
+    #[test]
+    fn an_opencode_shim_on_the_terminals_path_starts_its_tui_through_cmd_and_its_server_directly() {
+        let root = TempDir::new("opencode-shim-launch");
+        let shim = root.join("opencode.cmd");
+        std::fs::write(&shim, b"").unwrap();
+        let shim = shim.to_string_lossy().to_string();
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.env_vars =
+            Some([(PATH_NAME.to_string(), root.to_string_lossy().to_string())].into_iter().collect());
+
+        let cmd = build_command(&request, "term-oc-shim", 4321, "tok-1", Some(4567));
+        assert_eq!(argv(&cmd)[..5], ["cmd.exe", "/c", shim.as_str(), "--port", "4567"]);
+
+        let (serve, tui) = serve_and_tui(&request, &OpenCodeServer::for_tests(4567));
+        assert_eq!(serve.get_program().to_string_lossy(), shim);
+        assert_eq!(argv(&tui)[..5], ["cmd.exe", "/c", shim.as_str(), "--server", "http://127.0.0.1:4567"]);
+    }
+
+    /// cmd.exe would cut a multi-line prompt short, so pwsh runs the `.ps1` shim npm puts
+    /// beside the `.cmd` one, which hands the prompt on intact.
+    #[cfg(windows)]
+    #[test]
+    fn an_opencode_shims_launch_prompt_goes_through_pwsh_to_its_ps1_sibling() {
+        let root = TempDir::new("opencode-shim-prompt");
+        std::fs::write(root.join("opencode.cmd"), b"").unwrap();
+        let ps1 = root.join("opencode.ps1");
+        std::fs::write(&ps1, b"").unwrap();
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+        request.env_vars =
+            Some([(PATH_NAME.to_string(), root.to_string_lossy().to_string())].into_iter().collect());
+
+        let cmd = build_command(&request, "term-oc-shim", 4321, "tok-1", Some(4567));
+
+        assert_eq!(argv(&cmd)[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
+        assert_eq!(
+            argv(&cmd)[4],
+            format!("& '{}' '--port' '4567' '--auto' '--prompt' $env:QUAY_LAUNCH_PROMPT", ps1.to_string_lossy())
+        );
+        assert_eq!(env_of(&cmd, "QUAY_LAUNCH_PROMPT").as_deref(), Some(MULTI_LINE_PROMPT));
+    }
+
+    /// The version probe runs npm's shim on the terminal's PATH, not an OpenCode on Quay's.
+    /// A probe that can't run reads as 2.x too, so the 1.x shim is what shows it ran.
+    #[cfg(windows)]
+    #[test]
+    fn the_version_probe_runs_the_opencode_shim_on_the_terminals_path() {
+        let probed = |version: &str| {
+            let root = TempDir::new("opencode-shim-probe");
+            let npm = root.join("npm");
+            let home = root.join("home");
+            std::fs::create_dir_all(&npm).unwrap();
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::write(npm.join("opencode.cmd"), format!("@echo {version}\r\n")).unwrap();
+            let mut path = vec![npm];
+            path.extend(std::env::var_os("PATH").iter().flat_map(std::env::split_paths));
+            let mut request = spawn_request(RunKind::OpenCode);
+            request.env_vars = Some(
+                [
+                    (PATH_NAME.to_string(), std::env::join_paths(path).unwrap().to_string_lossy().to_string()),
+                    ("USERPROFILE".to_string(), home.to_string_lossy().to_string()),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            opencode_launch(&request, 4567)
+        };
+
+        assert!(matches!(probed("2.4.1"), OpenCodeLaunch::Server(server) if server.port() == 4567));
+        assert!(matches!(probed("1.4.0"), OpenCodeLaunch::Tui(4567)));
     }
 
     /// How the platform spells the variable `terminal_path` reads.
