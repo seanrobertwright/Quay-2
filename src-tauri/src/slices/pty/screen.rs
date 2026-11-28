@@ -122,8 +122,24 @@ impl ScreenRecorder {
         }
     }
 
+    /// Follows a resize. On Windows it does so as ConPTY does: a taller screen gains its new rows
+    /// at the bottom, and what the screen showed stays on the rows it was on, which is where
+    /// ConPTY repaints it. Elsewhere the program redraws, not the PTY, so vt100's own growth,
+    /// which matches xterm's, is kept.
     pub fn resize(&mut self, rows: u16, cols: u16) {
+        let (old_row, _) = self.parser.screen().cursor_position();
         self.parser.set_size(dimension(rows), dimension(cols));
+        // vt100 grows the screen as xterm does without `windowsPty`, pulling rows back from the
+        // scrollback above it and the cursor down with them. Scroll those rows back up and put
+        // the cursor where it was.
+        let (row, col) = self.parser.screen().cursor_position();
+        let pulled = row.saturating_sub(old_row);
+        if cfg!(windows) && pulled > 0 && !self.on_alternate_screen() {
+            let bottom_row = self.parser.screen().size().0.get();
+            let restore =
+                format!("\x1b[{bottom_row};1H{}\x1b[{};{}H", "\n".repeat(usize::from(pulled)), old_row + 1, col + 1);
+            self.parser.process(restore.as_bytes());
+        }
     }
 
     /// Whether a full-screen program has switched to the alternate screen, which has no
@@ -187,6 +203,15 @@ fn is_blank(line: &str) -> bool {
     rest.trim_matches(' ').is_empty()
 }
 
+/// What a relaunched terminal shows before its new console starts, when the pane holds earlier
+/// output: one line end per row of a `rows`-row screen, which scrolls everything above the
+/// cursor into scrollback, then the cursor home. ConPTY takes the cursor's row as its own first
+/// row when it opens and repaints from that row after every resize, so this makes the console's
+/// rows and the pane's rows start out the same.
+pub fn clean_viewport(rows: u16) -> String {
+    format!("{}\x1b[H", "\r\n".repeat(usize::from(rows.max(1))))
+}
+
 /// How long a terminal's output must pause before its screen is saved.
 pub const SAVE_AFTER_IDLE: Duration = Duration::from_secs(2);
 
@@ -217,12 +242,14 @@ struct KeeperState {
 impl ScreenKeeper {
     /// A keeper for a PTY of `rows` x `cols`. `earlier` is what the terminal showed before,
     /// from a previous run: a saved screen's text, or an older Quay's raw log. It goes into
-    /// the scrollback, so a new console clearing its screen leaves it in place.
+    /// the scrollback, followed by `clean_viewport`, so the new console paints from the
+    /// screen's first row as it does in the pane, and a console clearing its screen leaves it
+    /// in place.
     pub fn new(dir: &Path, terminal_id: &str, rows: u16, cols: u16, earlier: Option<&str>) -> Self {
         let mut recorder = ScreenRecorder::new(rows, cols);
         if let Some(earlier) = earlier {
             recorder.feed(earlier);
-            recorder.feed(&"\r\n".repeat(usize::from(rows.max(1))));
+            recorder.feed(&clean_viewport(rows));
         }
         Self {
             dir: dir.to_path_buf(),
@@ -480,6 +507,48 @@ mod tests {
         keeper.feed("new run\r\n", Instant::now());
         keeper.save_now();
         assert_eq!(saved_lines(&dir, "term-again").unwrap(), ["old run", "second line", "new run"]);
+    }
+
+    /// One step of a recorded ConPTY session: what the console wrote, or a resize of its PTY.
+    #[cfg(windows)]
+    #[derive(Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    enum Step {
+        Out(String),
+        Resize { rows: u16, cols: u16 },
+    }
+
+    #[cfg(windows)]
+    #[derive(Deserialize)]
+    struct Recording {
+        events: Vec<Step>,
+    }
+
+    /// What a new ConPTY wrote at 24x80 for `cmd.exe /d /k` printing five lines, its cursor query
+    /// answered with row 1, then its answers to resizes to 30x100, 20x60 and 24x80. The
+    /// `relaunchViewport` xterm test replays the same fixture, so both screens see the same bytes.
+    #[cfg(windows)]
+    fn conpty_five_lines_then_resizes() -> Vec<Step> {
+        let json = include_str!("../../../../src/slices/terminal/fixtures/conpty-cmd-five-lines-from-row-1.json");
+        serde_json::from_str::<Recording>(json).expect("the ConPTY recording parses").events
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_relaunched_console_and_its_resizes_keep_the_earlier_output_and_the_new_once_each() {
+        let dir = TempDir::new("screen");
+        let keeper = ScreenKeeper::new(&dir, "term-relaunch", 24, 80, Some("\x1b[0mold line 1\r\nold line 2\x1b[0m"));
+        for step in conpty_five_lines_then_resizes() {
+            match step {
+                Step::Out(text) => keeper.feed(&text, Instant::now()),
+                Step::Resize { rows, cols } => keeper.resize(rows, cols),
+            }
+        }
+        keeper.save_now();
+        assert_eq!(
+            saved_lines(&dir, "term-relaunch").unwrap(),
+            ["old line 1", "old line 2", "row-1-of-5", "row-2-of-5", "row-3-of-5", "row-4-of-5", "row-5-of-5", "", ">"]
+        );
     }
 
     #[test]

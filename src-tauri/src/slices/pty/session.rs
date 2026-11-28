@@ -167,6 +167,12 @@ impl OutputSink {
         }
         self.screen.feed(&text, std::time::Instant::now());
         before_send(&text);
+        self.send(text);
+    }
+
+    /// Buffers `text`, one chunk, under the next seq and sends it as `pty-output`, leaving out
+    /// the log and the screen. Once the session's output is closed, it drops the chunk.
+    fn send(&self, text: String) {
         // Buffer recent output for newly-mounting xterm instances, capped to avoid unbounded
         // memory usage. The chunk is logged and sent under the buffer's lock, so a replay and the
         // sent chunks agree, and `close` returns only after the last one is logged and sent.
@@ -1118,9 +1124,7 @@ impl PtySession {
             Some(saved) => saved.data,
             None => super::manager::read_log_tail(&log_path),
         };
-        let initial_data = if earlier.is_empty() { String::new() } else { format!("{}\r\n", earlier) };
-
-        let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
+        let output_buffer = Arc::new(Mutex::new((earlier.clone(), start_seq)));
         let current_size = Arc::new(Mutex::new((rows, cols)));
         let screen = Arc::new(ScreenKeeper::new(
             &log_dir,
@@ -1131,6 +1135,12 @@ impl PtySession {
         ));
 
         let sink = OutputSink::new(terminal_id.clone(), events.clone(), log_path, output_buffer.clone(), screen.clone());
+        // A pane that holds earlier output starts the new console on a clean viewport, as the
+        // first chunk, before the console can ask where the cursor is. The screen keeper took it
+        // as it was made, so it goes only to the buffer and the pane.
+        if !earlier.is_empty() {
+            sink.send(screen::clean_viewport(rows));
+        }
         // The session as it is with no process; a launch that runs one adds its PTY
         let without_process = Self {
             id: terminal_id.clone(),
