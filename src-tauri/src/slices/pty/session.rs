@@ -437,7 +437,7 @@ fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Pat
 /// How long each run of `opencode --version` may take. One that doesn't finish is run once
 /// more, and an OpenCode terminal whose second run doesn't finish either is launched as 2.x. A
 /// cold start of OpenCode can take some seconds on a busy machine, as a sidecar's can.
-const VERSION_PATIENCE: std::time::Duration = SIDECAR_PATIENCE;
+const VERSION_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How long an OpenCode 2.x terminal's server may take to be ready. A cold start of OpenCode
 /// can take some seconds on a busy machine.

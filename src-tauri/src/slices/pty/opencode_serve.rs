@@ -124,7 +124,7 @@ enum Probe {
     Unfinished,
 }
 
-/// Runs `opencode --version` with a command from `command`, each one from `hidden_command`, and
+/// Runs `opencode --version`, as a fresh `hidden_command` that `command` builds for each run, and
 /// returns what it printed to stdout. A run that started but didn't finish within `patience`, as
 /// a cold start on a loaded machine may not, is run once more, so it blocks for at most twice
 /// `patience`. A CLI that can't be started isn't run again. Whatever happens, each process and
@@ -538,14 +538,9 @@ if [ -e "$d/probed" ]; then echo TEXT; else : > "$d/probed"; sleep 120; fi
         };
         let path = root.join(name);
         std::fs::write(&path, script).unwrap();
-        move || {
-            let mut cmd = crate::spawn::hidden_command(if cfg!(windows) { "cmd.exe" } else { "sh" });
-            if cfg!(windows) {
-                cmd.arg("/c");
-            }
-            cmd.arg(&path);
-            cmd
-        }
+        let path = path.to_string_lossy().to_string();
+        let unix = format!("sh '{path}'");
+        move || shell(&path, &unix)
     }
 
     #[test]
