@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useRef, KeyboardEvent } from "react";
+import { FC, useState, useEffect, useRef, KeyboardEvent, Ref } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -24,8 +24,11 @@ interface TerminalSearchBarProps {
     options: { caseSensitive: boolean; regex: boolean; wholeWord: boolean }
   ) => void;
   onClear: () => void;
+  /** Closes the bar. Escape anywhere in it, or its Close button, asks for this. */
   onClose: () => void;
   onGetScrollback: () => string;
+  /** The bar's element while it is open. */
+  barRef?: Ref<HTMLDivElement>;
 }
 
 export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
@@ -37,6 +40,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   onClear,
   onClose,
   onGetScrollback,
+  barRef,
 }) => {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -77,10 +81,14 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
       } else {
         onFindNext(query, { caseSensitive, regex, wholeWord });
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
+  };
+
+  // Escape closes the bar from anywhere in it, its buttons as well as its field.
+  const handleBarKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    onClose();
   };
 
   const handleCopy = () => {
@@ -109,8 +117,11 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
   const resultIndex = (searchResult?.index ?? -1) + 1;
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the bar takes no keys itself; Escape reaches it from its own field and buttons, which are native controls
     <div
+      ref={barRef}
       data-no-terminal-focus
+      onKeyDown={handleBarKeyDown}
       className="absolute top-2 right-3 z-30 flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl px-2.5 py-1.5 text-xs text-[#c9d1d9] animate-in fade-in slide-in-from-top-1 select-none"
     >
       <Search className="w-3.5 h-3.5 text-[#8b949e] shrink-0" />

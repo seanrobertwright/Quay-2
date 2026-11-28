@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // Component tests for the keyboard on the stage (#771): what a stage tab covers is inert, and closing a
-// stage tab leaves the focus on the stage. They render the real stage, with real terminals, into
+// stage tab leaves the focus on the stage, as closing a terminal's search bar does (#810). They render the real stage, with real terminals, into
 // happy-dom, with what App holds of the stage tabs around it, and fake only Tauri's `invoke` and
 // events, and the clock through `mock.timers`.
 import "../../test-support/bundlerImports.ts";
@@ -422,4 +422,92 @@ test("closing the stage tab in front of empty panes takes the focus to the curre
   const { container } = await mountStage({ front: "Swarm", stage: { layout: "grid", gridTerminalIds: [null, null, null, null] } });
   await press(container, "Close Swarm");
   assert.equal(focused(), "planner");
+});
+
+// Closing a terminal's search bar from inside it (#810). The bar leaves the page when it closes, so
+// the focus it held would otherwise fall to the page body.
+const keydown = (target: EventTarget, init: KeyboardEventInit) =>
+  act(async () => void target.dispatchEvent(new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true })));
+const ctrlF = (target: EventTarget = document.body) => keydown(target, { key: "f", ctrlKey: true });
+const escape = (target: EventTarget) => keydown(target, { key: "Escape" });
+/** The search field of terminal `id`'s bar, once it is open. */
+const searchField = (container: HTMLElement, id = "a") => container.querySelector<HTMLInputElement>(`[data-pie-terminal="${id}"] input[placeholder="Find in terminal..."]`);
+
+/** Opens terminal a's search bar with Ctrl+F and waits for its field to take the focus. */
+async function openSearch(container: HTMLElement): Promise<HTMLInputElement> {
+  await ctrlF();
+  await until(() => document.activeElement === searchField(container), "the search field takes the focus");
+  return searchField(container)!;
+}
+
+/** Asserts that terminal a's search bar is closed. */
+const assertBarClosed = (container: HTMLElement, message: string) => assert.equal(searchField(container), null, message);
+
+test("Escape in a terminal's search field closes the bar and gives the terminal the focus", async () => {
+  const { container } = await mountStage();
+  await escape(await openSearch(container));
+  assertBarClosed(container, "the bar is closed");
+  assert.equal(focused(), "terminal a");
+});
+
+test("Escape on any of a terminal's search bar buttons closes the bar and gives the terminal the focus", async () => {
+  const { container } = await mountStage();
+  const field = await openSearch(container);
+  // The previous and next match buttons are disabled with nothing to find, and take no focus.
+  const names = [...field.closest("[data-no-terminal-focus]")!.querySelectorAll("button")].filter((b) => !b.disabled).map(nameOf);
+  assert.ok(names.includes("Close (Esc)"), "the bar's buttons are found");
+  await escape(field);
+  for (const name of names) {
+    await openSearch(container);
+    const one = button(container, name);
+    act(() => one.focus());
+    await escape(one);
+    assertBarClosed(container, `Escape on ${name} closes the bar`);
+    assert.equal(focused(), "terminal a", `after Escape on ${name}`);
+  }
+});
+
+test("a terminal's search bar Close button, pressed by keyboard or clicked, closes the bar and gives the terminal the focus", async () => {
+  const { container } = await mountStage();
+  await openSearch(container);
+  await press(container, "Close (Esc)");
+  assertBarClosed(container, "the keyboard closes the bar");
+  assert.equal(focused(), "terminal a", "after the keyboard");
+
+  await openSearch(container);
+  const close = button(container, "Close (Esc)");
+  // A click focuses the button it lands on, and the pane's own mousedown leaves the bar's focus alone.
+  await act(async () => {
+    close.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    close.focus();
+    close.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+    close.click();
+  });
+  assertBarClosed(container, "a click closes the bar");
+  assert.equal(focused(), "terminal a", "after a click");
+});
+
+test("Ctrl+F in a terminal's search bar closes it and gives the terminal the focus", async () => {
+  const { container } = await mountStage();
+  await ctrlF(await openSearch(container));
+  assertBarClosed(container, "the bar is closed");
+  assert.equal(focused(), "terminal a");
+});
+
+test("closing a terminal's search bar from outside it leaves the focus where it was", async () => {
+  const { container } = await mountStage({ stage: { layout: "split-horizontal" } });
+  await openSearch(container);
+  await press(container, "Companion");
+  await ctrlF(button(container, "Companion"));
+  assertBarClosed(container, "Ctrl+F from the companion closes the bar");
+  assert.equal(focused(), "Companion", "after Ctrl+F from the companion");
+
+  await openSearch(container);
+  const header = container.querySelector<HTMLButtonElement>('[data-pie-terminal="a"] button[title="Search terminal scrollback (Ctrl+F)"]')!;
+  await act(async () => {
+    header.focus();
+    header.click();
+  });
+  assertBarClosed(container, "the header's search button closes the bar");
+  assert.equal(document.activeElement === header, true, "the header's search button keeps the focus");
 });
