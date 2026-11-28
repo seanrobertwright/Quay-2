@@ -324,6 +324,20 @@ fn settle_after_first_output(info: &mut TerminalInfo) -> bool {
     }
 }
 
+/// Shows `info` as far as the launch `watch` tracks got before the terminal was listed: out of
+/// Starting once it has printed, then Exited with its exit code once its process has exited,
+/// which wins. Returns whether it has exited, so the caller tells the status watcher.
+fn show_launch_so_far(watch: &PluginWatch, info: &mut TerminalInfo) -> bool {
+    if watch.has_output() {
+        settle_after_first_output(info);
+    }
+    if watch.exited() {
+        info.claude_status = ClaudeStatus::Exited;
+        info.exit_code = watch.exit_code();
+    }
+    watch.exited()
+}
+
 /// Shows a terminal a message reached as Working (see `TerminalInfo::shows_working_on_delivery`).
 fn show_delivered(info: &mut TerminalInfo) {
     if info.shows_working_on_delivery() {
@@ -1035,24 +1049,25 @@ impl PtyManager {
     }
 
     /// Lists `info` as the terminal `launch` started, and returns it as listed. The PTY reader
-    /// can print before the terminal is listed, so a launch that already has output is moved
-    /// out of Starting here.
+    /// can print, and the process can exit, before the terminal is listed, so a launch that
+    /// already has output is moved out of Starting here, and one whose process has exited is
+    /// listed Exited with its exit code (see `exit_launch`) and the status watcher told.
     pub fn insert_launched(&self, launch: &LaunchRef, mut info: TerminalInfo) -> TerminalInfo {
         let mut watches = self.plugin_watches.lock();
-        if launch
-            .current_in(&mut watches)
-            .is_some_and(|watch| watch.has_output())
-        {
-            settle_after_first_output(&mut info);
-        }
+        let exited =
+            launch.current_in(&mut watches).is_some_and(|watch| show_launch_so_far(watch, &mut info));
         self.terminals_info.lock().insert(info.id.clone(), info.clone());
         drop(watches);
         self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
+        if exited {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
         info
     }
 
     /// Lists `info` again as the terminal `launch` restarted, running `attach` in the same step
-    /// to put the new session in place, and returns it as listed. A terminal closed while it
+    /// to put the new session in place, and returns it as listed, out of Starting or Exited as
+    /// `insert_launched` lists it. A terminal closed while it
     /// relaunched stays closed: when it is no longer listed, or `launch` is no longer its
     /// current launch, nothing is listed and `attach` comes back unrun, for the caller to drop
     /// outside this manager's locks. `kill` ends the launch before it removes the session and
@@ -1068,14 +1083,11 @@ impl PtyManager {
         let Some(watch) = launch.current_in(&mut watches) else {
             return Err(attach);
         };
-        let has_output = watch.has_output();
+        let exited = show_launch_so_far(watch, &mut info);
         if !self.terminals_info.lock().contains_key(&launch.terminal_id) {
             // Closed before this launch began, so the launch is the closed terminal's last trace
             watches.remove(&launch.terminal_id);
             return Err(attach);
-        }
-        if has_output {
-            settle_after_first_output(&mut info);
         }
         attach();
         let mut info_map = self.terminals_info.lock();
@@ -1087,6 +1099,9 @@ impl PtyManager {
         drop(info_map);
         drop(watches);
         self.notify_launch_watchers(LaunchEvent::Listed(launch.clone()));
+        if exited {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
         Ok(info)
     }
 
@@ -1343,14 +1358,16 @@ impl PtyManager {
     /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
     /// `launch` is still current, clears its handshake with Quay's MCP server, and tells the launch
     /// watchers, and the status watcher, so held messages fail rather than wait. An earlier launch that
-    /// a relaunch ended, or a closed terminal, changes nothing. Returns whether the terminal moved.
+    /// a relaunch ended, or a closed terminal, changes nothing. A launch whose terminal isn't listed
+    /// yet keeps its exit, and its terminal is listed Exited (see `insert_launched` and
+    /// `relist_launched`). Returns whether a listed terminal moved.
     pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
         {
             let mut watches = self.plugin_watches.lock();
             let Some(watch) = launch.current_in(&mut watches) else {
                 return false;
             };
-            watch.exit();
+            watch.exit(exit_code);
             let mut info_map = self.terminals_info.lock();
             let Some(info) = info_map.get_mut(&launch.terminal_id) else {
                 return false;
@@ -2591,6 +2608,100 @@ mod tests {
     }
 
     #[test]
+    fn a_process_that_exits_before_its_terminal_is_listed_is_listed_exited() {
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch("term-exit-early", RunKind::Codex);
+        // The exit watcher can see the process end before spawn has listed the terminal
+        assert!(!manager.exit_launch(&launch, Some(3)), "nothing listed moved yet");
+
+        let listed = manager.insert_launched(&launch, test_terminal("term-exit-early", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(3)));
+        let info = manager.get_info("term-exit-early").unwrap();
+        assert_eq!((info.claude_status, info.exit_code), (ClaudeStatus::Exited, Some(3)));
+    }
+
+    #[test]
+    fn the_status_watcher_hears_a_terminal_listed_exited_and_not_one_listed_starting() {
+        let manager = PtyManager::new();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+        let exited = manager.begin_launch("term-watch-exit-early", RunKind::Codex);
+        manager.exit_launch(&exited, Some(1));
+        let starting = manager.begin_launch("term-watch-starting", RunKind::Codex);
+        launched(&manager, "term-watch-relaunch", RunKind::Codex);
+        let info = manager.get_info("term-watch-relaunch").unwrap();
+        let relaunch = manager.begin_launch("term-watch-relaunch", RunKind::Codex);
+        manager.exit_launch(&relaunch, Some(1));
+        seen.lock().clear();
+
+        manager.insert_launched(&exited, test_terminal("term-watch-exit-early", RunKind::Codex, ClaudeStatus::Starting));
+        manager.insert_launched(&starting, test_terminal("term-watch-starting", RunKind::Codex, ClaudeStatus::Starting));
+        assert!(manager.relist_launched(&relaunch, info, || ()).is_ok());
+
+        assert_eq!(*seen.lock(), ["term-watch-exit-early", "term-watch-relaunch"]);
+    }
+
+    #[test]
+    fn a_process_that_prints_then_exits_before_its_terminal_is_listed_is_listed_exited() {
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch("term-print-exit-early", RunKind::Codex);
+        assert!(first_output(&manager, &launch).is_none());
+        manager.exit_launch(&launch, Some(0));
+
+        let listed = manager.insert_launched(&launch, test_terminal("term-print-exit-early", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(0)));
+    }
+
+    #[test]
+    fn a_command_that_exits_before_its_terminal_is_listed_is_listed_exited() {
+        let manager = PtyManager::new();
+        for (id, printed) in [("term-command-quiet", false), ("term-command-printed", true)] {
+            let launch = manager.begin_launch(id, RunKind::Command);
+            if printed {
+                first_output(&manager, &launch);
+            }
+            manager.exit_launch(&launch, Some(1));
+
+            let listed = manager.insert_launched(&launch, test_terminal(id, RunKind::Command, ClaudeStatus::Unknown));
+
+            assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(1)), "{id}");
+        }
+    }
+
+    #[test]
+    fn an_exit_of_a_launch_a_later_one_replaced_before_listing_is_not_listed() {
+        let manager = PtyManager::new();
+        let earlier = manager.begin_launch("term-exit-replaced", RunKind::Codex);
+        let later = manager.begin_launch("term-exit-replaced", RunKind::Codex);
+        manager.exit_launch(&earlier, Some(1));
+
+        let listed = manager.insert_launched(&later, test_terminal("term-exit-replaced", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Starting, None));
+    }
+
+    #[test]
+    fn a_process_that_exits_before_its_relaunched_terminal_is_listed_again_is_listed_exited() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-exit", RunKind::Codex);
+        let mut info = manager.get_info("term-relist-exit").unwrap();
+        let relaunch = manager.begin_launch("term-relist-exit", RunKind::Codex);
+        manager.exit_launch(&relaunch, Some(2));
+        // What relaunch lists: the terminal starting again
+        info.claude_status = ClaudeStatus::Starting;
+        info.exit_code = None;
+
+        let listed = manager.relist_launched(&relaunch, info, || ()).ok().expect("relisted");
+
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(2)));
+        let info = manager.get_info("term-relist-exit").unwrap();
+        assert_eq!((info.claude_status, info.exit_code), (ClaudeStatus::Exited, Some(2)));
+    }
+
+    #[test]
     fn dismissing_the_hint_hides_it_for_the_launch_and_leaves_the_terminal_unknown() {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-dismissed", RunKind::Claude);
@@ -2989,6 +3100,55 @@ mod tests {
             assert!(Instant::now() < deadline, "timed out waiting until {}", what);
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_process_that_exits_before_its_terminal_is_listed_ends_exited_with_its_exit_code() {
+        const CURSOR_QUERY: &str = "\x1b[6n";
+        let id = unique_id("exit-before-listed");
+        let mut info = test_terminal(&id, RunKind::Command, ClaudeStatus::Unknown);
+        info.project_path = ".".to_string();
+        info.command_text = Some("exit 5".to_string());
+        let request = relaunch_request(&info, None, None, None);
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch(&id, RunKind::Command);
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let log = sent.clone();
+        let webview = WebviewEvents::to(move |event, payload| log.lock().push((event.to_string(), payload)));
+        let on_exit = manager.exit_hook(launch.clone());
+        let (exited, exit_seen) = std::sync::mpsc::channel();
+        let session = PtySession::spawn(
+            request,
+            launch.clone(),
+            0,
+            4321,
+            "tok-1".to_string(),
+            None,
+            webview,
+            Box::new(|| ()),
+            None,
+            Box::new(move |code| {
+                on_exit(code);
+                let _ = exited.send(());
+            }),
+        )
+        .unwrap();
+        wait_until("the session asks for the cursor", || {
+            output_chunks(&sent.lock()).iter().any(|(_, text)| text.contains(CURSOR_QUERY))
+        });
+        session.write("\x1b[1;1R").unwrap();
+        // The process ends before the terminal is listed, as a fast exit does in `spawn`
+        exit_seen.recv_timeout(Duration::from_secs(30)).expect("the process exits");
+
+        let listed = manager.insert_launched(&launch, info);
+        manager.sessions.lock().insert(id.clone(), session);
+
+        // Quay maps every failing exit to 1
+        assert_eq!((listed.claude_status, listed.exit_code), (ClaudeStatus::Exited, Some(1)));
+        let shown = manager.get_info(&id).unwrap();
+        assert_eq!((shown.claude_status, shown.exit_code), (ClaudeStatus::Exited, Some(1)));
+        manager.kill(&id).unwrap();
     }
 
     #[cfg(windows)]
