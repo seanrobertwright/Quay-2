@@ -11,6 +11,7 @@ import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminal
 import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
+import { isCoveredOnStage } from "../stage/stageElements.ts";
 import { repaintTerminalScreen, syncTerminalSize } from "./terminalResize";
 
 let globalTerminalCols = 160;
@@ -36,7 +37,7 @@ export function getTerminalDimensions(terminalId: string): { cols: number; rows:
 
 /** What a terminal's keys ask of the pane that shows it. */
 export interface TerminalKeyCallbacks {
-  /** Opens or closes the pane's scrollback search, from Ctrl+F. */
+  /** Opens or closes the pane's scrollback search, from Ctrl+F, unless a stage tab or a lens covers the pane. */
   onToggleSearch?: () => void;
   /** Opens the terminal body menu, from Shift+F10 or the Menu key; gets the terminal body's element. */
   onOpenMenu?: (body: HTMLElement) => void;
@@ -163,7 +164,10 @@ export function useTerminal(
 
     // Copy, paste, search and menu keys (terminalBody.ts).
     attachTerminalKeys(term, {
-      search: () => onToggleSearchRef.current?.(),
+      // Not while a stage tab or a lens covers the pane, as for the pane's window Ctrl+F.
+      search: () => {
+        if (!(containerRef.current && isCoveredOnStage(containerRef.current))) onToggleSearchRef.current?.();
+      },
       menu: () => {
         if (containerRef.current) onOpenMenuRef.current?.(containerRef.current);
       },
