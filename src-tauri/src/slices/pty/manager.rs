@@ -348,6 +348,9 @@ pub struct PtyManager {
     plugin_watches: Arc<Mutex<HashMap<String, PluginWatch>>>,
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    /// One lock per terminal, held through a relaunch, so a second relaunch starts only once the
+    /// first has its session in place and numbers on from it. `kill` never takes it.
+    relaunch_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
     /// Held while a status is read and sent (see `send_status`). Lock before any other lock here.
     status_sending: Arc<Mutex<()>>,
@@ -368,6 +371,7 @@ impl PtyManager {
             dormant_buffers: Arc::new(Mutex::new(HashMap::new())),
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
+            relaunch_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
             status_sending: Arc::new(Mutex::new(())),
             server_watcher: Arc::new(Mutex::new(None)),
@@ -545,6 +549,11 @@ impl PtyManager {
         workspace_env: Option<HashMap<String, String>>,
         webview: WebviewEvents,
     ) -> Result<TerminalInfo, String> {
+        // Held to the end, so a second relaunch of this terminal finds this one's session in
+        // place, ends it, and numbers on from the last chunk it sent. Without it, the second
+        // would find no session while this one ends the old, and number from the dormant seq.
+        let relaunch_lock = self.relaunch_locks.lock().entry(terminal_id.to_string()).or_default().clone();
+        let _relaunching = relaunch_lock.lock();
         let info = {
             let info_map = self.terminals_info.lock();
             info_map.get(terminal_id).cloned().ok_or_else(|| {
@@ -775,6 +784,7 @@ impl PtyManager {
         //    closed and never lists it or its session again (see `relist_launched`)
         self.plugin_watches.lock().remove(terminal_id);
         self.submit_locks.lock().remove(terminal_id);
+        self.relaunch_locks.lock().remove(terminal_id);
 
         // 2. Terminate running session process if active. It saves no screen and logs and sends
         //    no output from here on, so its reader finishing, which can take a chunk the PTY
@@ -3052,17 +3062,13 @@ mod tests {
     }
 
     #[cfg(windows)]
-    const SLOW_DELIVERY: Duration = Duration::from_millis(300);
-
-    #[cfg(windows)]
     /// Starts `id`, a Command terminal that runs `exit`, with its events recorded, answers the
     /// cursor query ConPTY opens it with, and waits for its process to exit, which leaves its PTY
     /// open, so closing the PTY sends a chunk of its own. Returns the manager, the recorder and
-    /// what was sent. Once `slow` is set, each event takes `SLOW_DELIVERY` to be recorded, as
-    /// though the reader were still busy with it.
+    /// what was sent. The recorder runs `delivering` with each event's name before it records it.
     fn exited_command_terminal(
         id: &str,
-        slow: Arc<AtomicBool>,
+        delivering: impl Fn(&str) + Send + Sync + 'static,
     ) -> (PtyManager, WebviewEvents, Arc<Mutex<Vec<(String, serde_json::Value)>>>) {
         let mut info = test_terminal(id, RunKind::Command, ClaudeStatus::Exited);
         info.project_path = ".".to_string();
@@ -3072,9 +3078,7 @@ mod tests {
         let sent = Arc::new(Mutex::new(Vec::new()));
         let log = sent.clone();
         let webview = WebviewEvents::to(move |event, payload| {
-            if slow.load(Ordering::SeqCst) {
-                std::thread::sleep(SLOW_DELIVERY);
-            }
+            delivering(event);
             log.lock().push((event.to_string(), payload))
         });
         manager.relaunch_to(id, None, None, 4321, "tok-1".to_string(), None, webview.clone()).unwrap();
@@ -3092,8 +3096,15 @@ mod tests {
     #[test]
     fn a_closed_terminal_leaves_no_saved_output_and_sends_nothing_after_its_close() {
         let id = unique_id("kill-teardown");
+        // Once set, each event takes a while to be recorded, as though the reader were still
+        // busy with it as the close runs
         let slow = Arc::new(AtomicBool::new(false));
-        let (manager, _webview, sent) = exited_command_terminal(&id, slow.clone());
+        let slowed = slow.clone();
+        let (manager, _webview, sent) = exited_command_terminal(&id, move |_| {
+            if slowed.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        });
         let dir = get_sessions_dir();
         assert!(dir.join(format!("{}.log", id)).exists(), "the session logs its output");
 
@@ -3109,6 +3120,52 @@ mod tests {
         assert_eq!(output_chunks(&sent.lock()).len(), sent_by_close, "no output after the close");
         assert!(!dir.join(format!("{}.log", id)).exists(), "no log after the close");
         assert!(!super::super::screen::screen_path(&dir, &id).exists(), "no saved screen after the close");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn two_relaunches_of_one_terminal_at_once_number_the_surviving_sessions_output_above_all_before_it() {
+        let id = unique_id("relaunch-twice");
+        // Once `hold` is set, the next chunk sent waits to be delivered until `release` is: the
+        // first relaunch is then still ending the old session when the second one begins
+        let hold = Arc::new(AtomicBool::new(false));
+        let held = Arc::new(AtomicBool::new(false));
+        let release = Arc::new(AtomicBool::new(false));
+        let (holding, holder, released) = (hold.clone(), held.clone(), release.clone());
+        let (manager, webview, sent) = exited_command_terminal(&id, move |event| {
+            if event == "pty-output" && holding.swap(false, Ordering::SeqCst) {
+                holder.store(true, Ordering::SeqCst);
+                let deadline = Instant::now() + Duration::from_secs(30);
+                while !released.load(Ordering::SeqCst) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        });
+        let relaunching = |manager: &PtyManager, webview: &WebviewEvents| {
+            let (manager, webview, id) = (manager.clone(), webview.clone(), id.clone());
+            std::thread::spawn(move || manager.relaunch_to(&id, None, None, 4321, "tok-1".to_string(), None, webview))
+        };
+
+        hold.store(true, Ordering::SeqCst);
+        let first = relaunching(&manager, &webview);
+        wait_until("the old PTY's closing chunk is on its way", || held.load(Ordering::SeqCst));
+        let second = relaunching(&manager, &webview);
+        // As long as the second relaunch could take to start a session, were it not to wait
+        std::thread::sleep(Duration::from_millis(500));
+        release.store(true, Ordering::SeqCst);
+        let relaunched = [first.join().unwrap(), second.join().unwrap()];
+        assert!(relaunched.iter().any(Result::is_ok), "a relaunch finishes: {:?}", relaunched.map(|r| r.err()));
+        // Long enough for every ended session's reader to send its last chunk
+        std::thread::sleep(Duration::from_secs(3));
+
+        let chunks = output_chunks(&sent.lock());
+        // The pane keeps only a chunk numbered above every one it has seen
+        assert!(
+            chunks.windows(2).all(|pair| pair[1].0 > pair[0].0),
+            "every chunk is numbered above every chunk sent before it: {:?}",
+            chunks
+        );
+        manager.kill(&id).unwrap();
     }
 
     #[cfg(windows)]
