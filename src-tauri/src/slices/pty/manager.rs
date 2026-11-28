@@ -461,7 +461,7 @@ impl PtyManager {
             .clone()
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
         // Spawning over a terminal would replace its session without draining it; `relaunch`
-        // restarts one
+        // restarts one.
         if self.terminals_info.lock().contains_key(&terminal_id) || self.sessions.lock().contains_key(&terminal_id) {
             return Err(format!("Terminal {} is already open; relaunch it instead", terminal_id));
         }
