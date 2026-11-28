@@ -1,0 +1,164 @@
+{
+  "cursorReply": "\u001b[1;1R",
+  "events": [
+    {
+      "out": "\u001b[6n"
+    },
+    {
+      "out": "\u001b[?9001h\u001b[?1004h"
+    },
+    {
+      "out": "\u001b[m\u001b]0;C:\\WINDOWS\\system32\\cmd.exe\u0007\u001b[?25h"
+    },
+    {
+      "out": "row-1-of-60\r\nrow-2-of-60\r\n\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-3-of-60\u0007"
+    },
+    {
+      "out": "row-3-of-60\r\nrow-4-of-60\r\nrow-5-of-60\r\nrow-6-of-60\r\nrow-7-of-60\r\nrow-8-of-60\r\nrow-9-of-60\r\nrow-10-of-60\r\nrow-11-of-60\r\nrow-12-of-60\r\nrow-13-of-60\r\nrow-14-of-60\r\nrow-15-of-60\r\nrow-16-of-60\r\nrow-17-of-60\r\nrow-18-of-60\r\nrow-19-of-60\r\nrow-20-of-60\r\nrow-21-of-60\r\nrow-22-of-60\r\nrow-23-of-60\r\nrow-24-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-24-of-60\u0007"
+    },
+    {
+      "out": "\nrow-25-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-25-of-60\u0007"
+    },
+    {
+      "out": "\nrow-26-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-26-of-60\u0007"
+    },
+    {
+      "out": "\nrow-27-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-27-of-60\u0007"
+    },
+    {
+      "out": "\nrow-28-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-28-of-60\u0007"
+    },
+    {
+      "out": "\nrow-29-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-29-of-60\u0007"
+    },
+    {
+      "out": "\nrow-30-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-30-of-60\u0007"
+    },
+    {
+      "out": "\nrow-31-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-31-of-60\u0007"
+    },
+    {
+      "out": "\nrow-32-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-32-of-60\u0007"
+    },
+    {
+      "out": "\nrow-33-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-33-of-60\u0007"
+    },
+    {
+      "out": "\nrow-34-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-34-of-60\u0007"
+    },
+    {
+      "out": "\nrow-35-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-35-of-60\u0007"
+    },
+    {
+      "out": "\nrow-36-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-36-of-60\u0007"
+    },
+    {
+      "out": "\nrow-37-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-37-of-60\u0007"
+    },
+    {
+      "out": "\nrow-38-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-38-of-60\u0007"
+    },
+    {
+      "out": "\nrow-39-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-39-of-60\u0007"
+    },
+    {
+      "out": "\nrow-40-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-40-of-60\u0007"
+    },
+    {
+      "out": "\nrow-41-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-41-of-60\u0007"
+    },
+    {
+      "out": "\nrow-42-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-42-of-60\u0007"
+    },
+    {
+      "out": "\nrow-43-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-43-of-60\u0007"
+    },
+    {
+      "out": "\nrow-44-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-44-of-60\u0007"
+    },
+    {
+      "out": "\nrow-45-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-45-of-60\u0007"
+    },
+    {
+      "out": "\nrow-46-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-46-of-60\u0007"
+    },
+    {
+      "out": "\nrow-47-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-47-of-60\u0007"
+    },
+    {
+      "out": "\nrow-48-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-48-of-60\u0007"
+    },
+    {
+      "out": "\nrow-49-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-49-of-60\u0007"
+    },
+    {
+      "out": "\nrow-50-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-50-of-60\u0007"
+    },
+    {
+      "out": "\nrow-51-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-51-of-60\u0007"
+    },
+    {
+      "out": "\nrow-52-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-52-of-60\u0007"
+    },
+    {
+      "out": "\nrow-53-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-53-of-60\u0007"
+    },
+    {
+      "out": "\nrow-54-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-54-of-60\u0007"
+    },
+    {
+      "out": "\nrow-55-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-55-of-60\u0007"
+    },
+    {
+      "out": "\nrow-56-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-56-of-60\u0007"
+    },
+    {
+      "out": "\nrow-57-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-57-of-60\u0007"
+    },
+    {
+      "out": "\n\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-58-of-60\u0007"
+    },
+    {
+      "out": "row-58-of-60\r"
+    },
+    {
+      "out": "\nrow-59-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-59-of-60\u0007"
+    },
+    {
+      "out": "\nrow-60-of-60\r\u001b]0;C:\\WINDOWS\\system32\\cmd.exe - echo  row-60-of-60\u0007"
+    },
+    {
+      "out": "\n\u001b]0;C:\\WINDOWS\\system32\\cmd.exe\u0007"
+    },
+    {
+      "out": "\n>"
+    },
+    {
+      "resize": {
+        "rows": 30,
+        "cols": 100
+      }
+    },
+    {
+      "out": "\u001b[?25l\u001b[8;30;100t\u001b[Hrow-39-of-60\u001b[K\r\nrow-40-of-60\u001b[K\r\nrow-41-of-60\u001b[K\r\nrow-42-of-60\u001b[K\r\nrow-43-of-60\u001b[K\r\nrow-44-of-60\u001b[K\r\nrow-45-of-60\u001b[K\r\nrow-46-of-60\u001b[K\r\nrow-47-of-60\u001b[K\r\nrow-48-of-60\u001b[K\r\nrow-49-of-60\u001b[K\r\nrow-50-of-60\u001b[K\r\nrow-51-of-60\u001b[K\r\nrow-52-of-60\u001b[K\r\nrow-53-of-60\u001b[K\r\nrow-54-of-60\u001b[K\r\nrow-55-of-60\u001b[K\r\nrow-56-of-60\u001b[K\r\nrow-57-of-60\u001b[K\r\nrow-58-of-60\u001b[K\r\nrow-59-of-60\u001b[K\r\nrow-60-of-60\u001b[K\r\n\u001b[K\r\n>\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\u001b[24;2H\u001b[?25h"
+    },
+    {
+      "resize": {
+        "rows": 20,
+        "cols": 60
+      }
+    },
+    {
+      "out": "\u001b[?25l\u001b[Hrow-43-of-60\u001b[K\r\nrow-44-of-60\u001b[K\r\nrow-45-of-60\u001b[K\r\nrow-46-of-60\u001b[K\r\nrow-47-of-60\u001b[K\r\nrow-48-of-60\u001b[K\r\nrow-49-of-60\u001b[K\r\nrow-50-of-60\u001b[K\r\nrow-51-of-60\u001b[K\r\nrow-52-of-60\u001b[K\r\nrow-53-of-60\u001b[K\r\nrow-54-of-60\u001b[K\r\nrow-55-of-60\u001b[K\r\nrow-56-of-60\u001b[K\r\nrow-57-of-60\u001b[K\r\nrow-58-of-60\u001b[K\r\nrow-59-of-60\u001b[K\r\nrow-60-of-60\u001b[K\r\n\u001b[K\r\n>\u001b[K\u001b[?25h"
+    },
+    {
+      "resize": {
+        "rows": 24,
+        "cols": 80
+      }
+    },
+    {
+      "out": "\u001b[?25l\u001b[Hrow-43-of-60\u001b[K\r\nrow-44-of-60\u001b[K\r\nrow-45-of-60\u001b[K\r\nrow-46-of-60\u001b[K\r\nrow-47-of-60\u001b[K\r\nrow-48-of-60\u001b[K\r\nrow-49-of-60\u001b[K\r\nrow-50-of-60\u001b[K\r\nrow-51-of-60\u001b[K\r\nrow-52-of-60\u001b[K\r\nrow-53-of-60\u001b[K\r\nrow-54-of-60\u001b[K\r\nrow-55-of-60\u001b[K\r\nrow-56-of-60\u001b[K\r\nrow-57-of-60\u001b[K\r\nrow-58-of-60\u001b[K\r\nrow-59-of-60\u001b[K\r\nrow-60-of-60\u001b[K\r\n\u001b[K\r\n>\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\u001b[20;2H\u001b[?25h"
+    }
+  ]
+}
