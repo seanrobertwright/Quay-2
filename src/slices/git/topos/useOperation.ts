@@ -10,7 +10,8 @@ import type { Staging } from "./useStaging";
 export type OpStateRead =
   | { state: "loading" }
   | { state: "done"; worktreePath: string; op: OpState }
-  | { state: "failed"; message: string };
+  /** `last` is the newest read that succeeded before this failure, if any. */
+  | { state: "failed"; message: string; last: { worktreePath: string; op: OpState } | null };
 
 /** `OpOutcome` from `src-tauri/src/slices/git/operation.rs`. */
 interface OpOutcome {
@@ -24,6 +25,8 @@ export interface Operation {
   read: OpStateRead;
   /** The selected worktree's operation, once read. */
   op: OpState | null;
+  /** `op`, or while the newest read fails, the selected worktree's last operation that read (#823). */
+  lastOp: OpState | null;
   /** What the banner shows, or null for no banner. */
   view: BannerView | null;
   /** The message Continue commits, prefilled from the file git takes it from. */
@@ -74,12 +77,20 @@ export function useOperation(worktreePath: string | null, staging: Staging, onLa
         if (ids.current.isLatest(id) && path.current === worktreePath) setRead({ state: "done", worktreePath, op });
       },
       (e: unknown) => {
-        if (ids.current.isLatest(id) && path.current === worktreePath) setRead({ state: "failed", message: errorMessage(e) });
+        if (ids.current.isLatest(id) && path.current === worktreePath) {
+          const message = errorMessage(e);
+          setRead((prev) => ({
+            state: "failed",
+            message,
+            last: prev.state === "done" ? { worktreePath: prev.worktreePath, op: prev.op } : prev.state === "failed" ? prev.last : null,
+          }));
+        }
       }
     );
   }, [worktreePath, statusSeen]);
 
   const op = read.state === "done" && read.worktreePath === worktreePath ? read.op : null;
+  const lastOp = op ?? (read.state === "failed" && read.last?.worktreePath === worktreePath ? read.last.op : null);
 
   // Each step of an operation prefills its own message once.
   useEffect(() => {
@@ -145,5 +156,5 @@ export function useOperation(worktreePath: string | null, staging: Staging, onLa
     invoke("git_op_cancel", { opId: running.opId }).catch(console.error);
   }, [running]);
 
-  return { read, op, view, fields, setFields, running: running?.step ?? null, output, failure, run, cancel };
+  return { read, op, lastOp, view, fields, setFields, running: running?.step ?? null, output, failure, run, cancel };
 }

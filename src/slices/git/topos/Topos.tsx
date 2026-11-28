@@ -24,7 +24,6 @@ import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useFileRequest, type FileRequest } from "./useFileRequest";
 import { useCommit } from "./useCommit";
 import { useOperation } from "./useOperation";
-import type { OpState } from "./operation";
 import { OperationBanner } from "./OperationBanner";
 import { ConflictResolver } from "./ConflictResolver";
 import { HandToAgentDialog } from "./HandToAgentDialog";
@@ -262,18 +261,12 @@ export const Topos: React.FC<ToposProps> = ({
   const [resolving, setResolving] = useState<string | null>(null);
   useEffect(() => setResolving(null), [selectedPath]);
   const closeResolver = useCallback(() => setResolving(null), []);
-  // The operation the open resolver shows: the newest read, or the last one it showed while a read
+  // The operation the open resolver shows: the newest read, or the last one that read while a read
   // fails, so a failed read leaves the resolver and its unsaved Result where they are (#823).
-  const [resolvedOp, setResolvedOp] = useState<{ worktreePath: string; op: OpState } | null>(null);
-  useEffect(() => {
-    if (resolving === null || selectedPath === null) setResolvedOp(null);
-    else if (operation.op !== null) setResolvedOp({ worktreePath: selectedPath, op: operation.op });
-  }, [resolving, selectedPath, operation.op]);
-  const heldOp = resolvedOp !== null && resolvedOp.worktreePath === selectedPath ? resolvedOp.op : null;
-  const resolverOp = resolving === null ? null : (operation.op ?? heldOp);
+  const resolverOp = resolving === null ? null : operation.lastOp;
   // The one condition for drawing the resolver and for turning off what it covers, so the graph and
   // the inspector are never inert with nothing over them.
-  const resolverShown = resolverOp !== null;
+  const resolverShown = resolving !== null && resolverOp !== null;
   const opReadFailure = resolverShown && operation.read.state === "failed" ? operation.read.message : null;
   const continueRef = useRef<HTMLButtonElement>(null);
   const goToContinue = useCallback(() => continueRef.current?.focus(), []);
@@ -666,7 +659,7 @@ export const Topos: React.FC<ToposProps> = ({
               </div>
             ) : graph.feed ? (
               <div className="relative flex-1 flex min-h-0">
-                {resolving !== null && resolverOp !== null && (
+                {resolverShown && (
                   <ConflictResolver
                     key={target.path}
                     worktreePath={target.path}
