@@ -12,7 +12,7 @@ import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
 import { isCoveredOnStage } from "../stage/stageElements.ts";
-import { repaintTerminalScreen, syncTerminalSize } from "./terminalResize";
+import { createColumnResizeGuard, repaintTerminalScreen, syncTerminalSize, type ColumnResizeGuard } from "./terminalResize";
 import { paneTerminalOptions, parseWindowsBuildNumber, windowsPtyFor } from "./terminalOptions";
 
 let globalTerminalCols = 160;
@@ -80,6 +80,7 @@ export function useTerminal(
     rows: 0,
     cols: 0,
   });
+  const columnResizeGuardRef = useRef<ColumnResizeGuard | null>(null);
 
   // Keep latest props in refs so the main Terminal instance is never disposed on React re-renders
   const onToggleSearchRef = useRef(onToggleSearch);
@@ -113,7 +114,8 @@ export function useTerminal(
             globalTerminalRows = rows;
           },
           resizePty: (rows, cols) => invoke("resize_pty", { terminalId, rows, cols }),
-        }
+        },
+        columnResizeGuardRef.current ?? undefined
       );
     } catch (err) {
       console.error("Error syncing PTY size:", err);
@@ -139,6 +141,8 @@ export function useTerminal(
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+    const columnGuard = createColumnResizeGuard();
+    columnResizeGuardRef.current = columnGuard;
 
     // Fit immediately BEFORE writing initial output so buffer replay uses real dimensions
     syncPtySize();
@@ -201,7 +205,7 @@ export function useTerminal(
       } else {
         if (event.payload.seq > highestSeq) {
           highestSeq = event.payload.seq;
-          term.write(event.payload.data);
+          columnGuard.write(term, event.payload.data);
         }
       }
     });
